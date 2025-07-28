@@ -18,7 +18,7 @@ st.title("Post-Game Hitter & Pitcher Reports")
 uploaded_file = st.file_uploader("Upload Pitch Data CSV", type="csv")
 logo_file     = st.file_uploader("Upload Team Logo", type=["png","jpg","jpeg"])
 
-# ─── HELPER: PITCHER COLORS ────────────────────────────────────────────────────
+# ─── HELPER ────────────────────────────────────────────────────────────────────
 def get_pitch_color(ptype):
     if ptype.lower().startswith('four-seam fastball') or ptype.lower() == 'fastball':
         return '#E60026'
@@ -73,11 +73,11 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     chi2v = chi2.ppf(coverage, df=2)
     axm.axhline(0, linestyle='--', color='grey')
     axm.axvline(0, linestyle='--', color='grey')
-    for ptype, g in grp:
-        x, y = g['HorzBreak'], g['InducedVertBreak']
-        clr   = get_pitch_color(ptype)
+    for ptype,g in grp:
+        x,y = g['HorzBreak'], g['InducedVertBreak']
+        clr = get_pitch_color(ptype)
         axm.scatter(x, y, label=ptype, color=clr, alpha=0.7)
-        if len(g) > 1:
+        if len(g)>1:
             cov = np.cov(np.vstack((x,y)))
             vals, vecs = np.linalg.eigh(cov)
             order = vals.argsort()[::-1]
@@ -95,17 +95,14 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     axm.legend(title='Pitch Type',fontsize=8,title_fontsize=9,loc='upper right')
 
     # Summary table
-    axt = fig.add_subplot(gs[1,0])
-    axt.axis('off')
+    axt = fig.add_subplot(gs[1,0]); axt.axis('off')
     tbl = axt.table(cellText=summary.values,
                     colLabels=summary.columns,
                     cellLoc='center', loc='center')
-    tbl.auto_set_font_size(False)
-    tbl.set_fontsize(10)
-    tbl.scale(1.5,1.5)
+    tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5,1.5)
     axt.set_title('Summary Metrics', fontweight='bold', y=0.87)
 
-    # Logo overlay (from uploaded file if provided)
+    # Logo
     if logo_img is not None:
         axl = fig.add_axes([1,0.88,0.12,0.12],anchor='NE',zorder=10)
         axl.imshow(logo_img); axl.axis('off')
@@ -120,7 +117,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
 
 # ─── HITTER REPORT (UNCHANGED) ────────────────────────────────────────────────
 def create_hitter_report(df, batter, ncols=3):
-    # … existing hitter report code …
+    # … your existing hitter‐report code …
     pass
 
 # ─── STREAMLIT APP ────────────────────────────────────────────────────────────
@@ -141,34 +138,34 @@ if uploaded_file:
                                   key="report_type")
     selected_date = col2.selectbox("Game Date", all_dates, key="game_date")
 
-    # filter for NEB pitchers and batters on that date
-    df = df_all[
-        (df_all['PitcherTeam']=='NEB') &
-        (df_all['BatterTeam']=='NEB') &
-        (df_all['Date']==selected_date)
-    ]
+    # **only date filter here**:
+    df_date = df_all[df_all['Date']==selected_date]
 
     if report == "Pitcher Report":
-        # only NEB pitchers
-        pitchers = sorted(df['Pitcher'].unique())
+        # now filter by NEB pitchers
+        df_p = df_date[df_date['PitcherTeam']=='NEB']
+        pitchers = sorted(df_p['Pitcher'].unique())
         player   = col3.selectbox("Pitcher", pitchers, key="pitcher_name")
+
         st.subheader(f"{player} — {selected_date}")
 
         # load uploaded logo if provided
         logo_img = mpimg.imread(logo_file) if logo_file else None
 
-        result = combined_pitcher_report(df, player, logo_img, coverage=0.8)
+        result = combined_pitcher_report(df_p, player, logo_img, coverage=0.8)
         if result:
             fig, summary = result
             st.pyplot(fig)
             st.table(summary)
 
     else:
-        # only NEB batters
-        batters = sorted(df['Batter'].unique())
+        # now filter by NEB batters
+        df_b    = df_date[df_date['BatterTeam']=='NEB']
+        batters = sorted(df_b['Batter'].unique())
         player  = col3.selectbox("Batter", batters, key="batter_name")
+
         st.subheader(f"{player} — {selected_date}")
-        fig = create_hitter_report(df, player, ncols=3)
+        fig = create_hitter_report(df_b, player, ncols=3)
         st.pyplot(fig)
 
 else:

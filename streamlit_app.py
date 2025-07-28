@@ -22,15 +22,15 @@ logo_file     = st.file_uploader("Upload Team Logo", type=["png","jpg","jpeg"])
 def get_pitch_color(ptype):
     if ptype.lower().startswith('four-seam fastball') or ptype.lower() == 'fastball':
         return '#E60026'
-    savant_colors = {
+    savant = {
         'sinker':'#FF9300','cutter':'#800080','changeup':'#008000',
         'curveball':'#0033CC','slider':'#CCCC00','splitter':'#00CCCC',
         'knuckle curve':'#000000','screwball':'#CC0066','eephus':'#666666'
     }
-    return savant_colors.get(ptype.lower(), '#E60026')
+    return savant.get(ptype.lower(), '#E60026')
 
 # ─── PITCHER REPORT ────────────────────────────────────────────────────────────
-def combined_pitcher_report(df, pitcher_name, logo_path, coverage=0.8):
+def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     df_p = df[df['Pitcher'] == pitcher_name]
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' on that date.")
@@ -64,7 +64,6 @@ def combined_pitcher_report(df, pitcher_name, logo_path, coverage=0.8):
             'Rel Speed','Spin Rate','IVB','HB','Rel Height','VAA','Extension']
     summary = summary[cols]
 
-    # Build figure
     fig = plt.figure(figsize=(8,12))
     gs  = GridSpec(2,1,figure=fig,height_ratios=[1.5,0.7],hspace=0.3)
 
@@ -78,7 +77,7 @@ def combined_pitcher_report(df, pitcher_name, logo_path, coverage=0.8):
         x, y = g['HorzBreak'], g['InducedVertBreak']
         clr   = get_pitch_color(ptype)
         axm.scatter(x, y, label=ptype, color=clr, alpha=0.7)
-        if len(g)>1:
+        if len(g) > 1:
             cov = np.cov(np.vstack((x,y)))
             vals, vecs = np.linalg.eigh(cov)
             order = vals.argsort()[::-1]
@@ -106,9 +105,12 @@ def combined_pitcher_report(df, pitcher_name, logo_path, coverage=0.8):
     tbl.scale(1.5,1.5)
     axt.set_title('Summary Metrics', fontweight='bold', y=0.87)
 
-    # Logo overlay
-    if os.path.exists(logo_path):
-        logo = mpimg.imread(logo_path)
+    # Logo overlay (from uploaded file if provided)
+    if logo_img is not None:
+        axl = fig.add_axes([1,0.88,0.12,0.12],anchor='NE',zorder=10)
+        axl.imshow(logo_img); axl.axis('off')
+    elif os.path.exists(LOGO_PATH):
+        logo = mpimg.imread(LOGO_PATH)
         axl  = fig.add_axes([1,0.88,0.12,0.12],anchor='NE',zorder=10)
         axl.imshow(logo); axl.axis('off')
 
@@ -118,33 +120,28 @@ def combined_pitcher_report(df, pitcher_name, logo_path, coverage=0.8):
 
 # ─── HITTER REPORT (UNCHANGED) ────────────────────────────────────────────────
 def create_hitter_report(df, batter, ncols=3):
-    # … your existing hitter‐report code here …
-    # return a Matplotlib figure
+    # … existing hitter report code …
     pass
 
 # ─── STREAMLIT APP ────────────────────────────────────────────────────────────
 if uploaded_file:
     df_all = pd.read_csv(uploaded_file)
 
-    # 1) ensure Date column exists
     if 'Date' not in df_all.columns:
         st.error("Your CSV has no 'Date' column!")
         st.stop()
 
-    # 2) parse dates and build master list
+    # parse dates
     df_all['Date'] = pd.to_datetime(df_all['Date']).dt.date
     all_dates = sorted(df_all['Date'].unique())
 
-    # Layout
     col1, col2, col3 = st.columns(3)
-    report = col1.selectbox("Report Type",
-                            ["Pitcher Report","Hitter Report"],
-                            key="report_type")
-    selected_date = col2.selectbox("Game Date",
-                                   all_dates,
-                                   key="game_date")
+    report       = col1.selectbox("Report Type",
+                                  ["Pitcher Report","Hitter Report"],
+                                  key="report_type")
+    selected_date = col2.selectbox("Game Date", all_dates, key="game_date")
 
-    # 3) now filter by both teams *and* the chosen date
+    # filter for NEB pitchers and batters on that date
     df = df_all[
         (df_all['PitcherTeam']=='NEB') &
         (df_all['BatterTeam']=='NEB') &
@@ -152,16 +149,22 @@ if uploaded_file:
     ]
 
     if report == "Pitcher Report":
+        # only NEB pitchers
         pitchers = sorted(df['Pitcher'].unique())
         player   = col3.selectbox("Pitcher", pitchers, key="pitcher_name")
         st.subheader(f"{player} — {selected_date}")
-        result = combined_pitcher_report(df, player, LOGO_PATH, coverage=0.8)
+
+        # load uploaded logo if provided
+        logo_img = mpimg.imread(logo_file) if logo_file else None
+
+        result = combined_pitcher_report(df, player, logo_img, coverage=0.8)
         if result:
             fig, summary = result
             st.pyplot(fig)
             st.table(summary)
 
     else:
+        # only NEB batters
         batters = sorted(df['Batter'].unique())
         player  = col3.selectbox("Batter", batters, key="batter_name")
         st.subheader(f"{player} — {selected_date}")

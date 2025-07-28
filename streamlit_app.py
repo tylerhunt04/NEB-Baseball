@@ -15,8 +15,15 @@ LOGO_PATH = 'Nebraska-Cornhuskers-Logo.png'
 
 st.title("Post-Game Hitter & Pitcher Reports")
 
-uploaded_file = st.file_uploader("Upload Pitch Data CSV", type="csv")
-logo_file     = st.file_uploader("Upload Team Logo", type=["png","jpg","jpeg"])
+# ─── CONFIG ───────────────────────────────────
+CSV_PATH  = "5.31.2025 v HC.csv"          # relative path in repo
+LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
+try:
+    df_all = pd.read_csv(CSV_PATH)
+except FileNotFoundError:
+    st.error(f"Could not find CSV at {CSV_PATH}")
+    st.stop()
+
 
 # ─── HELPER: PITCHER COLORS ────────────────────────────────────────────────────
 def get_pitch_color(ptype):

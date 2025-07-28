@@ -187,7 +187,6 @@ if uploaded_file:
         })
         # Sort summary by Pitches
         summary = summary.sort_values('Pitches', ascending=False)
-        summary=summary.sort_values('Pitches',ascending=False)
         axt=fig.add_subplot(gs[1,0]);axt.axis('off')
         tbl=axt.table(cellText=summary.values,colLabels=summary.columns,cellLoc='center',loc='center')
         tbl.set_fontsize(10);tbl.scale(1.5,1.5)

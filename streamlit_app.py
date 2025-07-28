@@ -189,42 +189,58 @@ def create_hitter_report(df,batter,ncols=3):
     return fig
 
 # ─── STREAMLIT APP ────────────────────────────────────────────────────────────
-if uploaded_file:
-    df_all = pd.read_csv(uploaded_file)
-    if 'Date' not in df_all.columns:
-        st.error("Your CSV has no 'Date' column!")
-        st.stop()
+# ─── STREAMLIT APP ────────────────────────────────────────────────────────────
 
-    df_all['Date'] = pd.to_datetime(df_all['Date']).dt.date
-    all_dates = sorted(df_all['Date'].unique())
+# 1) Read your hard‑coded CSV path
+try:
+    df_all = pd.read_csv(CSV_PATH)
+except FileNotFoundError:
+    st.error(f"Could not find CSV at {CSV_PATH}")
+    st.stop()
 
-    col1, col2, col3 = st.columns(3)
-    report        = col1.selectbox("Report Type", ["Pitcher Report","Hitter Report"], key="report_type")
-    selected_date = col2.selectbox("Game Date", all_dates, key="game_date")
+# 2) Validate and parse dates
+if 'Date' not in df_all.columns:
+    st.error("Your CSV has no 'Date' column!")
+    st.stop()
+df_all['Date'] = pd.to_datetime(df_all['Date']).dt.date
+all_dates = sorted(df_all['Date'].unique())
 
-    # date‐only filter
-    df_date = df_all[df_all['Date']==selected_date]
+# 3) Widgets
+col1, col2, col3 = st.columns(3)
+report        = col1.selectbox("Report Type", ["Pitcher Report","Hitter Report"], key="report_type")
+selected_date = col2.selectbox("Game Date",       all_dates,                   key="game_date")
 
-    if report=="Pitcher Report":
-        df_p     = df_date[df_date['PitcherTeam']=='NEB']
-        pitchers = sorted(df_p['Pitcher'].unique())
-        player   = col3.selectbox("Pitcher", pitchers, key="pitcher_name")
-        st.subheader(f"{player} — {selected_date}")
+# 4) Filter to that date only
+df_date = df_all[df_all['Date']==selected_date]
 
-        logo_img = mpimg.imread(logo_file) if logo_file else None
-        result   = combined_pitcher_report(df_p, player, logo_img, coverage=0.8)
-        if result:
-            fig, summary = result
-            st.pyplot(fig=fig)
-            st.table(summary)
+# 5) Load repo‑mounted logo once
+logo_img = None
+if os.path.exists(LOGO_PATH):
+    logo_img = mpimg.imread(LOGO_PATH)
+else:
+    st.warning(f"Logo not found at {LOGO_PATH}")
 
-    else:
-        df_b    = df_date[df_date['BatterTeam']=='NEB']
-        batters = sorted(df_b['Batter'].unique())
-        player  = col3.selectbox("Batter", batters, key="batter_name")
-        st.subheader(f"{player} — {selected_date}")
-        fig = create_hitter_report(df_b, player, ncols=3)
+# 6) Branch on report type
+if report == "Pitcher Report":
+    # only NEB pitchers on that date
+    df_p     = df_date[df_date['PitcherTeam']=='NEB']
+    pitchers = sorted(df_p['Pitcher'].unique())
+    player   = col3.selectbox("Pitcher", pitchers, key="pitcher_name")
+    st.subheader(f"{player} — {selected_date}")
+
+    result = combined_pitcher_report(df_p, player, logo_img, coverage=0.8)
+    if result:
+        fig, summary = result
         st.pyplot(fig=fig)
+        st.table(summary)
 
 else:
-    st.info("Please upload a CSV to begin.")
+    # only NEB batters on that date
+    df_b    = df_date[df_date['BatterTeam']=='NEB']
+    batters = sorted(df_b['Batter'].unique())
+    player  = col3.selectbox("Batter", batters, key="batter_name")
+    st.subheader(f"{player} — {selected_date}")
+
+    fig = create_hitter_report(df_b, player, ncols=3)
+    st.pyplot(fig=fig)
+

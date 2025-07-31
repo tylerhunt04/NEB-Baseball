@@ -14,8 +14,8 @@ from numpy.linalg import LinAlgError
 from matplotlib import colors
 
 # ─── CONFIG / PATHS ───────────────────────────────────────────────────────────
-CSV_PATH  = "data/5.31.2025 v HC.csv"  # adjust to where your CSV lives in repo
-LOGO_PATH = "images/Nebraska-Cornhuskers-Logo.png"  # repo-mounted logo
+CSV_PATH  = "5.31.2025 v HC.csv"  # adjust to where your CSV lives in repo
+LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # repo-mounted logo
 
 st.title("Post-Game Hitter & Pitcher Reports")
 

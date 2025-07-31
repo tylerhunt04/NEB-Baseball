@@ -14,8 +14,8 @@ from numpy.linalg import LinAlgError
 from matplotlib import colors
 
 # ─── CONFIG / PATHS ───────────────────────────────────────────────────────────
-CSV_PATH  = "5.31.2025 v HC.csv"  # adjust to where your CSV lives in repo
-LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # repo-mounted logo
+CSV_PATH  = "5.31.2025 v HC.csv"  # adjust to your repo location
+LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # adjust to your repo location
 
 st.title("Post-Game Hitter & Pitcher Reports")
 
@@ -31,7 +31,7 @@ custom_cmap = colors.LinearSegmentedColormap.from_list(
     ],
 )
 
-# ─── CONSTANTS FOR HEATMAP REPORT ─────────────────────────────────────────────
+# ─── STRIKEZONE / GRID CONSTANTS ───────────────────────────────────────────────
 SZ_LEFT, SZ_RIGHT = -0.83, 0.83
 SZ_BOTTOM, SZ_TOP = 1.17, 3.92
 GRID_SIZE = 100
@@ -366,7 +366,7 @@ def create_hitter_report(df,batter,ncols=3):
     plt.tight_layout(rect=[0.12,0.05,1,0.88])
     return fig
 
-# ─── STREAMLIT APP LOGIC ───────────────────────────────────────────────────────
+# ─── STREAMLIT APP LOGIC ──────────────────────────────────────────────────────
 # Load CSV from repo path
 try:
     df_all = pd.read_csv(CSV_PATH)
@@ -374,19 +374,22 @@ except FileNotFoundError:
     st.error(f"CSV not found at {CSV_PATH}")
     st.stop()
 
-if 'Date' not in df_all.columns:
-    st.error("Your CSV has no 'Date' column!")
+# validate presence
+required = ['Date', 'PitcherTeam', 'BatterTeam', 'Pitcher', 'Batter']
+missing = [c for c in required if c not in df_all.columns]
+if missing:
+    st.error(f"Missing required columns: {missing}")
     st.stop()
 
 df_all['Date'] = pd.to_datetime(df_all['Date']).dt.date
 all_dates = sorted(df_all['Date'].unique())
 
-col1, col2, col3 = st.columns(4)
+col1, col2, col3, col4 = st.columns(4)
 report        = col1.selectbox("Report Type", ["Pitcher Report","Hitter Report"], key="report_type")
 variant       = col2.selectbox("Pitcher Variant", ["Standard","Heatmap"], key="variant") if report=="Pitcher Report" else None
 selected_date = col3.selectbox("Game Date", all_dates, key="game_date")
 
-df_date = df_all[df_all['Date']==selected_date]
+df_date = df_all[df_all['Date'] == selected_date]
 
 # load logo once
 logo_img = None
@@ -396,15 +399,15 @@ else:
     st.warning(f"Logo not found at {LOGO_PATH}")
 
 if report == "Pitcher Report":
-    df_p     = df_date[df_date['PitcherTeam']=='NEB']
+    df_p     = df_date[df_date['PitcherTeam'] == 'NEB']
     pitchers = sorted(df_p['Pitcher'].unique())
-    player   = col3.selectbox("Pitcher", pitchers, key="pitcher_name")
+    player   = col4.selectbox("Pitcher", pitchers, key="pitcher_name")
     st.subheader(f"{player} — {selected_date}")
 
     if variant == "Heatmap":
-        result = combined_pitcher_heatmap_report(df_p, player, LOGO_PATH)
-        if result:
-            st.pyplot(fig=result)
+        fig = combined_pitcher_heatmap_report(df_p, player, LOGO_PATH)
+        if fig:
+            st.pyplot(fig=fig)
     else:
         result = combined_pitcher_report(df_p, player, logo_img, coverage=0.8)
         if result:
@@ -413,9 +416,10 @@ if report == "Pitcher Report":
             st.table(summary)
 
 else:
-    df_b    = df_date[df_date['BatterTeam']=='NEB']
+    df_b    = df_date[df_date['BatterTeam'] == 'NEB']
     batters = sorted(df_b['Batter'].unique())
-    player  = col3.selectbox("Batter", batters, key="batter_name")
+    player  = col4.selectbox("Batter", batters, key="batter_name")
     st.subheader(f"{player} — {selected_date}")
     fig = create_hitter_report(df_b, player, ncols=3)
-    st.pyplot(fig=fig)
+    if fig:
+        st.pyplot(fig=fig)

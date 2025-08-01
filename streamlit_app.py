@@ -13,8 +13,8 @@ from numpy.linalg import LinAlgError
 from matplotlib import colors
 
 # ─── CONFIG / PATHS ───────────────────────────────────────────────────────────
-CSV_PATH  = "data/5.31.2025 v HC.csv"  # adjust to your repo path
-LOGO_PATH = "images/Nebraska-Cornhuskers-Logo.png"  # adjust to your repo path
+CSV_PATH  = "5.31.2025 v HC.csv"  # adjust to your repo path
+LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # adjust to your repo path
 
 st.set_page_config(layout="wide")
 st.title("Post-Game Hitter & Pitcher Reports")

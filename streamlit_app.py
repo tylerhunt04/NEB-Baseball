@@ -8,18 +8,18 @@ import streamlit as st
 from matplotlib.patches import Rectangle, Ellipse
 from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
-from scipy.stats import chi2
-from scipy.stats import gaussian_kde
+from scipy.stats import chi2, gaussian_kde
 from numpy.linalg import LinAlgError
 from matplotlib import colors
 
 # ─── CONFIG / PATHS ───────────────────────────────────────────────────────────
-CSV_PATH  = "5.31.2025 v HC.csv"  # adjust to your repo location
-LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # adjust to your repo location
+CSV_PATH  = "data/5.31.2025 v HC.csv"  # adjust to your repo path
+LOGO_PATH = "images/Nebraska-Cornhuskers-Logo.png"  # adjust to your repo path
 
+st.set_page_config(layout="wide")
 st.title("Post-Game Hitter & Pitcher Reports")
 
-# ─── CUSTOM COLORMAP FOR HEATMAP REPORT ────────────────────────────────────────
+# ─── CUSTOM COLORMAPS ─────────────────────────────────────────────────────────
 custom_cmap = colors.LinearSegmentedColormap.from_list(
     "custom_cmap",
     [
@@ -29,12 +29,27 @@ custom_cmap = colors.LinearSegmentedColormap.from_list(
         (0.7, "red"),
         (1.0, "red"),
     ],
+    N=256,
 )
 
 # ─── STRIKEZONE / GRID CONSTANTS ───────────────────────────────────────────────
 SZ_LEFT, SZ_RIGHT = -0.83, 0.83
 SZ_BOTTOM, SZ_TOP = 1.17, 3.92
 GRID_SIZE = 100
+
+# ─── PITCH COLORS FOR HITTER HEATMAP LEGENDS ──────────────────────────────────
+PITCH_COLORS = {
+    "Four-Seam": "#E60026",
+    "Sinker": "#FF9300",
+    "Cutter": "#800080",
+    "Changeup": "#008000",
+    "Curveball": "#0033CC",
+    "Slider": "#CCCC00",
+    "Splitter": "#00CCCC",
+    "Knuckle Curve": "#000000",
+    "Screwball": "#CC0066",
+    "Eephus": "#666666",
+}
 
 # ─── UTILITIES ────────────────────────────────────────────────────────────────
 def get_pitch_color(ptype):
@@ -64,7 +79,11 @@ def compute_density(x, y, grid_coords, mesh_shape):
     except LinAlgError:
         return np.zeros(mesh_shape)
 
-def draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height):
+def draw_strikezone(ax, sz_left=SZ_LEFT, sz_bottom=SZ_BOTTOM, sz_width=None, sz_height=None):
+    if sz_width is None:
+        sz_width = SZ_RIGHT - SZ_LEFT
+    if sz_height is None:
+        sz_height = SZ_TOP - SZ_BOTTOM
     zone = Rectangle((sz_left, sz_bottom), sz_width, sz_height,
                      fill=False, linewidth=2, linestyle='-', color='black')
     ax.add_patch(zone)
@@ -79,6 +98,84 @@ def strike_rate(sub_df):
         return np.nan
     strike_calls = ['StrikeCalled', 'StrikeSwinging', 'FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay']
     return sub_df['PitchCall'].isin(strike_calls).sum() / len(sub_df) * 100
+
+def format_name(name: str) -> str:
+    if ',' in name:
+        last, first = [s.strip() for s in name.split(',', 1)]
+        return f"{first} {last}"
+    return name
+
+def get_zone_bounds():
+    left, bottom = -0.83, 1.17
+    width, height = 1.66, 2.75
+    return left, bottom, width, height
+
+def get_view_bounds():
+    left, bottom, width, height = get_zone_bounds()
+    mx = width * 0.8
+    my = height * 0.6
+    x_min = left - mx
+    x_max = left + width + mx
+    y_min = bottom - my
+    y_max = bottom + height + my
+    return x_min, x_max, y_min, y_max
+
+def compute_density_hitter(x, y, xi_m, yi_m):
+    coords = np.vstack([x, y])
+    mask = np.isfinite(coords).all(axis=0)
+    zi = np.zeros(xi_m.shape)
+    if mask.sum() > 1:
+        try:
+            kde = gaussian_kde(coords[:, mask])
+            zi = kde(np.vstack([xi_m.ravel(), yi_m.ravel()])).reshape(xi_m.shape)
+        except Exception:
+            zi = np.zeros(xi_m.shape)
+    return zi
+
+def place_between_with_offset(ax_left, ax_right, handles, labels, title, fig,
+                              width=0.035, height=0.35, x_offset=0.0, y_offset=0.0):
+    fig.canvas.draw()
+    pos_l = ax_left.get_position()
+    pos_r = ax_right.get_position()
+    mid_x = (pos_l.x1 + pos_r.x0) / 2
+    y_center = pos_l.y0 + pos_l.height / 2
+    x0 = mid_x - width / 2 + x_offset
+    y0 = y_center - height / 2 + y_offset
+    ax_leg = fig.add_axes([x0, y0, width, height], zorder=6)
+    ax_leg.axis('off')
+    ax_leg.legend(handles, labels,
+                  title=title,
+                  loc='upper left', fontsize=8, title_fontsize=9)
+    return ax_leg
+
+def plot_conditional(ax, sub, title, is_xbh=False):
+    x_min, x_max, y_min, y_max = get_view_bounds()
+    draw_strikezone(ax)
+    x = sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy()
+    y = sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy()
+    valid_mask = np.isfinite(x) & np.isfinite(y)
+    x = x[valid_mask]; y = y[valid_mask]
+
+    if len(sub) < 10:
+        for _, r in sub.iterrows():
+            if not (np.isfinite(r.get('PlateLocSide', np.nan)) and np.isfinite(r.get('PlateLocHeight', np.nan))):
+                continue
+            color = PITCH_COLORS.get(r.get('AutoPitchType', ''), 'gray')
+            ax.plot(r['PlateLocSide'], r['PlateLocHeight'], 'o', color=color, alpha=0.8, markersize=6)
+    else:
+        xi = np.linspace(x_min, x_max, 200)
+        yi = np.linspace(y_min, y_max, 200)
+        xi_m, yi_m = np.meshgrid(xi, yi)
+        zi = compute_density_hitter(sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy(),
+                                    sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy(),
+                                    xi_m, yi_m)
+        ax.imshow(zi, origin='lower', extent=[x_min, x_max, y_min, y_max], aspect='equal', cmap=custom_cmap)
+        draw_strikezone(ax)
+
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.set_title(title, fontsize=10, pad=6)
+    ax.set_xticks([]); ax.set_yticks([])
 
 # ─── STANDARD PITCHER REPORT ───────────────────────────────────────────────────
 def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
@@ -118,7 +215,6 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     fig = plt.figure(figsize=(8,12))
     gs  = GridSpec(2,1,figure=fig,height_ratios=[1.5,0.7],hspace=0.3)
 
-    # Movement plot
     axm = fig.add_subplot(gs[0,0])
     axm.set_title('Movement Plot')
     chi2v = chi2.ppf(coverage, df=2)
@@ -145,7 +241,6 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     axm.set_ylabel('Induced Vertical Break')
     axm.legend(title='Pitch Type',fontsize=8,title_fontsize=9,loc='upper right')
 
-    # Summary table
     axt = fig.add_subplot(gs[1,0]); axt.axis('off')
     tbl = axt.table(cellText=summary.values,
                     colLabels=summary.columns,
@@ -153,7 +248,6 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5,1.5)
     axt.set_title('Summary Metrics', fontweight='bold', y=0.87)
 
-    # Logo
     if logo_img is not None:
         axl = fig.add_axes([1,0.88,0.12,0.12],anchor='NE',zorder=10)
         axl.imshow(logo_img); axl.axis('off')
@@ -190,7 +284,6 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
 
     top4 = list(df_p['AutoPitchType'].value_counts().index[:4])
 
-    # Top row: top 4 pitch types
     for i, pitch in enumerate(top4):
         ax = fig.add_subplot(gs[0, i])
         sub = df_p[df_p['AutoPitchType'] == pitch]
@@ -204,19 +297,18 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
             ax.imshow(zi, origin='lower',
                       extent=[x_min, x_max, y_min, y_max],
                       aspect='equal', cmap=custom_cmap)
-        draw_strikezone(ax, sz_left, sz_bottom, sz_w, sz_h)
+        draw_strikezone(ax, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
         ax.set_title(f"{pitch} (n={len(sub)})")
         ax.set_xticks([]); ax.set_yticks([])
-    fig.add_subplot(gs[0, 4]).axis('off')  # filler
+    fig.add_subplot(gs[0, 4]).axis('off')
 
-    # Second row panels
     sub_vl = df_p[df_p['BatterSide'] == 'Left']
     ax_vl = fig.add_subplot(gs[1, 0])
     zi_vl = compute_density(sub_vl['PlateLocSide'], sub_vl['PlateLocHeight'], grid_coords, xi_mesh.shape)
     ax_vl.imshow(zi_vl, origin='lower',
                  extent=[x_min, x_max, y_min, y_max],
                  aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_vl, sz_left, sz_bottom, sz_w, sz_h)
+    draw_strikezone(ax_vl, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
     ax_vl.set_title(f"vs Left-Handed (n={len(sub_vl)})")
     ax_vl.set_xticks([]); ax_vl.set_yticks([])
 
@@ -226,7 +318,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
     ax_vr.imshow(zi_vr, origin='lower',
                  extent=[x_min, x_max, y_min, y_max],
                  aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_vr, sz_left, sz_bottom, sz_w, sz_h)
+    draw_strikezone(ax_vr, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
     ax_vr.set_title(f"vs Right-Handed (n={len(sub_vr)})")
     ax_vr.set_xticks([]); ax_vr.set_yticks([])
 
@@ -236,7 +328,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
     ax_whiff.imshow(zi_whiff, origin='lower',
                     extent=[x_min, x_max, y_min, y_max],
                     aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_whiff, sz_left, sz_bottom, sz_w, sz_h)
+    draw_strikezone(ax_whiff, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
     ax_whiff.set_title(f"Whiffs (n={len(sub_whiff)})")
     ax_whiff.set_xticks([]); ax_whiff.set_yticks([])
 
@@ -246,7 +338,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
     ax_ks.imshow(zi_ks, origin='lower',
                  extent=[x_min, x_max, y_min, y_max],
                  aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_ks, sz_left, sz_bottom, sz_w, sz_h)
+    draw_strikezone(ax_ks, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
     ax_ks.set_title(f"Strikeouts (n={len(sub_ks)})")
     ax_ks.set_xticks([]); ax_ks.set_yticks([])
 
@@ -262,11 +354,10 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
         ax_dmg.imshow(zi_dmg, origin='lower',
                       extent=[x_min, x_max, y_min, y_max],
                       aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_dmg, sz_left, sz_bottom, sz_w, sz_h)
+    draw_strikezone(ax_dmg, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
     ax_dmg.set_title(f"Damage (n={len(sub_dmg)})")
     ax_dmg.set_xticks([]); ax_dmg.set_yticks([])
 
-    # Summary metrics row
     fp = strike_rate(df_p[(df_p['Balls'] == 0) & (df_p['Strikes'] == 0)])
     mix = strike_rate(df_p[((df_p['Balls'] == 1) & (df_p['Strikes'] == 0)) |
                             ((df_p['Balls'] == 0) & (df_p['Strikes'] == 1)) |
@@ -275,7 +366,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
                            ((df_p['Balls'] == 2) & (df_p['Strikes'] == 1)) |
                            ((df_p['Balls'] == 3) & (df_p['Strikes'] == 1))])
     two = strike_rate(df_p[(df_p['Strikes'] == 2) & (df_p['Balls'] < 3)])
-    summary = pd.DataFrame({
+    summary_metrics = pd.DataFrame({
         '1st Pitch %': [fp],
         'Mix Count %': [mix],
         'Hitter+ %': [hp],
@@ -283,13 +374,11 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
     }).round(1)
     ax_tbl = fig.add_subplot(gs[2, :])
     ax_tbl.axis('off')
-    tbl = ax_tbl.table(cellText=summary.values, colLabels=summary.columns, cellLoc='center', loc='center')
-    tbl.auto_set_font_size(False)
-    tbl.set_fontsize(10)
-    tbl.scale(1.5, 1.5)
+    tbl = ax_tbl.table(cellText=summary_metrics.values, colLabels=summary_metrics.columns,
+                       cellLoc='center', loc='center')
+    tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
     ax_tbl.set_title('Strike Percentage by Count', y=0.75, fontweight='bold')
 
-    # Logo
     if os.path.exists(logo_path):
         logo = mpimg.imread(logo_path)
         ax_logo = fig.add_axes([0.88, 0.92, 0.10, 0.10], anchor='NE', zorder=10)
@@ -300,81 +389,116 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
     fig.suptitle(f"{pitcher_name} – Heatmap Report", fontsize=18, y=0.98, fontweight='bold')
     return fig
 
-# ─── HITTER REPORT ────────────────────────────────────────────────────────────
-def create_hitter_report(df,batter,ncols=3):
-    bdf=df[df['Batter']==batter]
-    pa=list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning']))
-    n_pa=len(pa); nrows=math.ceil(n_pa/ncols)
-    descs=[]
-    for _,padf in pa:
-        lines=[]
-        for _,p in padf.iterrows():
+# ─── STANDARD HITTER REPORT ───────────────────────────────────────────────────
+def create_hitter_report(df, batter, ncols=3):
+    bdf = df[df['Batter'] == batter]
+    pa = list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning']))
+    n_pa = len(pa); nrows = math.ceil(n_pa / ncols)
+    descs = []
+    for _, padf in pa:
+        lines = []
+        for _, p in padf.iterrows():
             lines.append(f"{int(p.PitchofPA)} / {p.AutoPitchType} {p.EffectiveVelo:.1f} MPH / {p.PitchCall}")
-        ip=padf[padf['PitchCall']=='InPlay']
+        ip = padf[padf['PitchCall']=='InPlay']
         if not ip.empty:
-            last=ip.iloc[-1]; res=last.PlayResult or 'InPlay'
-            if not pd.isna(last.ExitSpeed): res+=f" ({last.ExitSpeed:.1f} MPH)"
+            last = ip.iloc[-1]; res = last.PlayResult or 'InPlay'
+            if not pd.isna(last.ExitSpeed): res += f" ({last.ExitSpeed:.1f} MPH)"
             lines.append(f"▶ PA Result: {res}")
         else:
-            balls=(padf['PitchCall']=='BallCalled').sum()
-            strikes=padf['PitchCall'].isin(['StrikeCalled','StrikeSwinging']).sum()
+            balls = (padf['PitchCall']=='BallCalled').sum()
+            strikes = padf['PitchCall'].isin(['StrikeCalled','StrikeSwinging']).sum()
             if balls>=4: lines.append('▶ PA Result: Walk')
             elif strikes>=3: lines.append('▶ PA Result: Strikeout')
         descs.append(lines)
-    fig=plt.figure(figsize=(3+4*ncols+1,4*nrows))
-    gs=GridSpec(nrows,ncols+1,width_ratios=[0.8]+[1]*ncols,wspace=0.1)
-    logo=mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
+
+    fig = plt.figure(figsize=(3+4*ncols+1,4*nrows))
+    gs = GridSpec(nrows,ncols+1,width_ratios=[0.8]+[1]*ncols,wspace=0.1)
+    logo = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
     if logo is not None:
-        axl=fig.add_axes([0.88,0.88,0.12,0.12],anchor='NE'); axl.imshow(logo); axl.axis('off')
-    date=pa[0][1]['Date'].iloc[0]
-    fig.suptitle(f"{batter} Hitter Report for {date}",fontsize=16,x=0.55,y=1.0,fontweight='bold')
-    gd=pd.concat([grp for _,grp in pa])
-    whiffs=(gd['PitchCall']=='StrikeSwinging').sum()
-    hardhits=(gd['ExitSpeed']>95).sum()
-    chases=gd[(gd['PitchCall']=='StrikeSwinging')&(((gd['PlateLocSide']<-0.83)|(gd['PlateLocSide']>0.83))|((gd['PlateLocHeight']<1.5)|(gd['PlateLocHeight']>3.5)))].shape[0]
-    fig.text(0.55,0.96,f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",ha='center',va='top',fontsize=12)
-    for idx,((_,inn,tb,_),padf) in enumerate(pa):
-        row,col=divmod(idx,ncols)
-        ax=fig.add_subplot(gs[row,col+1])
-        ax.add_patch(Rectangle((-0.83,1.5),1.66,2.0,fill=False,linewidth=2,color='black'))
-        hand='LHP' if padf['PitcherThrows'].iloc[0].startswith('L') else 'RHP'
-        pitchr=padf['Pitcher'].iloc[0]
-        for _,p in padf.iterrows():
-            mk={'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.get(p.AutoPitchType,'o')
-            clr={'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan','InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(p.PitchCall,'black')
-            sz=200 if p.AutoPitchType=='Slider' else 150
-            ax.scatter(p.PlateLocSide,p.PlateLocHeight,marker=mk,c=clr,s=sz,edgecolor='white',linewidth=1,zorder=2)
-            yoff=-0.05 if p.AutoPitchType=='Slider' else 0
-            ax.text(p.PlateLocSide,p.PlateLocHeight+yoff,str(int(p.PitchofPA)),ha='center',va='center',fontsize=6,fontweight='bold',zorder=3)
-        ax.set_xlim(-3,3);ax.set_ylim(0,5);ax.set_xticks([]);ax.set_yticks([])
+        axl = fig.add_axes([0.88,0.88,0.12,0.12],anchor='NE')
+        axl.imshow(logo); axl.axis('off')
+    if pa:
+        date = pa[0][1]['Date'].iloc[0]
+        fig.suptitle(f"{batter} Hitter Report for {date}",fontsize=16,x=0.55,y=1.0,fontweight='bold')
+    gd = pd.concat([grp for _,grp in pa]) if pa else pd.DataFrame()
+    whiffs = (gd['PitchCall']=='StrikeSwinging').sum() if not gd.empty else 0
+    hardhits = (gd['ExitSpeed']>95).sum() if not gd.empty else 0
+    chases = 0
+    if not gd.empty:
+        chases = gd[(gd['PitchCall']=='StrikeSwinging') & (
+            (gd['PlateLocSide']<-0.83)|(gd['PlateLocSide']>0.83)|
+            (gd['PlateLocHeight']<1.5)|(gd['PlateLocHeight']>3.5)
+        )].shape[0]
+    fig.text(0.55,0.96,f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
+             ha='center', va='top', fontsize=12)
+
+    for idx, ((_,inn,tb,_), padf) in enumerate(pa):
+        row, col = divmod(idx, ncols)
+        ax = fig.add_subplot(gs[row, col+1])
+        draw_strikezone(ax)
+        hand = 'LHP' if padf['PitcherThrows'].iloc[0].startswith('L') else 'RHP'
+        pitchr = padf['Pitcher'].iloc[0]
+        for _, p in padf.iterrows():
+            mk = {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.get(p.AutoPitchType,'o')
+            clr = {'StrikeCalled':'#CCCC00','BallCalled':'green',
+                   'FoulBallNotFieldable':'tan','InPlay':'#6699CC',
+                   'StrikeSwinging':'red','HitByPitch':'lime'}.get(p.PitchCall,'black')
+            sz = 200 if p.AutoPitchType=='Slider' else 150
+            ax.scatter(p.PlateLocSide, p.PlateLocHeight, marker=mk, c=clr,
+                       s=sz, edgecolor='white', linewidth=1, zorder=2)
+            yoff = -0.05 if p.AutoPitchType=='Slider' else 0
+            ax.text(p.PlateLocSide, p.PlateLocHeight+yoff,
+                    str(int(p.PitchofPA)), ha='center', va='center',
+                    fontsize=6, fontweight='bold', zorder=3)
+        ax.set_xlim(-3,3); ax.set_ylim(0,5)
+        ax.set_xticks([]); ax.set_yticks([])
         ax.set_title(f"PA {idx+1} | Inning {inn} {tb}",fontsize=10,fontweight='bold')
-        ax.text(0.5,0.1,f"vs {pitchr} ({hand})",transform=ax.transAxes,ha='center',va='top',fontsize=9,style='italic')
-    axd=fig.add_subplot(gs[:,0]); axd.axis('off')
-    y0=1.0; dy=1.0/(n_pa*5.0)
-    for i,lines in enumerate(descs,1):
+        ax.text(0.5,0.1,f"vs {pitchr} ({hand})",
+                transform=ax.transAxes, ha='center', va='top',
+                fontsize=9, style='italic')
+
+    axd = fig.add_subplot(gs[:,0]); axd.axis('off')
+    y0 = 1.0; dy = 1.0/(n_pa*5.0 if n_pa else 1)
+    for i, lines in enumerate(descs,1):
         axd.hlines(y0-dy*0.1,0,1,transform=axd.transAxes,color='black',linewidth=1)
-        axd.text(0.02,y0,f"PA {i}",fontsize=6,fontweight='bold',transform=axd.transAxes)
-        yln=y0-dy
+        axd.text(0.02, y0, f"PA {i}", fontsize=6, fontweight='bold', transform=axd.transAxes)
+        yln = y0 - dy
         for ln in lines:
-            axd.text(0.02,yln,ln,fontsize=6,transform=axd.transAxes)
-            yln-=dy
-        y0=yln-dy*0.05
-    res_handles=[Line2D([0],[0],marker='o',color='w',label=k,markerfacecolor=v,markersize=10,markeredgecolor='k') for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan','InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.items()]
-    fig.legend(res_handles,[h.get_label() for h in res_handles],title='Result',loc='lower right',bbox_to_anchor=(0.90,0.02))
-    pitch_handles=[Line2D([0],[0],marker=m,color='w',label=k,markerfacecolor='gray',markersize=10,markeredgecolor='k') for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
-    fig.legend(pitch_handles,[h.get_label() for h in pitch_handles],title='Pitches',loc='lower right',bbox_to_anchor=(0.98,0.02))
+            axd.text(0.02, yln, ln, fontsize=6, transform=axd.transAxes)
+            yln -= dy
+        y0 = yln - dy*0.05
+
+    res_handles = [
+        Line2D([0],[0],marker='o',color='w',label=k,
+               markerfacecolor=v,markersize=10,markeredgecolor='k')
+        for k,v in {
+            'StrikeCalled':'#CCCC00','BallCalled':'green',
+            'FoulBallNotFieldable':'tan','InPlay':'#6699CC',
+            'StrikeSwinging':'red','HitByPitch':'lime'
+        }.items()
+    ]
+    fig.legend(res_handles, [h.get_label() for h in res_handles],
+               title='Result', loc='lower right', bbox_to_anchor=(0.90,0.02))
+
+    pitch_handles = [
+        Line2D([0],[0],marker=m,color='w',label=k,
+               markerfacecolor='gray',markersize=10,markeredgecolor='k')
+        for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()
+    ]
+    fig.legend(pitch_handles, [h.get_label() for h in pitch_handles],
+               title='Pitches', loc='lower right', bbox_to_anchor=(0.98,0.02))
+
     plt.tight_layout(rect=[0.12,0.05,1,0.88])
     return fig
 
 # ─── STREAMLIT APP LOGIC ──────────────────────────────────────────────────────
-# Load CSV from repo path
+# Load CSV
 try:
     df_all = pd.read_csv(CSV_PATH)
-except FileNotFoundError:
-    st.error(f"CSV not found at {CSV_PATH}")
+except Exception as e:
+    st.error(f"Failed to read CSV at {CSV_PATH}: {e}")
     st.stop()
 
-# validate presence
 required = ['Date', 'PitcherTeam', 'BatterTeam', 'Pitcher', 'Batter']
 missing = [c for c in required if c not in df_all.columns]
 if missing:
@@ -385,13 +509,13 @@ df_all['Date'] = pd.to_datetime(df_all['Date']).dt.date
 all_dates = sorted(df_all['Date'].unique())
 
 col1, col2, col3, col4 = st.columns(4)
-report        = col1.selectbox("Report Type", ["Pitcher Report","Hitter Report"], key="report_type")
-variant       = col2.selectbox("Pitcher Variant", ["Standard","Heatmap"], key="variant") if report=="Pitcher Report" else None
+report = col1.selectbox("Report Type", ["Pitcher Report", "Hitter Report"], key="report_type")
+variant = col2.selectbox("Variant", ["Standard", "Heatmap"], key="variant") if report in ("Pitcher Report", "Hitter Report") else None
 selected_date = col3.selectbox("Game Date", all_dates, key="game_date")
 
 df_date = df_all[df_all['Date'] == selected_date]
 
-# load logo once
+# load logo
 logo_img = None
 if os.path.exists(LOGO_PATH):
     logo_img = mpimg.imread(LOGO_PATH)
@@ -399,11 +523,12 @@ else:
     st.warning(f"Logo not found at {LOGO_PATH}")
 
 if report == "Pitcher Report":
-    df_p     = df_date[df_date['PitcherTeam'] == 'NEB']
+    df_p = df_date[df_date['PitcherTeam'] == 'NEB']
     pitchers = sorted(df_p['Pitcher'].unique())
-    player   = col4.selectbox("Pitcher", pitchers, key="pitcher_name")
+    if not pitchers:
+        st.warning("No NEB pitchers for that date.")
+    player = col4.selectbox("Pitcher", pitchers, key="pitcher_name")
     st.subheader(f"{player} — {selected_date}")
-
     if variant == "Heatmap":
         fig = combined_pitcher_heatmap_report(df_p, player, LOGO_PATH)
         if fig:
@@ -414,12 +539,18 @@ if report == "Pitcher Report":
             fig, summary = result
             st.pyplot(fig=fig)
             st.table(summary)
-
 else:
-    df_b    = df_date[df_date['BatterTeam'] == 'NEB']
+    df_b = df_date[df_date['BatterTeam'] == 'NEB']
     batters = sorted(df_b['Batter'].unique())
-    player  = col4.selectbox("Batter", batters, key="batter_name")
+    if not batters:
+        st.warning("No NEB batters for that date.")
+    player = col4.selectbox("Batter", batters, key="batter_name")
     st.subheader(f"{player} — {selected_date}")
-    fig = create_hitter_report(df_b, player, ncols=3)
-    if fig:
-        st.pyplot(fig=fig)
+    if variant == "Heatmap":
+        fig = combined_hitter_heatmap_report(df_b, player, logo_img=logo_img)  # defined below
+        if fig:
+            st.pyplot(fig=fig)
+    else:
+        fig = create_hitter_report(df_b, player, ncols=3)
+        if fig:
+            st.pyplot(fig=fig)

@@ -67,7 +67,6 @@ def get_pitch_color(ptype):
     }
     return savant.get(ptype.lower(), "#E60026")
 
-# for hitter heatmap legend & scatter
 PITCH_COLORS = {
     "Four-Seam": "#E60026",
     "Sinker": "#FF9300",
@@ -173,7 +172,7 @@ def plot_conditional(ax, sub, title):
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
     ax.set_aspect('equal', 'box')
-    ax.set_title(title, fontsize=10, pad=6)
+    ax.set_title(title, fontsize=10, pad=6, fontweight='bold')
     ax.set_xticks([]); ax.set_yticks([])
 
 # ─── STANDARD PITCHER REPORT ───────────────────────────────────────────────────
@@ -309,7 +308,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
                           aspect='equal', cmap=custom_cmap)
         draw_strikezone(ax, sz_left=z_left, sz_bottom=z_bottom, sz_width=z_w, sz_height=z_h)
         ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal', 'box')
-        ax.set_title(title)
+        ax.set_title(title, fontweight='bold')
         ax.set_xticks([]); ax.set_yticks([])
 
     # Top pitch types
@@ -465,7 +464,6 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
                                  transform=fig.transFigure,
                                  facecolor=divider_color, alpha=0.9, zorder=2))
 
-    # legends
     ct = df_b[df_b['iscontact']]
     cts = ct['AutoPitchType'].value_counts()
     if not cts.empty:

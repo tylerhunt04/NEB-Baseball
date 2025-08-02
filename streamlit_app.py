@@ -389,6 +389,131 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
     fig.suptitle(f"{pitcher_name} – Heatmap Report", fontsize=18, y=0.98, fontweight='bold')
     return fig
 
+# ─── HITTER HEATMAP REPORT ────────────────────────────────────────────────────
+def combined_hitter_heatmap_report(df, batter, logo_img=None):
+    df_b = df[df['Batter'] == batter].copy()
+    if df_b.empty:
+        st.error(f"No data for batter '{batter}' on that date.")
+        return None
+
+    df_b['iscontact'] = df_b['PitchCall'].isin(['InPlay', 'FoulBallFieldable', 'FoulBallNotFieldable'])
+    df_b['iswhiff'] = df_b['PitchCall'] == 'StrikeSwinging'
+    df_b['is95plus'] = df_b['ExitSpeed'] >= 95
+
+    x_min, x_max, y_min, y_max = get_view_bounds()
+    xi = np.linspace(x_min, x_max, 200)
+    yi = np.linspace(y_min, y_max, 200)
+    xi_m, yi_m = np.meshgrid(xi, yi)
+
+    fig = plt.figure(figsize=(24, 6))
+    gs = GridSpec(1, 9, figure=fig, wspace=0.05, hspace=0.15)
+
+    sub_contact_l = df_b[df_b['iscontact'] & (df_b['PitcherThrows'] == 'Left')]
+    sub_contact_r = df_b[df_b['iscontact'] & (df_b['PitcherThrows'] == 'Right')]
+    ax1 = fig.add_subplot(gs[0, 0]); plot_conditional(ax1, sub_contact_l, 'Contact vs LHP')
+    ax2 = fig.add_subplot(gs[0, 2]); plot_conditional(ax2, sub_contact_r, 'Contact vs RHP')
+
+    sub_whiff_l = df_b[df_b['iswhiff'] & (df_b['PitcherThrows'] == 'Left')]
+    sub_whiff_r = df_b[df_b['iswhiff'] & (df_b['PitcherThrows'] == 'Right')]
+    ax3 = fig.add_subplot(gs[0, 3]); plot_conditional(ax3, sub_whiff_l, 'Whiffs vs LHP')
+    ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')
+
+    sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows'] == 'Left')]
+    sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows'] == 'Right')]
+    ax5 = fig.add_subplot(gs[0, 6]); plot_conditional(ax5, sub_95_l, 'Exit ≥95 vs LHP')
+    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, sub_95_r, 'Exit ≥95 vs RHP')
+
+    # group boxes
+    group_box_alpha = 0.18
+    divider_color = '#444444'
+    pad_extra = 0.05
+
+    pos1 = ax1.get_position(); pos2 = ax2.get_position()
+    contact_group_x0 = pos1.x0 - 0.005
+    contact_group_width = (pos2.x1 + 0.005) - contact_group_x0
+    contact_group_y0 = min(pos1.y0, pos2.y0) - pad_extra
+    contact_group_height = max(pos1.y1, pos2.y1) - contact_group_y0 + pad_extra
+    fig.patches.append(Rectangle((contact_group_x0, contact_group_y0),
+                                 contact_group_width, contact_group_height,
+                                 transform=fig.transFigure,
+                                 facecolor='lightgray', alpha=group_box_alpha,
+                                 edgecolor=divider_color, linewidth=1.5, zorder=1))
+
+    pos3 = ax3.get_position(); pos4 = ax4.get_position()
+    whiff_group_x0 = pos3.x0 - 0.005
+    whiff_group_width = (pos4.x1 + 0.005) - whiff_group_x0
+    whiff_group_y0 = min(pos3.y0, pos4.y0) - pad_extra
+    whiff_group_height = max(pos3.y1, pos4.y1) - whiff_group_y0 + pad_extra
+    fig.patches.append(Rectangle((whiff_group_x0, whiff_group_y0),
+                                 whiff_group_width, whiff_group_height,
+                                 transform=fig.transFigure,
+                                 facecolor='lightgray', alpha=group_box_alpha,
+                                 edgecolor=divider_color, linewidth=1.5, zorder=1))
+
+    pos5 = ax5.get_position(); pos6 = ax6.get_position()
+    high95_group_x0 = pos5.x0 - 0.005
+    high95_group_width = (pos6.x1 + 0.005) - high95_group_x0
+    high95_group_y0 = min(pos5.y0, pos6.y0) - pad_extra
+    high95_group_height = max(pos5.y1, pos6.y1) - high95_group_y0 + pad_extra
+    fig.patches.append(Rectangle((high95_group_x0, high95_group_y0),
+                                 high95_group_width, high95_group_height,
+                                 transform=fig.transFigure,
+                                 facecolor='lightgray', alpha=group_box_alpha,
+                                 edgecolor=divider_color, linewidth=1.5, zorder=1))
+
+    # separators
+    sep_width = 0.006
+    sep_x1 = (pos2.x1 + pos3.x0) / 2 - sep_width / 2
+    sep_y0_1 = min(contact_group_y0, whiff_group_y0)
+    sep_height_1 = max(contact_group_height, whiff_group_height)
+    fig.patches.append(Rectangle((sep_x1, sep_y0_1),
+                                 sep_width, sep_height_1,
+                                 transform=fig.transFigure,
+                                 facecolor=divider_color, alpha=0.9, zorder=2))
+    sep_x2 = (pos4.x1 + pos5.x0) / 2 - sep_width / 2
+    sep_y0_2 = min(whiff_group_y0, high95_group_y0)
+    sep_height_2 = max(whiff_group_height, high95_group_height)
+    fig.patches.append(Rectangle((sep_x2, sep_y0_2),
+                                 sep_width, sep_height_2,
+                                 transform=fig.transFigure,
+                                 facecolor=divider_color, alpha=0.9, zorder=2))
+
+    # legends
+    ct = df_b[df_b['iscontact']]
+    cts = ct['AutoPitchType'].value_counts()
+    if not cts.empty:
+        contact_handles = [Line2D([0], [0], marker='o', color=PITCH_COLORS.get(pt, 'gray'),
+                                  linestyle='', markersize=6) for pt in cts.index]
+        contact_labels = [f"{pt} ({cts[pt]})" for pt in cts.index]
+        place_between_with_offset(ax1, ax2, contact_handles, contact_labels,
+                                  title=f'Contacts: {ct.shape[0]}', fig=fig,
+                                  width=0.035, height=0.35, x_offset=-0.01, y_offset=-0.01)
+
+    wf = df_b[df_b['iswhiff']]
+    wfs = wf['AutoPitchType'].value_counts()
+    if not wfs.empty:
+        whiff_handles = [Line2D([0], [0], marker='o', color=PITCH_COLORS.get(pt, 'gray'),
+                                linestyle='', markersize=6) for pt in wfs.index]
+        whiff_labels = [f"{pt} ({wfs[pt]})" for pt in wfs.index]
+        place_between_with_offset(ax3, ax4, whiff_handles, whiff_labels,
+                                  title=f'Whiffs: {wf.shape[0]}', fig=fig,
+                                  width=0.035, height=0.35, x_offset=-0.01, y_offset=-0.01)
+
+    high95 = df_b[df_b['is95plus']]
+    high95_types = high95['AutoPitchType'].value_counts()
+    if not high95_types.empty:
+        high95_handles = [Line2D([0], [0], marker='o', color=PITCH_COLORS.get(pt, 'gray'),
+                                 linestyle='', markersize=6) for pt in high95_types.index]
+        high95_labels = [f"{pt} ({high95_types[pt]})" for pt in high95_types.index]
+        place_between_with_offset(ax5, ax6, high95_handles, high95_labels,
+                                  title=f'Exit ≥95: {high95.shape[0]}', fig=fig,
+                                  width=0.035, height=0.35, x_offset=-0.008, y_offset=-0.01)
+
+    formatted = format_name(batter)
+    fig.suptitle(formatted, fontsize=22, x=0.5, y=0.87)
+    plt.tight_layout(rect=[0, 0, 1, 0.78])
+    return fig
+
 # ─── STANDARD HITTER REPORT ───────────────────────────────────────────────────
 def create_hitter_report(df, batter, ncols=3):
     bdf = df[df['Batter'] == batter]
@@ -492,7 +617,6 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ─── STREAMLIT APP LOGIC ──────────────────────────────────────────────────────
-# Load CSV
 try:
     df_all = pd.read_csv(CSV_PATH)
 except Exception as e:
@@ -510,7 +634,7 @@ all_dates = sorted(df_all['Date'].unique())
 
 col1, col2, col3, col4 = st.columns(4)
 report = col1.selectbox("Report Type", ["Pitcher Report", "Hitter Report"], key="report_type")
-variant = col2.selectbox("Variant", ["Standard", "Heatmap"], key="variant") if report in ("Pitcher Report", "Hitter Report") else None
+variant = col2.selectbox("Variant", ["Standard", "Heatmap"], key="variant")
 selected_date = col3.selectbox("Game Date", all_dates, key="game_date")
 
 df_date = df_all[df_all['Date'] == selected_date]
@@ -547,7 +671,7 @@ else:
     player = col4.selectbox("Batter", batters, key="batter_name")
     st.subheader(f"{player} — {selected_date}")
     if variant == "Heatmap":
-        fig = combined_hitter_heatmap_report(df_b, player, logo_img=logo_img)  # defined below
+        fig = combined_hitter_heatmap_report(df_b, player, logo_img=logo_img)
         if fig:
             st.pyplot(fig=fig)
     else:

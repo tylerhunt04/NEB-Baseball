@@ -48,9 +48,6 @@ def get_view_bounds():
     y_max = bottom + height + my
     return x_min, x_max, y_min, y_max
 
-SZ_LEFT, _, = -0.83, None  # unused directly; use get_zone_bounds when needed
-SZ_BOTTOM = 1.17
-
 GRID_SIZE = 100
 
 # ─── PITCH COLOR PALETTES ─────────────────────────────────────────────────────
@@ -84,7 +81,7 @@ PITCH_COLORS = {
     "Eephus": "#666666",
 }
 
-# ─── GENERAL HELPERS ─────────────────────────────────────────────────────────
+# ─── HELPERS ─────────────────────────────────────────────────────────────────
 def draw_strikezone(ax, sz_left=None, sz_bottom=None, sz_width=None, sz_height=None):
     left, bottom, width, height = get_zone_bounds()
     if sz_left is None: sz_left = left
@@ -262,114 +259,91 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, summary
 
-# ─── HEATMAP-STYLE PITCHER REPORT ──────────────────────────────────────────────
+# ─── HEATMAP-STYLE PITCHER REPORT (with threshold switch) ─────────────────────
 def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
-                                    sz_left=None, sz_bottom=None,
-                                    sz_width=None, sz_height=None,
                                     grid_size=GRID_SIZE):
     df_p = df[df['Pitcher'] == pitcher_name]
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' on that date.")
         return None
 
-    # unify bounds
     x_min, x_max, y_min, y_max = get_view_bounds()
     xi = np.linspace(x_min, x_max, grid_size)
     yi = np.linspace(y_min, y_max, grid_size)
     xi_mesh, yi_mesh = np.meshgrid(xi, yi)
     grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
 
-    # strikezone dims
     z_left, z_bottom, z_w, z_h = get_zone_bounds()
+    threshold = 12  # cutoff to switch to scatter
 
     fig = plt.figure(figsize=(20, 20))
     gs = GridSpec(3, 5, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.4, wspace=0.3)
 
     top4 = list(df_p['AutoPitchType'].value_counts().index[:4])
 
-    # top pitch types
+    def plot_panel(ax, sub, title, use_orange_scatter=False):
+        count = len(sub)
+        if use_orange_scatter:
+            if count < threshold:
+                x = sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy()
+                y = sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy()
+                ax.scatter(x, y, s=30, alpha=0.7, color='orange', edgecolors='black')
+            else:
+                x = sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy()
+                y = sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy()
+                zi = compute_density(x, y, grid_coords, xi_mesh.shape)
+                ax.imshow(zi, origin='lower',
+                          extent=[x_min, x_max, y_min, y_max],
+                          aspect='equal', cmap=custom_cmap)
+        else:
+            if count < threshold:
+                x = sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy()
+                y = sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy()
+                ax.scatter(x, y, s=30, alpha=0.7, color='deepskyblue', edgecolors='black')
+            else:
+                x = sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy()
+                y = sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy()
+                zi = compute_density(x, y, grid_coords, xi_mesh.shape)
+                ax.imshow(zi, origin='lower',
+                          extent=[x_min, x_max, y_min, y_max],
+                          aspect='equal', cmap=custom_cmap)
+        draw_strikezone(ax, sz_left=z_left, sz_bottom=z_bottom, sz_width=z_w, sz_height=z_h)
+        ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal', 'box')
+        ax.set_title(title)
+        ax.set_xticks([]); ax.set_yticks([])
+
+    # Top pitch types
     for i, pitch in enumerate(top4):
         ax = fig.add_subplot(gs[0, i])
         sub = df_p[df_p['AutoPitchType'] == pitch]
-        x = sub['PlateLocSide'].to_numpy()
-        y = sub['PlateLocHeight'].to_numpy()
-        if len(sub) < 15:
-            ax.scatter(x, y, s=30, alpha=0.7, color='deepskyblue', edgecolors='black')
-        else:
-            zi = compute_density(x, y, grid_coords, xi_mesh.shape)
-            ax.imshow(zi, origin='lower',
-                      extent=[x_min, x_max, y_min, y_max],
-                      aspect='equal', cmap=custom_cmap)
-        draw_strikezone(ax, sz_left=z_left, sz_bottom=z_bottom, sz_width=z_w, sz_height=z_h)
-        ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal', 'box')
-        ax.set_title(f"{pitch} (n={len(sub)})")
-        ax.set_xticks([]); ax.set_yticks([])
-    fig.add_subplot(gs[0, 4]).axis('off')
+        plot_panel(ax, sub, f"{pitch} (n={len(sub)})")
+
+    fig.add_subplot(gs[0, 4]).axis('off')  # filler
 
     # vs Left
     sub_vl = df_p[df_p['BatterSide'] == 'Left']
     ax_vl = fig.add_subplot(gs[1, 0])
-    zi_vl = compute_density(sub_vl['PlateLocSide'], sub_vl['PlateLocHeight'], grid_coords, xi_mesh.shape)
-    ax_vl.imshow(zi_vl, origin='lower',
-                 extent=[x_min, x_max, y_min, y_max],
-                 aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_vl, sz_left=z_left, sz_bottom=z_bottom, sz_width=z_w, sz_height=z_h)
-    ax_vl.set_xlim(x_min, x_max); ax_vl.set_ylim(y_min, y_max); ax_vl.set_aspect('equal', 'box')
-    ax_vl.set_title(f"vs Left-Handed (n={len(sub_vl)})")
-    ax_vl.set_xticks([]); ax_vl.set_yticks([])
+    plot_panel(ax_vl, sub_vl, f"vs Left-Handed (n={len(sub_vl)})")
 
     # vs Right
     sub_vr = df_p[df_p['BatterSide'] == 'Right']
     ax_vr = fig.add_subplot(gs[1, 1])
-    zi_vr = compute_density(sub_vr['PlateLocSide'], sub_vr['PlateLocHeight'], grid_coords, xi_mesh.shape)
-    ax_vr.imshow(zi_vr, origin='lower',
-                 extent=[x_min, x_max, y_min, y_max],
-                 aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_vr, sz_left=z_left, sz_bottom=z_bottom, sz_width=z_w, sz_height=z_h)
-    ax_vr.set_xlim(x_min, x_max); ax_vr.set_ylim(y_min, y_max); ax_vr.set_aspect('equal', 'box')
-    ax_vr.set_title(f"vs Right-Handed (n={len(sub_vr)})")
-    ax_vr.set_xticks([]); ax_vr.set_yticks([])
+    plot_panel(ax_vr, sub_vr, f"vs Right-Handed (n={len(sub_vr)})")
 
     # Whiffs
     sub_whiff = df_p[df_p['PitchCall'] == 'StrikeSwinging']
     ax_whiff = fig.add_subplot(gs[1, 2])
-    zi_whiff = compute_density(sub_whiff['PlateLocSide'], sub_whiff['PlateLocHeight'], grid_coords, xi_mesh.shape)
-    ax_whiff.imshow(zi_whiff, origin='lower',
-                    extent=[x_min, x_max, y_min, y_max],
-                    aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_whiff, sz_left=z_left, sz_bottom=z_bottom, sz_width=z_w, sz_height=z_h)
-    ax_whiff.set_xlim(x_min, x_max); ax_whiff.set_ylim(y_min, y_max); ax_whiff.set_aspect('equal', 'box')
-    ax_whiff.set_title(f"Whiffs (n={len(sub_whiff)})")
-    ax_whiff.set_xticks([]); ax_whiff.set_yticks([])
+    plot_panel(ax_whiff, sub_whiff, f"Whiffs (n={len(sub_whiff)})")
 
     # Strikeouts
     sub_ks = df_p[df_p['KorBB'] == 'Strikeout']
     ax_ks = fig.add_subplot(gs[1, 3])
-    zi_ks = compute_density(sub_ks['PlateLocSide'], sub_ks['PlateLocHeight'], grid_coords, xi_mesh.shape)
-    ax_ks.imshow(zi_ks, origin='lower',
-                 extent=[x_min, x_max, y_min, y_max],
-                 aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_ks, sz_left=z_left, sz_bottom=z_bottom, sz_width=z_w, sz_height=z_h)
-    ax_ks.set_xlim(x_min, x_max); ax_ks.set_ylim(y_min, y_max); ax_ks.set_aspect('equal', 'box')
-    ax_ks.set_title(f"Strikeouts (n={len(sub_ks)})")
-    ax_ks.set_xticks([]); ax_ks.set_yticks([])
+    plot_panel(ax_ks, sub_ks, f"Strikeouts (n={len(sub_ks)})")
 
-    # Damage
+    # Damage (ExitSpeed >= 95)
     sub_dmg = df_p[df_p['ExitSpeed'] >= 95]
     ax_dmg = fig.add_subplot(gs[1, 4])
-    x_dmg = sub_dmg['PlateLocSide'].to_numpy()
-    y_dmg = sub_dmg['PlateLocHeight'].to_numpy()
-    if len(sub_dmg) < 15:
-        ax_dmg.scatter(x_dmg, y_dmg, s=30, alpha=0.7, color='orange', edgecolors='black')
-    else:
-        zi_dmg = compute_density(x_dmg, y_dmg, grid_coords, xi_mesh.shape)
-        ax_dmg.imshow(zi_dmg, origin='lower',
-                      extent=[x_min, x_max, y_min, y_max],
-                      aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_dmg, sz_left=z_left, sz_bottom=z_bottom, sz_width=z_w, sz_height=z_h)
-    ax_dmg.set_xlim(x_min, x_max); ax_dmg.set_ylim(y_min, y_max); ax_dmg.set_aspect('equal', 'box')
-    ax_dmg.set_title(f"Damage (n={len(sub_dmg)})")
-    ax_dmg.set_xticks([]); ax_dmg.set_yticks([])
+    plot_panel(ax_dmg, sub_dmg, f"Damage (n={len(sub_dmg)})", use_orange_scatter=True)
 
     # Summary metrics row
     fp = strike_rate(df_p[(df_p['Balls'] == 0) & (df_p['Strikes'] == 0)])
@@ -393,7 +367,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
     ax_tbl.set_title('Strike Percentage by Count', y=0.75, fontweight='bold')
 
-    # Logo
+    # Logo overlay
     if os.path.exists(logo_path):
         logo = mpimg.imread(logo_path)
         ax_logo = fig.add_axes([0.88, 0.92, 0.10, 0.10], anchor='NE', zorder=10)
@@ -438,7 +412,6 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     ax5 = fig.add_subplot(gs[0, 6]); plot_conditional(ax5, sub_95_l, 'Exit ≥95 vs LHP')
     ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, sub_95_r, 'Exit ≥95 vs RHP')
 
-    # group background boxes and separators
     group_box_alpha = 0.18
     divider_color = '#444444'
     pad_extra = 0.05
@@ -595,8 +568,7 @@ def create_hitter_report(df, batter, ncols=3):
         ax.set_xlim(-3, 3); ax.set_ylim(0, 5)
         ax.set_xticks([]); ax.set_yticks([])
         ax.set_title(f"PA {idx+1} | Inning {inn} {tb}", fontsize=10, fontweight='bold')
-        ax.text(0.5, 0.1, f"vs {pitchr} ({hand})",
-                transform=ax.transAxes, ha='center', va='top',
+        ax.text(0.5, 0.1, f"vs {pitchr} ({hand})", transform=ax.transAxes, ha='center', va='top',
                 fontsize=9, style='italic')
 
     axd = fig.add_subplot(gs[:, 0]); axd.axis('off')

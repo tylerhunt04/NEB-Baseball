@@ -297,7 +297,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
             ax.imshow(zi, origin='lower',
                       extent=[x_min, x_max, y_min, y_max],
                       aspect='equal', cmap=custom_cmap)
-        draw_strikezone(ax, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
+        draw_strikezone(ax, sz_left, sz_bottom, sz_width=sz_w, sz_height=sz_h)
         ax.set_title(f"{pitch} (n={len(sub)})")
         ax.set_xticks([]); ax.set_yticks([])
     fig.add_subplot(gs[0, 4]).axis('off')
@@ -308,7 +308,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
     ax_vl.imshow(zi_vl, origin='lower',
                  extent=[x_min, x_max, y_min, y_max],
                  aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_vl, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
+    draw_strikezone(ax_vl, sz_left, sz_bottom, sz_width=sz_w, sz_height=sz_h)
     ax_vl.set_title(f"vs Left-Handed (n={len(sub_vl)})")
     ax_vl.set_xticks([]); ax_vl.set_yticks([])
 
@@ -318,7 +318,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
     ax_vr.imshow(zi_vr, origin='lower',
                  extent=[x_min, x_max, y_min, y_max],
                  aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_vr, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
+    draw_strikezone(ax_vr, sz_left, sz_bottom, sz_width=sz_w, sz_height=sz_h)
     ax_vr.set_title(f"vs Right-Handed (n={len(sub_vr)})")
     ax_vr.set_xticks([]); ax_vr.set_yticks([])
 
@@ -328,7 +328,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
     ax_whiff.imshow(zi_whiff, origin='lower',
                     extent=[x_min, x_max, y_min, y_max],
                     aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_whiff, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
+    draw_strikezone(ax_whiff, sz_left, sz_bottom, sz_width=sz_w, sz_height=sz_h)
     ax_whiff.set_title(f"Whiffs (n={len(sub_whiff)})")
     ax_whiff.set_xticks([]); ax_whiff.set_yticks([])
 
@@ -338,7 +338,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
     ax_ks.imshow(zi_ks, origin='lower',
                  extent=[x_min, x_max, y_min, y_max],
                  aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_ks, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
+    draw_strikezone(ax_ks, sz_left, sz_bottom, sz_width=sz_w, sz_height=sz_h)
     ax_ks.set_title(f"Strikeouts (n={len(sub_ks)})")
     ax_ks.set_xticks([]); ax_ks.set_yticks([])
 
@@ -354,7 +354,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path,
         ax_dmg.imshow(zi_dmg, origin='lower',
                       extent=[x_min, x_max, y_min, y_max],
                       aspect='equal', cmap=custom_cmap)
-    draw_strikezone(ax_dmg, sz_left, sz_bottom, sz_w=sz_w, sz_height=sz_h)
+    draw_strikezone(ax_dmg, sz_left, sz_bottom, sz_width=sz_w, sz_height=sz_h)
     ax_dmg.set_title(f"Damage (n={len(sub_dmg)})")
     ax_dmg.set_xticks([]); ax_dmg.set_yticks([])
 
@@ -423,7 +423,6 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     ax5 = fig.add_subplot(gs[0, 6]); plot_conditional(ax5, sub_95_l, 'Exit ≥95 vs LHP')
     ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, sub_95_r, 'Exit ≥95 vs RHP')
 
-    # group boxes
     group_box_alpha = 0.18
     divider_color = '#444444'
     pad_extra = 0.05
@@ -461,7 +460,6 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
                                  facecolor='lightgray', alpha=group_box_alpha,
                                  edgecolor=divider_color, linewidth=1.5, zorder=1))
 
-    # separators
     sep_width = 0.006
     sep_x1 = (pos2.x1 + pos3.x0) / 2 - sep_width / 2
     sep_y0_1 = min(contact_group_y0, whiff_group_y0)
@@ -478,7 +476,6 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
                                  transform=fig.transFigure,
                                  facecolor=divider_color, alpha=0.9, zorder=2))
 
-    # legends
     ct = df_b[df_b['iscontact']]
     cts = ct['AutoPitchType'].value_counts()
     if not cts.empty:

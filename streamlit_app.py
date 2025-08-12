@@ -1,4 +1,4 @@
-# neb_reports_app.py
+# unified_baseball_app.py
 import os
 import math
 import numpy as np
@@ -14,13 +14,13 @@ from numpy.linalg import LinAlgError
 from matplotlib import colors
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
-DATA_PATH = "B10C25_small.parquet"            # <- Parquet with only needed cols
-LOGO_PATH = "Nebraska-Cornhuskers-Logo.png" # <- optional logo
+NEB_DATA_PATH = "B10C25_small.parquet"         # Nebraska-only (trimmed)
+LOGO_PATH     = "Nebraska-Cornhuskers-Logo.png"
 
-st.set_page_config(layout="wide")
-st.title("Nebraska — Pitcher & Hitter Reports")
+st.set_page_config(layout="wide", page_title="Baseball Reports")
+st.title("Baseball Analytics")
 
-# ─── COLORMAP / STRIKE ZONE ───────────────────────────────────────────────────
+# ─── COLORMAP / STRIKE ZONE CONSTANTS ─────────────────────────────────────────
 custom_cmap = colors.LinearSegmentedColormap.from_list(
     "custom_cmap",
     [(0.0, "white"), (0.2, "deepskyblue"), (0.3, "white"), (0.7, "red"), (1.0, "red")],
@@ -28,6 +28,7 @@ custom_cmap = colors.LinearSegmentedColormap.from_list(
 )
 
 def get_zone_bounds():
+    # fixed MLB zone (kept constant for heatmap/scatter parity)
     left, bottom = -0.83, 1.17
     width, height = 1.66, 2.75
     return left, bottom, width, height
@@ -52,6 +53,24 @@ PITCH_COLORS = {
     "Curveball": "#0033CC","Slider": "#CCCC00","Splitter": "#00CCCC","Knuckle Curve": "#000000",
     "Screwball": "#CC0066","Eephus": "#666666",
 }
+
+# ─── POWER-4 TEAM MAPS (extend with your codes) ───────────────────────────────
+BIG_TEN_MAP = {
+    'ILL_ILL': 'Illinois','MIC_SPA': 'Michigan State','UCLA': 'UCLA','IOW_HAW': 'Iowa',
+    'IU': 'Indiana','MAR_TER': 'Maryland','MIC_WOL': 'Michigan','MIN_GOL': 'Minnesota',
+    'NEB': 'Nebraska','NOR_CAT': 'Northwestern','ORE_DUC': 'Oregon','OSU_BUC': 'Ohio State',
+    'PEN_NIT': 'Penn State','PUR_BOI': 'Purdue','RUT_SCA': 'Rutgers','SOU_TRO': 'USC','WAS_HUS': 'Washington'
+}
+BIG_12_MAP = {
+    # 'TEX_CODE': 'Texas', ...
+}
+SEC_MAP = {
+    # 'LSU_CODE': 'LSU', ...
+}
+ACC_MAP = {
+    # 'FSU_CODE': 'Florida State', ...
+}
+CONF_MAP = {"Big Ten": BIG_TEN_MAP, "Big 12": BIG_12_MAP, "SEC": SEC_MAP, "ACC": ACC_MAP}
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
 def draw_strikezone(ax, sz_left=None, sz_bottom=None, sz_width=None, sz_height=None):
@@ -128,7 +147,7 @@ def plot_conditional(ax, sub, title):
     ax.set_title(title, fontweight='bold')
     ax.set_xticks([]); ax.set_yticks([])
 
-# ─── REPORTS ──────────────────────────────────────────────────────────────────
+# ─── STANDARD PITCHER REPORT ───────────────────────────────────────────────────
 def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     df_p = df[df['Pitcher'] == pitcher_name]
     if df_p.empty:
@@ -189,6 +208,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, summary
 
+# ─── PITCHER HEATMAPS (auto-switch to scatter if n<12) ────────────────────────
 def combined_pitcher_heatmap_report(df, pitcher_name, logo_path, grid_size=100):
     df_p = df[df['Pitcher'] == pitcher_name]
     if df_p.empty:
@@ -248,6 +268,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path, grid_size=100):
     plt.tight_layout(rect=[0, 0, 1, 0.96]); fig.suptitle(f"{pitcher_name} – Heatmap Report", fontsize=18, y=0.98, fontweight='bold')
     return fig
 
+# ─── HITTER HEATMAPS ──────────────────────────────────────────────────────────
 def combined_hitter_heatmap_report(df, batter, logo_img=None):
     df_b = df[df['Batter'] == batter].copy()
     if df_b.empty:
@@ -269,7 +290,7 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     sub_whiff_l = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Left')]
     sub_whiff_r = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Right')]
     ax3 = fig.add_subplot(gs[0, 3]); plot_conditional(ax3, sub_whiff_l, 'Whiffs vs LHP')
-    ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')
+    ax4 = fig.add_subplot(gs[0, 5]); plot_condional = plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')  # keep same function
 
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
     sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Right')]
@@ -281,6 +302,7 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     plt.tight_layout(rect=[0, 0, 1, 0.78])
     return fig
 
+# ─── STANDARD HITTER REPORT ───────────────────────────────────────────────────
 def create_hitter_report(df, batter, ncols=3):
     bdf = df[df['Batter'] == batter]
     pa = list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning']))
@@ -354,60 +376,171 @@ def create_hitter_report(df, batter, ncols=3):
     plt.tight_layout(rect=[0.12,0.05,1,0.88])
     return fig
 
-# ─── DATA LOADING ─────────────────────────────────────────────────────────────
+# ─── HITTER STATISTICS (D1-wide) ──────────────────────────────────────────────
+DISPLAY_COLS = ['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']
+RATE_COLS    = ['BA','OBP','SLG','OPS']
+
+def compute_rates(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    pr = df['PlayResult'].astype(str).str.lower()
+
+    ab_values  = {'single','double','triple','homerun','out','error','fielderschoice'}
+    hit_values = {'single','double','triple','homerun'}
+
+    df['is_ab']   = pr.isin(ab_values).astype(int)
+    df['is_hit']  = pr.isin(hit_values).astype(int)
+    df['is_bb']   = df['KorBB'].astype(str).str.lower().eq('walk').astype(int)
+    df['is_k']    = df['KorBB'].astype(str).str.contains('strikeout', case=False, na=False).astype(int)
+    df['is_hbp']  = df['PitchCall'].astype(str).eq('HitByPitch').astype(int)
+    df['is_sf']   = df['PlayResult'].astype(str).str.contains('Sacrifice', case=False, na=False).astype(int)
+
+    df['is_1b']   = pr.eq('single').astype(int)
+    df['is_2b']   = pr.eq('double').astype(int)
+    df['is_3b']   = pr.eq('triple').astype(int)
+    df['is_hr']   = pr.eq('homerun').astype(int)
+
+    df['is_pa'] = (df['is_ab'] | df['is_bb'] | df['is_hbp'] | df['is_sf']).astype(int)
+
+    agg = (df.groupby(['BatterTeam','Batter'], as_index=False)
+             .agg(PA=('is_pa','sum'), AB=('is_ab','sum'), Hits=('is_hit','sum'),
+                  Doubles=('is_2b','sum'), Triples=('is_3b','sum'), Homeruns=('is_hr','sum'),
+                  HBP=('is_hbp','sum'), BB=('is_bb','sum'), K=('is_k','sum'),
+                  Singles=('is_1b','sum'), SF=('is_sf','sum')))
+
+    agg['TB'] = agg['Singles'] + 2*agg['Doubles'] + 3*agg['Triples'] + 4*agg['Homeruns']
+    agg = agg.rename(columns={'Doubles':'2B', 'Triples':'3B', 'Homeruns':'HR'})
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ba  = np.where(agg['AB'] > 0, agg['Hits'] / agg['AB'], 0.0)
+        slg = np.where(agg['AB'] > 0, agg['TB'] / agg['AB'], 0.0)
+        obp_den = agg['AB'] + agg['BB'] + agg['HBP'] + agg['SF']
+        obp_num = agg['Hits'] + agg['BB'] + agg['HBP']
+        obp = np.divide(obp_num, obp_den, out=np.zeros_like(obp_den, dtype=float), where=obp_den > 0)
+        ops = obp + slg
+
+    agg['BA_num'], agg['OBP_num'], agg['SLG_num'], agg['OPS_num'] = ba, obp, slg, ops
+    agg['BA']  = [f"{x:.3f}" for x in ba]
+    agg['OBP'] = [f"{x:.3f}" for x in obp]
+    agg['SLG'] = [f"{x:.3f}" for x in slg]
+    agg['OPS'] = [f"{x:.3f}" for x in ops]
+
+    agg = agg.rename(columns={'BatterTeam':'Team'})
+    agg['Team'] = agg['Team'].replace({**BIG_TEN_MAP, **BIG_12_MAP, **SEC_MAP, **ACC_MAP})
+
+    keep = DISPLAY_COLS + [c+'_num' for c in RATE_COLS]
+    return agg[keep].sort_values('BA_num', ascending=False)
+
+# ─── DATA LOADERS ─────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
-def load_data_parquet(path: str) -> pd.DataFrame:
+def load_parquet(path: str) -> pd.DataFrame:
     df = pd.read_parquet(path)
     if "Date" in df.columns:
-        df["Date"] = pd.to_datetime(df["Date"]).dt.date
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
     return df
 
-df_all = load_data_parquet(DATA_PATH)
+# ─── MAIN MODE SELECT ─────────────────────────────────────────────────────────
+mode = st.radio("Choose mode:", ["Nebraska Baseball", "D1 Baseball"], horizontal=True)
 
-# minimal required columns
-needed = ['Date','PitcherTeam','BatterTeam','Pitcher','Batter','PlayResult','KorBB','PitchCall']
-missing = [c for c in needed if c not in df_all.columns]
-if missing:
-    st.error(f"Missing required columns: {missing}")
-    st.stop()
+# ─── NEBRASKA REPORTS ─────────────────────────────────────────────────────────
+if mode == "Nebraska Baseball":
+    if not os.path.exists(NEB_DATA_PATH):
+        st.error(f"Data not found at {NEB_DATA_PATH}")
+        st.stop()
+    df_all = load_parquet(NEB_DATA_PATH)
 
-all_dates = sorted(df_all['Date'].dropna().unique())
+    needed = ['Date','PitcherTeam','BatterTeam','Pitcher','Batter','PlayResult','KorBB','PitchCall']
+    missing = [c for c in needed if c not in df_all.columns]
+    if missing:
+        st.error(f"Missing required columns: {missing}")
+        st.stop()
 
-# ─── UI ───────────────────────────────────────────────────────────────────────
-c1,c2,c3,c4 = st.columns(4)
-section = c1.selectbox("Report Type", ["Pitcher Report","Hitter Report"])
-variant = c2.selectbox("Variant", ["Standard","Heatmap"])
-sel_date = c3.selectbox("Game Date", all_dates)
+    all_dates = sorted(df_all['Date'].dropna().unique())
 
-df_date = df_all[df_all['Date']==sel_date]
-logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
+    c1,c2,c3,c4 = st.columns(4)
+    report  = c1.selectbox("Report Type", ["Pitcher Report","Hitter Report"])
+    variant = c2.selectbox("Variant", ["Standard","Heatmap"])
+    sel_date = c3.selectbox("Game Date", all_dates)
 
-if section == "Pitcher Report":
-    df_p = df_date[df_date['PitcherTeam']=='NEB']
-    pitchers = sorted(df_p['Pitcher'].dropna().unique().tolist())
-    player = c4.selectbox("Pitcher", pitchers) if pitchers else None
-    if not player:
-        st.warning("No NEB pitchers for that date."); st.stop()
-    st.subheader(f"{player} — {sel_date}")
-    if variant == "Heatmap":
-        fig = combined_pitcher_heatmap_report(df_p, player, LOGO_PATH)
-        if fig: st.pyplot(fig=fig)
+    df_date = df_all[df_all['Date']==sel_date]
+    logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
+
+    if report == "Pitcher Report":
+        df_p = df_date[df_date['PitcherTeam']=='NEB']
+        pitchers = sorted(df_p['Pitcher'].dropna().unique().tolist())
+        player = c4.selectbox("Pitcher", pitchers) if pitchers else None
+        if not player:
+            st.warning("No NEB pitchers for that date."); st.stop()
+        st.subheader(f"{player} — {sel_date}")
+        if variant == "Heatmap":
+            fig = combined_pitcher_heatmap_report(df_p, player, LOGO_PATH)
+            if fig: st.pyplot(fig=fig)
+        else:
+            out = combined_pitcher_report(df_p, player, logo_img, coverage=0.8)
+            if out:
+                fig, summary = out
+                st.pyplot(fig=fig); st.table(summary)
+
+    else:  # Hitter Report
+        df_b = df_date[df_date['BatterTeam']=='NEB']
+        batters = sorted(df_b['Batter'].dropna().unique().tolist())
+        player = c4.selectbox("Batter", batters) if batters else None
+        if not player:
+            st.warning("No NEB batters for that date."); st.stop()
+        st.subheader(f"{player} — {sel_date}")
+        if variant == "Heatmap":
+            fig = combined_hitter_heatmap_report(df_b, player, logo_img=logo_img)
+            if fig: st.pyplot(fig=fig)
+        else:
+            fig = create_hitter_report(df_b, player, ncols=3)
+            if fig: st.pyplot(fig=fig)
+
+# ─── D1 HITTER STATISTICS ─────────────────────────────────────────────────────
+else:
+    if not os.path.exists(D1_DATA_PATH):
+        st.error(f"Data not found at {D1_DATA_PATH}")
+        st.stop()
+    df_all = load_parquet(D1_DATA_PATH)
+
+    needed = ['BatterTeam','Batter','PlayResult','KorBB','PitchCall']
+    missing = [c for c in needed if c not in df_all.columns]
+    if missing:
+        st.error(f"Missing required columns: {missing}")
+        st.stop()
+
+    c1, c2, c3 = st.columns(3)
+    conference = c1.selectbox("Conference", ["Big Ten","Big 12","SEC","ACC"], index=0)
+    team_map = CONF_MAP.get(conference, {})
+
+    present_codes = set(df_all['BatterTeam'].dropna().unique())
+    codes_in_conf = [code for code in team_map.keys() if code in present_codes]
+
+    if not team_map:
+        st.warning(f"No team code map found for {conference}. Fill the *_MAP dict for cleaner names.")
+    if not codes_in_conf:
+        st.info(f"No teams from {conference} found in the dataset.")
+        st.stop()
+
+    options = sorted([(code, team_map.get(code, code)) for code in codes_in_conf], key=lambda t: t[1])
+    team_display = [name for _, name in options]
+    team_sel_name = c2.selectbox("Team", team_display)
+    team_code = [code for code, name in options if name == team_sel_name][0]
+
+    team_df = df_all[df_all['BatterTeam'] == team_code]
+    if team_df.empty:
+        st.info("No rows for that team.")
+        st.stop()
+
+    ranked = compute_rates(team_df)
+    player_options = ranked['Batter'].unique().tolist()
+    player_sel = c3.selectbox("Player", player_options)
+
+    st.caption("Tip: sort by *_num columns (numeric) for accurate ordering of rates.")
+    display_cols = DISPLAY_COLS + [c+'_num' for c in RATE_COLS]
+    st.dataframe(ranked[display_cols], use_container_width=True)
+
+    row = ranked[ranked['Batter'] == player_sel].head(1)
+    if not row.empty:
+        st.markdown("**Selected Player Stats**")
+        st.table(row[['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']])
     else:
-        out = combined_pitcher_report(df_p, player, logo_img, coverage=0.8)
-        if out:
-            fig, summary = out
-            st.pyplot(fig=fig); st.table(summary)
-
-else:  # Hitter Report
-    df_b = df_date[df_date['BatterTeam']=='NEB']
-    batters = sorted(df_b['Batter'].dropna().unique().tolist())
-    player = c4.selectbox("Batter", batters) if batters else None
-    if not player:
-        st.warning("No NEB batters for that date."); st.stop()
-    st.subheader(f"{player} — {sel_date}")
-    if variant == "Heatmap":
-        fig = combined_hitter_heatmap_report(df_b, player, logo_img=logo_img)
-        if fig: st.pyplot(fig=fig)
-    else:
-        fig = create_hitter_report(df_b, player, ncols=3)
-        if fig: st.pyplot(fig=fig)
+        st.info("Player not found in computed stats.")

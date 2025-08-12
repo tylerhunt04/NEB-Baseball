@@ -13,7 +13,7 @@ from numpy.linalg import LinAlgError
 from matplotlib import colors
 
 # ─── CONFIG / PATHS ───────────────────────────────────────────────────────────
-DATA_PATH = "B10C25.parquet"                 # ← point to your Parquet file
+DATA_PATH = "B10C25_small.parquet"                 # ← point to your Parquet file
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # ← update to your logo path
 
 st.set_page_config(layout="wide")

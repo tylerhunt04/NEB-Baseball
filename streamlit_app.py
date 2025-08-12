@@ -82,6 +82,14 @@ ACC_MAP = {
 }
 CONF_MAP = {"Big Ten": BIG_TEN_MAP, "Big 12": BIG_12_MAP, "SEC": SEC_MAP, "ACC": ACC_MAP}
 
+# ─── MONTH/DAY CHOICES FOR D1 FILTERS ─────────────────────────────────────────
+MONTH_CHOICES = [
+    (1,"January"), (2,"February"), (3,"March"), (4,"April"),
+    (5,"May"), (6,"June"), (7,"July"), (8,"August"),
+    (9,"September"), (10,"October"), (11,"November"), (12,"December")
+]
+MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
+
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
 def draw_strikezone(ax, sz_left=None, sz_bottom=None, sz_width=None, sz_height=None):
     l, b, w, h = get_zone_bounds()
@@ -471,7 +479,7 @@ def compute_rates(df: pd.DataFrame) -> pd.DataFrame:
 def load_parquet(path: str) -> pd.DataFrame:
     df = pd.read_parquet(path)
     if "Date" in df.columns:
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     return df
 
 # ─── MODE SELECT ──────────────────────────────────────────────────────────────
@@ -493,14 +501,14 @@ if mode == "Nebraska Baseball":
 
     # Only show dates where NEB appears (pitching or hitting)
     neb_mask = (df_all['PitcherTeam']=='NEB') | (df_all['BatterTeam']=='NEB')
-    neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().unique())
+    neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
 
     c1,c2,c3,c4 = st.columns(4)
     report  = c1.selectbox("Report Type", ["Pitcher Report","Hitter Report"])
     variant = c2.selectbox("Variant", ["Standard","Heatmap"])
     sel_date = c3.selectbox("Game Date", neb_dates, format_func=format_date_long)
 
-    df_date = df_all[df_all['Date']==sel_date]
+    df_date = df_all[df_all['Date'].dt.date==sel_date]
     logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
 
     if report == "Pitcher Report":
@@ -533,7 +541,7 @@ if mode == "Nebraska Baseball":
             fig = create_hitter_report(df_b, player, ncols=3)
             if fig: st.pyplot(fig=fig)
 
-# ─── D1 HITTER STATISTICS (uses SAME df_all) ──────────────────────────────────
+# ─── D1 HITTER STATISTICS (uses SAME df_all, with month/day multi-select) ─────
 else:
     needed = ['BatterTeam','Batter','PlayResult','KorBB','PitchCall']
     missing = [c for c in needed if c not in df_all.columns]
@@ -559,16 +567,66 @@ else:
     team_sel_name = c2.selectbox("Team", team_display)
     team_code = [code for code, name in options if name == team_sel_name][0]
 
-    team_df = df_all[df_all['BatterTeam'] == team_code]
+    # Date filters row
+    d1, d2, d3, d4 = st.columns(4)
+    months_sel = d1.multiselect(
+        "Months (optional)",
+        options=[n for n, _ in MONTH_CHOICES],
+        format_func=lambda n: MONTH_NAME_BY_NUM[n],
+        default=[]
+    )
+    days_sel = d2.multiselect(
+        "Days (optional)",
+        options=list(range(1, 32)),
+        default=[]
+    )
+
+    # Filter to team, then apply date filters
+    team_df = df_all[df_all['BatterTeam'] == team_code].copy()
     if team_df.empty:
         st.info("No rows for that team.")
         st.stop()
+
+    # Ensure Date is datetime for filters
+    if 'Date' in team_df.columns:
+        team_df['Date'] = pd.to_datetime(team_df['Date'], errors='coerce')
+
+        date_mask = pd.Series(True, index=team_df.index)
+
+        # Months selected? limit to those months; otherwise season totals
+        if len(months_sel) > 0:
+            date_mask &= team_df['Date'].dt.month.isin(months_sel)
+
+        # Days selected? limit to those days (with or without months)
+        if len(days_sel) > 0:
+            date_mask &= team_df['Date'].dt.day.isin(days_sel)
+
+        team_df = team_df[date_mask]
+
+    if team_df.empty:
+        st.info("No rows after applying the selected month/day filters.")
+        st.stop()
+
+    # Friendly filter summary
+    if len(months_sel) == 0 and len(days_sel) == 0:
+        filt_text = "Season totals"
+    elif len(months_sel) > 0 and len(days_sel) == 0:
+        mnames = ", ".join(MONTH_NAME_BY_NUM[m] for m in sorted(months_sel))
+        filt_text = f"Filtered to months: {mnames}"
+    elif len(months_sel) > 0 and len(days_sel) > 0:
+        mnames = ", ".join(MONTH_NAME_BY_NUM[m] for m in sorted(months_sel))
+        dnames = ", ".join(str(d) for d in sorted(days_sel))
+        filt_text = f"Filtered to months: {mnames} and days: {dnames}"
+    else:  # days only
+        dnames = ", ".join(str(d) for d in sorted(days_sel))
+        filt_text = f"Filtered to days: {dnames} (across all months)"
+
+    st.caption(filt_text)
 
     ranked = compute_rates(team_df)
     player_options = ranked['Batter'].unique().tolist()
     player_sel = c3.selectbox("Player", player_options)
 
-    st.caption("Tip: sort by *_num columns (numeric) for accurate ordering of rates.")
     display_cols = DISPLAY_COLS + [c+'_num' for c in RATE_COLS]
     st.dataframe(ranked[display_cols], use_container_width=True)
 

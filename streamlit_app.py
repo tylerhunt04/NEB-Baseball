@@ -13,7 +13,7 @@ from numpy.linalg import LinAlgError
 from matplotlib import colors
 
 # ─── CONFIG / PATHS ───────────────────────────────────────────────────────────
-CSV_PATH  = "5.31.2025 v HC.csv"     # ← update to your file path
+DATA_PATH = "B10C25.parquet"                 # ← point to your Parquet file
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # ← update to your logo path
 
 st.set_page_config(layout="wide")
@@ -80,15 +80,13 @@ PITCH_COLORS = {
     "Eephus": "#666666",
 }
 
-# ─── POWER 4 CONFERENCE TEAM MAPS (customize as needed) ───────────────────────
-# Big Ten codes provided by you previously; add/adjust others to match your CSV codes
+# ─── POWER 4 CONFERENCE TEAM MAPS (extend to match your dataset) ──────────────
 BIG_TEN_MAP = {
     'ILL_ILL': 'Illinois','MIC_SPA': 'Michigan State','UCLA': 'UCLA','IOW_HAW': 'Iowa',
     'IU': 'Indiana','MAR_TER': 'Maryland','MIC_WOL': 'Michigan','MIN_GOL': 'Minnesota',
     'NEB': 'Nebraska','NOR_CAT': 'Northwestern','ORE_DUC': 'Oregon','OSU_BUC': 'Ohio State',
     'PEN_NIT': 'Penn State','PUR_BOI': 'Purdue','RUT_SCA': 'Rutgers','SOU_TRO': 'USC','WAS_HUS': 'Washington'
 }
-# Fill these with your CSV’s team codes for those conferences
 BIG_12_MAP = {
     # 'TEX_CODE': 'Texas', ...
 }
@@ -98,13 +96,7 @@ SEC_MAP = {
 ACC_MAP = {
     # 'FSU_CODE': 'Florida State', ...
 }
-
-CONF_MAP = {
-    "Big Ten": BIG_TEN_MAP,
-    "Big 12": BIG_12_MAP,
-    "SEC": SEC_MAP,
-    "ACC": ACC_MAP,
-}
+CONF_MAP = {"Big Ten": BIG_TEN_MAP, "Big 12": BIG_12_MAP, "SEC": SEC_MAP, "ACC": ACC_MAP}
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
 def draw_strikezone(ax, sz_left=None, sz_bottom=None, sz_width=None, sz_height=None):
@@ -413,8 +405,6 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     df_b['iswhiff'] = df_b['PitchCall'] == 'StrikeSwinging'
     df_b['is95plus'] = df_b['ExitSpeed'] >= 95
 
-    x_min, x_max, y_min, y_max = get_view_bounds()
-
     fig = plt.figure(figsize=(24, 6))
     gs = GridSpec(1, 9, figure=fig, wspace=0.05, hspace=0.15)
 
@@ -433,7 +423,7 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     ax5 = fig.add_subplot(gs[0, 6]); plot_conditional(ax5, sub_95_l, 'Exit ≥95 vs LHP')
     ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, sub_95_r, 'Exit ≥95 vs RHP')
 
-    # group backgrounds & separators (same as before)
+    # group backgrounds & separators (layout polish)
     group_box_alpha = 0.18
     divider_color = '#444444'
     pad_extra = 0.05
@@ -655,24 +645,28 @@ def compute_rates(df: pd.DataFrame) -> pd.DataFrame:
     g['SLG'] = [f"{x:.3f}" for x in slg]
     g['OPS'] = [f"{x:.3f}" for x in ops]
 
-    # Map Big Ten codes; others fall back to raw codes unless you add to their maps
-    # You can extend this to apply the selected conference map if desired.
     g = g.rename(columns={'BatterTeam':'Team'})
-    g['Team'] = (
-        g['Team']
-        .replace(BIG_TEN_MAP)  # pretty names for Big Ten codes
-    )
+    # Pretty names for known codes (extend for other conferences if you want)
+    g['Team'] = g['Team'].replace(BIG_TEN_MAP)
 
     g = g.sort_values('BA_num', ascending=False)
     keep = DISPLAY_COLS + [c+'_num' for c in RATE_COLS]
     return g[keep]
 
-# ─── STREAMLIT APP LOGIC ──────────────────────────────────────────────────────
-try:
-    df_all = pd.read_csv(CSV_PATH)
-except Exception as e:
-    st.error(f"Failed to read CSV at {CSV_PATH}: {e}")
-    st.stop()
+# ─── DATA LOADING (PARQUET) ───────────────────────────────────────────────────
+@st.cache_data(show_spinner=True)
+def load_data_parquet(path: str) -> pd.DataFrame:
+    try:
+        df = pd.read_parquet(path)  # requires pyarrow or fastparquet installed
+    except Exception as e:
+        st.error(f"Failed to read Parquet at {path}: {e}")
+        raise
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"]).dt.date
+    return df
+
+# Load data
+df_all = load_data_parquet(DATA_PATH)
 
 required = ['Date', 'PitcherTeam', 'BatterTeam', 'Pitcher', 'Batter', 'PlayResult', 'KorBB', 'PitchCall']
 missing = [c for c in required if c not in df_all.columns]
@@ -680,10 +674,9 @@ if missing:
     st.error(f"Missing required columns: {missing}")
     st.stop()
 
-df_all['Date'] = pd.to_datetime(df_all['Date']).dt.date
-all_dates = sorted(df_all['Date'].unique())
+all_dates = sorted(df_all['Date'].dropna().unique())
 
-# Top controls (now with Hitter Statistics)
+# Top controls (with Hitter Statistics)
 col1, col2, col3, col4 = st.columns(4)
 report = col1.selectbox("Section", ["Pitcher Report", "Hitter Report", "Hitter Statistics"], key="section")
 variant = col2.selectbox("Variant", ["Standard", "Heatmap"], key="variant") if report != "Hitter Statistics" else None
@@ -733,18 +726,16 @@ elif report == "Hitter Report":
         if fig:
             st.pyplot(fig=fig)
 
-else:  # ─── HITTER STATISTICS ────────────────────────────────────────────────
+else:  # HITTER STATISTICS
     st.subheader(f"Hitter Statistics — {selected_date}")
-
-    # Conference tab (you can add more tabs later if needed)
     (tab_conf,) = st.tabs(["Conference Filter"])
 
     with tab_conf:
         c1, c2, c3 = st.columns(3)
         conference = c1.selectbox("Conference", ["Big Ten", "Big 12", "SEC", "ACC"], index=0, key="conf_sel")
         team_map = CONF_MAP.get(conference, {})
-        # Filter to teams in the selected conference that actually appear on this date
-        available_codes = set(df_date['BatterTeam'].unique().tolist())
+
+        available_codes = set(df_date['BatterTeam'].dropna().unique().tolist())
         conf_codes_present = [code for code in team_map.keys() if code in available_codes]
 
         if not team_map:
@@ -753,39 +744,27 @@ else:  # ─── HITTER STATISTICS ──────────────�
             st.info(f"No {conference} teams found in the data for {selected_date}.")
             st.stop()
 
-        # Build display names from map; fallback to code if missing
-        options = [(code, team_map.get(code, code)) for code in conf_codes_present]
-        # Sort by display name
-        options = sorted(options, key=lambda t: t[1])
-
+        options = sorted([(code, team_map.get(code, code)) for code in conf_codes_present], key=lambda t: t[1])
         team_display_names = [name for _, name in options]
         selection = c2.selectbox("Team", team_display_names, key="conf_team")
-        # Map back to code
         selected_code = [code for code, name in options if name == selection][0]
 
-        # Slice data for that team (on selected date)
         team_slice = df_date[df_date['BatterTeam'] == selected_code]
         if team_slice.empty:
             st.info("No rows for that team on this date.")
             st.stop()
 
-        # Compute rates table
         ranked = compute_rates(team_slice)
 
-        # Player select & table
         player_opts = ranked['Batter'].unique().tolist()
         player_sel = c3.selectbox("Player", player_opts, key="conf_player")
 
-        st.caption("Click column headers to sort. Rates sort by actual numeric values.")
-        # Show a sortable DataFrame; hide *_num columns from display but keep them for sorting
+        st.caption("Tip: sort by *_num columns (hidden rate values) for accurate ordering.")
         display_cols = DISPLAY_COLS
         numeric_cols = [c+'_num' for c in RATE_COLS]
-        # Merge numeric columns for better sorting: Streamlit respects dtype for sorting
         df_show = ranked[display_cols + numeric_cols].copy()
-        # Use Streamlit's dataframe; users can sort by BA_num/OBP_num/etc. if they want accurate sorts.
         st.dataframe(df_show, use_container_width=True)
 
-        # Pull the selected player's stat line
         row = ranked[ranked['Batter'] == player_sel].head(1)
         if not row.empty:
             st.markdown("**Selected Player Stats**")

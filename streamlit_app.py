@@ -328,9 +328,7 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
 
     sub_whiff_l = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Left')]
     sub_whiff_r = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Right')]
-    ax3 = fig.add_subplot(gs[0, 3]); plot_conditional(ax3, 'Whiffs vs LHP', sub_whiff_l)  # keep order consistent? use previous signature
-    # Fix: correct argument order
-    ax3.cla(); plot_conditional(ax3, sub_whiff_l, 'Whiffs vs LHP')
+    ax3 = fig.add_subplot(gs[0, 3]); plot_conditional(ax3, sub_whiff_l, 'Whiffs vs LHP')
     ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')
 
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
@@ -423,10 +421,10 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ─── HITTER STATISTICS (uses SAME DATA_PATH) ──────────────────────────────────
-DISPLAY_COLS = ['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']
-RATE_COLS    = ['BA','OBP','SLG','OPS']
+DISPLAY_COLS_H = ['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']
+RATE_COLS_H    = ['BA','OBP','SLG','OPS']
 
-def compute_rates(df: pd.DataFrame) -> pd.DataFrame:
+def compute_hitter_rates(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     pr = df['PlayResult'].astype(str).str.lower()
 
@@ -473,8 +471,95 @@ def compute_rates(df: pd.DataFrame) -> pd.DataFrame:
     agg = agg.rename(columns={'BatterTeam':'Team'})
     agg['Team'] = agg['Team'].replace({**BIG_TEN_MAP, **BIG_12_MAP, **SEC_MAP, **ACC_MAP})
 
-    keep = DISPLAY_COLS + [c+'_num' for c in RATE_COLS]
+    keep = DISPLAY_COLS_H + [c+'_num' for c in RATE_COLS_H]
     return agg[keep].sort_values('BA_num', ascending=False)
+
+# ─── PITCHER STATISTICS (D1) ──────────────────────────────────────────────────
+DISPLAY_COLS_P = ['Team','Name','IP','Hits','HR','BB','HBP','SO','WHIP','BB/9','H/9','HR/9','SO/9']
+RATE_NUMS_P    = ['IP_num','WHIP_num','BB/9_num','H/9_num','HR/9_num','SO/9_num']
+
+def compute_pitcher_table(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build per-pitcher, per-team table:
+      Team, Name, IP, Hits, HR, BB, HBP, SO, WHIP, BB/9, H/9, HR/9, SO/9
+    """
+    df = df.copy()
+
+    pr_low  = df['PlayResult'].astype(str).str.lower()
+    korbb_s = df['KorBB'].astype(str)
+    pitch_s = df['PitchCall'].astype(str)
+
+    # Events
+    hit_values    = {'single','double','triple','homerun'}
+    df['is_hit']  = pr_low.isin(hit_values).astype(int)
+    df['is_hr']   = pr_low.eq('homerun').astype(int)
+    df['is_bb']   = korbb_s.str.lower().eq('walk').astype(int)
+    df['is_so']   = korbb_s.str.contains('strikeout', case=False, na=False).astype(int)
+    df['is_hbp']  = pitch_s.eq('HitByPitch').astype(int)
+    df['is_sf']   = df['PlayResult'].astype(str).str.contains('Sacrifice', case=False, na=False).astype(int)
+
+    # Outs (prefer explicit OutsOnPlay if present)
+    if 'OutsOnPlay' in df.columns:
+        outs_on_play = pd.to_numeric(df['OutsOnPlay'], errors='coerce').fillna(0).astype(int)
+        outs_from_k  = df['is_so'] * (outs_on_play == 0)  # avoid double-counting K if already in OutsOnPlay
+        df['outs']   = outs_on_play + outs_from_k
+    else:
+        is_out = pr_low.eq('out').astype(int)
+        df['outs'] = is_out + df['is_sf'] + df['is_so']
+
+    # Aggregate by pitcher + team
+    grouped = (df.groupby(['PitcherTeam','Pitcher'], as_index=False)
+                 .agg(Hits=('is_hit','sum'),
+                      HR=('is_hr','sum'),
+                      BB=('is_bb','sum'),
+                      HBP=('is_hbp','sum'),
+                      SO=('is_so','sum'),
+                      Outs=('outs','sum')))
+
+    # Innings pitched (numeric) + display X.Y thirds
+    grouped['IP_num'] = grouped['Outs'] / 3.0
+
+    def ip_display(ip_num: float) -> str:
+        outs = int(round(ip_num * 3))
+        return f"{outs//3}.{outs%3}"
+
+    grouped['IP'] = grouped['IP_num'].apply(ip_display)
+
+    # Rates (per 9) and WHIP
+    ip = grouped['IP_num'].replace(0, np.nan)
+    grouped['WHIP_num'] = ((grouped['BB'] + grouped['Hits']) / ip).fillna(0.0)  # WHIP is (BB+H)/IP
+    grouped['BB/9_num'] = (grouped['BB']  / ip * 9).fillna(0.0)
+    grouped['H/9_num']  = (grouped['Hits']/ ip * 9).fillna(0.0)
+    grouped['HR/9_num'] = (grouped['HR']  / ip * 9).fillna(0.0)
+    grouped['SO/9_num'] = (grouped['SO']  / ip * 9).fillna(0.0)
+
+    # Format for table
+    grouped['WHIP'] = grouped['WHIP_num'].map(lambda x: f"{x:.3f}")
+    grouped['BB/9'] = grouped['BB/9_num'].map(lambda x: f"{x:.2f}")
+    grouped['H/9']  = grouped['H/9_num'].map(lambda x: f"{x:.2f}")
+    grouped['HR/9'] = grouped['HR/9_num'].map(lambda x: f"{x:.2f}")
+    grouped['SO/9'] = grouped['SO/9_num'].map(lambda x: f"{x:.2f}")
+
+    # Cleanup / mapping
+    grouped = grouped.rename(columns={'PitcherTeam':'Team', 'Pitcher':'Name'})
+    team_map_all = {**BIG_TEN_MAP, **BIG_12_MAP, **SEC_MAP, **ACC_MAP}
+    grouped['Team'] = grouped['Team'].map(team_map_all).fillna(grouped['Team'])
+
+    def fmt_name(s: str) -> str:
+        s = str(s).replace('\n', ' ')
+        if ',' in s:
+            last, first = [t.strip() for t in s.split(',', 1)]
+            return f"{first} {last}"
+        return s
+
+    grouped['Name'] = grouped['Name'].apply(fmt_name)
+
+    # Default sort: WHIP asc
+    grouped = grouped.sort_values('WHIP_num', ascending=True)
+
+    out = grouped[DISPLAY_COLS_P].copy()
+    out = out.join(grouped[RATE_NUMS_P])
+    return out
 
 # ─── DATA LOADER ──────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
@@ -532,11 +617,14 @@ with st.sidebar:
                 st.session_state['neb_player'] = player
 
     else:
-        with st.expander("Hitter Statistics Controls", expanded=True):
+        with st.expander("D1 Statistics Controls", expanded=True):
+            # Use union of BatterTeam and PitcherTeam so both hitter & pitcher stats have teams available
+            present_codes = set(pd.Series(df_all.get('BatterTeam', pd.Series(dtype=object))).dropna().unique()) \
+                            | set(pd.Series(df_all.get('PitcherTeam', pd.Series(dtype=object))).dropna().unique())
+
             conference = st.selectbox("Conference", ["Big Ten","Big 12","SEC","ACC"], index=0)
             team_map = CONF_MAP.get(conference, {})
 
-            present_codes = set(df_all['BatterTeam'].dropna().unique())
             codes_in_conf = [code for code in team_map.keys() if code in present_codes]
             if not team_map or not codes_in_conf:
                 st.info("Add team code mappings for this conference or choose another.")
@@ -556,10 +644,13 @@ with st.sidebar:
             )
             days_sel = st.multiselect("Days (optional)", options=list(range(1, 32)), default=[])
 
+            stats_type = st.radio("Stats Type", ["Hitter Statistics", "Pitcher Statistics"], horizontal=False, index=0)
+
             st.session_state['d1_conference'] = conference
             st.session_state['d1_team_code']  = team_code
             st.session_state['d1_months']     = months_sel
             st.session_state['d1_days']       = days_sel
+            st.session_state['d1_stats_type'] = stats_type
 
 # ─── MAIN AREA (VISUALS) ──────────────────────────────────────────────────────
 if st.session_state.get('mode', None) != mode:
@@ -611,18 +702,18 @@ else:
     team_code  = st.session_state.get('d1_team_code')
     months_sel = st.session_state.get('d1_months', [])
     days_sel   = st.session_state.get('d1_days', [])
-
-    needed = ['BatterTeam','Batter','PlayResult','KorBB','PitchCall']
-    missing = [c for c in needed if c not in df_all.columns]
-    if missing:
-        st.error(f"Missing required columns: {missing}")
-        st.stop()
+    stats_type = st.session_state.get('d1_stats_type', "Hitter Statistics")
 
     if not team_code:
         st.warning("Choose a conference and team in the Filters drawer.")
         st.stop()
 
-    team_df = df_all[df_all['BatterTeam'] == team_code].copy()
+    # Filter to selected team, using correct team column depending on stats type
+    if stats_type == "Hitter Statistics":
+        team_df = df_all[df_all['BatterTeam'] == team_code].copy()
+    else:
+        team_df = df_all[df_all['PitcherTeam'] == team_code].copy()
+
     if 'Date' in team_df.columns:
         team_df['Date'] = pd.to_datetime(team_df['Date'], errors='coerce')
         date_mask = pd.Series(True, index=team_df.index)
@@ -650,18 +741,35 @@ else:
         dnames = ", ".join(str(d) for d in sorted(days_sel))
         filt_text = f"Filtered to days: {dnames} (across all months)"
 
-    ranked = compute_rates(team_df)
     st.caption(filt_text)
-    display_cols = DISPLAY_COLS + [c+'_num' for c in RATE_COLS]
-    st.dataframe(ranked[display_cols], use_container_width=True)
 
-    # Optional: select a player to highlight
-    player_options = ranked['Batter'].unique().tolist()
-    player_sel = st.selectbox("Highlight Player (optional)", ["(none)"] + player_options, index=0)
-    if player_sel != "(none)":
-        row = ranked[ranked['Batter'] == player_sel].head(1)
-        if not row.empty:
-            st.markdown("**Selected Player Stats**")
-            st.table(row[['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']])
-        else:
-            st.info("Player not found in computed stats.")
+    if stats_type == "Hitter Statistics":
+        ranked_h = compute_hitter_rates(team_df)
+        display_cols = DISPLAY_COLS_H + [c+'_num' for c in RATE_COLS_H]
+        st.dataframe(ranked_h[display_cols], use_container_width=True)
+
+        # Optional: select a player to highlight
+        player_options = ranked_h['Batter'].unique().tolist()
+        player_sel = st.selectbox("Highlight Player (optional)", ["(none)"] + player_options, index=0)
+        if player_sel != "(none)":
+            row = ranked_h[ranked_h['Batter'] == player_sel].head(1)
+            if not row.empty:
+                st.markdown("**Selected Player Stats**")
+                st.table(row[['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']])
+            else:
+                st.info("Player not found in computed stats.")
+    else:
+        table_p = compute_pitcher_table(team_df)
+        display_cols_p = DISPLAY_COLS_P + RATE_NUMS_P  # include numeric helpers at end
+        st.dataframe(table_p[display_cols_p], use_container_width=True)
+
+        # Optional: select a pitcher to highlight
+        p_options = table_p['Name'].unique().tolist()
+        p_sel = st.selectbox("Highlight Pitcher (optional)", ["(none)"] + p_options, index=0)
+        if p_sel != "(none)":
+            row = table_p[table_p['Name'] == p_sel].head(1)
+            if not row.empty:
+                st.markdown("**Selected Pitcher Stats**")
+                st.table(row[['Team','Name','IP','Hits','HR','BB','HBP','SO','WHIP','BB/9','H/9','HR/9','SO/9']])
+            else:
+                st.info("Pitcher not found in computed stats.")

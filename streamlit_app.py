@@ -14,11 +14,10 @@ from numpy.linalg import LinAlgError
 from matplotlib import colors
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
-DATA_PATH = "B10C25_small.parquet"            # ONE file for both modes
-LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
+DATA_PATH = "data/B10C25_small.parquet"            # ONE file for both modes
+LOGO_PATH = "images/Nebraska-Cornhuskers-Logo.png"
 
 st.set_page_config(layout="wide", page_title="Baseball Reports")
-st.title("Baseball Analytics")
 
 # ─── DATE FORMAT HELPERS ──────────────────────────────────────────────────────
 def _ordinal(n: int) -> str:
@@ -482,31 +481,38 @@ def load_parquet(path: str) -> pd.DataFrame:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     return df
 
-# ─── MODE SELECT ──────────────────────────────────────────────────────────────
-mode = st.radio("Choose mode:", ["Nebraska Baseball", "D1 Baseball"], horizontal=True)
+# ─── LAYOUT: Content left, filters right ──────────────────────────────────────
+st.title("Baseball Analytics")
+left_col, right_col = st.columns([7, 3], gap="large")
 
 # Load once
 if not os.path.exists(DATA_PATH):
-    st.error(f"Data not found at {DATA_PATH}")
+    with left_col:
+        st.error(f"Data not found at {DATA_PATH}")
     st.stop()
 df_all = load_parquet(DATA_PATH)
 
-# ─── NEBRASKA REPORTS (uses same df_all, filtered to NEB) ─────────────────────
+# ─── MODE SELECT (right) ──────────────────────────────────────────────────────
+with right_col:
+    st.header("Filters")
+    mode = st.radio("Mode", ["Nebraska Baseball", "D1 Baseball"], horizontal=False)
+
+# ─── NEBRASKA REPORTS (left content, right filters) ───────────────────────────
 if mode == "Nebraska Baseball":
     needed = ['Date','PitcherTeam','BatterTeam','Pitcher','Batter','PlayResult','KorBB','PitchCall']
     missing = [c for c in needed if c not in df_all.columns]
     if missing:
-        st.error(f"Missing required columns: {missing}")
+        with left_col:
+            st.error(f"Missing required columns: {missing}")
         st.stop()
 
-    # Only show dates where NEB appears (pitching or hitting)
     neb_mask = (df_all['PitcherTeam']=='NEB') | (df_all['BatterTeam']=='NEB')
     neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
 
-    c1,c2,c3,c4 = st.columns(4)
-    report  = c1.selectbox("Report Type", ["Pitcher Report","Hitter Report"])
-    variant = c2.selectbox("Variant", ["Standard","Heatmap"])
-    sel_date = c3.selectbox("Game Date", neb_dates, format_func=format_date_long)
+    with right_col:
+        report  = st.selectbox("Report Type", ["Pitcher Report","Hitter Report"])
+        variant = st.selectbox("Variant", ["Standard","Heatmap"])
+        sel_date = st.selectbox("Game Date", neb_dates, format_func=format_date_long)
 
     df_date = df_all[df_all['Date'].dt.date==sel_date]
     logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
@@ -514,97 +520,112 @@ if mode == "Nebraska Baseball":
     if report == "Pitcher Report":
         df_p = df_date[df_date['PitcherTeam']=='NEB']
         pitchers = sorted(df_p['Pitcher'].dropna().unique().tolist())
-        player = c4.selectbox("Pitcher", pitchers) if pitchers else None
+        with right_col:
+            player = st.selectbox("Pitcher", pitchers) if pitchers else None
+
         if not player:
-            st.warning("No NEB pitchers for that date."); st.stop()
-        st.subheader(f"{player} — {format_date_long(sel_date)}")
-        if variant == "Heatmap":
-            fig = combined_pitcher_heatmap_report(df_p, player, LOGO_PATH)
-            if fig: st.pyplot(fig=fig)
-        else:
-            out = combined_pitcher_report(df_p, player, logo_img, coverage=0.8)
-            if out:
-                fig, summary = out
-                st.pyplot(fig=fig); st.table(summary)
+            with left_col:
+                st.warning("No NEB pitchers for that date.")
+            st.stop()
+
+        with left_col:
+            st.subheader(f"{player} — {format_date_long(sel_date)}")
+            if variant == "Heatmap":
+                fig = combined_pitcher_heatmap_report(df_p, player, LOGO_PATH)
+                if fig: st.pyplot(fig=fig)
+            else:
+                out = combined_pitcher_report(df_p, player, logo_img, coverage=0.8)
+                if out:
+                    fig, summary = out
+                    st.pyplot(fig=fig)
+                    st.table(summary)
 
     else:  # Hitter Report
         df_b = df_date[df_date['BatterTeam']=='NEB']
         batters = sorted(df_b['Batter'].dropna().unique().tolist())
-        player = c4.selectbox("Batter", batters) if batters else None
-        if not player:
-            st.warning("No NEB batters for that date."); st.stop()
-        st.subheader(f"{player} — {format_date_long(sel_date)}")
-        if variant == "Heatmap":
-            fig = combined_hitter_heatmap_report(df_b, player, logo_img=logo_img)
-            if fig: st.pyplot(fig=fig)
-        else:
-            fig = create_hitter_report(df_b, player, ncols=3)
-            if fig: st.pyplot(fig=fig)
+        with right_col:
+            player = st.selectbox("Batter", batters) if batters else None
 
-# ─── D1 HITTER STATISTICS (uses SAME df_all, with month/day multi-select) ─────
+        if not player:
+            with left_col:
+                st.warning("No NEB batters for that date.")
+            st.stop()
+
+        with left_col:
+            st.subheader(f"{player} — {format_date_long(sel_date)}")
+            if variant == "Heatmap":
+                fig = combined_hitter_heatmap_report(df_b, player, logo_img=logo_img)
+                if fig: st.pyplot(fig=fig)
+            else:
+                fig = create_hitter_report(df_b, player, ncols=3)
+                if fig: st.pyplot(fig=fig)
+
+# ─── D1 HITTER STATISTICS (left content, right filters) ───────────────────────
 else:
     needed = ['BatterTeam','Batter','PlayResult','KorBB','PitchCall']
     missing = [c for c in needed if c not in df_all.columns]
     if missing:
-        st.error(f"Missing required columns: {missing}")
+        with left_col:
+            st.error(f"Missing required columns: {missing}")
         st.stop()
 
-    c1, c2, c3 = st.columns(3)
-    conference = c1.selectbox("Conference", ["Big Ten","Big 12","SEC","ACC"], index=0)
-    team_map = CONF_MAP.get(conference, {})
+    with right_col:
+        conference = st.selectbox("Conference", ["Big Ten","Big 12","SEC","ACC"], index=0)
+        team_map = CONF_MAP.get(conference, {})
 
     present_codes = set(df_all['BatterTeam'].dropna().unique())
     codes_in_conf = [code for code in team_map.keys() if code in present_codes]
 
-    if not team_map:
-        st.warning(f"No team code map found for {conference}. Fill the *_MAP dict for cleaner names.")
-    if not codes_in_conf:
-        st.info(f"No teams from {conference} found in the dataset.")
+    if not team_map or not codes_in_conf:
+        with left_col:
+            if not team_map:
+                st.warning(f"No team code map found for {conference}. Fill the *_MAP dict for cleaner names.")
+            else:
+                st.info(f"No teams from {conference} found in the dataset.")
         st.stop()
 
     options = sorted([(code, team_map.get(code, code)) for code in codes_in_conf], key=lambda t: t[1])
     team_display = [name for _, name in options]
-    team_sel_name = c2.selectbox("Team", team_display)
-    team_code = [code for code, name in options if name == team_sel_name][0]
 
-    # Date filters row
-    d1, d2, d3, d4 = st.columns(4)
-    months_sel = d1.multiselect(
-        "Months (optional)",
-        options=[n for n, _ in MONTH_CHOICES],
-        format_func=lambda n: MONTH_NAME_BY_NUM[n],
-        default=[]
-    )
-    days_sel = d2.multiselect(
-        "Days (optional)",
-        options=list(range(1, 32)),
-        default=[]
-    )
+    with right_col:
+        team_sel_name = st.selectbox("Team", team_display)
+        team_code = [code for code, name in options if name == team_sel_name][0]
 
-    # Filter to team, then apply date filters
+        # Month/Day multi-selects
+        months_sel = st.multiselect(
+            "Months (optional)",
+            options=[n for n, _ in MONTH_CHOICES],
+            format_func=lambda n: MONTH_NAME_BY_NUM[n],
+            default=[]
+        )
+        days_sel = st.multiselect(
+            "Days (optional)",
+            options=list(range(1, 32)),
+            default=[]
+        )
+
     team_df = df_all[df_all['BatterTeam'] == team_code].copy()
     if team_df.empty:
-        st.info("No rows for that team.")
+        with left_col:
+            st.info("No rows for that team.")
         st.stop()
 
     # Ensure Date is datetime for filters
     if 'Date' in team_df.columns:
         team_df['Date'] = pd.to_datetime(team_df['Date'], errors='coerce')
-
         date_mask = pd.Series(True, index=team_df.index)
 
-        # Months selected? limit to those months; otherwise season totals
         if len(months_sel) > 0:
             date_mask &= team_df['Date'].dt.month.isin(months_sel)
 
-        # Days selected? limit to those days (with or without months)
         if len(days_sel) > 0:
             date_mask &= team_df['Date'].dt.day.isin(days_sel)
 
         team_df = team_df[date_mask]
 
     if team_df.empty:
-        st.info("No rows after applying the selected month/day filters.")
+        with left_col:
+            st.info("No rows after applying the selected month/day filters.")
         st.stop()
 
     # Friendly filter summary
@@ -621,18 +642,20 @@ else:
         dnames = ", ".join(str(d) for d in sorted(days_sel))
         filt_text = f"Filtered to days: {dnames} (across all months)"
 
-    st.caption(filt_text)
-
     ranked = compute_rates(team_df)
     player_options = ranked['Batter'].unique().tolist()
-    player_sel = c3.selectbox("Player", player_options)
 
-    display_cols = DISPLAY_COLS + [c+'_num' for c in RATE_COLS]
-    st.dataframe(ranked[display_cols], use_container_width=True)
+    with right_col:
+        player_sel = st.selectbox("Player", player_options)
 
-    row = ranked[ranked['Batter'] == player_sel].head(1)
-    if not row.empty:
-        st.markdown("**Selected Player Stats**")
-        st.table(row[['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']])
-    else:
-        st.info("Player not found in computed stats.")
+    with left_col:
+        st.caption(filt_text)
+        display_cols = DISPLAY_COLS + [c+'_num' for c in RATE_COLS]
+        st.dataframe(ranked[display_cols], use_container_width=True)
+
+        row = ranked[ranked['Batter'] == player_sel].head(1)
+        if not row.empty:
+            st.markdown("**Selected Player Stats**")
+            st.table(row[['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']])
+        else:
+            st.info("Player not found in computed stats.")

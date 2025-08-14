@@ -20,84 +20,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-DATA_PATH = "B10C25_small.parquet"          # ← set to your parquet path
-LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # ← set to your logo path
-
-# ─── SPLASH / LANDING (click ANYWHERE to continue) ────────────────────────────
-if "splash_done" not in st.session_state:
-    st.session_state["splash_done"] = False
-
-def _get_query_params():
-    try:
-        return st.query_params  # Streamlit ≥ 1.33
-    except Exception:
-        return st.experimental_get_query_params()  # fallback
-
-def _clear_query_params():
-    try:
-        st.query_params.clear()
-    except Exception:
-        st.experimental_set_query_params()  # clears when called with no kwargs
-
-_qp = _get_query_params()
-if "enter" in _qp or _qp.get("enter", [""])[0] == "1":
-    st.session_state["splash_done"] = True
-    _clear_query_params()
-
-def show_splash_and_wait_for_click():
-    st.markdown(
-        """
-        <style>
-        .splash-wrap {
-            height: 92vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            text-align: center;
-        }
-        .splash-col {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 18px;
-            z-index: 2; /* above background */
-        }
-        .nb-title {
-            font-size: 40px;
-            font-weight: 800;
-            letter-spacing: 0.6px;
-        }
-        /* Full-screen invisible click overlay */
-        a.fullscreen-enter {
-            position: fixed;
-            inset: 0;
-            display: block;
-            z-index: 10;
-            text-decoration: none;
-            background: rgba(0,0,0,0); /* fully transparent */
-            cursor: pointer;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.markdown("<div class='splash-wrap'><div class='splash-col'>", unsafe_allow_html=True)
-    if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, width=280)
-    st.markdown("<div class='nb-title'>Nebraska Baseball</div>", unsafe_allow_html=True)
-    st.markdown("</div></div>", unsafe_allow_html=True)
-
-    # Click ANYWHERE to continue: navigate to ?enter=1 (cleared right after)
-    st.markdown("<a class='fullscreen-enter' href='?enter=1' aria-label='Enter'></a>",
-                unsafe_allow_html=True)
-
-    # Keep splash rendered until user clicks
-    st.stop()
-
-if not st.session_state["splash_done"]:
-    show_splash_and_wait_for_click()
+DATA_PATH = "B10C25_small.parquet"            # ← set to your parquet path
+LOGO_PATH = "Nebraska-Cornhuskers-Logo.png" # ← set to your logo path
 
 # ─── DATE FORMAT HELPERS ──────────────────────────────────────────────────────
 def _ordinal(n: int) -> str:
@@ -404,7 +328,9 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
 
     sub_whiff_l = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Left')]
     sub_whiff_r = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Right')]
-    ax3 = fig.add_subplot(gs[0, 3]); plot_conditional(ax3, sub_whiff_l, 'Whiffs vs LHP')
+    ax3 = fig.add_subplot(gs[0, 3]); plot_conditional(ax3, 'Whiffs vs LHP', sub_whiff_l)  # keep order consistent? use previous signature
+    # Fix: correct argument order
+    ax3.cla(); plot_conditional(ax3, sub_whiff_l, 'Whiffs vs LHP')
     ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')
 
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
@@ -510,7 +436,7 @@ def compute_rates(df: pd.DataFrame) -> pd.DataFrame:
     df['is_ab']   = pr.isin(ab_values).astype(int)
     df['is_hit']  = pr.isin(hit_values).astype(int)
     df['is_bb']   = df['KorBB'].astype(str).str.lower().eq('walk').astype(int)
-    df['is_k']    = df['KorBB'].astype(str).str.contains('strikeout', case=False, na=False).astype(int)  # ← fixed
+    df['is_k']    = df['KorBB'].astype(str).str.contains('strikeout', case=False, na=False).astype(int)
     df['is_hbp']  = df['PitchCall'].astype(str).eq('HitByPitch').astype(int)
     df['is_sf']   = df['PlayResult'].astype(str).str.contains('Sacrifice', case=False, na=False).astype(int)
 
@@ -561,7 +487,7 @@ def load_parquet(path: str) -> pd.DataFrame:
 # ─── TITLE ────────────────────────────────────────────────────────────────────
 st.title("Baseball Analytics")
 
-# Load once (after splash)
+# Load once
 if not os.path.exists(DATA_PATH):
     st.error(f"Data not found at {DATA_PATH}")
     st.stop()

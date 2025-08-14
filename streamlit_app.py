@@ -18,17 +18,17 @@ from matplotlib import colors
 st.set_page_config(
     layout="wide",
     page_title="Baseball Reports",
-    initial_sidebar_state="expanded",  # set to "collapsed" if you want the drawer hidden by default
+    initial_sidebar_state="expanded",  # set to "collapsed" to start hidden
 )
 
-DATA_PATH = "B10C25_small.parquet"   # ONE file for both modes
-LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
+DATA_PATH = "B10C25_small.parquet"   # ONE file for both modes (adjust path)
+LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # adjust path
 
-# ─── SPLASH / LANDING SCREEN ──────────────────────────────────────────────────
+# ─── SPLASH / LANDING SCREEN (requires pressing Enter) ────────────────────────
 if "splash_done" not in st.session_state:
     st.session_state["splash_done"] = False
 
-def show_splash_and_exit():
+def show_splash_and_wait_for_enter():
     st.markdown(
         """
         <style>
@@ -49,29 +49,37 @@ def show_splash_and_exit():
             font-weight: 800;
             letter-spacing: 0.6px;
         }
+        .light-note { color: #666; }
         </style>
         """,
         unsafe_allow_html=True
     )
+
     st.markdown("<div class='center-wrap'><div class='center-col'>", unsafe_allow_html=True)
     if os.path.exists(LOGO_PATH):
         st.image(LOGO_PATH, width=260)
     st.markdown("<div class='nb-title'>Nebraska Baseball</div>", unsafe_allow_html=True)
+
+    with st.form("splash_form", clear_on_submit=True):
+        # Pressing Enter in this input submits the form
+        st.text_input(
+            "Press Enter to continue",
+            key="splash_enter",
+            placeholder="Press Enter ↵",
+            label_visibility="collapsed",
+        )
+        submitted = st.form_submit_button("Press Enter ↵")
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-    # small loading cue
-    with st.spinner("Loading…"):
-        time.sleep(2)
-
-    st.session_state["splash_done"] = True
-    # rerun into the actual app
-    try:
+    if submitted:
+        st.session_state["splash_done"] = True
         st.rerun()
-    except Exception:
-        st.experimental_rerun()
+
+    # Stay on splash until Enter is pressed
+    st.stop()
 
 if not st.session_state["splash_done"]:
-    show_splash_and_exit()
+    show_splash_and_wait_for_enter()
 
 # ─── DATE FORMAT HELPERS ──────────────────────────────────────────────────────
 def _ordinal(n: int) -> str:
@@ -379,11 +387,7 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     sub_whiff_l = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Left')]
     sub_whiff_r = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Right')]
     ax3 = fig.add_subplot(gs[0, 3]); plot_conditional(ax3, sub_whiff_l, 'Whiffs vs LHP')
-    ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, 'Whiffs vs RHP', sub_whiff_r)
-
-    # fix order (typo above)
-    ax4.clear()
-    plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')
+    ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')
 
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
     sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Right')]

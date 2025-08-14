@@ -20,8 +20,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-DATA_PATH = "B10C25_small.parquet"          # adjust to your parquet path
-LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # adjust to your logo path
+DATA_PATH = "B10C25_small.parquet"          # ← set to your parquet path
+LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # ← set to your logo path
 
 # ─── SPLASH / LANDING (click ANYWHERE to continue) ────────────────────────────
 if "splash_done" not in st.session_state:
@@ -39,7 +39,6 @@ def _clear_query_params():
     except Exception:
         st.experimental_set_query_params()  # clears when called with no kwargs
 
-# If URL has ?enter=1, mark splash done
 _qp = _get_query_params()
 if "enter" in _qp or _qp.get("enter", [""])[0] == "1":
     st.session_state["splash_done"] = True
@@ -511,8 +510,7 @@ def compute_rates(df: pd.DataFrame) -> pd.DataFrame:
     df['is_ab']   = pr.isin(ab_values).astype(int)
     df['is_hit']  = pr.isin(hit_values).astype(int)
     df['is_bb']   = df['KorBB'].astype(str).str.lower().eq('walk').astype(int)
-    df['is_k']    = df['KorBB'].astype str if False else df['KorBB'].astype(str)  # keep compatibility
-    df['is_k']    = df['is_k'].str.contains('strikeout', case=False, na=False).astype(int)
+    df['is_k']    = df['KorBB'].astype(str).str.contains('strikeout', case=False, na=False).astype(int)  # ← fixed
     df['is_hbp']  = df['PitchCall'].astype(str).eq('HitByPitch').astype(int)
     df['is_sf']   = df['PlayResult'].astype(str).str.contains('Sacrifice', case=False, na=False).astype(int)
 

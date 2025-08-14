@@ -1,6 +1,7 @@
 # unified_baseball_app.py
 import os
 import math
+import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -17,11 +18,60 @@ from matplotlib import colors
 st.set_page_config(
     layout="wide",
     page_title="Baseball Reports",
-    initial_sidebar_state="expanded"  # set to "collapsed" to start hidden
+    initial_sidebar_state="expanded",  # set to "collapsed" if you want the drawer hidden by default
 )
 
 DATA_PATH = "B10C25_small.parquet"   # ONE file for both modes
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
+
+# ─── SPLASH / LANDING SCREEN ──────────────────────────────────────────────────
+if "splash_done" not in st.session_state:
+    st.session_state["splash_done"] = False
+
+def show_splash_and_exit():
+    st.markdown(
+        """
+        <style>
+        .center-wrap {
+            height: 88vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .center-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+        }
+        .nb-title {
+            font-size: 36px;
+            font-weight: 800;
+            letter-spacing: 0.6px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    st.markdown("<div class='center-wrap'><div class='center-col'>", unsafe_allow_html=True)
+    if os.path.exists(LOGO_PATH):
+        st.image(LOGO_PATH, width=260)
+    st.markdown("<div class='nb-title'>Nebraska Baseball</div>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
+    # small loading cue
+    with st.spinner("Loading…"):
+        time.sleep(2)
+
+    st.session_state["splash_done"] = True
+    # rerun into the actual app
+    try:
+        st.rerun()
+    except Exception:
+        st.experimental_rerun()
+
+if not st.session_state["splash_done"]:
+    show_splash_and_exit()
 
 # ─── DATE FORMAT HELPERS ──────────────────────────────────────────────────────
 def _ordinal(n: int) -> str:
@@ -329,7 +379,11 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     sub_whiff_l = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Left')]
     sub_whiff_r = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Right')]
     ax3 = fig.add_subplot(gs[0, 3]); plot_conditional(ax3, sub_whiff_l, 'Whiffs vs LHP')
-    ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')
+    ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, 'Whiffs vs RHP', sub_whiff_r)
+
+    # fix order (typo above)
+    ax4.clear()
+    plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')
 
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
     sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Right')]
@@ -485,7 +539,7 @@ def load_parquet(path: str) -> pd.DataFrame:
 # ─── TITLE ────────────────────────────────────────────────────────────────────
 st.title("Baseball Analytics")
 
-# Load once
+# Load once (after splash)
 if not os.path.exists(DATA_PATH):
     st.error(f"Data not found at {DATA_PATH}")
     st.stop()
@@ -512,9 +566,9 @@ with st.sidebar:
             sel_date = st.selectbox("Game Date", neb_dates, format_func=format_date_long)
 
             # stash in session state for main to read
-            st.session_state['neb_report'] = report
+            st.session_state['neb_report']  = report
             st.session_state['neb_variant'] = variant
-            st.session_state['neb_date'] = sel_date
+            st.session_state['neb_date']    = sel_date
 
             # player pickers depend on date
             df_date_tmp = df_all[df_all['Date'].dt.date==sel_date]
@@ -555,17 +609,17 @@ with st.sidebar:
             days_sel = st.multiselect("Days (optional)", options=list(range(1, 32)), default=[])
 
             st.session_state['d1_conference'] = conference
-            st.session_state['d1_team_code'] = team_code
-            st.session_state['d1_months'] = months_sel
-            st.session_state['d1_days'] = days_sel
+            st.session_state['d1_team_code']  = team_code
+            st.session_state['d1_months']     = months_sel
+            st.session_state['d1_days']       = days_sel
 
 # ─── MAIN AREA (VISUALS) ──────────────────────────────────────────────────────
 if st.session_state.get('mode', None) != mode:
     st.session_state['mode'] = mode
 
 if mode == "Nebraska Baseball":
-    report  = st.session_state.get('neb_report')
-    variant = st.session_state.get('neb_variant')
+    report   = st.session_state.get('neb_report')
+    variant  = st.session_state.get('neb_variant')
     sel_date = st.session_state.get('neb_date')
     player   = st.session_state.get('neb_player')
 
@@ -606,7 +660,7 @@ if mode == "Nebraska Baseball":
             if fig: st.pyplot(fig=fig)
 
 else:
-    team_code = st.session_state.get('d1_team_code')
+    team_code  = st.session_state.get('d1_team_code')
     months_sel = st.session_state.get('d1_months', [])
     days_sel   = st.session_state.get('d1_days', [])
 

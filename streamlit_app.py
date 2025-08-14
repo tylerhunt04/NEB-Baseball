@@ -15,8 +15,8 @@ from matplotlib import colors
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 st.set_page_config(layout="wide", page_title="Baseball Reports")
-DATA_PATH = "data/B10C25_small.parquet"            # ONE file for both modes
-LOGO_PATH = "images/Nebraska-Cornhuskers-Logo.png"
+DATA_PATH = "B10C25_small.parquet"            # ONE file for both modes
+LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 
 # ─── DATE FORMAT HELPERS ──────────────────────────────────────────────────────
 def _ordinal(n: int) -> str:

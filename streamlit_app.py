@@ -1,7 +1,6 @@
 # unified_baseball_app.py
 import os
 import math
-import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -18,68 +17,88 @@ from matplotlib import colors
 st.set_page_config(
     layout="wide",
     page_title="Baseball Reports",
-    initial_sidebar_state="expanded",  # set to "collapsed" to start hidden
+    initial_sidebar_state="expanded",
 )
 
-DATA_PATH = "B10C25_small.parquet"   # ONE file for both modes (adjust path)
-LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # adjust path
+DATA_PATH = "B10C25_small.parquet"          # adjust to your parquet path
+LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"  # adjust to your logo path
 
-# ─── SPLASH / LANDING SCREEN (requires pressing Enter) ────────────────────────
+# ─── SPLASH / LANDING (click ANYWHERE to continue) ────────────────────────────
 if "splash_done" not in st.session_state:
     st.session_state["splash_done"] = False
 
-def show_splash_and_wait_for_enter():
+def _get_query_params():
+    try:
+        return st.query_params  # Streamlit ≥ 1.33
+    except Exception:
+        return st.experimental_get_query_params()  # fallback
+
+def _clear_query_params():
+    try:
+        st.query_params.clear()
+    except Exception:
+        st.experimental_set_query_params()  # clears when called with no kwargs
+
+# If URL has ?enter=1, mark splash done
+_qp = _get_query_params()
+if "enter" in _qp or _qp.get("enter", [""])[0] == "1":
+    st.session_state["splash_done"] = True
+    _clear_query_params()
+
+def show_splash_and_wait_for_click():
     st.markdown(
         """
         <style>
-        .center-wrap {
-            height: 88vh;
+        .splash-wrap {
+            height: 92vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
+            text-align: center;
         }
-        .center-col {
+        .splash-col {
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 18px;
+            z-index: 2; /* above background */
         }
         .nb-title {
-            font-size: 36px;
+            font-size: 40px;
             font-weight: 800;
             letter-spacing: 0.6px;
         }
-        .light-note { color: #666; }
+        /* Full-screen invisible click overlay */
+        a.fullscreen-enter {
+            position: fixed;
+            inset: 0;
+            display: block;
+            z-index: 10;
+            text-decoration: none;
+            background: rgba(0,0,0,0); /* fully transparent */
+            cursor: pointer;
+        }
         </style>
         """,
         unsafe_allow_html=True
     )
 
-    st.markdown("<div class='center-wrap'><div class='center-col'>", unsafe_allow_html=True)
+    st.markdown("<div class='splash-wrap'><div class='splash-col'>", unsafe_allow_html=True)
     if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, width=260)
+        st.image(LOGO_PATH, width=280)
     st.markdown("<div class='nb-title'>Nebraska Baseball</div>", unsafe_allow_html=True)
-
-    with st.form("splash_form", clear_on_submit=True):
-        # Pressing Enter in this input submits the form
-        st.text_input(
-            "Press Enter to continue",
-            key="splash_enter",
-            placeholder="Press Enter ↵",
-            label_visibility="collapsed",
-        )
-        submitted = st.form_submit_button("Press Enter ↵")
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-    if submitted:
-        st.session_state["splash_done"] = True
-        st.rerun()
+    # Click ANYWHERE to continue: navigate to ?enter=1 (cleared right after)
+    st.markdown("<a class='fullscreen-enter' href='?enter=1' aria-label='Enter'></a>",
+                unsafe_allow_html=True)
 
-    # Stay on splash until Enter is pressed
+    # Keep splash rendered until user clicks
     st.stop()
 
 if not st.session_state["splash_done"]:
-    show_splash_and_wait_for_enter()
+    show_splash_and_wait_for_click()
 
 # ─── DATE FORMAT HELPERS ──────────────────────────────────────────────────────
 def _ordinal(n: int) -> str:
@@ -492,7 +511,8 @@ def compute_rates(df: pd.DataFrame) -> pd.DataFrame:
     df['is_ab']   = pr.isin(ab_values).astype(int)
     df['is_hit']  = pr.isin(hit_values).astype(int)
     df['is_bb']   = df['KorBB'].astype(str).str.lower().eq('walk').astype(int)
-    df['is_k']    = df['KorBB'].astype(str).str.contains('strikeout', case=False, na=False).astype(int)
+    df['is_k']    = df['KorBB'].astype str if False else df['KorBB'].astype(str)  # keep compatibility
+    df['is_k']    = df['is_k'].str.contains('strikeout', case=False, na=False).astype(int)
     df['is_hbp']  = df['PitchCall'].astype(str).eq('HitByPitch').astype(int)
     df['is_sf']   = df['PlayResult'].astype(str).str.contains('Sacrifice', case=False, na=False).astype(int)
 

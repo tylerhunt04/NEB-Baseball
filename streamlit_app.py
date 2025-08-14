@@ -14,10 +14,9 @@ from numpy.linalg import LinAlgError
 from matplotlib import colors
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
-DATA_PATH = "B10C25_small.parquet"            # ONE file for both modes
-LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
-
 st.set_page_config(layout="wide", page_title="Baseball Reports")
+DATA_PATH = "data/B10C25_small.parquet"            # ONE file for both modes
+LOGO_PATH = "images/Nebraska-Cornhuskers-Logo.png"
 
 # ─── DATE FORMAT HELPERS ──────────────────────────────────────────────────────
 def _ordinal(n: int) -> str:
@@ -75,10 +74,8 @@ BIG_TEN_MAP = {
 }
 BIG_12_MAP = {  # fill in your codes as needed
 }
-SEC_MAP = {
-}
-ACC_MAP = {
-}
+SEC_MAP = {}
+ACC_MAP = {}
 CONF_MAP = {"Big Ten": BIG_TEN_MAP, "Big 12": BIG_12_MAP, "SEC": SEC_MAP, "ACC": ACC_MAP}
 
 # ─── MONTH/DAY CHOICES FOR D1 FILTERS ─────────────────────────────────────────
@@ -481,35 +478,35 @@ def load_parquet(path: str) -> pd.DataFrame:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     return df
 
-# ─── LAYOUT: Content left, filters right ──────────────────────────────────────
+# ─── TITLE & LAYOUT: Filters left, visuals right ──────────────────────────────
 st.title("Baseball Analytics")
-left_col, right_col = st.columns([7, 3], gap="large")
+filters_col, viz_col = st.columns([3, 7], gap="large")
 
 # Load once
 if not os.path.exists(DATA_PATH):
-    with left_col:
+    with viz_col:
         st.error(f"Data not found at {DATA_PATH}")
     st.stop()
 df_all = load_parquet(DATA_PATH)
 
-# ─── MODE SELECT (right) ──────────────────────────────────────────────────────
-with right_col:
+# ─── MODE SELECT (left) ───────────────────────────────────────────────────────
+with filters_col:
     st.header("Filters")
     mode = st.radio("Mode", ["Nebraska Baseball", "D1 Baseball"], horizontal=False)
 
-# ─── NEBRASKA REPORTS (left content, right filters) ───────────────────────────
+# ─── NEBRASKA REPORTS (filters left, content right) ───────────────────────────
 if mode == "Nebraska Baseball":
     needed = ['Date','PitcherTeam','BatterTeam','Pitcher','Batter','PlayResult','KorBB','PitchCall']
     missing = [c for c in needed if c not in df_all.columns]
     if missing:
-        with left_col:
+        with viz_col:
             st.error(f"Missing required columns: {missing}")
         st.stop()
 
     neb_mask = (df_all['PitcherTeam']=='NEB') | (df_all['BatterTeam']=='NEB')
     neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
 
-    with right_col:
+    with filters_col:
         report  = st.selectbox("Report Type", ["Pitcher Report","Hitter Report"])
         variant = st.selectbox("Variant", ["Standard","Heatmap"])
         sel_date = st.selectbox("Game Date", neb_dates, format_func=format_date_long)
@@ -520,15 +517,15 @@ if mode == "Nebraska Baseball":
     if report == "Pitcher Report":
         df_p = df_date[df_date['PitcherTeam']=='NEB']
         pitchers = sorted(df_p['Pitcher'].dropna().unique().tolist())
-        with right_col:
+        with filters_col:
             player = st.selectbox("Pitcher", pitchers) if pitchers else None
 
         if not player:
-            with left_col:
+            with viz_col:
                 st.warning("No NEB pitchers for that date.")
             st.stop()
 
-        with left_col:
+        with viz_col:
             st.subheader(f"{player} — {format_date_long(sel_date)}")
             if variant == "Heatmap":
                 fig = combined_pitcher_heatmap_report(df_p, player, LOGO_PATH)
@@ -543,15 +540,15 @@ if mode == "Nebraska Baseball":
     else:  # Hitter Report
         df_b = df_date[df_date['BatterTeam']=='NEB']
         batters = sorted(df_b['Batter'].dropna().unique().tolist())
-        with right_col:
+        with filters_col:
             player = st.selectbox("Batter", batters) if batters else None
 
         if not player:
-            with left_col:
+            with viz_col:
                 st.warning("No NEB batters for that date.")
             st.stop()
 
-        with left_col:
+        with viz_col:
             st.subheader(f"{player} — {format_date_long(sel_date)}")
             if variant == "Heatmap":
                 fig = combined_hitter_heatmap_report(df_b, player, logo_img=logo_img)
@@ -560,16 +557,16 @@ if mode == "Nebraska Baseball":
                 fig = create_hitter_report(df_b, player, ncols=3)
                 if fig: st.pyplot(fig=fig)
 
-# ─── D1 HITTER STATISTICS (left content, right filters) ───────────────────────
+# ─── D1 HITTER STATISTICS (filters left, content right) ───────────────────────
 else:
     needed = ['BatterTeam','Batter','PlayResult','KorBB','PitchCall']
     missing = [c for c in needed if c not in df_all.columns]
     if missing:
-        with left_col:
+        with viz_col:
             st.error(f"Missing required columns: {missing}")
         st.stop()
 
-    with right_col:
+    with filters_col:
         conference = st.selectbox("Conference", ["Big Ten","Big 12","SEC","ACC"], index=0)
         team_map = CONF_MAP.get(conference, {})
 
@@ -577,7 +574,7 @@ else:
     codes_in_conf = [code for code in team_map.keys() if code in present_codes]
 
     if not team_map or not codes_in_conf:
-        with left_col:
+        with viz_col:
             if not team_map:
                 st.warning(f"No team code map found for {conference}. Fill the *_MAP dict for cleaner names.")
             else:
@@ -587,7 +584,7 @@ else:
     options = sorted([(code, team_map.get(code, code)) for code in codes_in_conf], key=lambda t: t[1])
     team_display = [name for _, name in options]
 
-    with right_col:
+    with filters_col:
         team_sel_name = st.selectbox("Team", team_display)
         team_code = [code for code, name in options if name == team_sel_name][0]
 
@@ -606,7 +603,7 @@ else:
 
     team_df = df_all[df_all['BatterTeam'] == team_code].copy()
     if team_df.empty:
-        with left_col:
+        with viz_col:
             st.info("No rows for that team.")
         st.stop()
 
@@ -624,7 +621,7 @@ else:
         team_df = team_df[date_mask]
 
     if team_df.empty:
-        with left_col:
+        with viz_col:
             st.info("No rows after applying the selected month/day filters.")
         st.stop()
 
@@ -645,10 +642,10 @@ else:
     ranked = compute_rates(team_df)
     player_options = ranked['Batter'].unique().tolist()
 
-    with right_col:
+    with filters_col:
         player_sel = st.selectbox("Player", player_options)
 
-    with left_col:
+    with viz_col:
         st.caption(filt_text)
         display_cols = DISPLAY_COLS + [c+'_num' for c in RATE_COLS]
         st.dataframe(ranked[display_cols], use_container_width=True)

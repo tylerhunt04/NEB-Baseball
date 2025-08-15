@@ -25,22 +25,41 @@ st.set_page_config(
 # ──────────────────────────────────────────────────────────────────────────────
 # FILE PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH = "B10C25_25MB.csv"   # D1 + Nebraska combined CSV
+DATA_PATH = "B10C25_25MB.csv"   # your CSV
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# UTIL: DATE FORMATTING & FILTERING
+# DATE HELPERS
 # ──────────────────────────────────────────────────────────────────────────────
+DATE_CANDIDATES = [
+    "Date","date","GameDate","GAME_DATE","Game Date","date_game","Datetime",
+    "DateTime","game_datetime","GameDateTime"
+]
+
+def ensure_date_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Create/normalize a 'Date' column from common variants, then coerce to datetime (date-only)."""
+    df = df.copy()
+    found = None
+    cols_lower = {c.lower(): c for c in df.columns}
+    for cand in DATE_CANDIDATES:
+        if cand.lower() in cols_lower:
+            found = cols_lower[cand.lower()]
+            break
+    if found is None:
+        # If truly no date-ish column, keep a 'Date' full of NaT so filters become no-ops
+        df["Date"] = pd.NaT
+        return df
+    # Parse to datetime, strip time
+    dt = pd.to_datetime(df[found], errors="coerce")
+    df["Date"] = pd.to_datetime(dt.dt.date, errors="coerce")
+    return df
+
 def _ordinal(n: int) -> str:
     return f"{n}{'th' if 10 <= n % 100 <= 20 else {1:'st',2:'nd',3:'rd'}.get(n % 10, 'th')}"
 
 def format_date_long(d) -> str:
-    if d is None:
-        return ""
-    try:
-        d = pd.to_datetime(d).date()
-    except Exception:
-        return str(d)
+    if d is None or pd.isna(d): return ""
+    d = pd.to_datetime(d).date()
     return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
 
 def summarize_dates(series: pd.Series) -> str:
@@ -55,10 +74,10 @@ def summarize_dates(series: pd.Series) -> str:
 def filter_by_month_day(df, date_col="Date", months=None, days=None):
     """
     Filter df by selected months and/or days.
-    - months only  -> keep ALL rows whose month is in months  (combines all days)
-    - days only    -> keep ALL rows whose day is in days      (across all months)
-    - both         -> month in months AND day in days
-    - neither      -> returns df unchanged
+    - months only  -> rows whose month ∈ months  (combine all days in those months)
+    - days only    -> rows whose day   ∈ days    (across all months)
+    - both         -> month ∈ months AND day ∈ days
+    - neither      -> unchanged
     """
     if date_col not in df.columns or df.empty:
         return df
@@ -80,7 +99,7 @@ custom_cmap = colors.LinearSegmentedColormap.from_list(
 )
 
 def get_zone_bounds():
-    # Fixed strike zone so size stays identical (heatmap vs. scatter)
+    # Fixed zone so size stays identical across heatmap/scatter
     left, bottom = -0.83, 1.17
     width, height = 1.66, 2.75
     return left, bottom, width, height
@@ -110,23 +129,6 @@ def get_pitch_color(ptype):
     }
     return savant.get(str(ptype).lower(), "#E60026")
 
-def color_for_release(canon_label: str) -> str:
-    key = str(canon_label).lower()
-    palette = {
-        "fastball": "#E60026",
-        "two-seam fastball": "#FF9300",
-        "cutter": "#800080",
-        "changeup": "#008000",
-        "splitter": "#00CCCC",
-        "curveball": "#0033CC",
-        "knuckle curve": "#000000",
-        "slider": "#CCCC00",
-        "sweeper": "#B5651D",
-        "screwball": "#CC0066",
-        "eephus": "#666666",
-    }
-    return palette.get(key, "#7F7F7F")
-
 def format_name(name):
     if isinstance(name, str) and ',' in name:
         last, first = [s.strip() for s in name.split(',', 1)]
@@ -134,7 +136,7 @@ def format_name(name):
     return str(name)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CONFERENCE MAPS (extend as needed)
+# CONFERENCES
 # ──────────────────────────────────────────────────────────────────────────────
 BIG_TEN_MAP = {
     'ILL_ILL': 'Illinois','MIC_SPA': 'Michigan State','UCLA': 'UCLA','IOW_HAW': 'Iowa',
@@ -153,22 +155,22 @@ MONTH_CHOICES = [
 MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
 
 # ──────────────────────────────────────────────────────────────────────────────
-# DATA LOADER
+# LOAD DATA
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
-def load_csv(path: str) -> pd.DataFrame:
+def load_csv_norm(path: str) -> pd.DataFrame:
+    # try default, fallback encodings
     try:
         df = pd.read_csv(path, low_memory=False)
     except UnicodeDecodeError:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
-    if "Date" in df.columns:
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df = ensure_date_column(df)  # <-- normalize 'Date'
     return df
 
 if not os.path.exists(DATA_PATH):
     st.error(f"Data not found at {DATA_PATH}")
     st.stop()
-df_all = load_csv(DATA_PATH)
+df_all = load_csv_norm(DATA_PATH)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DENSITY HELPERS
@@ -201,7 +203,7 @@ def strike_rate(df):
     return df['PitchCall'].isin(strike_calls).mean() * 100
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCHER: STANDARD REPORT (movement + summary table)
+# PITCHER: STANDARD REPORT
 # ──────────────────────────────────────────────────────────────────────────────
 def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     df_p = df[df['Pitcher'] == pitcher_name]
@@ -249,7 +251,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     axm.set_xlabel('Horizontal Break'); axm.set_ylabel('Induced Vertical Break')
     axm.legend(title='Pitch Type', fontsize=8, title_fontsize=9, loc='upper right')
 
-    # Summary (inside figure)
+    # Summary (no extra table below)
     axt = fig.add_subplot(gs[1, 0]); axt.axis('off')
     tbl = axt.table(cellText=summary.values, colLabels=summary.columns, cellLoc='center', loc='center')
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
@@ -329,8 +331,19 @@ def combined_pitcher_heatmap_report(df, pitcher_name, grid_size=100):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HITTER HEATMAPS
+# HITTER HEATMAPS & STANDARD REPORT
 # ──────────────────────────────────────────────────────────────────────────────
+def compute_density_hitter(x, y, xi_m, yi_m):
+    coords = np.vstack([x, y])
+    mask = np.isfinite(coords).all(axis=0)
+    if mask.sum() <= 1:
+        return np.zeros(xi_m.shape)
+    try:
+        kde = gaussian_kde(coords[:, mask])
+        return kde(np.vstack([xi_m.ravel(), yi_m.ravel()])).reshape(xi_m.shape)
+    except Exception:
+        return np.zeros(xi_m.shape)
+
 def plot_conditional(ax, sub, title):
     x_min, x_max, y_min, y_max = get_view_bounds()
     draw_strikezone(ax)
@@ -383,21 +396,18 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     sub_whiff_l = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Left')]
     sub_whiff_r = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Right')]
     ax3 = fig.add_subplot(gs[0, 3]); plot_conditional(ax3, sub_whiff_l, 'Whiffs vs LHP')
-    ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')
+    ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, 'Whiffs vs RHP', sub_whiff_r)  # not used here, kept tidy
 
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
     sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Right')]
     ax5 = fig.add_subplot(gs[0, 6]); plot_conditional(ax5, sub_95_l, 'Exit ≥95 vs LHP')
-    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, sub_95_r, 'Exit ≥95 vs RHP')  # fixed argument order
+    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, sub_95_r, 'Exit ≥95 vs RHP')
 
     formatted = format_name(batter)
     fig.suptitle(f"{formatted}{(' — ' + date_str) if date_str else ''}", fontsize=22, x=0.5, y=0.87)
     plt.tight_layout(rect=[0, 0, 1, 0.78])
     return fig
 
-# ──────────────────────────────────────────────────────────────────────────────
-# HITTER STANDARD REPORT
-# ──────────────────────────────────────────────────────────────────────────────
 def create_hitter_report(df, batter, ncols=3):
     bdf = df[df['Batter'] == batter]
     pa = list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning']))
@@ -473,7 +483,7 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RELEASE POINTS (for Nebraska Pitcher Report - Standard)
+# RELEASE POINTS (used in Nebraska → Pitcher reports)
 # ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
@@ -510,6 +520,23 @@ def canonicalize_type(raw: str) -> str:
         "curveball":"Curveball","knuckle curve":"Knuckle Curve","slider":"Slider",
         "sweeper":"Sweeper","screwball":"Screwball","eephus":"Eephus",
     }.get(n, "Unknown")
+
+def color_for_release(canon_label: str) -> str:
+    key = str(canon_label).lower()
+    palette = {
+        "fastball": "#E60026",
+        "two-seam fastball": "#FF9300",
+        "cutter": "#800080",
+        "changeup": "#008000",
+        "splitter": "#00CCCC",
+        "curveball": "#0033CC",
+        "knuckle curve": "#000000",
+        "slider": "#CCCC00",
+        "sweeper": "#B5651D",
+        "screwball": "#CC0066",
+        "eephus": "#666666",
+    }
+    return palette.get(key, "#7F7F7F")
 
 def draw_stylized_arm(ax, start_xy, end_xy, ring_color):
     x0, y0 = start_xy; x1, y1 = end_xy
@@ -596,7 +623,7 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# D1 STAT COMPUTATIONS
+# D1 STATS
 # ──────────────────────────────────────────────────────────────────────────────
 DISPLAY_COLS_H = ['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']
 RATE_COLS_H    = ['BA','OBP','SLG','OPS']
@@ -646,7 +673,8 @@ def compute_hitter_rates(df: pd.DataFrame) -> pd.DataFrame:
     agg['OPS'] = [f"{x:.3f}" for x in ops]
 
     agg = agg.rename(columns={'BatterTeam':'Team'})
-    agg['Team'] = agg['Team'].replace({**BIG_TEN_MAP, **BIG_12_MAP, **SEC_MAP, **ACC_MAP})
+    team_map_all = {**BIG_TEN_MAP, **BIG_12_MAP, **SEC_MAP, **ACC_MAP}
+    agg['Team'] = agg['Team'].replace(team_map_all)
 
     keep = DISPLAY_COLS_H + [c+'_num' for c in RATE_COLS_H]
     return agg[keep].sort_values('BA_num', ascending=False)
@@ -735,17 +763,17 @@ with st.sidebar:
             if st.session_state["neb_report"] == "Pitcher Report":
                 neb_df_all = df_all[df_all['PitcherTeam'] == 'NEB'].copy()
 
-                # Available months from NEB pitcher rows
+                # Available months (from normalized Date)
                 present_months = sorted(neb_df_all['Date'].dropna().dt.month.unique().tolist())
                 months_sel = st.multiselect(
                     "Months (optional)",
                     options=[m for m in range(1,13) if m in present_months],
-                    format_func=lambda n: MONTH_NAME_BY_NUM[n],
+                    format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
                     default=[],
                     key="neb_pitch_months",
                 )
 
-                # Days list depends on selected months (if any)
+                # Days depend on chosen months (if any)
                 dates_series = neb_df_all['Date'].dropna()
                 if months_sel:
                     dates_series = dates_series[dates_series.dt.month.isin(months_sel)]
@@ -758,12 +786,13 @@ with st.sidebar:
                     key="neb_pitch_days",
                 )
 
-                # Build pitcher list from filtered rows (months/days)
+                # Build pitcher list from filtered rows
                 neb_df_filt = filter_by_month_day(neb_df_all, months=months_sel, days=days_sel)
                 pitchers = sorted(neb_df_filt['Pitcher'].dropna().unique().tolist())
                 st.selectbox("Pitcher", pitchers, key="neb_player")
 
             else:
+                # Hitter: still by single date for Nebraska (unchanged)
                 neb_mask = (df_all.get('BatterTeam','')=='NEB')
                 neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
                 st.selectbox("Game Date", neb_dates, format_func=lambda d: format_date_long(d), key="neb_date")
@@ -823,23 +852,44 @@ with st.sidebar:
 st.title("Baseball Analytics")
 mode = st.session_state.get("mode", "Nebraska Baseball")
 
+# NEBRASKA
 if mode == "Nebraska Baseball":
     report   = st.session_state.get('neb_report')
     player   = st.session_state.get('neb_player')
     logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
 
     if report == "Pitcher Report":
-        neb_df = df_all[df_all['PitcherTeam']=='NEB'].copy()
+        neb_df_all = df_all[df_all['PitcherTeam']=='NEB'].copy()
+
+        # Read filter selections
         months_sel = st.session_state.get("neb_pitch_months", [])
         days_sel   = st.session_state.get("neb_pitch_days", [])
-        neb_df = filter_by_month_day(neb_df, months=months_sel, days=days_sel)
+
+        # Apply filter (this is the key bit)
+        neb_df = filter_by_month_day(neb_df_all, months=months_sel, days=days_sel)
+
+        # Quick filter summary
+        if months_sel or days_sel:
+            if months_sel and not days_sel:
+                mnames = ", ".join(MONTH_NAME_BY_NUM[m] for m in sorted(months_sel))
+                st.caption(f"Filtered to months: {mnames}")
+            elif months_sel and days_sel:
+                mnames = ", ".join(MONTH_NAME_BY_NUM[m] for m in sorted(months_sel))
+                dnames = ", ".join(str(d) for d in sorted(days_sel))
+                st.caption(f"Filtered to months: {mnames} and days: {dnames}")
+            else:
+                dnames = ", ".join(str(d) for d in sorted(days_sel))
+                st.caption(f"Filtered to days: {dnames} (across all months)")
+        else:
+            st.caption("Season totals (no month/day filter)")
 
         if not player:
             st.warning("Choose a pitcher in the Filters drawer.")
             st.stop()
 
-        if neb_df.empty or neb_df[neb_df['Pitcher']==player].empty:
-            st.info("No rows for the selected filters. Try different month/day choices.")
+        # Guard against stale selection
+        if neb_df[neb_df['Pitcher']==player].empty:
+            st.info("No rows for the selected pitcher with current month/day filters.")
             st.stop()
 
         date_summary = summarize_dates(neb_df.loc[neb_df['Pitcher']==player, 'Date'])
@@ -849,7 +899,7 @@ if mode == "Nebraska Baseball":
         out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8)
         if out:
             fig, _summary = out
-            st.pyplot(fig=fig)  # NOTE: no extra st.table below
+            st.pyplot(fig=fig)
 
         # 2) Heatmaps
         st.markdown("### Pitcher Heatmaps")
@@ -863,7 +913,7 @@ if mode == "Nebraska Baseball":
         if rel_fig:
             st.pyplot(fig=rel_fig)
 
-    else:  # Hitter Report (single game date)
+    else:  # Hitter Report (single date)
         sel_date = st.session_state.get('neb_date')
         if not sel_date:
             st.warning("Select a game date in the Filters drawer.")
@@ -884,8 +934,8 @@ if mode == "Nebraska Baseball":
             fig = combined_hitter_heatmap_report(df_b, player, logo_img=logo_img)
             if fig: st.pyplot(fig=fig)
 
+# D1
 else:
-    # D1 Baseball stats (Hitter or Pitcher) with month/day filters
     team_code  = st.session_state.get('d1_team_code')
     months_sel = st.session_state.get('d1_months', [])
     days_sel   = st.session_state.get('d1_days', [])
@@ -920,6 +970,7 @@ else:
         filt_text = f"Filtered to days: {dnames} (across all months)"
     st.caption(filt_text)
 
+    # Hitter table
     if stats_type == "Hitter Statistics":
         ranked_h = compute_hitter_rates(team_df)
         display_cols = DISPLAY_COLS_H + [c+'_num' for c in RATE_COLS_H]
@@ -933,6 +984,7 @@ else:
                 st.markdown("**Selected Player Stats**")
                 st.table(row[['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']])
 
+    # Pitcher table
     else:
         table_p = compute_pitcher_table(team_df)
         display_cols_p = DISPLAY_COLS_P + RATE_NUMS_P

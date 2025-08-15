@@ -41,8 +41,7 @@ def format_date_long(d) -> str:
     return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
 
 def summarize_dates(series: pd.Series) -> str:
-    """Return a friendly summary for one/many dates."""
-    if series.empty:
+    if series is None or series.empty:
         return ""
     uniq = pd.to_datetime(series.dropna()).dt.date.unique()
     if len(uniq) == 1:
@@ -93,8 +92,8 @@ def get_pitch_color(ptype):
 def color_for_release(canon_label: str) -> str:
     key = str(canon_label).lower()
     palette = {
-        "fastball": "#E60026",            # red
-        "two-seam fastball": "#FF9300",   # orange
+        "fastball": "#E60026",
+        "two-seam fastball": "#FF9300",
         "cutter": "#800080",
         "changeup": "#008000",
         "splitter": "#00CCCC",
@@ -209,7 +208,6 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     }).round({'Usage %':1,'Strike %':1,'Rel Speed':1,'Spin Rate':1,'IVB':1,'HB':1,'Rel Height':2,'VAA':1,'Extension':2}) \
      .sort_values('Pitches', ascending=False)
 
-    # title date summary (handles 1 or many)
     date_str = summarize_dates(df_p.get("Date", pd.Series(dtype="datetime64[ns]")))
 
     fig = plt.figure(figsize=(8, 12))
@@ -231,7 +229,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     axm.set_xlabel('Horizontal Break'); axm.set_ylabel('Induced Vertical Break')
     axm.legend(title='Pitch Type', fontsize=8, title_fontsize=9, loc='upper right')
 
-    # Summary table
+    # Summary table (inside the figure)
     axt = fig.add_subplot(gs[1, 0]); axt.axis('off')
     tbl = axt.table(cellText=summary.values, colLabels=summary.columns, cellLoc='center', loc='center')
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
@@ -370,7 +368,7 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
     sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Right')]
     ax5 = fig.add_subplot(gs[0, 6]); plot_conditional(ax5, sub_95_l, 'Exit ≥95 vs LHP')
-    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, sub_95_r, 'Exit ≥95 vs RHP')
+    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, 'Exit ≥95 vs RHP' and sub_95_r)
 
     formatted = format_name(batter)
     fig.suptitle(f"{formatted}{(' — ' + date_str) if date_str else ''}", fontsize=22, x=0.5, y=0.87)
@@ -455,7 +453,7 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RELEASE POINTS (figure returned for embedding)
+# RELEASE POINTS
 # ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
@@ -715,7 +713,6 @@ with st.sidebar:
             st.selectbox("Report Type", ["Pitcher Report","Hitter Report"], key="neb_report")
 
             if st.session_state["neb_report"] == "Pitcher Report":
-                # New: Month/Day filters (multi-select) for Nebraska pitcher reports
                 neb_df_all = df_all[df_all['PitcherTeam'] == 'NEB'].copy()
                 present_months = sorted(neb_df_all['Date'].dropna().dt.month.unique().tolist())
                 present_days   = sorted(neb_df_all['Date'].dropna().dt.day.unique().tolist())
@@ -734,7 +731,6 @@ with st.sidebar:
                     key="neb_pitch_days",
                 )
 
-                # We build the filtered frame for pitcher list
                 date_mask = pd.Series(True, index=neb_df_all.index)
                 if st.session_state["neb_pitch_months"]:
                     date_mask &= neb_df_all['Date'].dt.month.isin(st.session_state["neb_pitch_months"])
@@ -746,7 +742,6 @@ with st.sidebar:
                 st.selectbox("Pitcher", pitchers, key="neb_player")
 
             else:  # Hitter Report
-                # Keep per-game (single date) selection for hitters
                 neb_mask = (df_all.get('BatterTeam','')=='NEB')
                 neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
                 st.selectbox("Game Date", neb_dates, format_func=lambda d: format_date_long(d), key="neb_date")
@@ -832,7 +827,6 @@ if mode == "Nebraska Baseball":
             st.info("No rows for the selected filters. Try different month/day choices.")
             st.stop()
 
-        # Show selection summary of dates used
         date_summary = summarize_dates(neb_df.loc[neb_df['Pitcher']==player, 'Date'])
         st.subheader(f"{player}{(' — ' + date_summary) if date_summary else ''}")
 
@@ -841,7 +835,7 @@ if mode == "Nebraska Baseball":
         if out:
             fig, summary = out
             st.pyplot(fig=fig)
-            st.table(summary)
+            # NOTE: removed st.table(summary) here per your request
 
         # 2) Heatmaps
         st.markdown("### Pitcher Heatmaps")
@@ -855,7 +849,7 @@ if mode == "Nebraska Baseball":
         if rel_fig:
             st.pyplot(fig=rel_fig)
 
-    else:  # Hitter Report (unchanged: single game date)
+    else:  # Hitter Report (single game date)
         sel_date = st.session_state.get('neb_date')
         if not sel_date:
             st.warning("Select a game date in the Filters drawer.")
@@ -869,7 +863,6 @@ if mode == "Nebraska Baseball":
 
         st.subheader(f"{player} — {format_date_long(sel_date)}")
 
-        # Keep hitter standard report; add a toggle to add heatmaps if you like
         tabs = st.tabs(["Standard", "Heatmaps"])
         with tabs[0]:
             fig = create_hitter_report(df_b, player, ncols=3)
@@ -879,7 +872,7 @@ if mode == "Nebraska Baseball":
             if fig: st.pyplot(fig=fig)
 
 else:
-    # D1 stats (unchanged)
+    # D1 stats
     team_code  = st.session_state.get('d1_team_code')
     months_sel = st.session_state.get('d1_months', [])
     days_sel   = st.session_state.get('d1_days', [])

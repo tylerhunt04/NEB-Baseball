@@ -23,9 +23,9 @@ st.set_page_config(
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# FILE PATHS
+# FILE PATHS (updated to your new file)
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"   # your CSV
+DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -46,10 +46,8 @@ def ensure_date_column(df: pd.DataFrame) -> pd.DataFrame:
             found = cols_lower[cand.lower()]
             break
     if found is None:
-        # If truly no date-ish column, keep a 'Date' full of NaT so filters become no-ops
         df["Date"] = pd.NaT
         return df
-    # Parse to datetime, strip time
     dt = pd.to_datetime(df[found], errors="coerce")
     df["Date"] = pd.to_datetime(dt.dt.date, errors="coerce")
     return df
@@ -136,7 +134,7 @@ def format_name(name):
     return str(name)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CONFERENCES
+# CONFERENCES (Big Ten filled; others placeholders for now)
 # ──────────────────────────────────────────────────────────────────────────────
 BIG_TEN_MAP = {
     'ILL_ILL': 'Illinois','MIC_SPA': 'Michigan State','UCLA': 'UCLA','IOW_HAW': 'Iowa',
@@ -159,12 +157,11 @@ MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
 def load_csv_norm(path: str) -> pd.DataFrame:
-    # try default, fallback encodings
     try:
         df = pd.read_csv(path, low_memory=False)
     except UnicodeDecodeError:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
-    df = ensure_date_column(df)  # <-- normalize 'Date'
+    df = ensure_date_column(df)  # normalize 'Date'
     return df
 
 if not os.path.exists(DATA_PATH):
@@ -251,7 +248,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     axm.set_xlabel('Horizontal Break'); axm.set_ylabel('Induced Vertical Break')
     axm.legend(title='Pitch Type', fontsize=8, title_fontsize=9, loc='upper right')
 
-    # Summary (no extra table below)
+    # Summary (single table, no extra table below)
     axt = fig.add_subplot(gs[1, 0]); axt.axis('off')
     tbl = axt.table(cellText=summary.values, colLabels=summary.columns, cellLoc='center', loc='center')
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
@@ -269,7 +266,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     return fig, summary
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCHER HEATMAPS (auto-switch to scatter when n < 12)
+# PITCHER HEATMAPS (auto-switch to scatter when n < 12; fixed strike zone)
 # ──────────────────────────────────────────────────────────────────────────────
 def combined_pitcher_heatmap_report(df, pitcher_name, grid_size=100):
     df_p = df[df['Pitcher'] == pitcher_name]
@@ -333,17 +330,6 @@ def combined_pitcher_heatmap_report(df, pitcher_name, grid_size=100):
 # ──────────────────────────────────────────────────────────────────────────────
 # HITTER HEATMAPS & STANDARD REPORT
 # ──────────────────────────────────────────────────────────────────────────────
-def compute_density_hitter(x, y, xi_m, yi_m):
-    coords = np.vstack([x, y])
-    mask = np.isfinite(coords).all(axis=0)
-    if mask.sum() <= 1:
-        return np.zeros(xi_m.shape)
-    try:
-        kde = gaussian_kde(coords[:, mask])
-        return kde(np.vstack([xi_m.ravel(), yi_m.ravel()])).reshape(xi_m.shape)
-    except Exception:
-        return np.zeros(xi_m.shape)
-
 def plot_conditional(ax, sub, title):
     x_min, x_max, y_min, y_max = get_view_bounds()
     draw_strikezone(ax)
@@ -396,7 +382,7 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     sub_whiff_l = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Left')]
     sub_whiff_r = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Right')]
     ax3 = fig.add_subplot(gs[0, 3]); plot_conditional(ax3, sub_whiff_l, 'Whiffs vs LHP')
-    ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, 'Whiffs vs RHP', sub_whiff_r)  # not used here, kept tidy
+    ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')
 
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
     sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Right')]
@@ -416,7 +402,9 @@ def create_hitter_report(df, batter, ncols=3):
     for _, padf in pa:
         lines = []
         for _, p in padf.iterrows():
-            lines.append(f"{int(p.PitchofPA)} / {p.AutoPitchType} {p.EffectiveVelo:.1f} MPH / {p.PitchCall}")
+            vel = getattr(p, 'EffectiveVelo', np.nan)
+            vel_str = f"{vel:.1f}" if pd.notna(vel) else "—"
+            lines.append(f"{int(p.PitchofPA)} / {p.AutoPitchType} {vel_str} MPH / {p.PitchCall}")
         ip = padf[padf['PitchCall']=='InPlay']
         if not ip.empty:
             last = ip.iloc[-1]; res = last.PlayResult or 'InPlay'
@@ -749,7 +737,7 @@ def compute_pitcher_table(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SIDEBAR FILTERS
+# SIDEBAR FILTERS — pitcher first, then month/day based on that pitcher
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🎛️ Filters")
@@ -761,45 +749,53 @@ with st.sidebar:
             st.selectbox("Report Type", ["Pitcher Report","Hitter Report"], key="neb_report")
 
             if st.session_state["neb_report"] == "Pitcher Report":
-                neb_df_all = df_all[df_all['PitcherTeam'] == 'NEB'].copy()
+                neb_df_all = df_all[df_all.get('PitcherTeam','') == 'NEB'].copy()
+                # 1) Choose pitcher first
+                pitchers_all = sorted(neb_df_all.get('Pitcher', pd.Series(dtype=object)).dropna().unique().tolist())
+                st.selectbox("Pitcher", pitchers_all, key="neb_player")
 
-                # Available months (from normalized Date)
-                present_months = sorted(neb_df_all['Date'].dropna().dt.month.unique().tolist())
-                months_sel = st.multiselect(
+                # 2) Build month/day options LIMITED to this pitcher
+                pitcher = st.session_state.get("neb_player")
+                if pitcher:
+                    df_pitcher_all = neb_df_all[neb_df_all['Pitcher'] == pitcher].copy()
+                else:
+                    df_pitcher_all = neb_df_all.iloc[0:0].copy()
+
+                # Available months from this pitcher's dates
+                present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
+                st.multiselect(
                     "Months (optional)",
-                    options=[m for m in range(1,13) if m in present_months],
+                    options=present_months,
                     format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
                     default=[],
                     key="neb_pitch_months",
                 )
 
-                # Days depend on chosen months (if any)
-                dates_series = neb_df_all['Date'].dropna()
+                # Days depend on chosen months (if any) – still restricted to this pitcher
+                months_sel = st.session_state.get("neb_pitch_months", [])
+                dates_series = df_pitcher_all['Date'].dropna()
                 if months_sel:
                     dates_series = dates_series[dates_series.dt.month.isin(months_sel)]
                 present_days = sorted(dates_series.dt.day.unique().tolist())
-
-                days_sel = st.multiselect(
+                st.multiselect(
                     "Days (optional)",
                     options=present_days,
                     default=[],
                     key="neb_pitch_days",
                 )
 
-                # Build pitcher list from filtered rows
-                neb_df_filt = filter_by_month_day(neb_df_all, months=months_sel, days=days_sel)
-                pitchers = sorted(neb_df_filt['Pitcher'].dropna().unique().tolist())
-                st.selectbox("Pitcher", pitchers, key="neb_player")
-
             else:
-                # Hitter: still by single date for Nebraska (unchanged)
+                # Hitter report (single date)
                 neb_mask = (df_all.get('BatterTeam','')=='NEB')
                 neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
                 st.selectbox("Game Date", neb_dates, format_func=lambda d: format_date_long(d), key="neb_date")
 
-                df_date_tmp = df_all[df_all['Date'].dt.date==st.session_state["neb_date"]]
-                df_b_tmp = df_date_tmp[df_date_tmp['BatterTeam']=='NEB']
-                batters = sorted(df_b_tmp['Batter'].dropna().unique().tolist())
+                if "neb_date" in st.session_state and st.session_state["neb_date"] is not None:
+                    df_date_tmp = df_all[df_all['Date'].dt.date==st.session_state["neb_date"]]
+                    df_b_tmp = df_date_tmp[df_date_tmp['BatterTeam']=='NEB']
+                    batters = sorted(df_b_tmp.get('Batter', pd.Series(dtype=object)).dropna().unique().tolist())
+                else:
+                    batters = []
                 st.selectbox("Batter", batters, key="neb_player")
 
     else:
@@ -859,16 +855,19 @@ if mode == "Nebraska Baseball":
     logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
 
     if report == "Pitcher Report":
-        neb_df_all = df_all[df_all['PitcherTeam']=='NEB'].copy()
+        if not player:
+            st.warning("Choose a pitcher in the Filters drawer.")
+            st.stop()
 
-        # Read filter selections
+        neb_df_all = df_all[df_all.get('PitcherTeam','')=='NEB'].copy()
+        df_pitcher_all = neb_df_all[neb_df_all['Pitcher'] == player].copy()
+
+        # Apply selected months/days (restricted to this pitcher)
         months_sel = st.session_state.get("neb_pitch_months", [])
         days_sel   = st.session_state.get("neb_pitch_days", [])
+        neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
 
-        # Apply filter (this is the key bit)
-        neb_df = filter_by_month_day(neb_df_all, months=months_sel, days=days_sel)
-
-        # Quick filter summary
+        # Summary text
         if months_sel or days_sel:
             if months_sel and not days_sel:
                 mnames = ", ".join(MONTH_NAME_BY_NUM[m] for m in sorted(months_sel))
@@ -881,21 +880,16 @@ if mode == "Nebraska Baseball":
                 dnames = ", ".join(str(d) for d in sorted(days_sel))
                 st.caption(f"Filtered to days: {dnames} (across all months)")
         else:
-            st.caption("Season totals (no month/day filter)")
+            st.caption("Season totals for this pitcher (no month/day filter).")
 
-        if not player:
-            st.warning("Choose a pitcher in the Filters drawer.")
-            st.stop()
-
-        # Guard against stale selection
-        if neb_df[neb_df['Pitcher']==player].empty:
+        if neb_df.empty:
             st.info("No rows for the selected pitcher with current month/day filters.")
             st.stop()
 
-        date_summary = summarize_dates(neb_df.loc[neb_df['Pitcher']==player, 'Date'])
+        date_summary = summarize_dates(neb_df['Date'])
         st.subheader(f"{player}{(' — ' + date_summary) if date_summary else ''}")
 
-        # 1) Post-game (aggregated over selected dates)
+        # 1) Post-game style (aggregated over selected dates)
         out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8)
         if out:
             fig, _summary = out
@@ -920,7 +914,7 @@ if mode == "Nebraska Baseball":
             st.stop()
 
         df_date = df_all[df_all['Date'].dt.date==sel_date]
-        df_b = df_date[df_date['BatterTeam']=='NEB']
+        df_b = df_date[df_date.get('BatterTeam','')=='NEB']
         if not player:
             st.warning("Choose a batter in the Filters drawer.")
             st.stop()
@@ -946,9 +940,9 @@ else:
         st.stop()
 
     if stats_type == "Hitter Statistics":
-        team_df = df_all[df_all['BatterTeam'] == team_code].copy()
+        team_df = df_all[df_all.get('BatterTeam','') == team_code].copy()
     else:
-        team_df = df_all[df_all['PitcherTeam'] == team_code].copy()
+        team_df = df_all[df_all.get('PitcherTeam','') == team_code].copy()
 
     team_df = filter_by_month_day(team_df, months=months_sel, days=days_sel)
 

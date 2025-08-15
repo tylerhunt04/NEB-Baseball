@@ -311,7 +311,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path, grid_size=100):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HITTER HEATMAPS
+# HITTER HEATMAPS (fixed last panel arg)
 # ──────────────────────────────────────────────────────────────────────────────
 def plot_conditional(ax, sub, title):
     x_min, x_max, y_min, y_max = get_view_bounds()
@@ -374,7 +374,7 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
     sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Right')]
     ax5 = fig.add_subplot(gs[0, 6]); plot_conditional(ax5, sub_95_l, 'Exit ≥95 vs LHP')
-    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, 'Exit ≥95 vs RHP')
+    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, sub_95_r, 'Exit ≥95 vs RHP')  # ← fixed
 
     formatted = format_name(batter)
     fig.suptitle(f"{formatted}{date_str}", fontsize=22, x=0.5, y=0.87)
@@ -462,7 +462,7 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RELEASE POINTS (Nebraska → Pitcher → Variant)
+# RELEASE POINTS (figure returned for embedding under Standard report)
 # ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
@@ -710,7 +710,7 @@ def compute_pitcher_table(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SIDEBAR FILTERS  (FIX: bind mode to session state and use it in main)
+# SIDEBAR FILTERS
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🎛️ Filters")
@@ -719,7 +719,6 @@ with st.sidebar:
 
     if st.session_state["mode"] == "Nebraska Baseball":
         with st.expander("Report Controls", expanded=True):
-            # Nebraska date universe (either NEB as PitcherTeam or BatterTeam)
             neb_mask = (df_all.get('PitcherTeam','')=='NEB') | (df_all.get('BatterTeam','')=='NEB')
             neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
 
@@ -743,7 +742,6 @@ with st.sidebar:
 
     else:
         with st.expander("D1 Statistics Controls", expanded=True):
-            # Build present team codes from data (both batter & pitcher teams)
             present_codes = pd.unique(
                 pd.concat(
                     [df_all.get('BatterTeam', pd.Series(dtype=object)),
@@ -754,10 +752,7 @@ with st.sidebar:
 
             st.selectbox("Conference", ["Big Ten","Big 12","SEC","ACC"], index=0, key="d1_conference")
             team_map = CONF_MAP.get(st.session_state["d1_conference"], {})
-            # Codes in this conference that are present in data
             codes_in_conf = [code for code in team_map.keys() if code in present_codes]
-
-            # Fallback: if no mapped codes found, offer ALL present codes (name=code)
             if not codes_in_conf:
                 codes_in_conf = sorted(present_codes.tolist())
                 team_map = {code: code for code in codes_in_conf}
@@ -766,7 +761,6 @@ with st.sidebar:
             team_display = [name for _, name in team_options]
             team_sel_name = st.selectbox("Team", team_display, key="d1_team_name") if team_display else None
 
-            # Map chosen display name back to code
             team_code = None
             if team_sel_name:
                 for code, name in team_options:
@@ -791,7 +785,7 @@ with st.sidebar:
             st.radio("Stats Type", ["Hitter Statistics","Pitcher Statistics"], index=0, key="d1_stats_type")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MAIN CONTENT  (uses session state's "mode" directly)
+# MAIN CONTENT
 # ──────────────────────────────────────────────────────────────────────────────
 st.title("Baseball Analytics")
 mode = st.session_state.get("mode", "Nebraska Baseball")
@@ -824,12 +818,17 @@ if mode == "Nebraska Baseball":
             fig = release_points_figure(df_p, player)
             if fig: st.pyplot(fig=fig)
 
-        else:  # Standard
+        else:  # Standard → Post-game report + Release Points (underneath)
             out = combined_pitcher_report(df_p, player, logo_img, coverage=0.8)
             if out:
                 fig, summary = out
                 st.pyplot(fig=fig)
                 st.table(summary)
+
+            st.markdown("### Release Points")
+            rel_fig = release_points_figure(df_p, player)
+            if rel_fig:
+                st.pyplot(fig=rel_fig)
 
     else:  # Hitter Report
         df_b = df_date[df_date['BatterTeam']=='NEB']

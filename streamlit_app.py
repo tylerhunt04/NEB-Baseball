@@ -1,4 +1,4 @@
-# unified_baseball_app.py
+# app.py
 import os
 import math
 import numpy as np
@@ -13,17 +13,21 @@ from scipy.stats import chi2, gaussian_kde
 from numpy.linalg import LinAlgError
 from matplotlib import colors
 
-# ─── CONFIG ───────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# CONFIG
+# ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Baseball Reports",
+    page_title="Baseball Analytics",
     initial_sidebar_state="expanded",
 )
 
-DATA_PATH = "B10C25_small.parquet"            # ← set to your parquet path
-LOGO_PATH = "Nebraska-Cornhuskers-Logo.png" # ← set to your logo path
+DATA_PATH = "B10C25_25MB.csv"           # ← your CSV file
+LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"       # ← adjust if needed
 
-# ─── DATE FORMAT HELPERS ──────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# DATE HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
 def _ordinal(n: int) -> str:
     return f"{n}{'th' if 10 <= n % 100 <= 20 else {1:'st',2:'nd',3:'rd'}.get(n % 10, 'th')}"
 
@@ -36,7 +40,9 @@ def format_date_long(d) -> str:
         return str(d)
     return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
 
-# ─── STRIKE ZONE CONSTANTS / COLORMAPS ────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# STRIKE ZONE + PITCH COLORS
+# ──────────────────────────────────────────────────────────────────────────────
 custom_cmap = colors.LinearSegmentedColormap.from_list(
     "custom_cmap",
     [(0.0, "white"), (0.2, "deepskyblue"), (0.3, "white"), (0.7, "red"), (1.0, "red")],
@@ -65,7 +71,6 @@ def draw_strikezone(ax, sz_left=None, sz_bottom=None, sz_width=None, sz_height=N
         ax.vlines(sz_left + sz_width*f,  sz_bottom, sz_bottom+sz_height, colors="gray", ls="--", lw=1)
         ax.hlines(sz_bottom + sz_height*f, sz_left, sz_left+sz_width,     colors="gray", ls="--", lw=1)
 
-# ─── PITCH COLORS ─────────────────────────────────────────────────────────────
 def get_pitch_color(ptype):
     if isinstance(ptype, str) and (ptype.lower().startswith("four-seam fastball") or ptype.lower() == "fastball"):
         return "#E60026"
@@ -75,25 +80,32 @@ def get_pitch_color(ptype):
     }
     return savant.get(str(ptype).lower(), "#E60026")
 
-# Canonical-color mapping for Release Points (canonical labels)
 def color_for_release(canon_label: str) -> str:
     key = str(canon_label).lower()
     palette = {
         "fastball": "#E60026",            # red
         "two-seam fastball": "#FF9300",   # orange
-        "cutter": "#800080",              # purple
-        "changeup": "#008000",            # green
-        "splitter": "#00CCCC",            # teal
-        "curveball": "#0033CC",           # blue
-        "knuckle curve": "#000000",       # black
-        "slider": "#CCCC00",              # yellow-ish
-        "sweeper": "#B5651D",             # brown
+        "cutter": "#800080",
+        "changeup": "#008000",
+        "splitter": "#00CCCC",
+        "curveball": "#0033CC",
+        "knuckle curve": "#000000",
+        "slider": "#CCCC00",
+        "sweeper": "#B5651D",
         "screwball": "#CC0066",
         "eephus": "#666666",
     }
     return palette.get(key, "#7F7F7F")
 
-# ─── POWER-4 (extend codes as you add) ────────────────────────────────────────
+def format_name(name):
+    if isinstance(name, str) and ',' in name:
+        last, first = [s.strip() for s in name.split(',', 1)]
+        return f"{first} {last}"
+    return str(name)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# D1 CONFERENCE MAPS (extend as needed)
+# ──────────────────────────────────────────────────────────────────────────────
 BIG_TEN_MAP = {
     'ILL_ILL': 'Illinois','MIC_SPA': 'Michigan State','UCLA': 'UCLA','IOW_HAW': 'Iowa',
     'IU': 'Indiana','MAR_TER': 'Maryland','MIC_WOL': 'Michigan','MIN_GOL': 'Minnesota',
@@ -110,7 +122,30 @@ MONTH_CHOICES = [
 ]
 MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
 
-# ─── GENERIC HELPERS ─────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# DATA LOADER (CSV → cached DataFrame)
+# ──────────────────────────────────────────────────────────────────────────────
+@st.cache_data(show_spinner=True)
+def load_csv(path: str) -> pd.DataFrame:
+    # robust read for large CSVs
+    try:
+        df = pd.read_csv(path, low_memory=False)
+    except UnicodeDecodeError:
+        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
+    # parse Date if present
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    return df
+
+if not os.path.exists(DATA_PATH):
+    st.error(f"Data not found at {DATA_PATH}")
+    st.stop()
+
+df_all = load_csv(DATA_PATH)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DENSITY HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
 def compute_density(x, y, grid_coords, mesh_shape):
     mask = np.isfinite(x) & np.isfinite(y)
     x, y = x[mask], y[mask]
@@ -138,43 +173,9 @@ def strike_rate(df):
     strike_calls = ['StrikeCalled','StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay']
     return df['PitchCall'].isin(strike_calls).mean() * 100
 
-def format_name(name):
-    if isinstance(name, str) and ',' in name:
-        last, first = [s.strip() for s in name.split(',', 1)]
-        return f"{first} {last}"
-    return str(name)
-
-# ─── HITTER HEATMAP HELPERS ───────────────────────────────────────────────────
-def plot_conditional(ax, sub, title):
-    x_min, x_max, y_min, y_max = get_view_bounds()
-    draw_strikezone(ax)
-    x = sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy()
-    y = sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy()
-    valid = np.isfinite(x) & np.isfinite(y)
-    x, y = x[valid], y[valid]
-
-    if len(sub) < 10:
-        for _, r in sub.iterrows():
-            if np.isfinite(r.get('PlateLocSide', np.nan)) and np.isfinite(r.get('PlateLocHeight', np.nan)):
-                color = get_pitch_color(r.get('AutoPitchType', ''))
-                ax.plot(r['PlateLocSide'], r['PlateLocHeight'], 'o', color=color, alpha=0.8, ms=6)
-    else:
-        xi = np.linspace(x_min, x_max, 200)
-        yi = np.linspace(y_min, y_max, 200)
-        xi_m, yi_m = np.meshgrid(xi, yi)
-        zi = compute_density_hitter(
-            sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy(),
-            sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy(),
-            xi_m, yi_m
-        )
-        ax.imshow(zi, origin='lower', extent=[x_min, x_max, y_min, y_max], aspect='equal', cmap=custom_cmap)
-        draw_strikezone(ax)
-
-    ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal', 'box')
-    ax.set_title(title, fontweight='bold')
-    ax.set_xticks([]); ax.set_yticks([])
-
-# ─── STANDARD PITCHER REPORT ───────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# STANDARD PITCHER REPORT
+# ──────────────────────────────────────────────────────────────────────────────
 def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     df_p = df[df['Pitcher'] == pitcher_name]
     if df_p.empty:
@@ -211,7 +212,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
 
     # Movement
     axm = fig.add_subplot(gs[0, 0]); axm.set_title('Movement Plot')
-    chi2v = chi2.ppf(0.8, df=2)
+    chi2v = chi2.ppf(coverage, df=2)
     axm.axhline(0, ls='--', color='grey'); axm.axvline(0, ls='--', color='grey')
     for ptype, g in grp:
         x, y = g['HorzBreak'], g['InducedVertBreak']; clr = get_pitch_color(ptype)
@@ -241,7 +242,9 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, summary
 
-# ─── PITCHER HEATMAPS (auto-switch to scatter if n<12) ────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# PITCHER HEATMAPS (auto scatter if n < 12)
+# ──────────────────────────────────────────────────────────────────────────────
 def combined_pitcher_heatmap_report(df, pitcher_name, logo_path, grid_size=100):
     df_p = df[df['Pitcher'] == pitcher_name]
     if df_p.empty:
@@ -291,9 +294,9 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path, grid_size=100):
     sub_dg = df_p[df_p['ExitSpeed'] >= 95];               ax = fig.add_subplot(gs[1, 4]); panel(ax, sub_dg, f"Damage (n={len(sub_dg)})", orange=True)
 
     # summary metrics
-    fp = strike_rate(df_p[(df_p['Balls']==0) & (df_p['Strikes']==0)])
+    fp  = strike_rate(df_p[(df_p['Balls']==0) & (df_p['Strikes']==0)])
     mix = strike_rate(df_p[((df_p['Balls']==1)&(df_p['Strikes']==0)) | ((df_p['Balls']==0)&(df_p['Strikes']==1)) | ((df_p['Balls']==1)&(df_p['Strikes']==1))])
-    hp = strike_rate(df_p[((df_p['Balls']==2)&(df_p['Strikes']==0)) | ((df_p['Balls']==2)&(df_p['Strikes']==1)) | ((df_p['Balls']==3)&(df_p['Strikes']==1))])
+    hp  = strike_rate(df_p[((df_p['Balls']==2)&(df_p['Strikes']==0)) | ((df_p['Balls']==2)&(df_p['Strikes']==1)) | ((df_p['Balls']==3)&(df_p['Strikes']==1))])
     two = strike_rate(df_p[(df_p['Strikes']==2) & (df_p['Balls']<3)])
     metrics = pd.DataFrame({'1st Pitch %':[fp],'Mix Count %':[mix],'Hitter+ %':[hp],'2-Strike %':[two]}).round(1)
 
@@ -307,7 +310,38 @@ def combined_pitcher_heatmap_report(df, pitcher_name, logo_path, grid_size=100):
     plt.tight_layout(rect=[0, 0, 1, 0.96]); fig.suptitle(f"{pitcher_name} – Heatmap Report{date_str}", fontsize=18, y=0.98, fontweight='bold')
     return fig
 
-# ─── HITTER HEATMAPS ──────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# HITTER HEATMAPS
+# ──────────────────────────────────────────────────────────────────────────────
+def plot_conditional(ax, sub, title):
+    x_min, x_max, y_min, y_max = get_view_bounds()
+    draw_strikezone(ax)
+    x = sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy()
+    y = sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy()
+    valid = np.isfinite(x) & np.isfinite(y)
+    x, y = x[valid], y[valid]
+
+    if len(sub) < 10:
+        for _, r in sub.iterrows():
+            if np.isfinite(r.get('PlateLocSide', np.nan)) and np.isfinite(r.get('PlateLocHeight', np.nan)):
+                color = get_pitch_color(r.get('AutoPitchType', ''))
+                ax.plot(r['PlateLocSide'], r['PlateLocHeight'], 'o', color=color, alpha=0.8, ms=6)
+    else:
+        xi = np.linspace(x_min, x_max, 200)
+        yi = np.linspace(y_min, y_max, 200)
+        xi_m, yi_m = np.meshgrid(xi, yi)
+        zi = compute_density_hitter(
+            sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy(),
+            sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy(),
+            xi_m, yi_m
+        )
+        ax.imshow(zi, origin='lower', extent=[x_min, x_max, y_min, y_max], aspect='equal', cmap=custom_cmap)
+        draw_strikezone(ax)
+
+    ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal', 'box')
+    ax.set_title(title, fontweight='bold')
+    ax.set_xticks([]); ax.set_yticks([])
+
 def combined_hitter_heatmap_report(df, batter, logo_img=None):
     df_b = df[df['Batter'] == batter].copy()
     if df_b.empty:
@@ -340,14 +374,16 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
     sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Right')]
     ax5 = fig.add_subplot(gs[0, 6]); plot_conditional(ax5, sub_95_l, 'Exit ≥95 vs LHP')
-    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, 'Exit ≥95 vs RHP' and sub_95_r, 'Exit ≥95 vs RHP')
+    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, sub_95_r, 'Exit ≥95 vs RHP')
 
     formatted = format_name(batter)
     fig.suptitle(f"{formatted}{date_str}", fontsize=22, x=0.5, y=0.87)
     plt.tight_layout(rect=[0, 0, 1, 0.78])
     return fig
 
-# ─── STANDARD HITTER REPORT ───────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# STANDARD HITTER REPORT
+# ──────────────────────────────────────────────────────────────────────────────
 def create_hitter_report(df, batter, ncols=3):
     bdf = df[df['Batter'] == batter]
     pa = list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning']))
@@ -425,8 +461,9 @@ def create_hitter_report(df, batter, ncols=3):
     plt.tight_layout(rect=[0.12,0.05,1,0.88])
     return fig
 
-# ─── RELEASE POINTS (NEW) ─────────────────────────────────────────────────────
-# Arm styling
+# ──────────────────────────────────────────────────────────────────────────────
+# RELEASE POINTS (Nebraska → Pitcher → Variant)
+# ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
 SHOULDER_RADIUS_OUT = 0.20
@@ -485,13 +522,11 @@ def draw_stylized_arm(ax, start_xy, end_xy, ring_color):
     ax.add_patch(inner)
 
 def release_points_figure(df: pd.DataFrame, pitcher_name: str):
-    """Create the two-panel Release Points figure for a single pitcher."""
-    # Column resolution
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
-    x_col       = pick_col(df, "Relside","RelSide","ReleaseSide","Release_Side")
-    y_col       = pick_col(df, "Relheight","RelHeight","ReleaseHeight","Release_Height")
+    x_col       = pick_col(df, "Relside","RelSide","ReleaseSide","Release_Side","release_pos_x")
+    y_col       = pick_col(df, "Relheight","RelHeight","ReleaseHeight","Release_Height","release_pos_z")
     type_col    = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
-    speed_col   = pick_col(df, "Relspeed","RelSpeed","ReleaseSpeed","RelSpeedMPH")
+    speed_col   = pick_col(df, "Relspeed","RelSpeed","ReleaseSpeed","RelSpeedMPH","release_speed")
 
     missing = [lbl for lbl, col in [("Relside",x_col), ("Relheight",y_col)] if col is None]
     if missing:
@@ -503,13 +538,11 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str):
         st.error(f"No rows found for pitcher '{pitcher_name}'.")
         return None
 
-    # Coerce numerics
     sub[x_col] = pd.to_numeric(sub[x_col], errors="coerce")
     sub[y_col] = pd.to_numeric(sub[y_col], errors="coerce")
     if speed_col: sub[speed_col] = pd.to_numeric(sub[speed_col], errors="coerce")
     sub = sub.dropna(subset=[x_col, y_col])
 
-    # Canonicalize pitch types and color
     sub["_type_canon"] = sub[type_col].apply(canonicalize_type)
     sub = sub[sub["_type_canon"] != "Unknown"].copy()
     if sub.empty:
@@ -517,7 +550,6 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str):
         return None
     sub["_color"] = sub["_type_canon"].apply(color_for_release)
 
-    # Means per type (and speed if available)
     agg = {"mean_x": (x_col, "mean"), "mean_y": (y_col, "mean")}
     if speed_col: agg["mean_speed"] = (speed_col, "mean")
     means = sub.groupby("_type_canon", as_index=False).agg(**agg)
@@ -525,17 +557,13 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str):
     if "mean_speed" in means.columns:
         means = means.sort_values("mean_speed", ascending=False).reset_index(drop=True)
 
-    # Plot
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13.5, 7.0), sharey=True)
-
-    # Left: all releases
     ax1.scatter(sub[x_col], sub[y_col], s=12, alpha=0.75, c=sub["_color"], edgecolors="none")
     ax1.set_xlim(-5, 5); ax1.set_ylim(0, 8); ax1.set_aspect("equal")
     ax1.axhline(0, color="black", linewidth=1); ax1.axvline(0, color="black", linewidth=1)
     ax1.set_xlabel(x_col); ax1.set_ylabel(y_col)
     ax1.set_title(f"All Releases (n={len(sub)})", fontweight="bold")
 
-    # Right: stylized slim arms to mean points
     for _, row in means.iterrows():
         draw_stylized_arm(ax2, (0.0, 0.0), (float(row["mean_x"]), float(row["mean_y"])), ring_color=row["color"])
     ax2.set_xlim(-5, 5); ax2.set_ylim(0, 8); ax2.set_aspect("equal")
@@ -543,7 +571,6 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str):
     ax2.set_xlabel(x_col)
     ax2.set_title("Average Releases", fontweight="bold")
 
-    # Legend: fastest → slowest if speed present
     handles = []
     for _, row in means.iterrows():
         label = row["_type_canon"]
@@ -557,7 +584,9 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str):
     fig.tight_layout()
     return fig
 
-# ─── HITTER / PITCHER STAT TABLES (D1) ────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# HITTER / PITCHER STAT TABLES (D1)
+# ──────────────────────────────────────────────────────────────────────────────
 DISPLAY_COLS_H = ['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']
 RATE_COLS_H    = ['BA','OBP','SLG','OPS']
 
@@ -621,7 +650,6 @@ def compute_pitcher_table(df: pd.DataFrame) -> pd.DataFrame:
     korbb_s = df['KorBB'].astype(str)
     pitch_s = df['PitchCall'].astype(str)
 
-    # Events
     hit_values    = {'single','double','triple','homerun'}
     df['is_hit']  = pr_low.isin(hit_values).astype(int)
     df['is_hr']   = pr_low.eq('homerun').astype(int)
@@ -630,7 +658,6 @@ def compute_pitcher_table(df: pd.DataFrame) -> pd.DataFrame:
     df['is_hbp']  = pitch_s.eq('HitByPitch').astype(int)
     df['is_sf']   = df['PlayResult'].astype(str).str.contains('Sacrifice', case=False, na=False).astype(int)
 
-    # Outs
     if 'OutsOnPlay' in df.columns:
         outs_on_play = pd.to_numeric(df['OutsOnPlay'], errors='coerce').fillna(0).astype(int)
         outs_from_k  = df['is_so'] * (outs_on_play == 0)
@@ -682,28 +709,12 @@ def compute_pitcher_table(df: pd.DataFrame) -> pd.DataFrame:
     out = out.join(grouped[RATE_NUMS_P])
     return out
 
-# ─── DATA LOADER ──────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner=True)
-def load_parquet(path: str) -> pd.DataFrame:
-    df = pd.read_parquet(path)
-    if "Date" in df.columns:
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    return df
-
-# ─── TITLE ────────────────────────────────────────────────────────────────────
-st.title("Baseball Analytics")
-
-# Load once
-if not os.path.exists(DATA_PATH):
-    st.error(f"Data not found at {DATA_PATH}")
-    st.stop()
-df_all = load_parquet(DATA_PATH)
-
-# ─── SIDEBAR (Filters Drawer) ─────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# SIDEBAR FILTERS
+# ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🎛️ Filters")
     st.caption("Use the ◀ chevron at top-left to hide/show this drawer.")
-
     mode = st.radio("Mode", ["Nebraska Baseball", "D1 Baseball"], index=0)
 
     if mode == "Nebraska Baseball":
@@ -712,12 +723,10 @@ with st.sidebar:
             miss = [c for c in needed if c not in df_all.columns]
             if miss: st.error(f"Missing columns: {miss}")
 
-            neb_mask = (df_all['PitcherTeam']=='NEB') | (df_all['BatterTeam']=='NEB')
+            neb_mask = (df_all.get('PitcherTeam','')=='NEB') | (df_all.get('BatterTeam','')=='NEB')
             neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
 
             report = st.selectbox("Report Type", ["Pitcher Report","Hitter Report"])
-
-            # Variant depends on report
             if report == "Pitcher Report":
                 variant = st.selectbox("Variant", ["Standard","Heatmap","Release Points"])
             else:
@@ -770,11 +779,15 @@ with st.sidebar:
             st.session_state['d1_days']       = days_sel
             st.session_state['d1_stats_type'] = stats_type
 
-# ─── MAIN AREA (VISUALS) ──────────────────────────────────────────────────────
-if st.session_state.get('mode', None) != mode:
-    st.session_state['mode'] = mode
+# ──────────────────────────────────────────────────────────────────────────────
+# MAIN CONTENT
+# ──────────────────────────────────────────────────────────────────────────────
+st.title("Baseball Analytics")
 
-if mode == "Nebraska Baseball":
+mode = st.session_state.get('mode', None) or ("Nebraska Baseball" if 'neb_report' in st.session_state else "D1 Baseball")
+st.session_state['mode'] = mode
+
+if st.session_state['mode'] == "Nebraska Baseball":
     report   = st.session_state.get('neb_report')
     variant  = st.session_state.get('neb_variant')
     sel_date = st.session_state.get('neb_date')
@@ -809,7 +822,7 @@ if mode == "Nebraska Baseball":
                 st.pyplot(fig=fig)
                 st.table(summary)
 
-    elif report == "Hitter Report":
+    else:  # Hitter Report
         df_b = df_date[df_date['BatterTeam']=='NEB']
         if not player:
             st.warning("Choose a batter in the Filters drawer."); st.stop()
@@ -850,7 +863,6 @@ else:
     if team_df.empty:
         st.info("No rows after applying the selected filters."); st.stop()
 
-    # Summary of filters
     if len(months_sel) == 0 and len(days_sel) == 0:
         filt_text = "Season totals"
     elif len(months_sel) > 0 and len(days_sel) == 0:

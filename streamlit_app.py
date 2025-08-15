@@ -374,7 +374,7 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
     sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Right')]
     ax5 = fig.add_subplot(gs[0, 6]); plot_conditional(ax5, sub_95_l, 'Exit ≥95 vs LHP')
-    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, sub_95_r, 'Exit ≥95 vs RHP')
+    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, 'Exit ≥95 vs RHP')
 
     formatted = format_name(batter)
     fig.suptitle(f"{formatted}{date_str}", fontsize=22, x=0.5, y=0.87)
@@ -710,84 +710,93 @@ def compute_pitcher_table(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SIDEBAR FILTERS
+# SIDEBAR FILTERS  (FIX: bind mode to session state and use it in main)
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🎛️ Filters")
     st.caption("Use the ◀ chevron at top-left to hide/show this drawer.")
-    mode = st.radio("Mode", ["Nebraska Baseball", "D1 Baseball"], index=0)
+    st.radio("Mode", ["Nebraska Baseball", "D1 Baseball"], index=0, key="mode")
 
-    if mode == "Nebraska Baseball":
+    if st.session_state["mode"] == "Nebraska Baseball":
         with st.expander("Report Controls", expanded=True):
-            needed = ['Date','PitcherTeam','BatterTeam','Pitcher','Batter','PlayResult','KorBB','PitchCall']
-            miss = [c for c in needed if c not in df_all.columns]
-            if miss: st.error(f"Missing columns: {miss}")
-
+            # Nebraska date universe (either NEB as PitcherTeam or BatterTeam)
             neb_mask = (df_all.get('PitcherTeam','')=='NEB') | (df_all.get('BatterTeam','')=='NEB')
             neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
 
-            report = st.selectbox("Report Type", ["Pitcher Report","Hitter Report"])
-            if report == "Pitcher Report":
-                variant = st.selectbox("Variant", ["Standard","Heatmap","Release Points"])
+            st.selectbox("Report Type", ["Pitcher Report","Hitter Report"], key="neb_report")
+            if st.session_state["neb_report"] == "Pitcher Report":
+                st.selectbox("Variant", ["Standard","Heatmap","Release Points"], key="neb_variant")
             else:
-                variant = st.selectbox("Variant", ["Standard","Heatmap"])
+                st.selectbox("Variant", ["Standard","Heatmap"], key="neb_variant")
 
-            sel_date = st.selectbox("Game Date", neb_dates, format_func=format_date_long)
+            st.selectbox("Game Date", neb_dates, format_func=lambda d: format_date_long(d), key="neb_date")
 
-            st.session_state['neb_report']  = report
-            st.session_state['neb_variant'] = variant
-            st.session_state['neb_date']    = sel_date
-
-            df_date_tmp = df_all[df_all['Date'].dt.date==sel_date]
-            if report == "Pitcher Report":
+            df_date_tmp = df_all[df_all['Date'].dt.date==st.session_state["neb_date"]]
+            if st.session_state["neb_report"] == "Pitcher Report":
                 df_p_tmp = df_date_tmp[df_date_tmp['PitcherTeam']=='NEB']
                 pitchers = sorted(df_p_tmp['Pitcher'].dropna().unique().tolist())
-                player = st.selectbox("Pitcher", pitchers) if pitchers else None
+                st.selectbox("Pitcher", pitchers, key="neb_player")
             else:
                 df_b_tmp = df_date_tmp[df_date_tmp['BatterTeam']=='NEB']
                 batters = sorted(df_b_tmp['Batter'].dropna().unique().tolist())
-                player = st.selectbox("Batter", batters) if batters else None
-            st.session_state['neb_player'] = player
+                st.selectbox("Batter", batters, key="neb_player")
 
     else:
         with st.expander("D1 Statistics Controls", expanded=True):
-            present_codes = set(pd.Series(df_all.get('BatterTeam', pd.Series(dtype=object))).dropna().unique()) \
-                            | set(pd.Series(df_all.get('PitcherTeam', pd.Series(dtype=object))).dropna().unique())
+            # Build present team codes from data (both batter & pitcher teams)
+            present_codes = pd.unique(
+                pd.concat(
+                    [df_all.get('BatterTeam', pd.Series(dtype=object)),
+                     df_all.get('PitcherTeam', pd.Series(dtype=object))],
+                    ignore_index=True
+                ).dropna()
+            )
 
-            conference = st.selectbox("Conference", ["Big Ten","Big 12","SEC","ACC"], index=0)
-            team_map = CONF_MAP.get(conference, {})
+            st.selectbox("Conference", ["Big Ten","Big 12","SEC","ACC"], index=0, key="d1_conference")
+            team_map = CONF_MAP.get(st.session_state["d1_conference"], {})
+            # Codes in this conference that are present in data
             codes_in_conf = [code for code in team_map.keys() if code in present_codes]
-            options = sorted([(code, team_map.get(code, code)) for code in codes_in_conf], key=lambda t: t[1])
-            team_display = [name for _, name in options] if options else []
-            team_sel_name = st.selectbox("Team", team_display) if team_display else None
+
+            # Fallback: if no mapped codes found, offer ALL present codes (name=code)
+            if not codes_in_conf:
+                codes_in_conf = sorted(present_codes.tolist())
+                team_map = {code: code for code in codes_in_conf}
+
+            team_options = [(code, team_map.get(code, code)) for code in codes_in_conf]
+            team_display = [name for _, name in team_options]
+            team_sel_name = st.selectbox("Team", team_display, key="d1_team_name") if team_display else None
+
+            # Map chosen display name back to code
             team_code = None
             if team_sel_name:
-                team_code = [code for code, name in options if name == team_sel_name][0]
+                for code, name in team_options:
+                    if name == team_sel_name:
+                        team_code = code
+                        break
+            st.session_state['d1_team_code'] = team_code
 
-            months_sel = st.multiselect(
+            st.multiselect(
                 "Months (optional)",
-                options=[n for n, _ in MONTH_CHOICES],
+                options=[n for n,_ in MONTH_CHOICES],
                 format_func=lambda n: MONTH_NAME_BY_NUM[n],
-                default=[]
+                default=[],
+                key="d1_months",
             )
-            days_sel = st.multiselect("Days (optional)", options=list(range(1, 32)), default=[])
-            stats_type = st.radio("Stats Type", ["Hitter Statistics", "Pitcher Statistics"], index=0)
-
-            st.session_state['d1_conference'] = conference
-            st.session_state['d1_team_code']  = team_code
-            st.session_state['d1_months']     = months_sel
-            st.session_state['d1_days']       = days_sel
-            st.session_state['d1_stats_type'] = stats_type
+            st.multiselect(
+                "Days (optional)",
+                options=list(range(1,32)),
+                default=[],
+                key="d1_days",
+            )
+            st.radio("Stats Type", ["Hitter Statistics","Pitcher Statistics"], index=0, key="d1_stats_type")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MAIN CONTENT
+# MAIN CONTENT  (uses session state's "mode" directly)
 # ──────────────────────────────────────────────────────────────────────────────
 st.title("Baseball Analytics")
+mode = st.session_state.get("mode", "Nebraska Baseball")
 
-mode = st.session_state.get('mode', None) or ("Nebraska Baseball" if 'neb_report' in st.session_state else "D1 Baseball")
-st.session_state['mode'] = mode
-
-if st.session_state['mode'] == "Nebraska Baseball":
+if mode == "Nebraska Baseball":
     report   = st.session_state.get('neb_report')
     variant  = st.session_state.get('neb_variant')
     sel_date = st.session_state.get('neb_date')

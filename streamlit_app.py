@@ -73,8 +73,8 @@ def summarize_dates_range(series: pd.Series) -> str:
 def filter_by_month_day(df, date_col="Date", months=None, days=None):
     """
     Filter df by selected months and/or days.
-    - months only  -> rows whose month ∈ months  (combine all days in those months)
-    - days only    -> rows whose day   ∈ days    (across all months)
+    - months only  -> rows whose month ∈ months (combine all days in those months)
+    - days only    -> rows whose day   ∈ days   (across all months)
     - both         -> month ∈ months AND day ∈ days
     - neither      -> unchanged
     """
@@ -201,6 +201,28 @@ def strike_rate(df):
     return df['PitchCall'].isin(strike_calls).mean() * 100
 
 # ──────────────────────────────────────────────────────────────────────────────
+# COLUMN PICKERS & HANDEDNESS NORMALIZATION
+# ──────────────────────────────────────────────────────────────────────────────
+def pick_col(df: pd.DataFrame, *cands) -> str | None:
+    lower_map = {c.lower(): c for c in df.columns}
+    for c in cands:
+        if c and c.lower() in lower_map:
+            return lower_map[c.lower()]
+    return None
+
+def find_batter_side_col(df: pd.DataFrame) -> str | None:
+    return pick_col(
+        df,
+        "BatterSide", "Batter Side", "Batter_Bats", "BatterBats",
+        "Bats", "Stand", "BatSide", "BatterBatSide", "BatterBatHand"
+    )
+
+def normalize_batter_side(series: pd.Series) -> pd.Series:
+    s = series.astype(str).str.strip().str[0].str.upper()
+    # map variants to L/R/S; unknown stays as original char
+    return s.replace({"L":"L","R":"R","S":"S","B":"S"})
+
+# ──────────────────────────────────────────────────────────────────────────────
 # PITCHER: STANDARD REPORT (Movement + Summary)
 # ──────────────────────────────────────────────────────────────────────────────
 def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
@@ -265,10 +287,9 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     return fig, summary
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCHER HEATMAPS — NEW LAYOUT + HANDEDNESS FILTER
+# PITCHER HEATMAPS — NEW LAYOUT + **FIXED** HANDEDNESS FILTER
 # Top row: Top 3 pitch types
 # Bottom row: Whiffs, Strikeouts, Damage
-# Handedness filter: Both / vs LHB / vs RHB
 # Auto-switch to scatter when panel n < 12; fixed strike zone
 # ──────────────────────────────────────────────────────────────────────────────
 def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_size=100):
@@ -277,18 +298,23 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters.")
         return None
 
-    # Apply handedness filter
-    hand_filter = (hand_filter or "Both").lower()
-    if hand_filter.startswith("l"):
-        df_p = df_p[df_p.get('BatterSide','') == 'Left']
-        hand_tag = "— vs LHB"
-    elif hand_filter.startswith("r"):
-        df_p = df_p[df_p.get('BatterSide','') == 'Right']
-        hand_tag = "— vs RHB"
+    # Find and normalize batter-side column
+    side_col = find_batter_side_col(df_p)
+    hand_tag = "— Both"
+    if side_col is not None:
+        sides = normalize_batter_side(df_p[side_col])
+        if hand_filter.lower().startswith("l"):
+            df_p = df_p[sides == "L"]
+            hand_tag = "— vs LHB"
+        elif hand_filter.lower().startswith("r"):
+            df_p = df_p[sides == "R"]
+            hand_tag = "— vs RHB"
+        else:
+            hand_tag = "— Both"
     else:
-        hand_tag = "— Both"
+        # No batter-side column; continue but let the user know
+        st.caption("Batter-side column not found; showing Both.")
 
-    # If no rows after hand filter, warn
     if df_p.empty:
         st.info("No pitches for the selected batter-side filter.")
         return None
@@ -319,12 +345,21 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
     fig = plt.figure(figsize=(18, 14))
     gs = GridSpec(3, 3, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.35, wspace=0.3)
 
-    # Top row: top 3 pitch types (from hand-filtered df_p)
+    # Top row: top 3 pitch types (after handedness filter)
     top3 = list(df_p['AutoPitchType'].value_counts().index[:3])
-    for i, pitch in enumerate(top3):
+    # In case there are < 3 pitch types, pad with empty panels
+    for i in range(3):
         ax = fig.add_subplot(gs[0, i])
-        sub = df_p[df_p['AutoPitchType'] == pitch]
-        panel(ax, sub, f"{pitch} (n={len(sub)})")
+        if i < len(top3):
+            pitch = top3[i]
+            sub = df_p[df_p['AutoPitchType'] == pitch]
+            panel(ax, sub, f"{pitch} (n={len(sub)})")
+        else:
+            # empty panel placeholder
+            draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
+            ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
+            ax.set_xticks([]); ax.set_yticks([])
+            ax.set_title("—", fontweight='bold')
 
     # Bottom row: Whiffs, Strikeouts, Damage
     sub_wh = df_p[df_p['PitchCall'] == 'StrikeSwinging']
@@ -335,7 +370,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
     ax = fig.add_subplot(gs[1, 1]); panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})")
     ax = fig.add_subplot(gs[1, 2]); panel(ax, sub_dg, f"Damage (n={len(sub_dg)})", color='orange')
 
-    # Strike % by count (unchanged)
+    # Strike % by count
     axt = fig.add_subplot(gs[2, :]); axt.axis('off')
     fp  = strike_rate(df_p[(df_p['Balls']==0) & (df_p['Strikes']==0)])
     mix = strike_rate(df_p[((df_p['Balls']==1)&(df_p['Strikes']==0)) | ((df_p['Balls']==0)&(df_p['Strikes']==1)) | ((df_p['Balls']==1)&(df_p['Strikes']==1))])
@@ -508,19 +543,12 @@ HAND_RING_INNER_R   = 0.15
 ARM_FILL_COLOR      = "#111111"
 SHOULDER_COLOR      = "#0d0d0d"
 
-def pick_col(df: pd.DataFrame, *cands) -> str | None:
-    lower_map = {c.lower(): c for c in df.columns}
-    for c in cands:
-        if c and c.lower() in lower_map:
-            return lower_map[c.lower()]
-    return None
-
 def norm_text(x: str) -> str:
     return str(x).strip().lower()
 
 def norm_type(x: str) -> str:
     s = norm_text(x)
-    replacements = {"four seam": "four-seam", "4 seam":"4-seam", "two seam":"two-seam", "2 seam":"2-seam"}
+    replacements = {"four seam":"four-seam","4 seam":"4-seam","two seam":"two-seam","2 seam":"2-seam"}
     return replacements.get(s, s)
 
 def canonicalize_type(raw: str) -> str:
@@ -539,40 +567,11 @@ def canonicalize_type(raw: str) -> str:
 def color_for_release(canon_label: str) -> str:
     key = str(canon_label).lower()
     palette = {
-        "fastball": "#E60026",
-        "two-seam fastball": "#FF9300",
-        "cutter": "#800080",
-        "changeup": "#008000",
-        "splitter": "#00CCCC",
-        "curveball": "#0033CC",
-        "knuckle curve": "#000000",
-        "slider": "#CCCC00",
-        "sweeper": "#B5651D",
-        "screwball": "#CC0066",
-        "eephus": "#666666",
+        "fastball": "#E60026","two-seam fastball": "#FF9300","cutter": "#800080","changeup": "#008000",
+        "splitter": "#00CCCC","curveball": "#0033CC","knuckle curve": "#000000","slider": "#CCCC00",
+        "sweeper": "#B5651D","screwball": "#CC0066","eephus": "#666666",
     }
     return palette.get(key, "#7F7F7F")
-
-def draw_stylized_arm(ax, start_xy, end_xy, ring_color):
-    x0, y0 = start_xy; x1, y1 = end_xy
-    dx, dy = x1 - x0, y1 - y0
-    L = float(np.hypot(dx, dy))
-    if L <= 1e-6: return
-    ux, uy = dx / L, dy / L
-    px, py = -uy, ux
-    sLx, sLy = x0 + px*ARM_BASE_HALF_WIDTH, y0 + py*ARM_BASE_HALF_WIDTH
-    sRx, sRy = x0 - px*ARM_BASE_HALF_WIDTH, y0 - py*ARM_BASE_HALF_WIDTH
-    eLx, eLy = x1 + px*ARM_TIP_HALF_WIDTH,  y1 + py*ARM_TIP_HALF_WIDTH
-    eRx, eRy = x1 - px*ARM_TIP_HALF_WIDTH,  y1 - py*ARM_TIP_HALF_WIDTH
-    arm_poly = Polygon([(sLx, sLy), (eLx, eLy), (eRx, eRy), (sRx, sRy)],
-                       closed=True, facecolor=ARM_FILL_COLOR, edgecolor=ARM_FILL_COLOR, zorder=1)
-    ax.add_patch(arm_poly)
-    ax.add_patch(Circle((x0, y0), radius=SHOULDER_RADIUS_OUT, facecolor=SHOULDER_COLOR, edgecolor=SHOULDER_COLOR, zorder=2))
-    outer = Circle((x1, y1), radius=HAND_RING_OUTER_R, facecolor=ring_color, edgecolor=ring_color, zorder=4)
-    ax.add_patch(outer)
-    inner_face = ax.get_facecolor()
-    inner = Circle((x1, y1), radius=HAND_RING_INNER_R, facecolor=inner_face, edgecolor=inner_face, zorder=5)
-    ax.add_patch(inner)
 
 def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=None):
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
@@ -623,7 +622,28 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     ax1.set_title(f"All Releases (n={len(sub)})", fontweight="bold")
 
     for _, row in means.iterrows():
-        draw_stylized_arm(ax2, (0.0, 0.0), (float(row["mean_x"]), float(row["mean_y"])), ring_color=row["color"])
+        x0, y0 = 0.0, 0.0
+        x1, y1 = float(row["mean_x"]), float(row["mean_y"])
+        dx, dy = x1 - x0, y1 - y0
+        L = float(np.hypot(dx, dy))
+        if L <= 1e-6: 
+            continue
+        ux, uy = dx / L, dy / L
+        px, py = -uy, ux
+        sLx, sLy = x0 + px*ARM_BASE_HALF_WIDTH, y0 + py*ARM_BASE_HALF_WIDTH
+        sRx, sRy = x0 - px*ARM_BASE_HALF_WIDTH, y0 - py*ARM_BASE_HALF_WIDTH
+        eLx, eLy = x1 + px*ARM_TIP_HALF_WIDTH,  y1 + py*ARM_TIP_HALF_WIDTH
+        eRx, eRy = x1 - px*ARM_TIP_HALF_WIDTH,  y1 - py*ARM_TIP_HALF_WIDTH
+        arm_poly = Polygon([(sLx, sLy), (eLx, eLy), (eRx, eRy), (sRx, sRy)],
+                           closed=True, facecolor=ARM_FILL_COLOR, edgecolor=ARM_FILL_COLOR, zorder=1)
+        ax2.add_patch(arm_poly)
+        ax2.add_patch(Circle((x0, y0), radius=SHOULDER_RADIUS_OUT, facecolor="#0d0d0d", edgecolor="#0d0d0d", zorder=2))
+        outer = Circle((x1, y1), radius=HAND_RING_OUTER_R, facecolor=row["color"], edgecolor=row["color"], zorder=4)
+        ax2.add_patch(outer)
+        inner_face = ax2.get_facecolor()
+        inner = Circle((x1, y1), radius=HAND_RING_INNER_R, facecolor=inner_face, edgecolor=inner_face, zorder=5)
+        ax2.add_patch(inner)
+
     ax2.set_xlim(-5, 5); ax2.set_ylim(0, 8); ax2.set_aspect("equal")
     ax2.axhline(0, color="black", linewidth=1); ax2.axvline(0, color="black", linewidth=1)
     ax2.set_xlabel(x_col)
@@ -643,7 +663,7 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# D1 STATS
+# D1 STATS (unchanged logic)
 # ──────────────────────────────────────────────────────────────────────────────
 DISPLAY_COLS_H = ['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']
 RATE_COLS_H    = ['BA','OBP','SLG','OPS']
@@ -812,15 +832,6 @@ with st.sidebar:
                     key="neb_pitch_days",
                 )
 
-                # New handedness filter for pitcher heatmaps
-                st.radio(
-                    "Batter Side (Heatmaps)",
-                    options=["Both","vs LHB","vs RHB"],
-                    index=0,
-                    key="neb_heat_hand",
-                    horizontal=True
-                )
-
             else:
                 neb_mask = (df_all.get('BatterTeam','')=='NEB')
                 neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
@@ -882,7 +893,6 @@ with st.sidebar:
 # MAIN CONTENT
 # ──────────────────────────────────────────────────────────────────────────────
 mode = st.session_state.get("mode", "Nebraska Baseball")
-# Dynamic page title per your request
 st.title("Nebraska Baseball" if mode == "Nebraska Baseball" else "D1 Baseball")
 
 # NEBRASKA
@@ -933,9 +943,15 @@ if mode == "Nebraska Baseball":
             fig, _summary = out
             st.pyplot(fig=fig)
 
-        # 2) Heatmaps — new layout + handedness filter
+        # 2) Pitcher Heatmaps — place handedness filter **above** the plots
         st.markdown("### Pitcher Heatmaps")
-        hand_choice = st.session_state.get("neb_heat_hand", "Both")
+        hand_choice = st.radio(
+            "Batter Side",
+            options=["Both","vs LHB","vs RHB"],
+            index=0,
+            horizontal=True,
+            key="neb_heat_hand_main"
+        )
         heat_fig = combined_pitcher_heatmap_report(neb_df, player, hand_filter=hand_choice)
         if heat_fig:
             st.pyplot(fig=heat_fig)

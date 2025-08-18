@@ -233,7 +233,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     gs = GridSpec(2, 1, figure=fig, height_ratios=[1.5, 0.7], hspace=0.3)
 
     # Movement
-    axm = fig.add_subplot(gs[0, 0]); axm.set_title('Movement Plot')
+    axm = fig.add_subplot(gs[0, 0]); axm.set_title('Movement Plot', fontweight='bold')
     chi2v = chi2.ppf(coverage, df=2)
     axm.axhline(0, ls='--', color='grey'); axm.axvline(0, ls='--', color='grey')
     for ptype, g in grp:
@@ -265,12 +265,32 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     return fig, summary
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCHER HEATMAPS (auto-switch to scatter when n < 12; fixed strike zone)
+# PITCHER HEATMAPS — NEW LAYOUT + HANDEDNESS FILTER
+# Top row: Top 3 pitch types
+# Bottom row: Whiffs, Strikeouts, Damage
+# Handedness filter: Both / vs LHB / vs RHB
+# Auto-switch to scatter when panel n < 12; fixed strike zone
 # ──────────────────────────────────────────────────────────────────────────────
-def combined_pitcher_heatmap_report(df, pitcher_name, grid_size=100):
-    df_p = df[df['Pitcher'] == pitcher_name]
+def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_size=100):
+    df_p = df[df['Pitcher'] == pitcher_name].copy()
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters.")
+        return None
+
+    # Apply handedness filter
+    hand_filter = (hand_filter or "Both").lower()
+    if hand_filter.startswith("l"):
+        df_p = df_p[df_p.get('BatterSide','') == 'Left']
+        hand_tag = "— vs LHB"
+    elif hand_filter.startswith("r"):
+        df_p = df_p[df_p.get('BatterSide','') == 'Right']
+        hand_tag = "— vs RHB"
+    else:
+        hand_tag = "— Both"
+
+    # If no rows after hand filter, warn
+    if df_p.empty:
+        st.info("No pitches for the selected batter-side filter.")
         return None
 
     x_min, x_max, y_min, y_max = get_view_bounds()
@@ -279,38 +299,43 @@ def combined_pitcher_heatmap_report(df, pitcher_name, grid_size=100):
     z_left, z_bottom, z_w, z_h = get_zone_bounds()
     threshold = 12
 
-    def panel(ax, sub, title, orange=False):
+    def panel(ax, sub, title, color='deepskyblue'):
         n = len(sub)
         x = sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy()
         y = sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy()
         if n < threshold:
-            ax.scatter(x, y, s=30, alpha=0.7, color=('orange' if orange else 'deepskyblue'), edgecolors='black')
+            ax.scatter(x, y, s=30, alpha=0.7, color=color, edgecolors='black')
         else:
             zi = compute_density(x, y, grid_coords, xi_mesh.shape)
             ax.imshow(zi, origin='lower', extent=[x_min, x_max, y_min, y_max], aspect='equal', cmap=custom_cmap)
         draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
         ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
-        ax.set_title(title, fontweight='bold'); ax.set_xticks([]); ax.set_yticks([])
+        ax.set_title(title, fontweight='bold')
+        ax.set_xticks([]); ax.set_yticks([])
 
     date_str = summarize_dates_range(df_p.get("Date", pd.Series(dtype="datetime64[ns]")))
 
-    fig = plt.figure(figsize=(20, 20))
-    gs = GridSpec(3, 5, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.4, wspace=0.3)
+    # Grid: 3 rows x 3 cols
+    fig = plt.figure(figsize=(18, 14))
+    gs = GridSpec(3, 3, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.35, wspace=0.3)
 
-    # Top 4 pitch types
-    top4 = list(df_p['AutoPitchType'].value_counts().index[:4])
-    for i, pitch in enumerate(top4):
-        ax = fig.add_subplot(gs[0, i]); sub = df_p[df_p['AutoPitchType'] == pitch]
+    # Top row: top 3 pitch types (from hand-filtered df_p)
+    top3 = list(df_p['AutoPitchType'].value_counts().index[:3])
+    for i, pitch in enumerate(top3):
+        ax = fig.add_subplot(gs[0, i])
+        sub = df_p[df_p['AutoPitchType'] == pitch]
         panel(ax, sub, f"{pitch} (n={len(sub)})")
-    fig.add_subplot(gs[0, 4]).axis('off')
 
-    # L/R, whiffs, K, damage
-    sub_vl = df_p[df_p['BatterSide'] == 'Left'];  ax = fig.add_subplot(gs[1, 0]); panel(ax, sub_vl, f"vs Left-Handed (n={len(sub_vl)})")
-    sub_vr = df_p[df_p['BatterSide'] == 'Right']; ax = fig.add_subplot(gs[1, 1]); panel(ax, sub_vr, f"vs Right-Handed (n={len(sub_vr)})")
-    sub_wh = df_p[df_p['PitchCall'] == 'StrikeSwinging']; ax = fig.add_subplot(gs[1, 2]); panel(ax, sub_wh, f"Whiffs (n={len(sub_wh)})")
-    sub_ks = df_p[df_p['KorBB'] == 'Strikeout'];          ax = fig.add_subplot(gs[1, 3]); panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})")
-    sub_dg = df_p[df_p['ExitSpeed'] >= 95];               ax = fig.add_subplot(gs[1, 4]); panel(ax, sub_dg, f"Damage (n={len(sub_dg)})", orange=True)
+    # Bottom row: Whiffs, Strikeouts, Damage
+    sub_wh = df_p[df_p['PitchCall'] == 'StrikeSwinging']
+    sub_ks = df_p[df_p['KorBB'] == 'Strikeout']
+    sub_dg = df_p[df_p['ExitSpeed'] >= 95]
 
+    ax = fig.add_subplot(gs[1, 0]); panel(ax, sub_wh, f"Whiffs (n={len(sub_wh)})")
+    ax = fig.add_subplot(gs[1, 1]); panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})")
+    ax = fig.add_subplot(gs[1, 2]); panel(ax, sub_dg, f"Damage (n={len(sub_dg)})", color='orange')
+
+    # Strike % by count (unchanged)
     axt = fig.add_subplot(gs[2, :]); axt.axis('off')
     fp  = strike_rate(df_p[(df_p['Balls']==0) & (df_p['Strikes']==0)])
     mix = strike_rate(df_p[((df_p['Balls']==1)&(df_p['Strikes']==0)) | ((df_p['Balls']==0)&(df_p['Strikes']==1)) | ((df_p['Balls']==1)&(df_p['Strikes']==1))])
@@ -323,7 +348,10 @@ def combined_pitcher_heatmap_report(df, pitcher_name, grid_size=100):
 
     if os.path.exists(LOGO_PATH):
         axl = fig.add_axes([0.88, 0.92, 0.10, 0.10], anchor='NE', zorder=10); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
-    plt.tight_layout(rect=[0, 0, 1, 0.96]); fig.suptitle(f"{pitcher_name} – Heatmap Report{(' — ' + date_str) if date_str else ''}", fontsize=18, y=0.98, fontweight='bold')
+
+    title_suffix = (f" — {date_str}" if date_str else "")
+    fig.suptitle(f"{pitcher_name} – Heatmap Report {hand_tag}{title_suffix}", fontsize=18, y=0.98, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -470,7 +498,7 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RELEASE POINTS (now with pitch-type filter)
+# RELEASE POINTS (with pitch-type filter)
 # ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
@@ -784,6 +812,15 @@ with st.sidebar:
                     key="neb_pitch_days",
                 )
 
+                # New handedness filter for pitcher heatmaps
+                st.radio(
+                    "Batter Side (Heatmaps)",
+                    options=["Both","vs LHB","vs RHB"],
+                    index=0,
+                    key="neb_heat_hand",
+                    horizontal=True
+                )
+
             else:
                 neb_mask = (df_all.get('BatterTeam','')=='NEB')
                 neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
@@ -896,14 +933,14 @@ if mode == "Nebraska Baseball":
             fig, _summary = out
             st.pyplot(fig=fig)
 
-        # 2) Heatmaps
+        # 2) Heatmaps — new layout + handedness filter
         st.markdown("### Pitcher Heatmaps")
-        heat_fig = combined_pitcher_heatmap_report(neb_df, player)
+        hand_choice = st.session_state.get("neb_heat_hand", "Both")
+        heat_fig = combined_pitcher_heatmap_report(neb_df, player, hand_filter=hand_choice)
         if heat_fig:
             st.pyplot(fig=heat_fig)
 
-        # 3) Release Points + new pitch-type filter
-        # Build canonical pitch list from the currently filtered dataset
+        # 3) Release Points with pitch-type filter
         types_available = (
             neb_df.get('AutoPitchType', pd.Series(dtype=object))
                  .dropna().map(canonicalize_type)

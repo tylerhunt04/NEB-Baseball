@@ -89,8 +89,18 @@ def filter_by_month_day(df, date_col="Date", months=None, days=None):
         mask &= s.dt.day.isin(days)
     return df[mask]
 
-def build_season_label(selected_df: pd.DataFrame) -> str:
-    """Return 'Season' if no dates; else a concise date range like 'March 4, 2025 – April 2, 2025'."""
+def build_pitcher_season_label(months_sel, days_sel, selected_df: pd.DataFrame, month_name_by_num: dict) -> str:
+    """
+    Pitcher report label rules:
+      - No month/day selected → "Season"
+      - Exactly one month (no days) → that month name (e.g., "March")
+      - Otherwise → concise date range from filtered rows (e.g., "March 4, 2025 – April 2, 2025")
+    """
+    if (not months_sel) and (not days_sel):
+        return "Season"
+    if months_sel and (not days_sel) and len(months_sel) == 1:
+        return month_name_by_num.get(months_sel[0], "Season")
+    # fallback to precise date range for all other cases
     if selected_df is None or selected_df.empty or "Date" not in selected_df.columns:
         return "Season"
     rng = summarize_dates_range(selected_df["Date"])
@@ -219,7 +229,6 @@ def pick_col(df: pd.DataFrame, *cands) -> str | None:
     return None
 
 def find_batter_side_col(df: pd.DataFrame) -> str | None:
-    # Your data uses BatterSide with "Left"/"Right"
     return pick_col(
         df,
         "BatterSide", "Batter Side", "Batter_Bats", "BatterBats",
@@ -227,12 +236,10 @@ def find_batter_side_col(df: pd.DataFrame) -> str | None:
     )
 
 def normalize_batter_side(series: pd.Series) -> pd.Series:
-    # Map Left/Right -> L/R, keep S for switch if present
     s = series.astype(str).str.strip().str[0].str.upper()
     return s.replace({"L":"L","R":"R","S":"S","B":"S"})
 
 def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
-    """Return 'L' or 'R' from UI labels like 'Both', 'LHH', 'RHH', 'LHB', 'RHB', 'Left', 'Right'."""
     s = str(hand_filter).strip().lower()
     s = s.replace("vs", "").replace("batters", "").replace("hitters", "").strip()
     if s in {"l", "lhh", "lhb", "left", "left-handed", "left handed"}:
@@ -394,7 +401,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
     if os.path.exists(LOGO_PATH):
         axl = fig.add_axes([0.88, 0.92, 0.10, 0.10], anchor='NE', zorder=10); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
-    # NEW title format: "First Last Heatmaps" + "(Season) (Both/LHH/RHH)"
+    # Title: "First Last Heatmaps" + "(SeasonLabel) (Both/LHH/RHH)"
     fig.suptitle(
         f"{format_name(pitcher_name)} Heatmaps\n({season_label}) ({hand_label})",
         fontsize=18, y=0.98, fontweight='bold'
@@ -624,7 +631,7 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     means = sub.groupby("_type_canon", as_index=False).agg(**agg)
     means["color"] = means["_type_canon"].apply(color_for_release)
     if "mean_speed" in means.columns:
-        means = means.sort_values("mean_speed", ascending=False).reset_index(drop=True)
+        means = means.sort_values("mean_speed", ascending=False).reset_index(index=False)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13.5, 7.0), sharey=True)
     ax1.scatter(sub[x_col], sub[y_col], s=12, alpha=0.75, c=sub["_color"], edgecolors="none")
@@ -907,6 +914,11 @@ with st.sidebar:
 mode = st.session_state.get("mode", "Nebraska Baseball")
 st.title("Nebraska Baseball" if mode == "Nebraska Baseball" else "D1 Baseball")
 
+# ── NEW: section title under Nebraska Baseball — “Pitcher Report” / “Hitter Report”
+if mode == "Nebraska Baseball":
+    current_section = st.session_state.get('neb_report', 'Pitcher Report')
+    st.subheader("Pitcher Report" if current_section == "Pitcher Report" else "Hitter Report")
+
 # NEBRASKA
 if mode == "Nebraska Baseball":
     report   = st.session_state.get('neb_report')
@@ -921,23 +933,23 @@ if mode == "Nebraska Baseball":
         neb_df_all = df_all[df_all.get('PitcherTeam','')=='NEB'].copy()
         df_pitcher_all = neb_df_all[neb_df_all['Pitcher'] == player].copy()
 
-        # Outings across season (all dates for this pitcher)
-        outings = int(pd.to_datetime(df_pitcher_all['Date'], errors="coerce").dt.date.nunique())
-        st.subheader(f"{format_name(player)} — {outings} Outings")
+        # Appearances across season (all dates for this pitcher)
+        appearances = int(pd.to_datetime(df_pitcher_all['Date'], errors="coerce").dt.date.nunique())
+        st.subheader(f"{format_name(player)} ({appearances} Appearances)")
 
         # Apply selected months/days (restricted to this pitcher)
         months_sel = st.session_state.get("neb_pitch_months", [])
         days_sel   = st.session_state.get("neb_pitch_days", [])
         neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
 
-        # Season label used in figure titles
-        season_label = build_season_label(neb_df)
+        # Season label used in figure titles — NEW RULES
+        season_label = build_pitcher_season_label(months_sel, days_sel, neb_df, MONTH_NAME_BY_NUM)
 
         if neb_df.empty:
             st.info("No rows for the selected pitcher with current month/day filters.")
             st.stop()
 
-        # 1) Post-game style (aggregated over selected dates) — NEW title format
+        # 1) Post-game style (aggregated over selected dates)
         out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8, season_label=season_label)
         if out:
             fig, _summary = out

@@ -89,6 +89,13 @@ def filter_by_month_day(df, date_col="Date", months=None, days=None):
         mask &= s.dt.day.isin(days)
     return df[mask]
 
+def build_season_label(selected_df: pd.DataFrame) -> str:
+    """Return 'Season' if no dates; else a concise date range like 'March 4, 2025 – April 2, 2025'."""
+    if selected_df is None or selected_df.empty or "Date" not in selected_df.columns:
+        return "Season"
+    rng = summarize_dates_range(selected_df["Date"])
+    return rng if rng else "Season"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # STRIKE ZONE & COLORS
 # ──────────────────────────────────────────────────────────────────────────────
@@ -225,19 +232,19 @@ def normalize_batter_side(series: pd.Series) -> pd.Series:
     return s.replace({"L":"L","R":"R","S":"S","B":"S"})
 
 def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
-    """Return 'L' or 'R' from UI labels like 'Both', 'LHB', 'vs LHB', 'Left', etc."""
+    """Return 'L' or 'R' from UI labels like 'Both', 'LHH', 'RHH', 'LHB', 'RHB', 'Left', 'Right'."""
     s = str(hand_filter).strip().lower()
     s = s.replace("vs", "").replace("batters", "").replace("hitters", "").strip()
-    if s in {"l", "lhb", "left", "left-handed", "left handed"}:
+    if s in {"l", "lhh", "lhb", "left", "left-handed", "left handed"}:
         return "L"
-    if s in {"r", "rhb", "right", "right-handed", "right handed"}:
+    if s in {"r", "rhh", "rhb", "right", "right-handed", "right handed"}:
         return "R"
     return None
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER: STANDARD REPORT (Movement + Summary)
 # ──────────────────────────────────────────────────────────────────────────────
-def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
+def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_label="Season"):
     df_p = df[df['Pitcher'] == pitcher_name]
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters.")
@@ -262,7 +269,6 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     }).round({'Usage %':1,'Strike %':1,'Rel Speed':1,'Spin Rate':1,'IVB':1,'HB':1,'Rel Height':2,'VAA':1,'Extension':2}) \
      .sort_values('Pitches', ascending=False)
 
-    date_str = summarize_dates_range(df_p.get("Date", pd.Series(dtype="datetime64[ns]")))
     fig = plt.figure(figsize=(8, 12))
     gs = GridSpec(2, 1, figure=fig, height_ratios=[1.5, 0.7], hspace=0.3)
 
@@ -294,14 +300,15 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     elif os.path.exists(LOGO_PATH):
         axl = fig.add_axes([1, 0.88, 0.12, 0.12], anchor='NE', zorder=10); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
-    fig.suptitle(f"{pitcher_name} – Full Report{(' — ' + date_str) if date_str else ''}", fontweight='bold', fontsize=16, y=0.98)
+    # NEW title format: "First Last Metrics" on line 1, "(Season or date-range)" on line 2
+    fig.suptitle(f"{format_name(pitcher_name)} Metrics\n({season_label})", fontweight='bold', fontsize=16, y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, summary
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER HEATMAPS — Top 3 pitches; Whiffs/Strikeouts/Damage; handedness filter
 # ──────────────────────────────────────────────────────────────────────────────
-def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_size=100):
+def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season"):
     df_p = df[df['Pitcher'] == pitcher_name].copy()
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters.")
@@ -309,16 +316,16 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
 
     # Handedness: robust parse + normalize BatterSide
     side_col = find_batter_side_col(df_p)
-    hand_tag = "— Both"
+    hand_label = "Both"  # display label (Both/LHH/RHH)
     if side_col is not None:
         sides = normalize_batter_side(df_p[side_col])  # 'Left'/'Right' -> 'L'/'R'
-        want = parse_hand_filter_to_LR(hand_filter)    # "vs LHB"/"LHB"/"Left" -> 'L'
+        want = parse_hand_filter_to_LR(hand_filter)    # "LHH"/"RHH"/"Both" -> 'L'/'R'/None
         if want == "L":
             df_p = df_p[sides == "L"]
-            hand_tag = "— vs LHB"
+            hand_label = "LHH"
         elif want == "R":
             df_p = df_p[sides == "R"]
-            hand_tag = "— vs RHB"
+            hand_label = "RHH"
     else:
         st.caption("Batter-side column not found; showing Both.")
 
@@ -345,8 +352,6 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
         ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
         ax.set_title(title, fontweight='bold')
         ax.set_xticks([]); ax.set_yticks([])
-
-    date_str = summarize_dates_range(df_p.get("Date", pd.Series(dtype="datetime64[ns]")))
 
     # Grid: 3x3 -> only fill first 2 rows (top row = pitches, second = whiff/k/dmg)
     fig = plt.figure(figsize=(18, 14))
@@ -389,8 +394,11 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
     if os.path.exists(LOGO_PATH):
         axl = fig.add_axes([0.88, 0.92, 0.10, 0.10], anchor='NE', zorder=10); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
-    title_suffix = (f" — {date_str}" if date_str else "")
-    fig.suptitle(f"{pitcher_name} – Heatmap Report {hand_tag}{title_suffix}", fontsize=18, y=0.98, fontweight='bold')
+    # NEW title format: "First Last Heatmaps" + "(Season) (Both/LHH/RHH)"
+    fig.suptitle(
+        f"{format_name(pitcher_name)} Heatmaps\n({season_label}) ({hand_label})",
+        fontsize=18, y=0.98, fontweight='bold'
+    )
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
 
@@ -913,7 +921,7 @@ if mode == "Nebraska Baseball":
         neb_df_all = df_all[df_all.get('PitcherTeam','')=='NEB'].copy()
         df_pitcher_all = neb_df_all[neb_df_all['Pitcher'] == player].copy()
 
-        # Season "outings" = unique dates for this pitcher (across whole file/season)
+        # Outings across season (all dates for this pitcher)
         outings = int(pd.to_datetime(df_pitcher_all['Date'], errors="coerce").dt.date.nunique())
         st.subheader(f"{format_name(player)} — {outings} Outings")
 
@@ -922,27 +930,15 @@ if mode == "Nebraska Baseball":
         days_sel   = st.session_state.get("neb_pitch_days", [])
         neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
 
-        # Filter summary caption
-        if months_sel or days_sel:
-            if months_sel and not days_sel:
-                mnames = ", ".join(MONTH_NAME_BY_NUM[m] for m in sorted(months_sel))
-                st.caption(f"Filtered to months: {mnames}")
-            elif months_sel and days_sel:
-                mnames = ", ".join(MONTH_NAME_BY_NUM[m] for m in sorted(months_sel))
-                dnames = ", ".join(str(d) for d in sorted(days_sel))
-                st.caption(f"Filtered to months: {mnames} and days: {dnames}")
-            else:
-                dnames = ", ".join(str(d) for d in sorted(days_sel))
-                st.caption(f"Filtered to days: {dnames} (across all months)")
-        else:
-            st.caption("Season totals for this pitcher (no month/day filter).")
+        # Season label used in figure titles
+        season_label = build_season_label(neb_df)
 
         if neb_df.empty:
             st.info("No rows for the selected pitcher with current month/day filters.")
             st.stop()
 
-        # 1) Post-game style (aggregated over selected dates)
-        out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8)
+        # 1) Post-game style (aggregated over selected dates) — NEW title format
+        out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8, season_label=season_label)
         if out:
             fig, _summary = out
             st.pyplot(fig=fig)
@@ -951,12 +947,12 @@ if mode == "Nebraska Baseball":
         st.markdown("### Pitcher Heatmaps")
         hand_choice = st.radio(
             "Batter Side",
-            options=["Both","LHB","RHB"],  # robustly parsed
+            options=["Both","LHH","RHH"],  # robustly parsed & re-labeled
             index=0,
             horizontal=True,
             key="neb_heat_hand_main"
         )
-        heat_fig = combined_pitcher_heatmap_report(neb_df, player, hand_filter=hand_choice)
+        heat_fig = combined_pitcher_heatmap_report(neb_df, player, hand_filter=hand_choice, season_label=season_label)
         if heat_fig:
             st.pyplot(fig=heat_fig)
 

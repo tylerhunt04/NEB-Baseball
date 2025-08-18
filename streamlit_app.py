@@ -26,7 +26,7 @@ st.set_page_config(
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"  # <- update if needed
+DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"  # update if needed
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -306,7 +306,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     elif os.path.exists(LOGO_PATH):
         axl = fig.add_axes([1, 0.88, 0.12, 0.12], anchor='NE', zorder=10); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
-    # NEW title format: "First Last Metrics" then "(Season or date-range)"
+    # Title: "First Last Metrics" then "(Season or date-range)"
     fig.suptitle(f"{format_name(pitcher_name)} Metrics\n({season_label})", fontweight='bold', fontsize=16, y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, summary
@@ -858,18 +858,61 @@ with st.sidebar:
                     key="neb_pitch_days",
                 )
 
-            else:
-                neb_mask = (df_all['BatterTeam']=='NEB')
-                neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
-                st.selectbox("Game Date", neb_dates, format_func=lambda d: format_date_long(d), key="neb_date")
-
-                if "neb_date" in st.session_state and st.session_state["neb_date"] is not None:
-                    df_date_tmp = df_all[df_all['Date'].dt.date==st.session_state["neb_date"]]
-                    df_b_tmp = df_date_tmp[df_date_tmp['BatterTeam']=='NEB']
-                    batters = sorted(df_b_tmp['Batter'].dropna().unique().tolist())
+        # Comparison controls
+        with st.expander("Comparison (same pitcher)", expanded=False):
+            st.checkbox("Enable comparison view", key="neb_cmp_enable", value=False)
+            if st.session_state.get("neb_cmp_enable"):
+                st.selectbox("Number of windows", [2,3], index=0, key="neb_cmp_n")
+                cmp_n = st.session_state.get("neb_cmp_n", 2)
+                # Global filters for heatmaps & release plots in comparison
+                st.radio("Batter Side (heatmaps)", ["Both","LHH","RHH"], index=0, key="neb_cmp_hand")
+                # Available pitch types across the pitcher season
+                if "neb_player" in st.session_state and st.session_state["neb_player"]:
+                    types_avail_all = (
+                        df_pitcher_all.get('AutoPitchType', pd.Series(dtype=object))
+                            .dropna().map(canonicalize_type)
+                            .replace("Unknown", np.nan).dropna().unique().tolist()
+                    )
                 else:
-                    batters = []
-                st.selectbox("Batter", batters, key="neb_player")
+                    types_avail_all = []
+                st.multiselect(
+                    "Pitch Types (release plot, all windows)",
+                    options=sorted(types_avail_all),
+                    default=sorted(types_avail_all),
+                    key="neb_cmp_types",
+                )
+
+                # Per-window filters
+                date_options = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist()) if not df_pitcher_all.empty else []
+                month_options = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist()) if not df_pitcher_all.empty else []
+                for i in range(cmp_n):
+                    st.markdown(f"**Window {'ABC'[i]}**")
+                    st.radio(f"Filter by (Window {'ABC'[i]})", ["Specific Dates","Months/Days"], index=0, key=f"cmp_mode_{i}")
+                    if st.session_state.get(f"cmp_mode_{i}") == "Specific Dates":
+                        st.multiselect(
+                            f"Dates (Window {'ABC'[i]})",
+                            options=date_options,
+                            format_func=lambda d: format_date_long(d),
+                            key=f"cmp_dates_{i}"
+                        )
+                    else:
+                        st.multiselect(
+                            f"Months (Window {'ABC'[i]})",
+                            options=month_options,
+                            format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
+                            key=f"cmp_months_{i}"
+                        )
+                        # derive days within selected months (for this pitcher)
+                        mo_sel = st.session_state.get(f"cmp_months_{i}", [])
+                        dser = df_pitcher_all['Date'].dropna()
+                        if mo_sel:
+                            dser = dser[dser.dt.month.isin(mo_sel)]
+                        day_opts = sorted(dser.dt.day.unique().tolist())
+                        st.multiselect(
+                            f"Days (Window {'ABC'[i]})",
+                            options=day_opts,
+                            key=f"cmp_days_{i}"
+                        )
 
     else:
         with st.expander("D1 Statistics Controls", expanded=True):
@@ -997,6 +1040,57 @@ if mode == "Nebraska Baseball":
             st.markdown("### Release Points")
             st.info("No recognizable pitch types available to plot.")
 
+        # 4) COMPARE APPEARANCES — side-by-side windows (2–3)
+        if st.session_state.get("neb_cmp_enable"):
+            st.markdown("---")
+            st.header("Compare Appearances")
+            cmp_n = st.session_state.get("neb_cmp_n", 2)
+            cmp_hand = st.session_state.get("neb_cmp_hand", "Both")
+            cmp_types = st.session_state.get("neb_cmp_types", [])
+
+            cols = st.columns(cmp_n)
+            for i in range(cmp_n):
+                with cols[i]:
+                    mode_i = st.session_state.get(f"cmp_mode_{i}", "Specific Dates")
+                    if mode_i == "Specific Dates":
+                        sel_dates = st.session_state.get(f"cmp_dates_{i}", [])
+                        if sel_dates:
+                            df_win = df_pitcher_all[df_pitcher_all['Date'].dt.date.isin(sel_dates)]
+                            season_lab = summarize_dates_range(pd.to_datetime(sel_dates))
+                        else:
+                            df_win = df_pitcher_all.iloc[0:0]  # empty
+                            season_lab = "—"
+                    else:
+                        mo_i = st.session_state.get(f"cmp_months_{i}", [])
+                        dy_i = st.session_state.get(f"cmp_days_{i}", [])
+                        df_win = filter_by_month_day(df_pitcher_all, months=mo_i, days=dy_i)
+                        season_lab = build_pitcher_season_label(mo_i, dy_i, df_win, MONTH_NAME_BY_NUM)
+
+                    st.markdown(f"**Window {'ABC'[i]} — {season_lab}**")
+
+                    if df_win.empty:
+                        st.info("No data for this window.")
+                        continue
+
+                    # Metrics
+                    out_win = combined_pitcher_report(df_win, player, logo_img, coverage=0.8, season_label=season_lab)
+                    if out_win:
+                        fig_m, _ = out_win
+                        st.pyplot(fig=fig_m)
+
+                    # Heatmaps (shared hand filter)
+                    fig_h = combined_pitcher_heatmap_report(df_win, player, hand_filter=cmp_hand, season_label=season_lab)
+                    if fig_h:
+                        st.pyplot(fig=fig_h)
+
+                    # Release Points (shared pitch-type filter)
+                    if cmp_types:
+                        fig_r = release_points_figure(df_win, player, include_types=cmp_types)
+                    else:
+                        fig_r = release_points_figure(df_win, player, include_types=None)
+                    if fig_r:
+                        st.pyplot(fig=fig_r)
+
     else:  # Hitter Report (single date)
         sel_date = st.session_state.get('neb_date')
         if not sel_date:
@@ -1016,7 +1110,7 @@ if mode == "Nebraska Baseball":
             fig = create_hitter_report(df_b, player, ncols=3)
             if fig: st.pyplot(fig=fig)
         with tabs[1]:
-            fig = combined_hitter_heatmap_report(df_b, player, logo_img=logo_img)
+            fig = combined_hitter_heatmap_report(df_b, player)
             if fig: st.pyplot(fig=fig)
 
 # D1

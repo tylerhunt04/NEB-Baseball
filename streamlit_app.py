@@ -23,7 +23,7 @@ st.set_page_config(
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# FILE PATHS (updated to your new file)
+# FILE PATHS
 # ──────────────────────────────────────────────────────────────────────────────
 DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
@@ -37,7 +37,6 @@ DATE_CANDIDATES = [
 ]
 
 def ensure_date_column(df: pd.DataFrame) -> pd.DataFrame:
-    """Create/normalize a 'Date' column from common variants, then coerce to datetime (date-only)."""
     df = df.copy()
     found = None
     cols_lower = {c.lower(): c for c in df.columns}
@@ -60,14 +59,16 @@ def format_date_long(d) -> str:
     d = pd.to_datetime(d).date()
     return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
 
-def summarize_dates(series: pd.Series) -> str:
+def summarize_dates_range(series: pd.Series) -> str:
     if series is None or series.empty:
         return ""
     uniq = pd.to_datetime(series.dropna()).dt.date.unique()
+    if len(uniq) == 0:
+        return ""
     if len(uniq) == 1:
         return format_date_long(uniq[0])
     dmin, dmax = min(uniq), max(uniq)
-    return f"{format_date_long(dmin)} – {format_date_long(dmax)} ({len(uniq)} dates)"
+    return f"{format_date_long(dmin)} – {format_date_long(dmax)}"
 
 def filter_by_month_day(df, date_col="Date", months=None, days=None):
     """
@@ -134,7 +135,7 @@ def format_name(name):
     return str(name)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CONFERENCES (Big Ten filled; others placeholders for now)
+# CONFERENCES (Big Ten filled; others placeholders)
 # ──────────────────────────────────────────────────────────────────────────────
 BIG_TEN_MAP = {
     'ILL_ILL': 'Illinois','MIC_SPA': 'Michigan State','UCLA': 'UCLA','IOW_HAW': 'Iowa',
@@ -161,7 +162,7 @@ def load_csv_norm(path: str) -> pd.DataFrame:
         df = pd.read_csv(path, low_memory=False)
     except UnicodeDecodeError:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
-    df = ensure_date_column(df)  # normalize 'Date'
+    df = ensure_date_column(df)
     return df
 
 if not os.path.exists(DATA_PATH):
@@ -200,7 +201,7 @@ def strike_rate(df):
     return df['PitchCall'].isin(strike_calls).mean() * 100
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCHER: STANDARD REPORT
+# PITCHER: STANDARD REPORT (Movement + Summary)
 # ──────────────────────────────────────────────────────────────────────────────
 def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     df_p = df[df['Pitcher'] == pitcher_name]
@@ -227,8 +228,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     }).round({'Usage %':1,'Strike %':1,'Rel Speed':1,'Spin Rate':1,'IVB':1,'HB':1,'Rel Height':2,'VAA':1,'Extension':2}) \
      .sort_values('Pitches', ascending=False)
 
-    date_str = summarize_dates(df_p.get("Date", pd.Series(dtype="datetime64[ns]")))
-
+    date_str = summarize_dates_range(df_p.get("Date", pd.Series(dtype="datetime64[ns]")))
     fig = plt.figure(figsize=(8, 12))
     gs = GridSpec(2, 1, figure=fig, height_ratios=[1.5, 0.7], hspace=0.3)
 
@@ -248,7 +248,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     axm.set_xlabel('Horizontal Break'); axm.set_ylabel('Induced Vertical Break')
     axm.legend(title='Pitch Type', fontsize=8, title_fontsize=9, loc='upper right')
 
-    # Summary (single table, no extra table below)
+    # Summary (single table)
     axt = fig.add_subplot(gs[1, 0]); axt.axis('off')
     tbl = axt.table(cellText=summary.values, colLabels=summary.columns, cellLoc='center', loc='center')
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
@@ -260,8 +260,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8):
     elif os.path.exists(LOGO_PATH):
         axl = fig.add_axes([1, 0.88, 0.12, 0.12], anchor='NE', zorder=10); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
-    t_suffix = f" — {date_str}" if date_str else ""
-    fig.suptitle(f"{pitcher_name} – Full Report{t_suffix}", fontweight='bold', fontsize=16, y=0.98)
+    fig.suptitle(f"{pitcher_name} – Full Report{(' — ' + date_str) if date_str else ''}", fontweight='bold', fontsize=16, y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, summary
 
@@ -293,7 +292,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, grid_size=100):
         ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
         ax.set_title(title, fontweight='bold'); ax.set_xticks([]); ax.set_yticks([])
 
-    date_str = summarize_dates(df_p.get("Date", pd.Series(dtype="datetime64[ns]")))
+    date_str = summarize_dates_range(df_p.get("Date", pd.Series(dtype="datetime64[ns]")))
 
     fig = plt.figure(figsize=(20, 20))
     gs = GridSpec(3, 5, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.4, wspace=0.3)
@@ -330,7 +329,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, grid_size=100):
 # ──────────────────────────────────────────────────────────────────────────────
 # HITTER HEATMAPS & STANDARD REPORT
 # ──────────────────────────────────────────────────────────────────────────────
-def plot_conditional(ax, sub, title):
+def compute_density_hitter_plot(ax, sub, title):
     x_min, x_max, y_min, y_max = get_view_bounds()
     draw_strikezone(ax)
     x = sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy()
@@ -369,25 +368,25 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
     df_b['iswhiff'] = df_b['PitchCall'].eq('StrikeSwinging')
     df_b['is95plus'] = df_b['ExitSpeed'] >= 95
 
-    date_str = summarize_dates(df_b.get("Date", pd.Series(dtype="datetime64[ns]")))
+    date_str = summarize_dates_range(df_b.get("Date", pd.Series(dtype="datetime64[ns]")))
 
     fig = plt.figure(figsize=(24, 6))
     gs = GridSpec(1, 9, figure=fig, wspace=0.05, hspace=0.15)
 
     sub_contact_l = df_b[df_b['iscontact'] & (df_b['PitcherThrows']=='Left')]
     sub_contact_r = df_b[df_b['iscontact'] & (df_b['PitcherThrows']=='Right')]
-    ax1 = fig.add_subplot(gs[0, 0]); plot_conditional(ax1, sub_contact_l, 'Contact vs LHP')
-    ax2 = fig.add_subplot(gs[0, 2]); plot_conditional(ax2, sub_contact_r, 'Contact vs RHP')
+    ax1 = fig.add_subplot(gs[0, 0]); compute_density_hitter_plot(ax1, sub_contact_l, 'Contact vs LHP')
+    ax2 = fig.add_subplot(gs[0, 2]); compute_density_hitter_plot(ax2, sub_contact_r, 'Contact vs RHP')
 
     sub_whiff_l = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Left')]
     sub_whiff_r = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Right')]
-    ax3 = fig.add_subplot(gs[0, 3]); plot_conditional(ax3, sub_whiff_l, 'Whiffs vs LHP')
-    ax4 = fig.add_subplot(gs[0, 5]); plot_conditional(ax4, sub_whiff_r, 'Whiffs vs RHP')
+    ax3 = fig.add_subplot(gs[0, 3]); compute_density_hitter_plot(ax3, sub_whiff_l, 'Whiffs vs LHP')
+    ax4 = fig.add_subplot(gs[0, 5]); compute_density_hitter_plot(ax4, sub_whiff_r, 'Whiffs vs RHP')
 
     sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
     sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Right')]
-    ax5 = fig.add_subplot(gs[0, 6]); plot_conditional(ax5, sub_95_l, 'Exit ≥95 vs LHP')
-    ax6 = fig.add_subplot(gs[0, 8]); plot_conditional(ax6, sub_95_r, 'Exit ≥95 vs RHP')
+    ax5 = fig.add_subplot(gs[0, 6]); compute_density_hitter_plot(ax5, sub_95_l, 'Exit ≥95 vs LHP')
+    ax6 = fig.add_subplot(gs[0, 8]); compute_density_hitter_plot(ax6, sub_95_r, 'Exit ≥95 vs RHP')
 
     formatted = format_name(batter)
     fig.suptitle(f"{formatted}{(' — ' + date_str) if date_str else ''}", fontsize=22, x=0.5, y=0.87)
@@ -422,7 +421,7 @@ def create_hitter_report(df, batter, ncols=3):
     if os.path.exists(LOGO_PATH):
         axl = fig.add_axes([0.88,0.88,0.12,0.12], anchor='NE'); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
-    date_title = summarize_dates(bdf.get("Date", pd.Series(dtype="datetime64[ns]")))
+    date_title = summarize_dates_range(bdf.get("Date", pd.Series(dtype="datetime64[ns]")))
     fig.suptitle(f"{batter} Hitter Report{(' — ' + date_title) if date_title else ''}",
                  fontsize=16, x=0.55, y=1.0, fontweight='bold')
 
@@ -471,7 +470,7 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RELEASE POINTS (used in Nebraska → Pitcher reports)
+# RELEASE POINTS (now with pitch-type filter)
 # ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
@@ -547,7 +546,7 @@ def draw_stylized_arm(ax, start_xy, end_xy, ring_color):
     inner = Circle((x1, y1), radius=HAND_RING_INNER_R, facecolor=inner_face, edgecolor=inner_face, zorder=5)
     ax.add_patch(inner)
 
-def release_points_figure(df: pd.DataFrame, pitcher_name: str):
+def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=None):
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
     x_col       = pick_col(df, "Relside","RelSide","ReleaseSide","Release_Side","release_pos_x")
     y_col       = pick_col(df, "Relheight","RelHeight","ReleaseHeight","Release_Height","release_pos_z")
@@ -571,9 +570,14 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str):
 
     sub["_type_canon"] = sub[type_col].apply(canonicalize_type)
     sub = sub[sub["_type_canon"] != "Unknown"].copy()
+
+    # Apply pitch-type filter (canonical labels) if provided
+    if include_types:
+        sub = sub[sub["_type_canon"].isin(include_types)]
     if sub.empty:
-        st.warning("All pitches are 'Unknown' after canonicalization; nothing to plot.")
+        st.warning("No pitches after applying the selected pitch-type filter.")
         return None
+
     sub["_color"] = sub["_type_canon"].apply(color_for_release)
 
     agg = {"mean_x": (x_col, "mean"), "mean_y": (y_col, "mean")}
@@ -750,18 +754,15 @@ with st.sidebar:
 
             if st.session_state["neb_report"] == "Pitcher Report":
                 neb_df_all = df_all[df_all.get('PitcherTeam','') == 'NEB'].copy()
-                # 1) Choose pitcher first
                 pitchers_all = sorted(neb_df_all.get('Pitcher', pd.Series(dtype=object)).dropna().unique().tolist())
                 st.selectbox("Pitcher", pitchers_all, key="neb_player")
 
-                # 2) Build month/day options LIMITED to this pitcher
                 pitcher = st.session_state.get("neb_player")
                 if pitcher:
                     df_pitcher_all = neb_df_all[neb_df_all['Pitcher'] == pitcher].copy()
                 else:
                     df_pitcher_all = neb_df_all.iloc[0:0].copy()
 
-                # Available months from this pitcher's dates
                 present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
                 st.multiselect(
                     "Months (optional)",
@@ -771,7 +772,6 @@ with st.sidebar:
                     key="neb_pitch_months",
                 )
 
-                # Days depend on chosen months (if any) – still restricted to this pitcher
                 months_sel = st.session_state.get("neb_pitch_months", [])
                 dates_series = df_pitcher_all['Date'].dropna()
                 if months_sel:
@@ -785,7 +785,6 @@ with st.sidebar:
                 )
 
             else:
-                # Hitter report (single date)
                 neb_mask = (df_all.get('BatterTeam','')=='NEB')
                 neb_dates = sorted(pd.Series(df_all.loc[neb_mask, 'Date']).dropna().dt.date.unique())
                 st.selectbox("Game Date", neb_dates, format_func=lambda d: format_date_long(d), key="neb_date")
@@ -845,8 +844,9 @@ with st.sidebar:
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN CONTENT
 # ──────────────────────────────────────────────────────────────────────────────
-st.title("Baseball Analytics")
 mode = st.session_state.get("mode", "Nebraska Baseball")
+# Dynamic page title per your request
+st.title("Nebraska Baseball" if mode == "Nebraska Baseball" else "D1 Baseball")
 
 # NEBRASKA
 if mode == "Nebraska Baseball":
@@ -862,12 +862,16 @@ if mode == "Nebraska Baseball":
         neb_df_all = df_all[df_all.get('PitcherTeam','')=='NEB'].copy()
         df_pitcher_all = neb_df_all[neb_df_all['Pitcher'] == player].copy()
 
+        # Season "outings" = unique dates for this pitcher (across whole file/season)
+        outings = int(pd.to_datetime(df_pitcher_all['Date'], errors="coerce").dt.date.nunique())
+        st.subheader(f"{format_name(player)} — {outings} Outings")
+
         # Apply selected months/days (restricted to this pitcher)
         months_sel = st.session_state.get("neb_pitch_months", [])
         days_sel   = st.session_state.get("neb_pitch_days", [])
         neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
 
-        # Summary text
+        # Filter summary caption
         if months_sel or days_sel:
             if months_sel and not days_sel:
                 mnames = ", ".join(MONTH_NAME_BY_NUM[m] for m in sorted(months_sel))
@@ -886,9 +890,6 @@ if mode == "Nebraska Baseball":
             st.info("No rows for the selected pitcher with current month/day filters.")
             st.stop()
 
-        date_summary = summarize_dates(neb_df['Date'])
-        st.subheader(f"{player}{(' — ' + date_summary) if date_summary else ''}")
-
         # 1) Post-game style (aggregated over selected dates)
         out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8)
         if out:
@@ -901,11 +902,28 @@ if mode == "Nebraska Baseball":
         if heat_fig:
             st.pyplot(fig=heat_fig)
 
-        # 3) Release Points
-        st.markdown("### Release Points")
-        rel_fig = release_points_figure(neb_df, player)
-        if rel_fig:
-            st.pyplot(fig=rel_fig)
+        # 3) Release Points + new pitch-type filter
+        # Build canonical pitch list from the currently filtered dataset
+        types_available = (
+            neb_df.get('AutoPitchType', pd.Series(dtype=object))
+                 .dropna().map(canonicalize_type)
+                 .replace("Unknown", np.nan).dropna().unique().tolist()
+        )
+        types_available = sorted(types_available)
+        if types_available:
+            st.markdown("### Release Points")
+            sel_types = st.multiselect(
+                "Pitch Types (Release Plot)",
+                options=types_available,
+                default=types_available,
+                key="release_types"
+            )
+            rel_fig = release_points_figure(neb_df, player, include_types=sel_types if sel_types else [])
+            if rel_fig:
+                st.pyplot(fig=rel_fig)
+        else:
+            st.markdown("### Release Points")
+            st.info("No recognizable pitch types available to plot.")
 
     else:  # Hitter Report (single date)
         sel_date = st.session_state.get('neb_date')
@@ -913,13 +931,14 @@ if mode == "Nebraska Baseball":
             st.warning("Select a game date in the Filters drawer.")
             st.stop()
 
+        st.subheader("Nebraska Hitter Report")
         df_date = df_all[df_all['Date'].dt.date==sel_date]
         df_b = df_date[df_date.get('BatterTeam','')=='NEB']
         if not player:
             st.warning("Choose a batter in the Filters drawer.")
             st.stop()
 
-        st.subheader(f"{player} — {format_date_long(sel_date)}")
+        st.markdown(f"**{player} — {format_date_long(sel_date)}**")
         tabs = st.tabs(["Standard", "Heatmaps"])
         with tabs[0]:
             fig = create_hitter_report(df_b, player, ncols=3)
@@ -964,7 +983,6 @@ else:
         filt_text = f"Filtered to days: {dnames} (across all months)"
     st.caption(filt_text)
 
-    # Hitter table
     if stats_type == "Hitter Statistics":
         ranked_h = compute_hitter_rates(team_df)
         display_cols = DISPLAY_COLS_H + [c+'_num' for c in RATE_COLS_H]
@@ -978,7 +996,6 @@ else:
                 st.markdown("**Selected Player Stats**")
                 st.table(row[['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']])
 
-    # Pitcher table
     else:
         table_p = compute_pitcher_table(team_df)
         display_cols_p = DISPLAY_COLS_P + RATE_NUMS_P

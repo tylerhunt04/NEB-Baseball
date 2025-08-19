@@ -183,10 +183,11 @@ MONTH_CHOICES = [
 MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA
+# LOAD DATA (FIXED: no query string on local file paths)
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
-def _load_csv_norm_impl(path: str):
+def _load_csv_norm_impl(path: str, version: float):
+    """version is just the file mtime to bust the cache when the file changes."""
     try:
         df = pd.read_csv(path, low_memory=False)
     except UnicodeDecodeError:
@@ -195,8 +196,8 @@ def _load_csv_norm_impl(path: str):
     return df
 
 def load_csv_norm(path: str) -> pd.DataFrame:
-    mtime = os.path.getmtime(path) if os.path.exists(path) else 0
-    return _load_csv_norm_impl(path + f"?v={mtime}")
+    mtime = os.path.getmtime(path) if os.path.exists(path) else 0.0
+    return _load_csv_norm_impl(path, mtime)
 
 if not os.path.exists(DATA_PATH):
     st.error(f"Data not found at {DATA_PATH}")
@@ -961,7 +962,6 @@ if mode == "Nebraska Baseball":
                 neb_df.get('BatterTeam', pd.Series(dtype=object))
                       .dropna().unique().tolist()
             )
-            # usually pitcher faces non-NEB teams; but keep generic
             opp_disp = [team_label(c) for c in opp_codes_all]
             selected_opp_disp = st.multiselect(
                 "Opponent team(s):",
@@ -978,7 +978,7 @@ if mode == "Nebraska Baseball":
 
             # Opponent suffix only when exactly one date after all filters
             opponent_label = ""
-            uniq_dates = pd.to_datetime(neb_df.get("Date", pd.Series(dtype="datetime64[ns]")), errors="coerce").dt.date.dropna().unique()
+            uniq_dates = pd.to_datetime(neb_df.get("Date", pd.Series(dtype="datetime64[ns]"])), errors="coerce").dt.date.dropna().unique()
             if len(uniq_dates) == 1:
                 opp_codes_single_date = neb_df.get('BatterTeam', pd.Series(dtype=object)).dropna().unique().tolist()
                 if len(opp_codes_single_date) == 1:
@@ -1057,7 +1057,6 @@ if mode == "Nebraska Baseball":
                 with cols_cmp[i]:
                     st.markdown(f"**Window {'ABC'[i]} Filters**")
 
-                    # Months / Days only (per your request)
                     mo_sel = st.multiselect(
                         f"Months (Window {'ABC'[i]})",
                         options=month_options,
@@ -1097,7 +1096,7 @@ if mode == "Nebraska Baseball":
 
                     # Opponent label (only if exactly one date)
                     opponent_lab_win = ""
-                    uniq_dates_win = pd.to_datetime(df_win.get("Date", pd.Series(dtype="datetime64[ns]")), errors="coerce").dt.date.dropna().unique()
+                    uniq_dates_win = pd.to_datetime(df_win.get("Date", pd.Series(dtype="datetime64[ns]"])), errors="coerce").dt.date.dropna().unique()
                     if len(uniq_dates_win) == 1:
                         opp_codes_single = df_win.get('BatterTeam', pd.Series(dtype=object)).dropna().unique().tolist()
                         if len(opp_codes_single) == 1:

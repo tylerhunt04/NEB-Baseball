@@ -68,13 +68,12 @@ def summarize_dates_range(series_like) -> str:
     """
     if series_like is None:
         return ""
-    # Normalize to Series for consistent .dropna() / .dt
     if not isinstance(series_like, pd.Series):
         series_like = pd.Series(series_like)
     ser = pd.to_datetime(series_like, errors="coerce").dropna()
     if ser.empty:
         return ""
-    uniq = ser.dt.date.unique()
+    uniq = pd.to_datetime(ser).dt.date.unique()
     if len(uniq) == 1:
         return format_date_long(uniq[0])
     dmin, dmax = min(uniq), max(uniq)
@@ -170,7 +169,11 @@ BIG_TEN_MAP = {
     'PEN_NIT': 'Penn State','PUR_BOI': 'Purdue','RUT_SCA': 'Rutgers','SOU_TRO': 'USC','WAS_HUS': 'Washington'
 }
 BIG_12_MAP, SEC_MAP, ACC_MAP = {}, {}, {}
+TEAM_MAP_ALL = {**BIG_TEN_MAP, **BIG_12_MAP, **SEC_MAP, **ACC_MAP}
 CONF_MAP = {"Big Ten": BIG_TEN_MAP, "Big 12": BIG_12_MAP, "SEC": SEC_MAP, "ACC": ACC_MAP}
+
+def team_label(code: str) -> str:
+    return TEAM_MAP_ALL.get(code, code)
 
 MONTH_CHOICES = [
     (1,"January"), (2,"February"), (3,"March"), (4,"April"),
@@ -183,13 +186,17 @@ MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
 # LOAD DATA
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
-def load_csv_norm(path: str) -> pd.DataFrame:
+def _load_csv_norm_impl(path: str):
     try:
         df = pd.read_csv(path, low_memory=False)
     except UnicodeDecodeError:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
     df = ensure_date_column(df)
     return df
+
+def load_csv_norm(path: str) -> pd.DataFrame:
+    mtime = os.path.getmtime(path) if os.path.exists(path) else 0
+    return _load_csv_norm_impl(path + f"?v={mtime}")
 
 if not os.path.exists(DATA_PATH):
     st.error(f"Data not found at {DATA_PATH}")
@@ -259,7 +266,7 @@ def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER: STANDARD REPORT (Movement + Summary)
 # ──────────────────────────────────────────────────────────────────────────────
-def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_label="Season"):
+def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_label="Season", opponent_label: str=""):
     df_p = df[df['Pitcher'] == pitcher_name]
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters.")
@@ -315,15 +322,16 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     elif os.path.exists(LOGO_PATH):
         axl = fig.add_axes([1, 0.88, 0.12, 0.12], anchor='NE', zorder=10); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
-    # Title: "First Last Metrics" then "(Season or date-range)"
-    fig.suptitle(f"{format_name(pitcher_name)} Metrics\n({season_label})", fontweight='bold', fontsize=16, y=0.98)
+    # Title: "First Last Metrics" then "(Season or date-range — vs Opponent)"
+    opp_suffix = f" — vs {opponent_label}" if opponent_label else ""
+    fig.suptitle(f"{format_name(pitcher_name)} Metrics\n({season_label}{opp_suffix})", fontweight='bold', fontsize=16, y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, summary
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER HEATMAPS — Top 3 pitches; Whiffs/Strikeouts/Damage; handedness filter
 # ──────────────────────────────────────────────────────────────────────────────
-def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season"):
+def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season", opponent_label: str=""):
     df_p = df[df['Pitcher'] == pitcher_name].copy()
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters.")
@@ -333,14 +341,12 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
     side_col = find_batter_side_col(df_p)
     hand_label = "Both"  # display label (Both/LHH/RHH)
     if side_col is not None:
-        sides = normalize_batter_side(df_p[side_col])  # 'Left'/'Right' -> 'L'/'R'
-        want = parse_hand_filter_to_LR(hand_filter)    # "LHH"/"RHH"/"Both" -> 'L'/'R'/None
+        sides = normalize_batter_side(df_p[side_col])
+        want = parse_hand_filter_to_LR(hand_filter)
         if want == "L":
-            df_p = df_p[sides == "L"]
-            hand_label = "LHH"
+            df_p = df_p[sides == "L"]; hand_label = "LHH"
         elif want == "R":
-            df_p = df_p[sides == "R"]
-            hand_label = "RHH"
+            df_p = df_p[sides == "R"]; hand_label = "RHH"
     else:
         st.caption("Batter-side column not found; showing Both.")
 
@@ -368,7 +374,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
         ax.set_title(title, fontweight='bold')
         ax.set_xticks([]); ax.set_yticks([])
 
-    # Grid: 3x3 -> only fill first 2 rows (top row = pitches, second = whiff/k/dmg)
+    # Grid: 3x3 -> first 2 rows used
     fig = plt.figure(figsize=(18, 14))
     gs = GridSpec(3, 3, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.35, wspace=0.3)
 
@@ -409,9 +415,9 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
     if os.path.exists(LOGO_PATH):
         axl = fig.add_axes([0.88, 0.92, 0.10, 0.10], anchor='NE', zorder=10); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
-    # Title: "First Last Heatmaps" + "(SeasonLabel) (Both/LHH/RHH)"
+    opp_suffix = f" — vs {opponent_label}" if opponent_label else ""
     fig.suptitle(
-        f"{format_name(pitcher_name)} Heatmaps\n({season_label}) ({hand_label})",
+        f"{format_name(pitcher_name)} Heatmaps\n({season_label}) ({'Both' if hand_filter=='Both' else hand_filter}){opp_suffix}",
         fontsize=18, y=0.98, fontweight='bold'
     )
     plt.tight_layout(rect=[0, 0, 1, 0.96])
@@ -746,7 +752,7 @@ def compute_hitter_rates(df: pd.DataFrame) -> pd.DataFrame:
     agg['OPS'] = [f"{x:.3f}" for x in ops]
 
     agg = agg.rename(columns={'BatterTeam':'Team'})
-    team_map_all = {**BIG_TEN_MAP, **BIG_12_MAP, **SEC_MAP, **ACC_MAP}
+    team_map_all = TEAM_MAP_ALL
     agg['Team'] = agg['Team'].replace(team_map_all)
 
     keep = DISPLAY_COLS_H + [c+'_num' for c in RATE_COLS_H]
@@ -805,7 +811,7 @@ def compute_pitcher_table(df: pd.DataFrame) -> pd.DataFrame:
     grouped['SO/9'] = grouped['SO/9_num'].map(lambda x: f"{x:.2f}")
 
     grouped = grouped.rename(columns={'PitcherTeam':'Team', 'Pitcher':'Name'})
-    team_map_all = {**BIG_TEN_MAP, **BIG_12_MAP, **SEC_MAP, **ACC_MAP}
+    team_map_all = TEAM_MAP_ALL
     grouped['Team'] = grouped['Team'].map(team_map_all).fillna(grouped['Team'])
 
     def fmt_name(s: str) -> str:
@@ -939,7 +945,7 @@ if mode == "Nebraska Baseball":
         appearances = int(pd.to_datetime(df_pitcher_all['Date'], errors="coerce").dt.date.nunique())
         st.subheader(f"{format_name(player)} ({appearances} Appearances)")
 
-        # Tabs: Standard & Compare (comparison filters moved here!)
+        # Tabs: Standard & Compare
         main_tabs = st.tabs(["Standard", "Compare"])
 
         # ── STANDARD TAB ───────────────────────────────────────────────────────
@@ -949,14 +955,40 @@ if mode == "Nebraska Baseball":
             days_sel   = st.session_state.get("neb_pitch_days", [])
             neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
 
-            # Season label used in figure titles — rules above
+            # Opponent filter (optional) for Standard tab
+            st.markdown("##### Opponent Filter (optional)")
+            opp_codes_all = sorted(
+                neb_df.get('BatterTeam', pd.Series(dtype=object))
+                      .dropna().unique().tolist()
+            )
+            # usually pitcher faces non-NEB teams; but keep generic
+            opp_disp = [team_label(c) for c in opp_codes_all]
+            selected_opp_disp = st.multiselect(
+                "Opponent team(s):",
+                options=opp_disp,
+                default=[],
+                key="std_opp_teams"
+            )
+            sel_opp_codes = [c for c in opp_codes_all if team_label(c) in selected_opp_disp]
+            if sel_opp_codes:
+                neb_df = neb_df[neb_df['BatterTeam'].isin(sel_opp_codes)]
+
+            # Season label used in figure titles
             season_label = build_pitcher_season_label(months_sel, days_sel, neb_df, MONTH_NAME_BY_NUM)
 
+            # Opponent suffix only when exactly one date after all filters
+            opponent_label = ""
+            uniq_dates = pd.to_datetime(neb_df.get("Date", pd.Series(dtype="datetime64[ns]")), errors="coerce").dt.date.dropna().unique()
+            if len(uniq_dates) == 1:
+                opp_codes_single_date = neb_df.get('BatterTeam', pd.Series(dtype=object)).dropna().unique().tolist()
+                if len(opp_codes_single_date) == 1:
+                    opponent_label = team_label(opp_codes_single_date[0])
+
             if neb_df.empty:
-                st.info("No rows for the selected pitcher with current month/day filters.")
+                st.info("No rows for the selected pitcher with current filters.")
             else:
                 # 1) Post-game style (aggregated over selected dates)
-                out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8, season_label=season_label)
+                out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8, season_label=season_label, opponent_label=opponent_label)
                 if out:
                     fig, _summary = out
                     st.pyplot(fig=fig)
@@ -970,7 +1002,7 @@ if mode == "Nebraska Baseball":
                     horizontal=True,
                     key="neb_heat_hand_main"
                 )
-                heat_fig = combined_pitcher_heatmap_report(neb_df, player, hand_filter=hand_choice, season_label=season_label)
+                heat_fig = combined_pitcher_heatmap_report(neb_df, player, hand_filter=hand_choice, season_label=season_label, opponent_label=opponent_label)
                 if heat_fig:
                     st.pyplot(fig=heat_fig)
 
@@ -996,9 +1028,9 @@ if mode == "Nebraska Baseball":
                     st.markdown("### Release Points")
                     st.info("No recognizable pitch types available to plot.")
 
-        # ── COMPARE TAB (filters & outputs here) ───────────────────────────────
+        # ── COMPARE TAB (months/days only + optional opponent per window) ─────
         with main_tabs[1]:
-            st.markdown("#### Compare Appearances (same pitcher)")
+            st.markdown("#### Compare Appearances")
             cmp_n = st.selectbox("Number of windows", [2,3], index=0, key="neb_cmp_n_tab")
             cmp_hand = st.radio("Batter Side (heatmaps)", ["Both","LHH","RHH"], index=0, key="neb_cmp_hand_tab")
 
@@ -1016,69 +1048,78 @@ if mode == "Nebraska Baseball":
                 key="neb_cmp_types_tab",
             )
 
-            # Build per-window controls (in this tab)
-            date_options  = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
+            # Common options for windows
             month_options = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
             cols_cmp = st.columns(cmp_n)
 
-            # Collect filtered windows, then render below each set of controls
             windows = []
             for i in range(cmp_n):
                 with cols_cmp[i]:
                     st.markdown(f"**Window {'ABC'[i]} Filters**")
-                    mode_i = st.radio(f"Filter by (Window {'ABC'[i]})",
-                                      ["Specific Dates","Months/Days"], index=0, key=f"cmp_mode_tab_{i}")
-                    if mode_i == "Specific Dates":
-                        sel_dates = st.multiselect(
-                            f"Dates (Window {'ABC'[i]})",
-                            options=date_options,
-                            format_func=lambda d: format_date_long(d),
-                            key=f"cmp_dates_tab_{i}"
-                        )
-                        if sel_dates:
-                            df_win = df_pitcher_all[df_pitcher_all['Date'].dt.date.isin(sel_dates)]
-                            # FIX: summarize_dates_range now accepts lists safely
-                            season_lab = summarize_dates_range(sel_dates)
-                        else:
-                            df_win = df_pitcher_all.iloc[0:0]
-                            season_lab = "—"
-                    else:
-                        mo_sel = st.multiselect(
-                            f"Months (Window {'ABC'[i]})",
-                            options=month_options,
-                            format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
-                            key=f"cmp_months_tab_{i}"
-                        )
-                        # derive days within selected months (for this pitcher)
-                        dser = df_pitcher_all['Date'].dropna()
-                        if mo_sel:
-                            dser = dser[dser.dt.month.isin(mo_sel)]
-                        day_opts = sorted(dser.dt.day.unique().tolist())
-                        dy_sel = st.multiselect(
-                            f"Days (Window {'ABC'[i]})",
-                            options=day_opts,
-                            key=f"cmp_days_tab_{i}"
-                        )
-                        df_win = filter_by_month_day(df_pitcher_all, months=mo_sel, days=dy_sel)
-                        season_lab = build_pitcher_season_label(mo_sel, dy_sel, df_win, MONTH_NAME_BY_NUM)
 
-                    windows.append((season_lab, df_win))
+                    # Months / Days only (per your request)
+                    mo_sel = st.multiselect(
+                        f"Months (Window {'ABC'[i]})",
+                        options=month_options,
+                        format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
+                        key=f"cmp_months_tab_{i}"
+                    )
+                    # derive days within selected months (for this pitcher)
+                    dser = df_pitcher_all['Date'].dropna()
+                    if mo_sel:
+                        dser = dser[dser.dt.month.isin(mo_sel)]
+                    day_opts = sorted(dser.dt.day.unique().tolist())
+                    dy_sel = st.multiselect(
+                        f"Days (Window {'ABC'[i]})",
+                        options=day_opts,
+                        key=f"cmp_days_tab_{i}"
+                    )
+
+                    # Opponent filter (optional) per window
+                    opp_codes_win = sorted(
+                        df_pitcher_all.get('BatterTeam', pd.Series(dtype=object))
+                                       .dropna().unique().tolist()
+                    )
+                    opp_disp_win = [team_label(c) for c in opp_codes_win]
+                    opp_sel_disp = st.multiselect(
+                        f"Opponent(s) (Window {'ABC'[i]})",
+                        options=opp_disp_win,
+                        default=[],
+                        key=f"cmp_opp_tab_{i}"
+                    )
+                    opp_sel_codes = [c for c in opp_codes_win if team_label(c) in opp_sel_disp]
+
+                    df_win = filter_by_month_day(df_pitcher_all, months=mo_sel, days=dy_sel)
+                    if opp_sel_codes:
+                        df_win = df_win[df_win['BatterTeam'].isin(opp_sel_codes)]
+
+                    season_lab = build_pitcher_season_label(mo_sel, dy_sel, df_win, MONTH_NAME_BY_NUM)
+
+                    # Opponent label (only if exactly one date)
+                    opponent_lab_win = ""
+                    uniq_dates_win = pd.to_datetime(df_win.get("Date", pd.Series(dtype="datetime64[ns]")), errors="coerce").dt.date.dropna().unique()
+                    if len(uniq_dates_win) == 1:
+                        opp_codes_single = df_win.get('BatterTeam', pd.Series(dtype=object)).dropna().unique().tolist()
+                        if len(opp_codes_single) == 1:
+                            opponent_lab_win = team_label(opp_codes_single[0])
+
+                    windows.append((season_lab, df_win, opponent_lab_win))
 
             st.markdown("---")
             cols_out = st.columns(cmp_n)
-            for i, (season_lab, df_win) in enumerate(windows):
+            for i, (season_lab, df_win, opp_lab) in enumerate(windows):
                 with cols_out[i]:
                     st.markdown(f"**Window {'ABC'[i]} — {season_lab}**")
                     if df_win.empty:
                         st.info("No data for this window.")
                         continue
 
-                    out_win = combined_pitcher_report(df_win, player, logo_img, coverage=0.8, season_label=season_lab)
+                    out_win = combined_pitcher_report(df_win, player, logo_img, coverage=0.8, season_label=season_lab, opponent_label=opp_lab)
                     if out_win:
                         fig_m, _ = out_win
                         st.pyplot(fig=fig_m)
 
-                    fig_h = combined_pitcher_heatmap_report(df_win, player, hand_filter=cmp_hand, season_label=season_lab)
+                    fig_h = combined_pitcher_heatmap_report(df_win, player, hand_filter=cmp_hand, season_label=season_lab, opponent_label=opp_lab)
                     if fig_h:
                         st.pyplot(fig=fig_h)
 
@@ -1088,7 +1129,6 @@ if mode == "Nebraska Baseball":
 
     else:  # Hitter Report (single date path kept minimal)
         st.subheader("Nebraska Hitter Report")
-        # Minimal example: choose date & batter from available NEB rows
         neb_b_df = df_all[df_all['BatterTeam']=='NEB'].copy()
         date_opts = sorted(neb_b_df['Date'].dropna().dt.date.unique().tolist())
         sel_date = st.selectbox("Game Date", options=date_opts, format_func=format_date_long) if date_opts else None

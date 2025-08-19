@@ -183,7 +183,7 @@ MONTH_CHOICES = [
 MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA (FIXED: no query string on local file paths)
+# LOAD DATA (cache-friendly without querystring)
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
 def _load_csv_norm_impl(path: str, version: float):
@@ -718,6 +718,7 @@ def compute_hitter_rates(df: pd.DataFrame) -> pd.DataFrame:
     df['is_ab']   = pr.isin(ab_values).astype(int)
     df['is_hit']  = pr.isin(hit_values).astype(int)
     df['is_bb']   = df['KorBB'].astype(str).str.lower().eq('walk').astype(int)
+    df['is_k']    = df['KorBB'].astype str if False else df['KorBB'].astype(str)  # keep compatibility
     df['is_k']    = df['KorBB'].astype(str).str.contains('strikeout', case=False, na=False).astype(int)
     df['is_hbp']  = df['PitchCall'].astype(str).eq('HitByPitch').astype(int)
     df['is_sf']   = df['PlayResult'].astype(str).str.contains('Sacrifice', case=False, na=False).astype(int)
@@ -978,7 +979,7 @@ if mode == "Nebraska Baseball":
 
             # Opponent suffix only when exactly one date after all filters
             opponent_label = ""
-            uniq_dates = pd.to_datetime(neb_df.get("Date", pd.Series(dtype="datetime64[ns]"])), errors="coerce").dt.date.dropna().unique()
+            uniq_dates = pd.to_datetime(neb_df.get("Date", pd.Series(dtype="datetime64[ns]")), errors="coerce").dt.date.dropna().unique()
             if len(uniq_dates) == 1:
                 opp_codes_single_date = neb_df.get('BatterTeam', pd.Series(dtype=object)).dropna().unique().tolist()
                 if len(opp_codes_single_date) == 1:
@@ -1096,7 +1097,7 @@ if mode == "Nebraska Baseball":
 
                     # Opponent label (only if exactly one date)
                     opponent_lab_win = ""
-                    uniq_dates_win = pd.to_datetime(df_win.get("Date", pd.Series(dtype="datetime64[ns]"])), errors="coerce").dt.date.dropna().unique()
+                    uniq_dates_win = pd.to_datetime(df_win.get("Date", pd.Series(dtype="datetime64[ns]")), errors="coerce").dt.date.dropna().unique()
                     if len(uniq_dates_win) == 1:
                         opp_codes_single = df_win.get('BatterTeam', pd.Series(dtype=object)).dropna().unique().tolist()
                         if len(opp_codes_single) == 1:

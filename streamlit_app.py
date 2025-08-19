@@ -718,7 +718,6 @@ def compute_hitter_rates(df: pd.DataFrame) -> pd.DataFrame:
     df['is_ab']   = pr.isin(ab_values).astype(int)
     df['is_hit']  = pr.isin(hit_values).astype(int)
     df['is_bb']   = df['KorBB'].astype(str).str.lower().eq('walk').astype(int)
-    df['is_k']    = df['KorBB'].astype str if False else df['KorBB'].astype(str)  # keep compatibility
     df['is_k']    = df['KorBB'].astype(str).str.contains('strikeout', case=False, na=False).astype(int)
     df['is_hbp']  = df['PitchCall'].astype(str).eq('HitByPitch').astype(int)
     df['is_sf']   = df['PlayResult'].astype(str).str.contains('Sacrifice', case=False, na=False).astype(int)

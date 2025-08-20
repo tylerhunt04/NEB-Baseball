@@ -1,4 +1,4 @@
-# pitcher_app.py — Nebraska Pitcher Report (no sidebar; filters under name)
+# pitcher_app.py — Nebraska Pitcher Report (filters only inside Standard tab)
 
 import os
 import math
@@ -25,7 +25,7 @@ st.set_page_config(
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS (adjust DATA_PATH if needed)
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"
+DATA_PATH = "/mnt/data/B10C25_streamlit_streamlit_columns.csv"
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -532,12 +532,15 @@ neb_all_pitch = neb_df_all[neb_df_all.get('Pitcher') == player].copy()
 appearances = int(pd.to_datetime(neb_all_pitch.get('Date'), errors="coerce").dt.date.dropna().nunique())
 st.subheader(f"{format_name(player)} ({appearances} Appearances)")
 
-# ── FILTERS right below the name ──────────────────────────────────────────────
-with st.container():
-    st.markdown("**Filters**")
+# Tabs: Standard & Compare
+tabs = st.tabs(["Standard", "Compare"])
+
+# ── STANDARD TAB (filters live here) ──────────────────────────────────────────
+with tabs[0]:
+    # Filters (moved inside Standard tab so Compare shows no top filters)
     date_ser = pd.to_datetime(neb_all_pitch.get('Date'), errors="coerce").dropna()
     present_months = sorted(date_ser.dt.month.unique().tolist()) if not date_ser.empty else []
-    cols = st.columns([1, 1, 2])
+    cols = st.columns([1, 1])
 
     with cols[0]:
         months_sel = st.multiselect(
@@ -556,20 +559,8 @@ with st.container():
             default=[],
             key="neb_pitch_days",
         )
-    with cols[2]:
-        st.caption(
-            "Tip: Leave both Month and Day empty to view **Season**.\n"
-            "Selecting one month (no day) shows that **month**; otherwise a **date range**."
-        )
 
-# Logo
-logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
-
-# Tabs: Standard & Compare
-tabs = st.tabs(["Standard", "Compare"])
-
-# ── STANDARD TAB ──────────────────────────────────────────────────────────────
-with tabs[0]:
+    # Apply filters
     neb_df = filter_by_month_day(neb_all_pitch, months=months_sel, days=days_sel)
     season_label = build_pitcher_season_label(months_sel, days_sel, neb_df, MONTH_NAME_BY_NUM)
 
@@ -577,6 +568,7 @@ with tabs[0]:
         st.info("No rows for the selected pitcher/month/day filters.")
     else:
         # 1) Post-game style (aggregated)
+        logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
         out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8, season_label=season_label)
         if out:
             fig, _summary = out
@@ -617,7 +609,7 @@ with tabs[0]:
             st.markdown("### Release Points")
             st.info("No recognizable pitch types available to plot.")
 
-# ── COMPARE TAB (months/days windows only) ────────────────────────────────────
+# ── COMPARE TAB (months/days windows only; no top filters) ────────────────────
 with tabs[1]:
     st.markdown("#### Compare Appearances")
     cmp_n = st.selectbox("Number of windows", [2,3], index=0, key="neb_cmp_n_tab")
@@ -669,6 +661,7 @@ with tabs[1]:
 
     st.markdown("---")
     cols_out = st.columns(cmp_n)
+    logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
     for i, (season_lab, df_win) in enumerate(windows):
         with cols_out[i]:
             st.markdown(f"**Window {'ABC'[i]} — {season_lab}**")

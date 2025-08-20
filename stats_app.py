@@ -5,9 +5,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-# ──────────────────────────────────────────────────────────────────────────────
-# PAGE CONFIG
-# ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="D1 Baseball — Team Stats",
     layout="wide",
@@ -15,15 +12,10 @@ st.set_page_config(
 )
 st.set_option("client.showErrorDetails", True)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# PATHS
-# ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"
-BANNER_IMG = "NCAA_BASEBALL.jpg"
+DATA_PATH  = "B10C25_streamlit_streamlit_columns.csv"
+BANNER_IMG = "NCAA_Baseball.jpg"   # ← new banner image
 
-# ──────────────────────────────────────────────────────────────────────────────
-# BANNER
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Banner ────────────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_banner_b64() -> str | None:
     if not os.path.exists(BANNER_IMG):
@@ -73,16 +65,12 @@ def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 260
         unsafe_allow_html=True,
     )
 
-# Banner: “D1 Baseball”
 hero_banner("D1 Baseball", subtitle=None, height_px=260)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# DATE & LOAD HELPERS
-# ──────────────────────────────────────────────────────────────────────────────
-DATE_CANDIDATES = [
-    "Date","date","GameDate","GAME_DATE","Game Date","date_game",
-    "Datetime","DateTime","game_datetime","GameDateTime"
-]
+# ── Date helpers / loader ─────────────────────────────────────────────────────
+DATE_CANDIDATES = ["Date","date","GameDate","GAME_DATE","Game Date","date_game",
+                   "Datetime","DateTime","game_datetime","GameDateTime"]
+
 def ensure_date_column(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     found = None
@@ -117,9 +105,7 @@ if not os.path.exists(DATA_PATH):
     st.error(f"Data not found at {DATA_PATH}"); st.stop()
 df_all = load_csv_norm(DATA_PATH)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# CONF MAPS
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Conference/team maps ──────────────────────────────────────────────────────
 BIG_TEN_MAP = {
     'ILL_ILL': 'Illinois','MIC_SPA': 'Michigan State','UCLA': 'UCLA','IOW_HAW': 'Iowa',
     'IU': 'Indiana','MAR_TER': 'Maryland','MIC_WOL': 'Michigan','MIN_GOL': 'Minnesota',
@@ -129,9 +115,7 @@ BIG_TEN_MAP = {
 BIG_12_MAP, SEC_MAP, ACC_MAP = {}, {}, {}
 CONF_MAP = {"Big Ten": BIG_TEN_MAP, "Big 12": BIG_12_MAP, "SEC": SEC_MAP, "ACC": ACC_MAP}
 
-# ──────────────────────────────────────────────────────────────────────────────
-# STATS BUILDERS
-# ──────────────────────────────────────────────────────────────────────────────
+# ── Stats builders ────────────────────────────────────────────────────────────
 DISPLAY_COLS_H = ['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']
 RATE_COLS_H    = ['BA','OBP','SLG','OPS']
 
@@ -240,9 +224,7 @@ def compute_pitcher_table(df: pd.DataFrame) -> pd.DataFrame:
     out = out.join(grouped[RATE_NUMS_P])
     return out
 
-# ──────────────────────────────────────────────────────────────────────────────
-# UI
-# ──────────────────────────────────────────────────────────────────────────────
+# ── UI ────────────────────────────────────────────────────────────────────────
 st.markdown("### Team Statistics")
 
 col1, col2, col3 = st.columns([1,1,2])
@@ -256,12 +238,12 @@ present_codes = pd.unique(
     ).dropna()
 )
 codes_in_conf = [code for code in team_map.keys() if code in present_codes]
-if not codes_in_conf:  # fallback to any code in data if map is empty
+if not codes_in_conf:
     codes_in_conf = sorted(present_codes.tolist())
     team_map = {code: code for code in codes_in_conf}
 team_display = [team_map.get(code, code) for code in codes_in_conf]
 team_sel_name = col2.selectbox("Team", team_display) if team_display else None
-# map back to code
+
 team_code = None
 if team_sel_name:
     for code, name in [(c, team_map.get(c, c)) for c in codes_in_conf]:
@@ -270,7 +252,6 @@ if team_sel_name:
 
 stats_type = col3.radio("Stats Type", ["Hitter Statistics","Pitcher Statistics"], index=0, horizontal=True)
 
-# Filters
 all_dates = df_all['Date'].dropna()
 month_options = sorted(all_dates.dt.month.unique().tolist())
 day_options   = list(range(1,32))
@@ -282,20 +263,17 @@ days_sel   = fd.multiselect("Days (optional)", options=day_options)
 if not team_code:
     st.info("Choose a conference and team."); st.stop()
 
-if stats_type == "Hitter Statistics":
-    team_df = df_all[df_all['BatterTeam'] == team_code].copy()
-else:
-    team_df = df_all[df_all['PitcherTeam'] == team_code].copy()
-
+team_df = df_all[(df_all['BatterTeam'] == team_code) if stats_type=="Hitter Statistics"
+                 else (df_all['PitcherTeam'] == team_code)].copy()
 team_df = filter_by_month_day(team_df, months=months_sel, days=days_sel)
 if team_df.empty:
     st.info("No rows after applying the selected filters."); st.stop()
 
 if stats_type == "Hitter Statistics":
     ranked_h = compute_hitter_rates(team_df)
-    display_cols = ['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']
-    st.dataframe(ranked_h[display_cols], use_container_width=True)
+    st.dataframe(ranked_h[['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']],
+                 use_container_width=True)
 else:
     table_p = compute_pitcher_table(team_df)
-    display_cols_p = ['Team','Name','IP','Hits','HR','BB','HBP','SO','WHIP','BB/9','H/9','HR/9','SO/9']
-    st.dataframe(table_p[display_cols_p], use_container_width=True)
+    st.dataframe(table_p[['Team','Name','IP','Hits','HR','BB','HBP','SO','WHIP','BB/9','H/9','HR/9','SO/9']],
+                 use_container_width=True)

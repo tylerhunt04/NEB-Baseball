@@ -1,4 +1,4 @@
-# streamlit_app.py  —  Nebraska Pitcher Report only (no opponent selector)
+# pitcher_app.py — Nebraska Pitcher Report (no sidebar; filters under name)
 
 import os
 import math
@@ -20,13 +20,12 @@ from matplotlib import colors
 st.set_page_config(
     layout="wide",
     page_title="Nebraska Pitcher Report",
-    initial_sidebar_state="expanded",
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PATHS (adjust DATA_PATH as needed)
+# PATHS (adjust DATA_PATH if needed)
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"
+DATA_PATH = "/mnt/data/B10C25_streamlit_streamlit_columns.csv"
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -157,7 +156,7 @@ def format_name(name):
     return str(name)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA (cache using mtime as a separate cache key argument)
+# LOAD DATA (cache w/ mtime)
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
 def _load_csv_norm_impl(path: str, mtime: float) -> pd.DataFrame:
@@ -510,65 +509,61 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SIDEBAR FILTERS — Pitcher → Months → Days (opponent REMOVED)
-# ──────────────────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("### 🎛️ Filters")
-    st.caption("Use the ◀ chevron to hide/show this drawer.")
-    st.markdown("**Nebraska Pitcher Report**")
-
-    # Restrict to NEB pitchers
-    neb_df_all = df_all[df_all.get('PitcherTeam') == 'NEB'].copy()
-
-    # Pitcher selector
-    pitchers_all = sorted(neb_df_all.get('Pitcher', pd.Series(dtype=object)).dropna().unique().tolist())
-    player = st.selectbox("Pitcher", pitchers_all, key="neb_player") if pitchers_all else None
-
-    # Subset to the selected pitcher (empty safe)
-    df_pitcher_all = neb_df_all[neb_df_all.get('Pitcher') == player].copy() if player else neb_df_all.iloc[0:0].copy()
-
-    # Months from this pitcher
-    date_ser = pd.to_datetime(df_pitcher_all.get('Date'), errors="coerce").dropna()
-    present_months = sorted(date_ser.dt.month.unique().tolist()) if not date_ser.empty else []
-    months_sel = st.multiselect(
-        "Months (optional)",
-        options=present_months,
-        format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
-        default=[],
-        key="neb_pitch_months",
-    )
-
-    # Days limited by the chosen months
-    date_ser2 = date_ser[date_ser.dt.month.isin(months_sel)] if months_sel else date_ser
-    present_days = sorted(date_ser2.dt.day.unique().tolist()) if not date_ser2.empty else []
-    st.multiselect(
-        "Days (optional)",
-        options=present_days,
-        default=[],
-        key="neb_pitch_days",
-    )
-
-# ──────────────────────────────────────────────────────────────────────────────
-# MAIN CONTENT
+# UI — MAIN (no sidebar)
 # ──────────────────────────────────────────────────────────────────────────────
 st.title("Nebraska Baseball")
 st.subheader("Pitcher Report")
 
-player = st.session_state.get('neb_player')
-months_sel = st.session_state.get("neb_pitch_months", [])
-days_sel   = st.session_state.get("neb_pitch_days", [])
-logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
+# Restrict to NEB pitchers
+neb_df_all = df_all[df_all.get('PitcherTeam') == 'NEB'].copy()
 
-if not player:
-    st.warning("Choose a pitcher in the Filters drawer.")
+# Pitcher selector (top)
+pitchers_all = sorted(neb_df_all.get('Pitcher', pd.Series(dtype=object)).dropna().unique().tolist())
+if not pitchers_all:
+    st.error("No Nebraska pitcher rows found in the dataset.")
     st.stop()
 
-# Build full season subset for this pitcher
-neb_all_pitch = df_all[(df_all.get('PitcherTeam')=='NEB') & (df_all.get('Pitcher')==player)].copy()
+player = st.selectbox("Pitcher", pitchers_all, index=0)
 
-# Appearances across season (ignore month/day filters here)
+# Entire season rows for this pitcher
+neb_all_pitch = neb_df_all[neb_df_all.get('Pitcher') == player].copy()
+
+# Appearances (unique dates)
 appearances = int(pd.to_datetime(neb_all_pitch.get('Date'), errors="coerce").dt.date.dropna().nunique())
 st.subheader(f"{format_name(player)} ({appearances} Appearances)")
+
+# ── FILTERS right below the name ──────────────────────────────────────────────
+with st.container():
+    st.markdown("**Filters**")
+    date_ser = pd.to_datetime(neb_all_pitch.get('Date'), errors="coerce").dropna()
+    present_months = sorted(date_ser.dt.month.unique().tolist()) if not date_ser.empty else []
+    cols = st.columns([1, 1, 2])
+
+    with cols[0]:
+        months_sel = st.multiselect(
+            "Months (optional)",
+            options=present_months,
+            format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
+            default=[],
+            key="neb_pitch_months",
+        )
+    date_ser2 = date_ser[date_ser.dt.month.isin(months_sel)] if months_sel else date_ser
+    present_days = sorted(date_ser2.dt.day.unique().tolist()) if not date_ser2.empty else []
+    with cols[1]:
+        days_sel = st.multiselect(
+            "Days (optional)",
+            options=present_days,
+            default=[],
+            key="neb_pitch_days",
+        )
+    with cols[2]:
+        st.caption(
+            "Tip: Leave both Month and Day empty to view **Season**.\n"
+            "Selecting one month (no day) shows that **month**; otherwise a **date range**."
+        )
+
+# Logo
+logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
 
 # Tabs: Standard & Compare
 tabs = st.tabs(["Standard", "Compare"])

@@ -19,7 +19,7 @@ st.set_option("client.showErrorDetails", True)
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
 DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"
-BANNER_IMG = "NebraskaChampions.jpg"
+BANNER_IMG = "NCAA_BASEBALL.jpg"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # BANNER

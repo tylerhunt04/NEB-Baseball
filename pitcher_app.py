@@ -1,9 +1,12 @@
 # pitcher_app.py
 import os
+import gc
 import base64
 import math
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use("Agg")  # non-interactive, memory-safe backend
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import streamlit as st
@@ -15,13 +18,14 @@ from numpy.linalg import LinAlgError
 from matplotlib import colors
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PAGE CONFIG
+# PAGE CONFIG & ERROR DETAILS
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Nebraska Baseball — Pitcher Reports",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+st.set_option("client.showErrorDetails", True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
@@ -31,18 +35,35 @@ LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG = "NebraskaChampions.jpg"  # uploaded earlier
 
 # ──────────────────────────────────────────────────────────────────────────────
+# CACHED LOADERS & FIGURE CLEANUP
+# ──────────────────────────────────────────────────────────────────────────────
+@st.cache_resource
+def load_banner_b64() -> str | None:
+    if not os.path.exists(BANNER_IMG):
+        return None
+    with open(BANNER_IMG, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
+
+@st.cache_resource
+def load_logo_img():
+    if os.path.exists(LOGO_PATH):
+        return mpimg.imread(LOGO_PATH)
+    return None
+
+def show_and_close(fig):
+    """Display a Matplotlib figure and free its memory immediately."""
+    try:
+        st.pyplot(fig=fig, clear_figure=False)
+    finally:
+        plt.close(fig)
+        gc.collect()
+
+# ──────────────────────────────────────────────────────────────────────────────
 # SIMPLE HERO BANNER (image + overlayed title)
 # ──────────────────────────────────────────────────────────────────────────────
 def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 260):
-    """Full-width banner with background image and centered text."""
-    if os.path.exists(BANNER_IMG):
-        with open(BANNER_IMG, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("utf-8")
-        bg_url = f"data:image/jpeg;base64,{b64}"
-    else:
-        # solid fallback
-        bg_url = ""
-
+    b64 = load_banner_b64()
+    bg_url = f"data:image/jpeg;base64,{b64}" if b64 else ""
     sub_html = f'<div class="hero-sub">{subtitle}</div>' if subtitle else ""
     st.markdown(
         f"""
@@ -315,10 +336,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     # Logo
     if logo_img is not None:
         axl = fig.add_axes([1, 0.88, 0.12, 0.12], anchor='NE', zorder=10); axl.imshow(logo_img); axl.axis('off')
-    elif os.path.exists(LOGO_PATH):
-        axl = fig.add_axes([1, 0.88, 0.12, 0.12], anchor='NE', zorder=10); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
-    # Title
     fig.suptitle(f"{format_name(pitcher_name)} Metrics\n({season_label})", fontweight='bold', fontsize=16, y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, summary
@@ -404,8 +422,9 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
     axt.set_title('Strike Percentage by Count', y=0.75, fontweight='bold')
 
-    if os.path.exists(LOGO_PATH):
-        axl = fig.add_axes([0.88, 0.92, 0.10, 0.10], anchor='NE', zorder=10); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
+    logo_img = load_logo_img()
+    if logo_img is not None:
+        axl = fig.add_axes([0.88, 0.92, 0.10, 0.10], anchor='NE', zorder=10); axl.imshow(logo_img); axl.axis('off')
 
     fig.suptitle(
         f"{format_name(pitcher_name)} Heatmaps\n({season_label}) ({hand_label})",
@@ -616,19 +635,19 @@ with tabs[0]:
     if neb_df.empty:
         st.info("No rows for the selected filters.")
     else:
-        logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
+        logo_img = load_logo_img()
 
         # 1) Metrics
         out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8, season_label=season_label)
         if out:
             fig_m, _ = out
-            st.pyplot(fig=fig_m)
+            show_and_close(fig_m)
 
         # 2) Heatmaps
         st.markdown("### Pitcher Heatmaps")
         fig_h = combined_pitcher_heatmap_report(neb_df, player, hand_filter=hand_choice, season_label=season_label)
         if fig_h:
-            st.pyplot(fig=fig_h)
+            show_and_close(fig_h)
 
         # 3) Release Points (+ pitch-type filter)
         types_available = (
@@ -647,7 +666,7 @@ with tabs[0]:
             )
             rel_fig = release_points_figure(neb_df, player, include_types=sel_types if sel_types else [])
             if rel_fig:
-                st.pyplot(fig=rel_fig)
+                show_and_close(rel_fig)
         else:
             st.info("No recognizable pitch types available to plot.")
 
@@ -701,22 +720,22 @@ with tabs[1]:
 
     st.markdown("---")
     cols_out = st.columns(cmp_n)
+    logo_img = load_logo_img()
     for i, (season_lab, df_win) in enumerate(windows):
         with cols_out[i]:
             st.markdown(f"**Window {'ABC'[i]} — {season_lab}**")
             if df_win.empty:
                 st.info("No data for this window."); continue
-            logo_img = mpimg.imread(LOGO_PATH) if os.path.exists(LOGO_PATH) else None
 
             out_win = combined_pitcher_report(df_win, player, logo_img, coverage=0.8, season_label=season_lab)
             if out_win:
                 fig_m, _ = out_win
-                st.pyplot(fig=fig_m)
+                show_and_close(fig_m)
 
             fig_h = combined_pitcher_heatmap_report(df_win, player, hand_filter=cmp_hand, season_label=season_lab)
             if fig_h:
-                st.pyplot(fig=fig_h)
+                show_and_close(fig_h)
 
             fig_r = release_points_figure(df_win, player, include_types=cmp_types if cmp_types else None)
             if fig_r:
-                st.pyplot(fig=fig_r)
+                show_and_close(fig_r)

@@ -1,4 +1,4 @@
-# streamlit_app.py  —  Nebraska Pitcher Report only
+# streamlit_app.py  —  Nebraska Pitcher Report only (no opponent selector)
 
 import os
 import math
@@ -280,7 +280,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     elif os.path.exists(LOGO_PATH):
         axl = fig.add_axes([1, 0.88, 0.12, 0.12], anchor='NE', zorder=10); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
-    # Title: "First Last Metrics" then "(Season or date-range)"
+    # Title
     fig.suptitle(f"{format_name(pitcher_name)} Metrics\n({season_label})", fontweight='bold', fontsize=16, y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, summary
@@ -510,7 +510,7 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SIDEBAR FILTERS — Pitcher → Opponent → Months → Days
+# SIDEBAR FILTERS — Pitcher → Months → Days (opponent REMOVED)
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🎛️ Filters")
@@ -520,23 +520,14 @@ with st.sidebar:
     # Restrict to NEB pitchers
     neb_df_all = df_all[df_all.get('PitcherTeam') == 'NEB'].copy()
 
-    # 1) Pitcher selector
+    # Pitcher selector
     pitchers_all = sorted(neb_df_all.get('Pitcher', pd.Series(dtype=object)).dropna().unique().tolist())
     player = st.selectbox("Pitcher", pitchers_all, key="neb_player") if pitchers_all else None
 
     # Subset to the selected pitcher (empty safe)
     df_pitcher_all = neb_df_all[neb_df_all.get('Pitcher') == player].copy() if player else neb_df_all.iloc[0:0].copy()
 
-    # 2) Opponent selector (after pitcher)
-    opp_col = pick_col(df_pitcher_all, "OpponentTeam","Opponent","OppTeam","Opponent Code","Opp_Code")
-    present_opps = sorted(df_pitcher_all[opp_col].dropna().unique().tolist()) if (opp_col and not df_pitcher_all.empty) else []
-    opp_choice = st.selectbox("Opponent (optional)", ["(All)"] + present_opps, index=0, key="neb_opp")
-
-    # Apply opponent filter for month/day derivation
-    if opp_col and opp_choice and opp_choice != "(All)":
-        df_pitcher_all = df_pitcher_all[df_pitcher_all[opp_col] == opp_choice]
-
-    # 3) Months from (pitcher + opponent) subset
+    # Months from this pitcher
     date_ser = pd.to_datetime(df_pitcher_all.get('Date'), errors="coerce").dropna()
     present_months = sorted(date_ser.dt.month.unique().tolist()) if not date_ser.empty else []
     months_sel = st.multiselect(
@@ -547,7 +538,7 @@ with st.sidebar:
         key="neb_pitch_months",
     )
 
-    # 4) Days limited by the chosen months
+    # Days limited by the chosen months
     date_ser2 = date_ser[date_ser.dt.month.isin(months_sel)] if months_sel else date_ser
     present_days = sorted(date_ser2.dt.day.unique().tolist()) if not date_ser2.empty else []
     st.multiselect(
@@ -572,16 +563,11 @@ if not player:
     st.warning("Choose a pitcher in the Filters drawer.")
     st.stop()
 
-# Build full season subset for this pitcher (respect Opponent at render-time too)
+# Build full season subset for this pitcher
 neb_all_pitch = df_all[(df_all.get('PitcherTeam')=='NEB') & (df_all.get('Pitcher')==player)].copy()
-opp_col_global = pick_col(neb_all_pitch, "OpponentTeam","Opponent","OppTeam","Opponent Code","Opp_Code")
-opp_choice = st.session_state.get("neb_opp")
-if opp_col_global and opp_choice and opp_choice != "(All)":
-    neb_all_pitch = neb_all_pitch[neb_all_pitch[opp_col_global] == opp_choice]
 
 # Appearances across season (ignore month/day filters here)
-appearances = int(pd.to_datetime(df_all[(df_all.get('PitcherTeam')=='NEB') & (df_all.get('Pitcher')==player)].get('Date'),
-                                  errors="coerce").dt.date.dropna().nunique())
+appearances = int(pd.to_datetime(neb_all_pitch.get('Date'), errors="coerce").dt.date.dropna().nunique())
 st.subheader(f"{format_name(player)} ({appearances} Appearances)")
 
 # Tabs: Standard & Compare
@@ -593,7 +579,7 @@ with tabs[0]:
     season_label = build_pitcher_season_label(months_sel, days_sel, neb_df, MONTH_NAME_BY_NUM)
 
     if neb_df.empty:
-        st.info("No rows for the selected pitcher/opponent/month/day filters.")
+        st.info("No rows for the selected pitcher/month/day filters.")
     else:
         # 1) Post-game style (aggregated)
         out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8, season_label=season_label)
@@ -636,7 +622,7 @@ with tabs[0]:
             st.markdown("### Release Points")
             st.info("No recognizable pitch types available to plot.")
 
-# ── COMPARE TAB (months/days windows, optional opponent per window) ───────────
+# ── COMPARE TAB (months/days windows only) ────────────────────────────────────
 with tabs[1]:
     st.markdown("#### Compare Appearances")
     cmp_n = st.selectbox("Number of windows", [2,3], index=0, key="neb_cmp_n_tab")
@@ -644,8 +630,7 @@ with tabs[1]:
 
     # Types available across the pitcher's season
     types_avail_all = (
-        df_all[(df_all.get('PitcherTeam')=='NEB') & (df_all.get('Pitcher') == player)]
-            .get('AutoPitchType', pd.Series(dtype=object))
+        neb_all_pitch.get('AutoPitchType', pd.Series(dtype=object))
             .dropna().map(canonicalize_type)
             .replace("Unknown", np.nan).dropna().unique().tolist()
     )
@@ -660,25 +645,13 @@ with tabs[1]:
     # Build per-window controls
     cols_cmp = st.columns(cmp_n)
     windows = []
-    # Determine opponent column once (from full NEB pitcher set)
-    opp_col2 = pick_col(df_all, "OpponentTeam","Opponent","OppTeam","Opponent Code","Opp_Code")
 
     for i in range(cmp_n):
         with cols_cmp[i]:
             st.markdown(f"**Window {'ABC'[i]} Filters**")
 
-            df_win_base = df_all[(df_all.get('PitcherTeam')=='NEB') & (df_all.get('Pitcher') == player)].copy()
-
-            # Per-window Opponent
-            opps_all = []
-            if opp_col2:
-                opps_all = sorted(df_win_base[opp_col2].dropna().unique().tolist())
-            opp_i = st.selectbox(f"Opponent (Window {'ABC'[i]})", ["(All)"] + opps_all, index=0, key=f"cmp_opp_{i}")
-            if opp_col2 and opp_i and opp_i != "(All)":
-                df_win_base = df_win_base[df_win_base[opp_col2] == opp_i]
-
-            # Months
-            date_ser = pd.to_datetime(df_win_base.get('Date'), errors="coerce").dropna()
+            # Months/days derived from this pitcher's full-season set
+            date_ser = pd.to_datetime(neb_all_pitch.get('Date'), errors="coerce").dropna()
             mo_opts = sorted(date_ser.dt.month.unique().tolist()) if not date_ser.empty else []
             mo_sel = st.multiselect(
                 f"Months (Window {'ABC'[i]})",
@@ -687,7 +660,6 @@ with tabs[1]:
                 key=f"cmp_months_{i}"
             )
 
-            # Days limited by chosen months
             date_ser2 = date_ser[date_ser.dt.month.isin(mo_sel)] if mo_sel else date_ser
             dy_opts = sorted(date_ser2.dt.day.unique().tolist()) if not date_ser2.empty else []
             dy_sel = st.multiselect(
@@ -696,7 +668,7 @@ with tabs[1]:
                 key=f"cmp_days_{i}"
             )
 
-            df_win = filter_by_month_day(df_win_base, months=mo_sel, days=dy_sel)
+            df_win = filter_by_month_day(neb_all_pitch, months=mo_sel, days=dy_sel)
             season_lab = build_pitcher_season_label(mo_sel, dy_sel, df_win, MONTH_NAME_BY_NUM)
             windows.append((season_lab, df_win))
 

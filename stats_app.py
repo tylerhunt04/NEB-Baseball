@@ -1,10 +1,4 @@
-# d1_stats_app.py
-# D1 Baseball Statistics app (image-only banner)
-# - Power-4 conference filter (Big Ten, Big 12, SEC, ACC)
-# - Team selector inside chosen conference
-# - Month(s) and Day(s) multi-select filters
-# - Toggle: Hitter Statistics / Pitcher Statistics
-# - Robust CSV loader with cached parsing and flexible date column detection
+# d1_stats_app.py  — D1 Baseball Statistics with image-only banner (fixed loader)
 
 import os
 import base64
@@ -15,43 +9,21 @@ import streamlit as st
 # ──────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="D1 Baseball",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="D1 Baseball", layout="wide", initial_sidebar_state="expanded")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
 DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"  # update if needed
-D1_BANNER_PATH = "NCAA_Baseball.jpg"                  # provided image
+D1_BANNER_PATH = "NCAA_Baseball.jpg"                  # uploaded banner image
 
 # ──────────────────────────────────────────────────────────────────────────────
-# UTILITIES
+# DATE HELPERS
 # ──────────────────────────────────────────────────────────────────────────────
 DATE_CANDIDATES = [
     "Date","date","GameDate","GAME_DATE","Game Date","date_game","Datetime",
     "DateTime","game_datetime","GameDateTime"
 ]
-
-@st.cache_data(show_spinner=False)
-def _load_csv_norm_impl(path: str) -> pd.DataFrame:
-    try:
-        df = pd.read_csv(path, low_memory=False)
-    except UnicodeDecodeError:
-        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
-    return df
-
-@st.cache_data(show_spinner=True)
-def load_csv_norm(path: str) -> pd.DataFrame:
-    # Add a tiny cache-busting query when file mtime changes
-    try:
-        mtime = os.path.getmtime(path)
-    except Exception:
-        mtime = 0
-    raw = _load_csv_norm_impl(path + f"?v={mtime}")
-    return ensure_date_column(raw)
 
 def ensure_date_column(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -86,7 +58,26 @@ def month_name(n: int) -> str:
     ][n-1]
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HERO BANNER (IMAGE ONLY – no text overlay)
+# CACHED LOADER (FIXED: no query string in file path)
+# ──────────────────────────────────────────────────────────────────────────────
+@st.cache_data(show_spinner=False)
+def _read_csv_for_cache(path: str, cache_bust: float) -> pd.DataFrame:
+    """cache_bust is unused other than to change the cache key when file mtime changes."""
+    try:
+        df = pd.read_csv(path, low_memory=False)
+    except UnicodeDecodeError:
+        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
+    return df
+
+def load_csv_norm(path: str) -> pd.DataFrame:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Data file not found: {path}")
+    mtime = os.path.getmtime(path)  # used only to invalidate cache
+    raw = _read_csv_for_cache(path, mtime)
+    return ensure_date_column(raw)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HERO BANNER (image only)
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def load_banner_b64(path: str) -> str | None:
@@ -95,15 +86,9 @@ def load_banner_b64(path: str) -> str | None:
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
 
-def hero_banner(title: str | None = None, *, subtitle: str | None = None, height_px: int = 260):
-    """Renders an image-only hero banner unless title/subtitle provided."""
+def hero_banner(height_px: int = 260):
     b64 = load_banner_b64(D1_BANNER_PATH)
     bg_url = f"data:image/jpeg;base64,{b64}" if b64 else ""
-    text_block = ""
-    if title or subtitle:
-        sub_html = f'<div class="hero-sub">{subtitle}</div>' if subtitle else ""
-        title_html = f'<h1 class="hero-title">{title}</h1>' if title else ""
-        text_block = f'<div class="hero-text">{title_html}{sub_html}</div>'
     st.markdown(
         f"""
         <style>
@@ -114,25 +99,12 @@ def hero_banner(title: str | None = None, *, subtitle: str | None = None, height
         }}
         .hero-bg {{
             position: absolute; inset: 0;
-            background:
-              linear-gradient(to bottom, rgba(0,0,0,0.20), rgba(0,0,0,0.25)),
-              url('{bg_url}');
+            background: url('{bg_url}');
             background-size: cover; background-position: center;
             filter: saturate(105%);
         }}
-        .hero-text {{
-            position: absolute; inset: 0; display: flex;
-            align-items: center; justify-content: center; flex-direction: column;
-            color: #fff; text-align: center;
-        }}
-        .hero-title {{ font-size: 40px; font-weight: 800; letter-spacing: .5px;
-            text-shadow: 0 2px 8px rgba(0,0,0,.45); margin: 0; }}
-        .hero-sub {{ font-size: 18px; font-weight: 600; opacity: .95; margin-top: 6px; }}
         </style>
-        <div class="hero-wrap">
-          <div class="hero-bg"></div>
-          {text_block}
-        </div>
+        <div class="hero-wrap"><div class="hero-bg"></div></div>
         """,
         unsafe_allow_html=True,
     )
@@ -146,15 +118,13 @@ BIG_TEN_MAP = {
     'ORE_DUC':'Oregon','OSU_BUC':'Ohio State','PEN_NIT':'Penn State','PUR_BOI':'Purdue','RUT_SCA':'Rutgers',
     'SOU_TRO':'USC','WAS_HUS':'Washington'
 }
-# You can fill these as you standardize codes for other conferences.
 BIG_12_MAP: dict[str,str] = {}
 SEC_MAP: dict[str,str]    = {}
 ACC_MAP: dict[str,str]    = {}
-
 CONF_MAP = {"Big Ten": BIG_TEN_MAP, "Big 12": BIG_12_MAP, "SEC": SEC_MAP, "ACC": ACC_MAP}
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HITTER & PITCHER TABLE COMPUTATIONS
+# STATS COMPUTATIONS
 # ──────────────────────────────────────────────────────────────────────────────
 DISPLAY_COLS_H = ['Team','Batter','PA','AB','Hits','2B','3B','HR','HBP','BB','K','BA','OBP','SLG','OPS']
 RATE_COLS_H    = ['BA','OBP','SLG','OPS']
@@ -241,8 +211,7 @@ def compute_pitcher_table(df: pd.DataFrame) -> pd.DataFrame:
 
     grouped['IP_num'] = grouped['Outs'] / 3.0
     def ip_display(ip_num: float) -> str:
-        outs = int(round(ip_num * 3))
-        return f"{outs//3}.{outs%3}"
+        outs = int(round(ip_num * 3)); return f"{outs//3}.{outs%3}"
     grouped['IP'] = grouped['IP_num'].apply(ip_display)
 
     ip = grouped['IP_num'].replace(0, np.nan)
@@ -278,24 +247,22 @@ def compute_pitcher_table(df: pd.DataFrame) -> pd.DataFrame:
 # ──────────────────────────────────────────────────────────────────────────────
 # LOAD DATA
 # ──────────────────────────────────────────────────────────────────────────────
-if not os.path.exists(DATA_PATH):
-    st.error(f"Data file not found: {DATA_PATH}")
+try:
+    df_all = load_csv_norm(DATA_PATH)
+except FileNotFoundError as e:
+    st.error(str(e))
     st.stop()
-df_all = load_csv_norm(DATA_PATH)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # UI — BANNER + CONTROLS
 # ──────────────────────────────────────────────────────────────────────────────
-# Image-only banner (no overlay text)
-hero_banner(title=None, subtitle=None, height_px=260)
-
+hero_banner(height_px=260)
 st.title("D1 Baseball")
 
 with st.sidebar:
     st.markdown("### Filters")
     conf = st.selectbox("Conference", ["Big Ten","Big 12","SEC","ACC"], index=0)
 
-    # Find team codes present in this dataset for either batting or pitching
     present_codes = pd.unique(
         pd.concat(
             [df_all.get('BatterTeam', pd.Series(dtype=object)),
@@ -307,7 +274,6 @@ with st.sidebar:
     team_map = CONF_MAP.get(conf, {})
     codes_in_conf = [c for c in team_map.keys() if c in present_codes]
 
-    # Fallback: if that conference map is empty, show all codes so the app still works
     if not codes_in_conf:
         codes_in_conf = sorted(present_codes.tolist())
         team_map = {code: code for code in codes_in_conf}
@@ -317,13 +283,9 @@ with st.sidebar:
 
     team_code = None
     if team_name:
-        for code, name in team_map.items():
-            if name == team_name:
-                team_code = code
-                break
-        if team_code is None:
-            # name may equal the code in the fallback case
-            team_code = team_name
+        # Resolve back to code
+        inv = {v: k for k, v in team_map.items()}
+        team_code = inv.get(team_name, team_name)
 
     months_sel = st.multiselect(
         "Months (optional)",
@@ -340,7 +302,7 @@ with st.sidebar:
     stats_type = st.radio("Stats Type", ["Hitter Statistics","Pitcher Statistics"], index=0)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# DATA FILTERING
+# FILTER & RENDER
 # ──────────────────────────────────────────────────────────────────────────────
 if not team_code:
     st.info("Select a conference and team in the sidebar.")
@@ -357,7 +319,7 @@ if team_df.empty:
     st.warning("No rows after applying the selected filters.")
     st.stop()
 
-# Display a compact filter summary
+# Filter summary
 if not months_sel and not days_sel:
     st.caption("Season totals")
 elif months_sel and not days_sel:
@@ -371,9 +333,7 @@ else:
     dnames = ", ".join(str(d) for d in sorted(days_sel))
     st.caption(f"Filtered to day(s): {dnames} (across all months)")
 
-# ──────────────────────────────────────────────────────────────────────────────
-# TABLE RENDER
-# ──────────────────────────────────────────────────────────────────────────────
+# Tables
 if stats_type == "Hitter Statistics":
     ranked_h = compute_hitter_rates(team_df)
     st.subheader("Hitter Statistics")
@@ -390,6 +350,7 @@ if stats_type == "Hitter Statistics":
 else:
     table_p = compute_pitcher_table(team_df)
     st.subheader("Pitcher Statistics")
+    st.dataframe(table_p[DISPLAY_COLS_P] + 0*table_p[DISPLAY_COLS_P], use_container_width=True)  # ensure correct dtypes in df viewer
     st.dataframe(table_p[DISPLAY_COLS_P + RATE_NUMS_P], use_container_width=True)
 
     p_options = table_p['Name'].unique().tolist()

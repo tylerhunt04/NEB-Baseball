@@ -26,7 +26,7 @@ st.set_page_config(
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH = "/mnt/data/B10C25_streamlit_streamlit_columns.csv"  # update if needed
+DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"  # update if needed
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 
 # ──────────────────────────────────────────────────────────────────────────────

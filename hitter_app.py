@@ -15,7 +15,7 @@ from matplotlib import colors
 
 st.set_page_config(layout="wide", page_title="Nebraska Hitter Reports", initial_sidebar_state="expanded")
 
-DATA_PATH = "/mnt/data/B10C25_streamlit_streamlit_columns.csv"
+DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 
 DATE_CANDIDATES = ["Date","date","GameDate","GAME_DATE","Game Date","date_game","Datetime","DateTime","game_datetime","GameDateTime"]

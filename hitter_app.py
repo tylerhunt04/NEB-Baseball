@@ -104,7 +104,6 @@ CUSTOM_CMAP = colors.LinearSegmentedColormap.from_list(
 # BATTED BALL / PLATE DISCIPLINE / BATTING STATS (stacked tables)
 # ──────────────────────────────────────────────────────────────────────────────
 def _spray_cat(row):
-    # Bearing: negative = LF for RHB; use BatterSide to decide pull/oppo
     ang = row.get("Bearing", np.nan)
     side = str(row.get("BatterSide","")).strip().upper()[:1]
     if pd.isna(ang):
@@ -121,15 +120,12 @@ def pct(series_bool):
     return round(float(series_bool.mean()) * 100.0, 1)
 
 def create_batted_ball_profile(df: pd.DataFrame) -> pd.DataFrame:
-    # Needs: PitchCall, TaggedHitType, Bearing, BatterSide
     inplay = df[df.get("PitchCall","") == "InPlay"].copy()
     if "TaggedHitType" not in inplay.columns:
-        # Graceful fallback if column not present
         return pd.DataFrame([{
             "Ground ball %": 0.0, "Fly ball %": 0.0, "Line drive %": 0.0, "Popup %": 0.0,
             "Pull %": 0.0, "Straight %": 0.0, "Opposite %": 0.0
         }])
-    # Spray category
     if "Bearing" in inplay.columns and "BatterSide" in inplay.columns:
         inplay["spray_cat"] = inplay.apply(_spray_cat, axis=1)
     else:
@@ -152,7 +148,6 @@ def create_plate_discipline_profile(df: pd.DataFrame) -> pd.DataFrame:
     d["isswing"]   = pc.isin(["StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay"])
     d["iswhiff"]   = pc.eq("StrikeSwinging")
     d["iscontact"] = pc.isin(["InPlay","FoulBallNotFieldable","FoulBallFieldable"])
-    # zone check requires PlateLocSide/PlateLocHeight; if missing, all False
     pls = pd.to_numeric(d.get("PlateLocSide", pd.Series(np.nan, index=d.index)), errors="coerce")
     plh = pd.to_numeric(d.get("PlateLocHeight", pd.Series(np.nan, index=d.index)), errors="coerce")
     d["isinzone"]  = pls.between(-0.83,0.83) & plh.between(1.5,3.5)
@@ -188,12 +183,12 @@ def create_batting_stats_profile(df: pd.DataFrame):
     d["FC"]        = d.get("PlayResult","").eq("FieldersChoice")
     d["Error"]     = d.get("PlayResult","").eq("Error")
 
-    hits = int(d["Hit"].sum())
-    so   = int(d["StrikeOut"].sum())
+    hits   = int(d["Hit"].sum())
+    so     = int(d["StrikeOut"].sum())
     bbouts = int(d["BBOut"].sum())
-    fc   = int(d["FC"].sum())
-    err  = int(d["Error"].sum())
-    ab   = hits + so + bbouts + fc + err
+    fc     = int(d["FC"].sum())
+    err    = int(d["Error"].sum())
+    ab     = hits + so + bbouts + fc + err
 
     walks = int(d["Walk"].sum())
     hbp   = int(d["HBP"].sum())
@@ -237,7 +232,7 @@ def create_batting_stats_profile(df: pd.DataFrame):
     return out, pa, ab
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STANDARD HITTER REPORT (single-game, post-game)
+# STANDARD HITTER REPORT (single-game, post-game) — FIXED PANEL SIZE
 # ──────────────────────────────────────────────────────────────────────────────
 def hitter_standard_report(df_date: pd.DataFrame, batter: str, ncols=3):
     bdf = df_date[df_date["Batter"] == batter]
@@ -277,15 +272,21 @@ def hitter_standard_report(df_date: pd.DataFrame, batter: str, ncols=3):
                 lines.append("▶ PA Result: Strikeout")
         descs.append(lines)
 
-    # Figure sizing: keep zone size, add extra bottom space if only 1 row
-    base_w = 3 + 4*ncols + 1
-    base_h = 4*nrows
-    if nrows == 1:
-        base_h = 6.5  # extra vertical padding beneath zones for single row
-    fig = plt.figure(figsize=(base_w, base_h))
+    # ── FIXED per-panel sizing so zones NEVER change size ─────────────────────
+    PANEL_W_IN = 3.8   # width of each strikezone panel (inches)
+    PANEL_H_IN = 3.8   # height of each strikezone panel (inches)
+    DESC_W_IN  = 3.0   # description column width (inches)
 
-    # Layout (1 desc col + ncols strike zones)
-    gs = GridSpec(nrows, ncols+1, width_ratios=[0.8] + [1]*ncols, wspace=0.1)
+    # Figure size scales with number of rows, keeping each panel constant size
+    fig_w = DESC_W_IN + ncols * PANEL_W_IN + 1.0  # + small margin
+    fig_h = nrows * PANEL_H_IN + 2.0              # + small top/bottom margin
+    fig = plt.figure(figsize=(fig_w, fig_h))
+
+    # GridSpec uses proportional ratios that match our inch targets
+    width_ratios  = [DESC_W_IN] + [PANEL_W_IN]*ncols
+    height_ratios = [PANEL_H_IN]*nrows
+    gs = GridSpec(nrows, ncols+1, width_ratios=width_ratios, height_ratios=height_ratios,
+                  wspace=0.10, hspace=0.20)
 
     # Optional logo in the figure
     if os.path.exists(LOGO_PATH):
@@ -293,7 +294,6 @@ def hitter_standard_report(df_date: pd.DataFrame, batter: str, ncols=3):
         axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis("off")
 
     # Title & mini summary
-    # Use the single selected date:
     game_date = df_date["Date"].iloc[0] if not df_date.empty else None
     fig.suptitle(f"{format_name(batter)} Hitter Report for {format_date_long(game_date)}",
                  fontsize=16, x=0.55, y=1.0, fontweight="bold")
@@ -307,10 +307,10 @@ def hitter_standard_report(df_date: pd.DataFrame, batter: str, ncols=3):
         plh = pd.to_numeric(gd.get("PlateLocHeight", pd.Series(np.nan, index=gd.index)), errors="coerce")
         chases = ((gd.get("PitchCall","") == "StrikeSwinging") &
                   ((pls < -0.83) | (pls > 0.83) | (plh < 1.5) | (plh > 3.5))).sum()
-    fig.text(0.55, 0.96, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {int(chases)}",
+    fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {int(chases)}",
              ha="center", va="top", fontsize=12)
 
-    # Plot each PA panel
+    # Plot each PA panel (fixed axes limits so the box size is constant)
     for idx, ((_, inn, tb, _), padf) in enumerate(pa):
         row, col = divmod(idx, ncols)
         ax = fig.add_subplot(gs[row, col+1])
@@ -330,7 +330,8 @@ def hitter_standard_report(df_date: pd.DataFrame, batter: str, ncols=3):
                     p.get("PlateLocHeight", np.nan) + yoff,
                     str(int(p.get("PitchofPA", 0))), ha="center", va="center",
                     fontsize=6, fontweight="bold", zorder=3)
-        ax.set_xlim(-3, 3); ax.set_ylim(0, 5)
+        # CONSTANT limits & aspect -> constant box size
+        ax.set_xlim(-3, 3); ax.set_ylim(0, 5); ax.set_aspect("equal", "box")
         ax.set_xticks([]); ax.set_yticks([])
         ax.set_title(f"PA {idx+1} | Inning {inn} {tb}", fontsize=10, fontweight="bold")
         ax.text(0.5, 0.1, f"vs {pitcher} ({hand_label})", transform=ax.transAxes,
@@ -361,7 +362,7 @@ def hitter_standard_report(df_date: pd.DataFrame, batter: str, ncols=3):
     fig.legend(pitch_handles, [h.get_label() for h in pitch_handles],
                title="Pitches", loc="lower right", bbox_to_anchor=(0.98, 0.02))
 
-    plt.tight_layout(rect=[0.12, 0.05, 1, 0.88])
+    plt.tight_layout(rect=[0.12, 0.05, 1, 0.90])
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -376,10 +377,8 @@ def _plot_conditional_panel(ax, title, sub_df: pd.DataFrame):
     x, y = x[mask], y[mask]
 
     if len(x) < 10:
-        # scatter
         ax.plot(x, y, "o", color="gray", alpha=0.8, markersize=6)
     else:
-        # density
         xi = np.linspace(x_min, x_max, 200)
         yi = np.linspace(y_min, y_max, 200)
         xi_m, yi_m = np.meshgrid(xi, yi)
@@ -399,33 +398,27 @@ def hitter_heatmaps(df_date: pd.DataFrame, batter: str, hand_choice="Both"):
         st.warning("No Nebraska hitter data for that selection.")
         return None
 
-    df_b["iscontact"] = df_b.get("PitchCall","").isin(["InPlay","FoulBallFieldable","FoulBallNotFieldable"])
+    df_b["iscontact"] = df_b.get("PitchCall","").isin(["InPlay","FoulBallNotFieldable","FoulBallFieldable"])
     df_b["iswhiff"]   = df_b.get("PitchCall","").eq("StrikeSwinging")
     df_b["is95plus"]  = pd.to_numeric(df_b.get("ExitSpeed", pd.Series(np.nan)), errors="coerce").ge(95.0)
 
-    # Hand filter
     if hand_choice in ("LHH","RHH"):
-        # PitcherThrows is the throwing hand of the pitcher (L/R). For batter hand split, you may have BatterSide.
-        # User explicitly wants pitcher split (LHP/RHP) in their prior report, so we keep throws split here for clarity.
         throws = "Left" if hand_choice == "LHH" else "Right"
         df_b = df_b[df_b.get("PitcherThrows","") == throws]
 
     fig = plt.figure(figsize=(24, 6))
     gs = GridSpec(1, 9, figure=fig, wspace=0.05, hspace=0.15)
 
-    # Contact vs LHP/RHP
     sub_contact_l = df_b[df_b["iscontact"] & (df_b.get("PitcherThrows","") == "Left")]
     sub_contact_r = df_b[df_b["iscontact"] & (df_b.get("PitcherThrows","") == "Right")]
     ax1 = fig.add_subplot(gs[0, 0]); _plot_conditional_panel(ax1, "Contact vs LHP", sub_contact_l)
     ax2 = fig.add_subplot(gs[0, 2]); _plot_conditional_panel(ax2, "Contact vs RHP", sub_contact_r)
 
-    # Whiffs vs LHP/RHP
     sub_wh_l = df_b[df_b["iswhiff"] & (df_b.get("PitcherThrows","") == "Left")]
     sub_wh_r = df_b[df_b["iswhiff"] & (df_b.get("PitcherThrows","") == "Right")]
     ax3 = fig.add_subplot(gs[0, 3]); _plot_conditional_panel(ax3, "Whiffs vs LHP", sub_wh_l)
     ax4 = fig.add_subplot(gs[0, 5]); _plot_conditional_panel(ax4, "Whiffs vs RHP", sub_wh_r)
 
-    # 95+ vs LHP/RHP
     sub_95_l = df_b[df_b["is95plus"] & (df_b.get("PitcherThrows","") == "Left")]
     sub_95_r = df_b[df_b["is95plus"] & (df_b.get("PitcherThrows","") == "Right")]
     ax5 = fig.add_subplot(gs[0, 6]); _plot_conditional_panel(ax5, "Exit ≥95 vs LHP", sub_95_l)
@@ -445,7 +438,6 @@ def load_csv_norm(path: str) -> pd.DataFrame:
         df = pd.read_csv(path, low_memory=False)
     except UnicodeDecodeError:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
-    # Date normalization
     if "Date" in df.columns:
         df["Date"] = ensure_date(df["Date"])
     else:
@@ -477,7 +469,6 @@ selected_date = col1.selectbox(
     index=len(dates)-1 if dates else 0
 )
 
-# Filter to that date (post-game, single game)
 bdf_date = df_neb_hit[df_neb_hit["Date"] == selected_date]
 
 batters = sorted(bdf_date.get("Batter", pd.Series(dtype=object)).dropna().unique().tolist())
@@ -494,12 +485,10 @@ with tabs[0]:
     if not batter:
         st.info("Select a batter.")
     else:
-        # Main figure (PA grids)
         fig_std = hitter_standard_report(bdf_date, batter, ncols=3)
         if fig_std:
             st.pyplot(fig_std)
 
-        # Stacked tables under the figure (Batted Ball → Plate Discipline → Batting Statistics)
         bdf_player = bdf_date[bdf_date["Batter"] == batter].copy()
         bb_df   = create_batted_ball_profile(bdf_player)
         pd_df   = create_plate_discipline_profile(bdf_player)
@@ -509,12 +498,10 @@ with tabs[0]:
         st.table(bb_df)
 
         st.markdown("---")
-
         st.markdown("### Plate Discipline Profile")
         st.table(pd_df)
 
         st.markdown("---")
-
         st.markdown("### Batting Statistics")
         st.table(stats_df)
 

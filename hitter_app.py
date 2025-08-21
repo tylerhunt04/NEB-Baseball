@@ -15,7 +15,7 @@ from matplotlib import colors
 # ───────────────────────── CONFIG / PATHS ─────────────────────────
 st.set_page_config(layout="wide", page_title="Nebraska Hitter Reports")
 
-DATA_PATH   = "B10C25_streamlit_streamlit_columns.csv"  # streamlit-columns dataset
+DATA_PATH   = "B10C25_hitter_app_columns.csv"  # streamlit-columns dataset
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_PATH = "NebraskaChampions.jpg"  # Nebraska banner image
 

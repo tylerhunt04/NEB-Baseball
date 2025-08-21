@@ -17,10 +17,10 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # wide OFF
 
-DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"  # update if needed
+DATA_PATH = "B10C25_hitter_app_columns.csv"  # update if needed
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
-    "/mnt/data/NebraskaChampions.jpg",
+    
 ]
 
 HUSKER_RED = "#E60026"
@@ -132,6 +132,15 @@ def themed_styler(df: pd.DataFrame, nowrap=True) -> pd.io.formats.style.Styler:
             .hide(axis="index")
             .set_table_styles(styles))
 
+# NEW: robust column picker
+def pick_col(df: pd.DataFrame, *cands) -> str | None:
+    """Return the first matching column name from candidate aliases (case-insensitive)."""
+    lower = {c.lower(): c for c in df.columns}
+    for name in cands:
+        if name and name.lower() in lower:
+            return lower[name.lower()]
+    return None
+
 # ──────────────────────────────────────────────────────────────────────────────
 # BATTED BALL / DISCIPLINE / STATS
 # ──────────────────────────────────────────────────────────────────────────────
@@ -146,32 +155,75 @@ def assign_spray_category(row):
         return 'Pull' if side == 'R' else 'Opposite'
     return 'Opposite' if side == 'R' else 'Pull'
 
+# REPLACED: tolerant batted ball profile
 def create_batted_ball_profile(df: pd.DataFrame):
-    inplay = df[df.get('PitchCall', pd.Series(dtype=object)) == 'InPlay'].copy()
-    if 'TaggedHitType' not in inplay.columns:
-        inplay['TaggedHitType'] = pd.NA
-    if 'Bearing' not in inplay.columns:
-        inplay['Bearing'] = np.nan
-    if 'BatterSide' not in inplay.columns:
-        inplay['BatterSide'] = ""
+    # Resolve columns
+    pitchcall_col = pick_col(df, "PitchCall", "Pitch Call", "Pitch_Call", "Pitch_Result")
+    tag_col       = pick_col(df, "TaggedHitType", "Tagged Hit Type", "BBType", "HitType", "BattedBallType")
+    bearing_col   = pick_col(df, "Bearing", "SprayAngle", "Spray Angle", "Spray")
+    batside_col   = pick_col(df, "BatterSide", "Batter Side", "Bats", "Stand", "BatterBatSide", "BatterBats")
 
-    inplay['spray_cat'] = inplay.apply(assign_spray_category, axis=1)
+    s_call = df.get(pitchcall_col, pd.Series(dtype=object)).astype(str).str.replace(r"\s+", "", regex=True).str.lower()
+    inplay = df[s_call.eq("inplay")].copy()
 
-    def pct(mask):
-        try:
-            return round(100 * float(np.nanmean(mask.astype(float))), 1) if len(mask) else 0.0
-        except Exception:
-            return 0.0
+    if tag_col is None:
+        inplay["__tag"] = pd.NA
+        tag_use = "__tag"
+    else:
+        tag_use = tag_col
+
+    if bearing_col is None:
+        inplay["__bearing"] = np.nan
+        bearing_use = "__bearing"
+    else:
+        bearing_use = bearing_col
+
+    if batside_col is None:
+        inplay["__batside"] = ""
+        batside_use = "__batside"
+    else:
+        batside_use = batside_col
+
+    # Normalize batted-ball labels
+    def norm_tag(x: str) -> str:
+        t = "".join(ch for ch in str(x).lower() if ch.isalpha())
+        if t.startswith("ground"): return "groundball"
+        if t.startswith("fly"):    return "flyball"
+        if t.startswith("line"):   return "linedrive"
+        if "pop" in t or "infieldfly" in t: return "popup"
+        return ""
+
+    inplay["_tag_norm"] = inplay[tag_use].apply(norm_tag)
+    inplay["_bearing"]  = pd.to_numeric(inplay[bearing_use], errors="coerce")
+    inplay["_side1"]    = inplay[batside_use].astype(str).str.strip().str.upper().str[0]
+
+    def assign_spray_category_row(row):
+        ang  = row["_bearing"]
+        side = row["_side1"]
+        if not np.isfinite(ang):
+            return np.nan
+        if -15 <= ang <= 15:
+            return "Straight"
+        if ang < -15:
+            return "Pull" if side == "R" else "Opposite"
+        return "Opposite" if side == "R" else "Pull"
+
+    inplay["spray_cat"] = inplay.apply(assign_spray_category_row, axis=1)
+
+    tot = len(inplay)
+    def pct(mask: pd.Series) -> float:
+        return round(100 * float(mask.mean()), 1) if tot else 0.0
 
     bb = pd.DataFrame([{
-        "Ground ball %": pct(inplay["TaggedHitType"].astype(str).str.contains("GroundBall", case=False, na=False)),
-        "Fly ball %":    pct(inplay["TaggedHitType"].astype(str).str.contains("FlyBall",   case=False, na=False)),
-        "Line drive %":  pct(inplay["TaggedHitType"].astype(str).str.contains("LineDrive", case=False, na=False)),
-        "Popup %":       pct(inplay["TaggedHitType"].astype(str).str.contains("Popup",     case=False, na=False)),
+        "Ground ball %": pct(inplay["_tag_norm"].eq("groundball")),
+        "Fly ball %":    pct(inplay["_tag_norm"].eq("flyball")),
+        "Line drive %":  pct(inplay["_tag_norm"].eq("linedrive")),
+        "Popup %":       pct(inplay["_tag_norm"].eq("popup")),
         "Pull %":        pct(inplay["spray_cat"].astype(str).eq("Pull")),
         "Straight %":    pct(inplay["spray_cat"].astype(str).eq("Straight")),
         "Opposite %":    pct(inplay["spray_cat"].astype(str).eq("Opposite")),
     }])
+
     return bb
 
 def create_plate_discipline_profile(df: pd.DataFrame):
@@ -202,22 +254,32 @@ def create_plate_discipline_profile(df: pd.DataFrame):
         "Whiff %":      whiff,
     }])
 
+# REPLACED: tolerant batting stats profile (fixes Avg LA, EV columns)
 def create_batting_stats_profile(df: pd.DataFrame):
-    s_call = df.get('PitchCall', pd.Series(dtype=object))
-    play   = df.get('PlayResult', pd.Series(dtype=object))
-    korbb  = df.get('KorBB', pd.Series(dtype=object))
-    exitv  = pd.to_numeric(df.get('ExitSpeed', pd.Series(dtype=float)), errors="coerce")
-    angle  = pd.to_numeric(df.get('Angle', pd.Series(dtype=float)), errors="coerce")
-    pitchofpa = pd.to_numeric(df.get('PitchofPA', pd.Series(dtype=float)), errors="coerce")
+    # Resolve columns
+    pitchcall_col = pick_col(df, "PitchCall", "Pitch Call", "Pitch_Call", "Pitch_Result")
+    play_col      = pick_col(df, "PlayResult", "Play Result", "Play_Result")
+    korbb_col     = pick_col(df, "KorBB", "K_or_BB", "K/BB", "BB/K")
+    exit_col      = pick_col(df, "ExitSpeed", "ExitVelo", "ExitVelocity", "Exit_Speed", "EV")
+    angle_col     = pick_col(df, "Angle", "LaunchAngle", "Launch_Angle", "Launch Angle", "LA")
+    pitchofpa_col = pick_col(df, "PitchofPA", "PitchOfPA", "Pitch_of_PA", "Pitch # of PA")
 
+    s_call    = df.get(pitchcall_col, pd.Series(dtype=object))
+    play      = df.get(play_col,      pd.Series(dtype=object))
+    korbb     = df.get(korbb_col,     pd.Series(dtype=object))
+    exitv     = pd.to_numeric(df.get(exit_col,  pd.Series(dtype=float)), errors="coerce")
+    angle     = pd.to_numeric(df.get(angle_col, pd.Series(dtype=float)), errors="coerce")
+    pitchofpa = pd.to_numeric(df.get(pitchofpa_col, pd.Series(dtype=float)), errors="coerce")
+
+    # Masks
     pa_mask   = pitchofpa.eq(1)
-    hit_mask  = (s_call.eq('InPlay') & play.isin(['Single','Double','Triple','HomeRun']))
-    so_mask   = korbb.eq('Strikeout')
-    bbout     = s_call.eq('InPlay') & play.eq('Out')
-    fc_mask   = play.eq('FieldersChoice')
-    err_mask  = play.eq('Error')
-    walk_mask = korbb.eq('Walk')
-    hbp_mask  = s_call.eq('HitByPitch')
+    hit_mask  = (s_call.astype(str).eq("InPlay") & play.astype(str).isin(["Single","Double","Triple","HomeRun"]))
+    so_mask   = korbb.astype(str).eq("Strikeout")
+    bbout     = s_call.astype(str).eq("InPlay") & play.astype(str).eq("Out")
+    fc_mask   = play.astype(str).eq("FieldersChoice")
+    err_mask  = play.astype(str).eq("Error")
+    walk_mask = korbb.astype(str).eq("Walk")
+    hbp_mask  = s_call.astype(str).eq("HitByPitch")
 
     hits   = int(hit_mask.sum())
     so     = int(so_mask.sum())
@@ -230,12 +292,13 @@ def create_batting_stats_profile(df: pd.DataFrame):
     hbp   = int(hbp_mask.sum())
     pa    = int(pa_mask.sum())
 
-    inplay_mask = s_call.eq('InPlay')
-    bases = (play.eq('Single').sum()
-             + 2*play.eq('Double').sum()
-             + 3*play.eq('Triple').sum()
-             + 4*play.eq('HomeRun').sum())
+    inplay_mask = s_call.astype(str).eq("InPlay")
+    bases = (play.astype(str).eq("Single").sum()
+             + 2*play.astype(str).eq("Double").sum()
+             + 3*play.astype(str).eq("Triple").sum()
+             + 4*play.astype(str).eq("HomeRun").sum())
 
+    # Two-decimal rounding for EV & LA
     avg_exit  = exitv[inplay_mask].mean()
     max_exit  = exitv[inplay_mask].max()
     avg_angle = angle[inplay_mask].mean()
@@ -245,13 +308,12 @@ def create_batting_stats_profile(df: pd.DataFrame):
     slg = bases/ab if ab else 0.0
     ops = obp + slg
     hard = (exitv[inplay_mask] >= 95).mean()*100 if inplay_mask.any() else 0.0
-    k_pct = (so/pa*100) if pa else 0.0
+    k_pct  = (so/pa*100) if pa else 0.0
     bb_pct = (walks/pa*100) if pa else 0.0
 
-    # NOTE: EV & LA → 2 decimals (leave AVG/OBP/SLG/OPS unformatted here; we format later)
     stats = pd.DataFrame([{
-        "Avg Exit Vel": round(avg_exit, 2) if pd.notna(avg_exit) else np.nan,
-        "Max Exit Vel": round(max_exit, 2) if pd.notna(max_exit) else np.nan,
+        "Avg Exit Vel": round(avg_exit,  2) if pd.notna(avg_exit)  else np.nan,
+        "Max Exit Vel": round(max_exit,  2) if pd.notna(max_exit)  else np.nan,
         "Avg Angle":    round(avg_angle, 2) if pd.notna(avg_angle) else np.nan,
         "Hits":         hits,
         "SO":           so,
@@ -512,7 +574,7 @@ else:
     present_days = []
 sel_days = colD.multiselect("Days", options=present_days, default=[], key="prof_days")
 
-# Last N games (remove "(optional)")
+# Last N games (remove "(optional)" by not including help text)
 lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
 
 # Pitcher Hand (ensure same line)
@@ -578,7 +640,6 @@ elif batter:
 
     # Plate Discipline Profile
     pd_df = create_plate_discipline_profile(df_profiles).copy()
-    # one-decimal % where appropriate; whiff/swing/chase/toggle 2-dec
     if "Zone %" in pd_df.columns:
         pd_df["Zone %"] = pd_df["Zone %"].apply(lambda v: fmt_pct(v, decimals=1))
     if "Zone Contact %" in pd_df.columns:
@@ -599,7 +660,7 @@ elif batter:
     for c in ["AVG", "OBP", "SLG", "OPS"]:
         if c in st_df.columns:
             st_df[c] = st_df[c].apply(fmt_avg3)
-    # EV & LA already rounded to 2 decimals in creation; convert to strings (ensure fixed two decimals)
+    # EV & LA → fixed two decimals
     if "Avg Exit Vel" in st_df.columns:
         st_df["Avg Exit Vel"] = st_df["Avg Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
     if "Max Exit Vel" in st_df.columns:
@@ -609,11 +670,11 @@ elif batter:
     # Percentages
     if "HardHit %" in st_df.columns:
         st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
-    if "K %" in st_df.columns:
+    if "K %"] if False else "K %" in st_df.columns:
         st_df["K %"] = st_df["K %"].apply(fmt_pct2)
-    if "BB %" in st_df.columns:
+    if "BB %"] if False else "BB %" in st_df.columns:
         st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
-    # Rename headers to keep on one line
+    # Compact column names to fit centered layout
     rename_map = {
         "Avg Exit Vel": "Avg EV",
         "Max Exit Vel": "Max EV",

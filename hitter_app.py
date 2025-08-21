@@ -10,29 +10,29 @@ import streamlit as st
 from matplotlib.patches import Rectangle
 from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
-from scipy.stats import gaussian_kde
-from matplotlib import colors
 
 # ───────────────────────────── Page setup ─────────────────────────────
 st.set_page_config(layout="wide", page_title="Nebraska Baseball – Hitter Report", initial_sidebar_state="expanded")
 
-DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"
+# Default data hints (your file first, with a fallback)
+DATA_CANDIDATES = [
+    "B10C25_streamlit_streamlit_columns.csv",
+]
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG = "NebraskaChampions.jpg"  # optional banner
 
-# ───────────────────────────── Helpers: dates ─────────────────────────
+# ─────────────────────────── Helpers: dates ───────────────────────────
 DATE_CANDIDATES = [
     "Date","date","GameDate","GAME_DATE","Game Date","date_game","Datetime",
     "DateTime","game_datetime","GameDateTime"
 ]
-
 def ensure_date_column(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     found = None
-    cols_lower = {c.lower(): c for c in df.columns}
+    lower = {c.lower(): c for c in df.columns}
     for cand in DATE_CANDIDATES:
-        if cand.lower() in cols_lower:
-            found = cols_lower[cand.lower()]
+        if cand.lower() in lower:
+            found = lower[cand.lower()]
             break
     if found is None:
         df["Date"] = pd.NaT
@@ -49,19 +49,7 @@ def format_date_long(d) -> str:
     d = pd.to_datetime(d).date()
     return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
 
-def summarize_dates_range(series_like) -> str:
-    if series_like is None: return ""
-    if not isinstance(series_like, pd.Series):
-        series_like = pd.Series(series_like)
-    ser = pd.to_datetime(series_like, errors="coerce").dropna()
-    if ser.empty: return ""
-    uniq = ser.dt.date.unique()
-    if len(uniq) == 1:
-        return format_date_long(uniq[0])
-    dmin, dmax = min(uniq), max(uniq)
-    return f"{format_date_long(dmin)} – {format_date_long(dmax)}"
-
-# ─────────────────────────── Normalization ───────────────────────────
+# ───────────────────── Column normalization (safe) ────────────────────
 RENAME_MAP = {
     "PitchOfPA":"PitchofPA","PitchNumberInPA":"PitchofPA","Pitch#":"PitchofPA",
     "PAOfInning":"PAofInning","PAIndex":"PAofInning",
@@ -75,313 +63,252 @@ RENAME_MAP = {
     "PlateLocSideX":"PlateLocSide","PlateLocHeightZ":"PlateLocHeight",
     "Game Id":"GameID","Game_ID":"GameID","InningNumber":"Inning",
 }
-
+REQUIRED_COLS = [
+    "Batter","GameID","Inning","Top/Bottom","PAofInning","PitchofPA",
+    "AutoPitchType","EffectiveVelo","PitchCall","PitcherThrows","Pitcher",
+    "PlateLocSide","PlateLocHeight","ExitSpeed","PlayResult","Date"
+]
 def normalize_core_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     need = {k: v for k, v in RENAME_MAP.items() if k in df.columns and v not in df.columns}
     if need:
         df = df.rename(columns=need)
-    for col in [
-        "GameID","Inning","Top/Bottom","PAofInning","PitchofPA",
-        "AutoPitchType","EffectiveVelo","PitchCall","PitcherThrows",
-        "Batter","Pitcher","PlateLocSide","PlateLocHeight",
-        "ExitSpeed","PlayResult"
-    ]:
-        if col not in df.columns:
-            df[col] = np.nan
+    for c in REQUIRED_COLS:
+        if c not in df.columns:
+            df[c] = np.nan
     return df
 
 # ─────────────────────────── Load & cache ────────────────────────────
 @st.cache_data(show_spinner=True)
-def load_csv_norm(path: str, mtime_key: float | None):
+def load_csv_norm(path: str):
     df = pd.read_csv(path, low_memory=False)
     df = ensure_date_column(df)
     df = normalize_core_columns(df)
     return df
 
-if not os.path.exists(DATA_PATH):
-    st.error(f"Data file not found at {DATA_PATH}")
+def pick_first_existing(paths):
+    for p in paths:
+        if os.path.exists(p):
+            return p
+    return None
+
+# File uploader (optional) + fallback to candidates
+with st.sidebar:
+    st.markdown("### 📁 Data")
+    up = st.file_uploader("Upload CSV (optional)", type=["csv"])
+    if up is not None:
+        DATA_PATH = up
+    else:
+        DATA_PATH = pick_first_existing(DATA_CANDIDATES)
+
+if DATA_PATH is None:
+    st.error("No data file found. Upload a CSV in the sidebar or place one at /mnt/data.")
     st.stop()
 
 try:
-    _mtime = os.path.getmtime(DATA_PATH)
-except Exception:
-    _mtime = None
+    df_all = load_csv_norm(DATA_PATH)
+except Exception as e:
+    st.error(f"Failed to load data: {e}")
+    st.stop()
 
-df_all = load_csv_norm(DATA_PATH, _mtime)
+# ───────────────────────── Visual helpers ────────────────────────────
+shape_map = {
+    'Fastball':  'o',
+    'Curveball': 's',
+    'Slider':    '^',
+    'Changeup':  'D'
+}
+color_map = {
+    'StrikeCalled':         '#CCCC00',
+    'BallCalled':           'green',
+    'FoulBallNotFieldable': 'tan',
+    'InPlay':               '#6699CC',
+    'StrikeSwinging':       'red',
+    'HitByPitch':           'lime'
+}
+def draw_strikezone(ax, left=-0.83, right=0.83, bottom=1.5, top=3.5):
+    ax.add_patch(Rectangle((left, bottom), right-left, top-bottom,
+                           fill=False, linewidth=2, color='black'))
+    dx, dy = (right-left)/3, (top-bottom)/3
+    for i in (1, 2):
+        ax.add_line(Line2D([left+i*dx]*2, [bottom, top], linestyle='--', color='gray'))
+        ax.add_line(Line2D([left, right], [bottom+i*dy]*2, linestyle='--', color='gray'))
 
-# ─────────────────────────── Visual helpers ──────────────────────────
-def get_pitch_color(ptype):
-    if isinstance(ptype, str) and (ptype.lower().startswith("four-seam fastball") or ptype.lower() == "fastball"):
-        return "#E60026"
-    palette = {
-        "sinker": "#FF9300","cutter": "#800080","changeup": "#008000","curveball": "#0033CC",
-        "slider": "#CCCC00","splitter": "#00CCCC","knuckle curve": "#000000","screwball": "#CC0066","eephus": "#666666",
-    }
-    return palette.get(str(ptype).lower(), "#E60026")
-
-def draw_strikezone(ax):
-    # fixed extents so "size" never changes
-    left, bottom, width, height = -0.83, 1.17, 1.66, 2.75
-    ax.add_patch(Rectangle((left, bottom), width, height, fill=False, lw=2, color="black"))
-    for f in (1/3, 2/3):
-        ax.vlines(left + width*f,  bottom, bottom+height, colors="gray", ls="--", lw=1)
-        ax.hlines(bottom + height*f, left, left+width,     colors="gray", ls="--", lw=1)
-
-def compute_density_hitter(x, y, xi_m, yi_m):
-    coords = np.vstack([x, y])
-    mask = np.isfinite(coords).all(axis=0)
-    if mask.sum() <= 1:
-        return np.zeros(xi_m.shape)
-    try:
-        kde = gaussian_kde(coords[:, mask])
-        return kde(np.vstack([xi_m.ravel(), yi_m.ravel()])).reshape(xi_m.shape)
-    except Exception:
-        return np.zeros(xi_m.shape)
-
-def compute_density_hitter_plot(ax, sub, title):
-    # fixed viewing window to keep strikezone drawn at the same visual scale
-    left, bottom, width, height = -0.83, 1.17, 1.66, 2.75
-    x_min, x_max = left - width*0.8, left + width + width*0.8
-    y_min, y_max = bottom - height*0.6, bottom + height + height*0.6
-
-    draw_strikezone(ax)
-    x = pd.to_numeric(sub.get('PlateLocSide', pd.Series(dtype=float)), errors='coerce').to_numpy()
-    y = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce').to_numpy()
-    valid = np.isfinite(x) & np.isfinite(y)
-    x, y = x[valid], y[valid]
-
-    if len(x) < 10:
-        for xi, yi, row in zip(x, y, sub.loc[valid].itertuples()):
-            color = get_pitch_color(getattr(row, 'AutoPitchType', ''))
-            ax.plot(xi, yi, 'o', color=color, alpha=0.8, ms=6)
-    else:
-        xi = np.linspace(x_min, x_max, 200)
-        yi = np.linspace(y_min, y_max, 200)
-        xi_m, yi_m = np.meshgrid(xi, yi)
-        zi = compute_density_hitter(
-            pd.to_numeric(sub.get('PlateLocSide', pd.Series(dtype=float)), errors='coerce').to_numpy(),
-            pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce').to_numpy(),
-            xi_m, yi_m
-        )
-        custom_cmap = colors.LinearSegmentedColormap.from_list(
-            "custom_cmap",
-            [(0.0, "white"), (0.2, "deepskyblue"), (0.3, "white"), (0.7, "red"), (1.0, "red")],
-            N=256,
-        )
-        ax.imshow(zi, origin='lower', extent=[x_min, x_max, y_min, y_max], aspect='equal', cmap=custom_cmap)
-        draw_strikezone(ax)
-
-    ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal', 'box')
-    ax.set_title(title, fontweight='bold')
-    ax.set_xticks([]); ax.set_yticks([])
-
-# ───────────────────── Hitter heatmaps report ────────────────────────
-def combined_hitter_heatmap_report(df, batter, logo_img=None):
-    df_b = df[df['Batter'] == batter].copy()
-    if df_b.empty:
-        st.error(f"No data for batter '{batter}' on that date.")
-        return None
-
-    df_b['iscontact'] = df_b['PitchCall'].isin(['InPlay','FoulBallFieldable','FoulBallNotFieldable'])
-    df_b['iswhiff'] = df_b['PitchCall'].eq('StrikeSwinging')
-    df_b['is95plus'] = pd.to_numeric(df_b['ExitSpeed'], errors='coerce') >= 95
-
-    date_str = summarize_dates_range(df_b.get("Date", pd.Series(dtype="datetime64[ns]")))
-
-    fig = plt.figure(figsize=(24, 6))
-    gs = GridSpec(1, 9, figure=fig, wspace=0.05, hspace=0.15)
-
-    sub_contact_l = df_b[df_b['iscontact'] & (df_b['PitcherThrows']=='Left')]
-    sub_contact_r = df_b[df_b['iscontact'] & (df_b['PitcherThrows']=='Right')]
-    ax1 = fig.add_subplot(gs[0, 0]); compute_density_hitter_plot(ax1, sub_contact_l, 'Contact vs LHP')
-    ax2 = fig.add_subplot(gs[0, 2]); compute_density_hitter_plot(ax2, sub_contact_r, 'Contact vs RHP')
-
-    sub_whiff_l = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Left')]
-    sub_whiff_r = df_b[df_b['iswhiff'] & (df_b['PitcherThrows']=='Right')]
-    ax3 = fig.add_subplot(gs[0, 3]); compute_density_hitter_plot(ax3, sub_whiff_l, 'Whiffs vs LHP')
-    ax4 = fig.add_subplot(gs[0, 5]); compute_density_hitter_plot(ax4, sub_whiff_r, 'Whiffs vs RHP')
-
-    sub_95_l = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Left')]
-    sub_95_r = df_b[df_b['is95plus'] & (df_b['PitcherThrows']=='Right')]
-    ax5 = fig.add_subplot(gs[0, 6]); compute_density_hitter_plot(ax5, sub_95_l, 'Exit ≥95 vs LHP')
-    ax6 = fig.add_subplot(gs[0, 8]); compute_density_hitter_plot(ax6, sub_95_r, 'Exit ≥95 vs RHP')
-
-    title_str = f"{batter} — {date_str}" if date_str else f"{batter}"
-    fig.suptitle(title_str, fontsize=22, x=0.5, y=0.87)
-    plt.tight_layout(rect=[0, 0, 1, 0.78])
-    return fig
-
-# ───────────────── Hitter report (pitch-by-pitch) ────────────────────
-def _safe_pitch_number(row) -> str:
-    for key in ("PitchofPA","PitchOfPA","PitchNumberInPA","Pitch#"):
-        if key in row and pd.notna(row[key]):
-            val = pd.to_numeric(row[key], errors='coerce')
-            if pd.notna(val):
-                return str(int(val))
-    return "?"
-
-def create_hitter_report(df, batter, ncols=3):
-    bdf = df[df['Batter'] == batter].copy()
+# ───────────────────── Hitter report plotting (yours) ─────────────────
+def create_hitter_report(fig_df: pd.DataFrame, batter: str, ncols: int = 3):
+    bdf = fig_df[fig_df['Batter'] == batter].copy()
     if bdf.empty:
-        st.error("No data for that hitter with current filters.")
+        st.info("No data for that batter with the chosen date.")
         return None
 
-    # Group into plate appearances
-    group_cols = [c for c in ['GameID','Inning','Top/Bottom','PAofInning'] if c in bdf.columns]
-    if len(group_cols) >= 2:
-        grouped = list(bdf.groupby(group_cols, sort=False))
-    else:
-        bdf = bdf.sort_values(['Date','GameID','Inning','Top/Bottom','PAofInning','PitchofPA'], axis=0, na_position='last')
-        starts = pd.Series(False, index=bdf.index)
-        if 'PitchofPA' in bdf.columns:
-            starts |= (pd.to_numeric(bdf['PitchofPA'], errors='coerce') == 1).fillna(False)
-        if 'PAofInning' in bdf.columns:
-            starts |= bdf['PAofInning'].ne(bdf['PAofInning'].shift(1)).fillna(True)
-        bdf['__grp__'] = starts.cumsum()
-        grouped = list(bdf.groupby('__grp__', sort=False))
-
-    n_pa = len(grouped)
+    pa_groups = list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning'], sort=False))
+    n_pa = len(pa_groups)
     nrows = max(1, math.ceil(n_pa / ncols))
 
-    # Keep strikezone visuals constant; only increase bottom gap for 1-row
-    fig_h = 4.5 if nrows == 1 else (4.0 * nrows + 0.5)
-    fig_w = 3 + 4*ncols + 1
-    fig = plt.figure(figsize=(fig_w, fig_h))
-    gs = GridSpec(
-        nrows, ncols+1,
-        width_ratios=[0.9] + [1]*ncols,
-        wspace=0.16, hspace=0.35
-    )
+    # textual descriptions per PA
+    descriptions = []
+    for _, pa_df in pa_groups:
+        lines = []
+        for _, p in pa_df.iterrows():
+            # robust formatting
+            try:
+                pitch_no = int(pd.to_numeric(p.get("PitchofPA", np.nan), errors="coerce"))
+            except Exception:
+                pitch_no = "?"
+            ptype = str(p.get("AutoPitchType", ""))
+            velo  = pd.to_numeric(p.get("EffectiveVelo", np.nan), errors="coerce")
+            velo_s= f"{velo:.1f}" if pd.notna(velo) else "—"
+            call  = str(p.get("PitchCall", ""))
+            lines.append(f"{pitch_no} / {ptype}  {velo_s} MPH / {call}")
 
-    # Optional logo
+        inplay = pa_df[pa_df['PitchCall']=='InPlay']
+        if not inplay.empty:
+            last = inplay.iloc[-1]
+            res = last.PlayResult if pd.notna(last.PlayResult) else "InPlay"
+            es  = pd.to_numeric(last.get("ExitSpeed", np.nan), errors="coerce")
+            if pd.notna(es): res += f" ({es:.1f} MPH)"
+            lines.append(f"  ▶ PA Result: {res}")
+        else:
+            balls = (pa_df['PitchCall']=='BallCalled').sum()
+            strikes = pa_df['PitchCall'].isin(['StrikeCalled','StrikeSwinging']).sum()
+            if balls >= 4:
+                lines.append("  ▶ PA Result: Walk 🚶")
+            elif strikes >= 3:
+                lines.append("  ▶ PA Result: Strikeout 💥")
+
+        descriptions.append(lines)
+
+    # figure
+    fig_h = (3.0 + 1.0) if nrows == 1 else (4*nrows)
+    fig = plt.figure(figsize=(3 + 4*ncols + 1, fig_h))
+    gs = GridSpec(nrows, ncols+1, width_ratios=[0.8]+[1]*ncols, wspace=0.1, hspace=0.35)
+
+    # logo
     if os.path.exists(LOGO_PATH):
-        axl = fig.add_axes([0.88, 0.88, 0.12, 0.12], anchor='NE')
-        axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
+        logo = mpimg.imread(LOGO_PATH)
+        ax_logo = fig.add_axes([0.88, 0.88, 0.12, 0.12], anchor='NE')
+        ax_logo.imshow(logo); ax_logo.axis('off')
 
-    # Title + date
-    date_title = summarize_dates_range(bdf.get("Date", pd.Series(dtype="datetime64[ns]")))
-    fig.suptitle(
-        f"{batter} Hitter Report{(' — ' + date_title) if date_title else ''}",
-        fontsize=16, x=0.55, y=0.98, fontweight='bold'
-    )
+    # title & summary metrics
+    report_date = pa_groups[0][1]['Date'].iloc[0]
+    date_label = format_date_long(report_date) if pd.notna(report_date) else "—"
+    fig.suptitle(f"{batter} Hitter Report for {date_label}",
+                 fontsize=16, x=0.55, y=0.98, fontweight='bold')
 
-    # Global stats line
-    gd = pd.concat([grp for _, grp in grouped]) if grouped else bdf
-    whiffs   = (gd['PitchCall']=='StrikeSwinging').sum()
-    hardhits = (pd.to_numeric(gd['ExitSpeed'], errors='coerce')>95).sum()
-    chases   = gd[(gd['PitchCall']=='StrikeSwinging') &
-                  ((pd.to_numeric(gd['PlateLocSide'], errors='coerce')<-0.83)|
-                   (pd.to_numeric(gd['PlateLocSide'], errors='coerce')>0.83)|
-                   (pd.to_numeric(gd['PlateLocHeight'], errors='coerce')<1.5)|
-                   (pd.to_numeric(gd['PlateLocHeight'], errors='coerce')>3.5))].shape[0]
-    fig.text(0.55, 0.94, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
+    game_df = pd.concat([grp for _, grp in pa_groups], ignore_index=True)
+    whiffs   = (game_df['PitchCall']=='StrikeSwinging').sum()
+    hardhits = (pd.to_numeric(game_df['ExitSpeed'], errors='coerce') > 95).sum()
+    chases   = game_df[
+        (game_df['PitchCall']=='StrikeSwinging') &
+        ((pd.to_numeric(game_df['PlateLocSide'], errors='coerce') < -0.83) |
+         (pd.to_numeric(game_df['PlateLocSide'], errors='coerce') > 0.83) |
+         (pd.to_numeric(game_df['PlateLocHeight'], errors='coerce') < 1.5) |
+         (pd.to_numeric(game_df['PlateLocHeight'], errors='coerce') > 3.5))
+    ].shape[0]
+    fig.text(0.55, 0.94,
+             f"Whiffs: {whiffs}    Hard Hits: {hardhits}    Chases: {chases}",
              ha='center', va='top', fontsize=12)
 
-    # Left description panel
-    axd = fig.add_subplot(gs[:,0]); axd.axis('off')
-    # evenly spaced block for each PA; gap amount is independent from axes scale
-    lines_per_pa = 5.0
-    denom = max(3.0, min(8.0, n_pa * lines_per_pa))
-    y0 = 1.0
-    dy = 1.0 / denom
+    # plot panels
+    for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
+        row, col = divmod(idx, ncols)
+        ax = fig.add_subplot(gs[row, col+1])
+        draw_strikezone(ax)
 
-    for idx, (gkey, padf) in enumerate(grouped):
-        lines=[]
-        for _, p in padf.iterrows():
-            pitch_no = _safe_pitch_number(p)
-            vel = pd.to_numeric(p.get('EffectiveVelo', np.nan), errors='coerce')
-            vel_str = f"{vel:.1f}" if pd.notna(vel) else "—"
-            ptype = str(p.get('AutoPitchType', '—'))
-            call  = str(p.get('PitchCall', '—'))
-            lines.append(f"{pitch_no} / {ptype} {vel_str} MPH / {call}")
+        throws = str(pa_df['PitcherThrows'].iloc[0]) if not pa_df.empty else ""
+        hand_label = 'LHP' if throws.upper().startswith('L') else 'RHP'
+        pitcher = pa_df['Pitcher'].iloc[0] if 'Pitcher' in pa_df and not pa_df.empty else "—"
 
-        ip=padf[padf['PitchCall']=='InPlay']
-        if not ip.empty:
-            last=ip.iloc[-1]; res=last.PlayResult if pd.notna(last.PlayResult) else 'InPlay'
-            es=pd.to_numeric(last.ExitSpeed, errors='coerce')
-            if pd.notna(es): res+=f" ({es:.1f} MPH)"
-            lines.append(f"▶ PA Result: {res}")
-        else:
-            balls=(padf['PitchCall']=='BallCalled').sum()
-            strikes=padf['PitchCall'].isin(['StrikeCalled','StrikeSwinging']).sum()
-            if balls>=4: lines.append('▶ PA Result: Walk')
-            elif strikes>=3: lines.append('▶ PA Result: Strikeout')
-
-        axd.hlines(y0-dy*0.1, 0, 1, transform=axd.transAxes, color='black', lw=1)
-        axd.text(0.02, y0, f"PA {idx+1}", fontsize=7, fontweight='bold', transform=axd.transAxes)
-        yln = y0 - dy
-        for ln in lines:
-            axd.text(0.02, yln, ln, fontsize=7, transform=axd.transAxes)
-            yln -= dy
-        y0 = yln - dy*0.05
-
-        # Strike-zone panel (fixed limits -> same size feel)
-        row,col=divmod(idx,ncols)
-        ax=fig.add_subplot(gs[row,col+1]); draw_strikezone(ax)
-        for _,p in padf.iterrows():
-            mk={'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.get(p.get('AutoPitchType',''), 'o')
-            clr={'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan','InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(p.get('PitchCall',''), 'black')
-            sz=200 if p.get('AutoPitchType','')=='Slider' else 150
-            x = pd.to_numeric(p.get('PlateLocSide', np.nan), errors='coerce')
-            y = pd.to_numeric(p.get('PlateLocHeight', np.nan), errors='coerce')
+        for _, p in pa_df.iterrows():
+            mk = shape_map.get(p.get("AutoPitchType",""), 'o')
+            clr= color_map.get(p.get("PitchCall",""), 'black')
+            sz = 200 if p.get("AutoPitchType","") == 'Slider' else 150
+            x  = pd.to_numeric(p.get("PlateLocSide", np.nan), errors='coerce')
+            y  = pd.to_numeric(p.get("PlateLocHeight", np.nan), errors='coerce')
             if pd.notna(x) and pd.notna(y):
-                ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', lw=1, zorder=2)
-                pitch_no = _safe_pitch_number(p)
-                yoff=-0.05 if p.get('AutoPitchType','')=='Slider' else 0
-                ax.text(x, y+yoff, pitch_no, ha='center', va='center', fontsize=7, fontweight='bold', zorder=3)
+                ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', linewidth=1, zorder=2)
+                pitch_no = int(pd.to_numeric(p.get("PitchofPA", np.nan), errors="coerce")) if pd.notna(pd.to_numeric(p.get("PitchofPA", np.nan), errors="coerce")) else "?"
+                y_off = -0.05 if p.get("AutoPitchType","")=='Slider' else 0
+                ax.text(x, y+y_off, str(pitch_no), ha='center', va='center',
+                        color='black', fontsize=6, fontweight='bold', zorder=3)
 
-        # fixed axis limits (strikezone size never changes)
-        ax.set_xlim(-3,3); ax.set_ylim(0,5); ax.set_xticks([]); ax.set_yticks([])
-        inn = padf.get('Inning'); inn = int(pd.to_numeric(inn.iloc[0], errors='coerce')) if hasattr(inn, "iloc") and pd.notna(inn.iloc[0]) else "—"
-        tb  = str(padf.get('Top/Bottom', pd.Series(['—'])).iloc[0])
-        pitchr = str(padf.get('Pitcher', pd.Series(['—'])).iloc[0])
-        throws = str(padf.get('PitcherThrows', pd.Series(['—'])).iloc[0])
-        hand='LHP' if str(throws).startswith('L') else 'RHP'
-        ax.set_title(f"PA {idx+1} | Inning {inn} {tb}", fontsize=10, fontweight='bold')
-        ax.text(0.5,0.10,f"vs {pitchr} ({hand})", transform=ax.transAxes, ha='center', va='top', fontsize=9, style='italic')
+        ax.set_xlim(-3,3); ax.set_ylim(0,5)
+        ax.set_xticks([]); ax.set_yticks([])
+        inn_i = int(pd.to_numeric(inn, errors='coerce')) if pd.notna(pd.to_numeric(inn, errors='coerce')) else inn
+        ax.set_title(f"PA {idx+1} | Inning {inn_i} {tb}",
+                     fontsize=10, fontweight='bold')
+        ax.text(0.5,0.1, f"vs {pitcher} ({hand_label})",
+                transform=ax.transAxes, ha='center', va='top',
+                fontsize=9, style='italic')
 
-    # Legends
-    res_handles=[Line2D([0],[0], marker='o', color='w', label=k, markerfacecolor=v, ms=10, markeredgecolor='k')
-                 for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan','InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.items()]
-    fig.legend(res_handles, [h.get_label() for h in res_handles], title='Result', loc='lower right', bbox_to_anchor=(0.90,0.02))
-    pitch_handles=[Line2D([0],[0], marker=m, color='w', label=k, markerfacecolor='gray', ms=10, markeredgecolor='k')
-                   for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
-    fig.legend(pitch_handles, [h.get_label() for h in pitch_handles], title='Pitches', loc='lower right', bbox_to_anchor=(0.98,0.02))
+    # descriptions column
+    ax_desc = fig.add_subplot(gs[:,0]); ax_desc.axis('off')
+    # space the lines nicely; enlarge bottom margin automatically for single-row
+    lines_per_pa = 5.0
+    denom = max(3.0, min(8.0, len(descriptions) * lines_per_pa))
+    y0 = 1.0; dy = 1.0 / denom
+    for i, lines in enumerate(descriptions, start=1):
+        ax_desc.hlines(y0 - dy*0.1, 0, 1, transform=ax_desc.transAxes, color='black', linewidth=1)
+        ax_desc.text(0.02, y0, f"PA {i}", fontsize=6, fontweight='bold', transform=ax_desc.transAxes)
+        y_line = y0 - dy
+        for ln in lines:
+            ax_desc.text(0.02, y_line, ln, fontsize=6, transform=ax_desc.transAxes)
+            y_line -= dy
+        y0 = y_line - dy*0.05
 
-    # ─── ONLY change: enlarge bottom gap for single-row layout ───
-    rect_bottom = 0.18 if nrows == 1 else 0.08  # bigger gap beneath panels when only one row
+    # legends
+    res_handles = [Line2D([0],[0], marker='o', color='w',
+                          label=name, markerfacecolor=colr,
+                          markersize=10, markeredgecolor='k')
+                   for name,colr in color_map.items()]
+    fig.legend(res_handles, color_map.keys(),
+               title='Result', loc='lower right',
+               bbox_to_anchor=(0.90,0.02), frameon=True)
+
+    pitch_handles = [Line2D([0],[0], marker=m, color='w',
+                            label=name, markerfacecolor='gray',
+                            markersize=10, markeredgecolor='k')
+                     for name,m in shape_map.items()]
+    fig.legend(pitch_handles, shape_map.keys(),
+               title='Pitches', loc='lower right',
+               bbox_to_anchor=(0.98,0.02), frameon=True)
+
+    # add a larger bottom gap only if single row (keeps zone size unchanged)
+    rect_bottom = 0.14 if nrows == 1 else 0.08
     plt.tight_layout(rect=[0.12, rect_bottom, 1, 0.88])
     return fig
 
 # ────────────────────────────── UI / App ─────────────────────────────
-# Banner
+# Banner (optional)
 if os.path.exists(BANNER_IMG):
     st.image(BANNER_IMG, use_container_width=True)
 
 st.subheader("Nebraska Hitter Report")
 
-# Filter to Nebraska hitters, then pick a date and a batter on that date
-neb_b_df = df_all[df_all.get('BatterTeam', '') == 'NEB'].copy()
-date_opts = sorted(neb_b_df['Date'].dropna().dt.date.unique().tolist())
-sel_date = st.selectbox("Game Date", options=date_opts, format_func=format_date_long) if date_opts else None
+# Let the user choose a date → batter
+df_all = df_all.copy()
+# If you want to restrict to NEB hitters only, uncomment the next line:
+# df_all = df_all[df_all.get('BatterTeam','') == 'NEB']
 
-if not sel_date:
-    st.info("No Nebraska hitter dates available."); st.stop()
+available_dates = sorted(df_all['Date'].dropna().dt.date.unique().tolist())
+if not available_dates:
+    st.info("No valid dates found in the data.")
+    st.stop()
 
-df_date = neb_b_df[neb_b_df['Date'].dt.date==sel_date].copy()
+col1, col2 = st.columns([1,2])
+with col1:
+    sel_date = st.selectbox("Game Date", options=available_dates, format_func=format_date_long)
+
+df_date = df_all[df_all['Date'].dt.date == sel_date]
 batters = sorted(df_date['Batter'].dropna().unique().tolist())
-batter  = st.selectbox("Batter", batters) if batters else None
+
+with col2:
+    batter = st.selectbox("Batter", batters) if batters else None
 
 if not batter:
-    st.info("Choose a batter."); st.stop()
+    st.info("Choose a batter.")
+    st.stop()
 
-tabs = st.tabs(["Standard", "Heatmaps"])
-
-with tabs[0]:
-    fig = create_hitter_report(df_date, batter, ncols=3)
-    if fig: st.pyplot(fig=fig)
-
-with tabs[1]:
-    fig = combined_hitter_heatmap_report(df_date, batter)
-    if fig: st.pyplot(fig=fig)
+fig = create_hitter_report(df_date, batter, ncols=3)
+if fig:
+    st.pyplot(fig=fig)

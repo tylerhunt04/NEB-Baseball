@@ -155,7 +155,7 @@ def assign_spray_category(row):
         return 'Pull' if side == 'R' else 'Opposite'
     return 'Opposite' if side == 'R' else 'Pull'
 
-# REPLACED: tolerant batted ball profile
+# Tolerant batted ball profile
 def create_batted_ball_profile(df: pd.DataFrame):
     # Resolve columns
     pitchcall_col = pick_col(df, "PitchCall", "Pitch Call", "Pitch_Call", "Pitch_Result")
@@ -254,7 +254,7 @@ def create_plate_discipline_profile(df: pd.DataFrame):
         "Whiff %":      whiff,
     }])
 
-# REPLACED: tolerant batting stats profile (fixes Avg LA, EV columns)
+# Tolerant batting stats profile (fixes Avg LA, EV columns)
 def create_batting_stats_profile(df: pd.DataFrame):
     # Resolve columns
     pitchcall_col = pick_col(df, "PitchCall", "Pitch Call", "Pitch_Call", "Pitch_Result")
@@ -574,7 +574,7 @@ else:
     present_days = []
 sel_days = colD.multiselect("Days", options=present_days, default=[], key="prof_days")
 
-# Last N games (remove "(optional)" by not including help text)
+# Last N games (remove "(optional)")
 lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
 
 # Pitcher Hand (ensure same line)
@@ -670,9 +670,9 @@ elif batter:
     # Percentages
     if "HardHit %" in st_df.columns:
         st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
-    if "K %"] if False else "K %" in st_df.columns:
+    if "K %" in st_df.columns:
         st_df["K %"] = st_df["K %"].apply(fmt_pct2)
-    if "BB %"] if False else "BB %" in st_df.columns:
+    if "BB %" in st_df.columns:
         st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
     # Compact column names to fit centered layout
     rename_map = {

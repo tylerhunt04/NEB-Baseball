@@ -11,7 +11,6 @@ from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
 from scipy.stats import gaussian_kde
 from matplotlib import colors
-import altair as alt
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG
@@ -21,7 +20,7 @@ st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # w
 DATA_PATH = "B10C25_hitter_app_columns.csv"  # update if needed
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
-    
+
 ]
 
 HUSKER_RED = "#E60026"
@@ -71,7 +70,7 @@ def draw_strikezone(ax, left=-0.83, right=0.83, bottom=1.5, top=3.5):
         ax.add_line(Line2D([left+i*dx]*2, [bottom, top], linestyle='--', color='gray', linewidth=1))
         ax.add_line(Line2D([left, right], [bottom+i*dy]*2, linestyle='--', color='gray', linewidth=1))
 
-# Keep panel size fixed for strike-zone visuals
+# Keep panel size fixed
 X_LIM = (-3, 3)
 Y_LIM = (0, 5)
 
@@ -82,7 +81,7 @@ custom_cmap = colors.LinearSegmentedColormap.from_list(
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# DENSITY (for Matplotlib standard report only)
+# DENSITY
 # ──────────────────────────────────────────────────────────────────────────────
 def compute_density_hitter(x, y, xi_m, yi_m):
     coords = np.vstack([x, y])
@@ -303,6 +302,7 @@ def create_batting_stats_profile(df: pd.DataFrame):
     k_pct  = (so/pa*100) if pa else 0.0
     bb_pct = (walks/pa*100) if pa else 0.0
 
+    # NOTE: EV & LA → 2 decimals (leave AVG/OBP/SLG/OPS formatting for later)
     stats = pd.DataFrame([{
         "Avg Exit Vel": round(avg_exit,  2) if pd.notna(avg_exit)  else np.nan,
         "Max Exit Vel": round(max_exit,  2) if pd.notna(max_exit)  else np.nan,
@@ -321,7 +321,7 @@ def create_batting_stats_profile(df: pd.DataFrame):
     return stats, pa, ab
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STANDARD HITTER REPORT (single game) — Matplotlib figure
+# STANDARD HITTER REPORT (single game)
 # ──────────────────────────────────────────────────────────────────────────────
 def create_hitter_report(df, batter, ncols=3):
     bdf = df[df.get('Batter') == batter]
@@ -329,6 +329,7 @@ def create_hitter_report(df, batter, ncols=3):
     n_pa = len(pa_groups)
     nrows = max(1, math.ceil(n_pa / ncols))
 
+    # textual descriptions per PA
     descriptions = []
     for _, pa_df in pa_groups:
         lines = []
@@ -356,12 +357,14 @@ def create_hitter_report(df, batter, ncols=3):
     fig = plt.figure(figsize=(3 + 4*ncols + 1, 4*nrows))
     gs = GridSpec(nrows, ncols+1, width_ratios=[0.8] + [1]*ncols, wspace=0.15, hspace=0.55)
 
+    # Optional date title
     if pa_groups:
         date = pa_groups[0][1].get('Date').iloc[0]
         date_str = format_date_long(date)
         fig.suptitle(f"{batter} Hitter Report for {date_str}",
                      fontsize=16, x=0.55, y=1.0, fontweight='bold')
 
+    # summary line
     gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
     whiffs = (gd.get('PitchCall')=='StrikeSwinging').sum() if not gd.empty else 0
     hardhits = (pd.to_numeric(gd.get('ExitSpeed'), errors="coerce") > 95).sum() if not gd.empty else 0
@@ -374,6 +377,7 @@ def create_hitter_report(df, batter, ncols=3):
     fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
              ha='center', va='top', fontsize=12)
 
+    # panels
     for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
         row, col = divmod(idx, ncols)
         ax = fig.add_subplot(gs[row, col+1])
@@ -388,7 +392,8 @@ def create_hitter_report(df, batter, ncols=3):
             clr = {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
                    'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
             sz = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
-            x = p.get('PlateLocSide'); y = p.get('PlateLocHeight')
+            x = p.get('PlateLocSide')
+            y = p.get('PlateLocHeight')
             if pd.notna(x) and pd.notna(y):
                 ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', linewidth=1, zorder=2)
                 yoff = -0.05 if str(p.get('AutoPitchType'))=='Slider' else 0
@@ -401,6 +406,7 @@ def create_hitter_report(df, batter, ncols=3):
         ax.text(0.5, 0.1, f"vs {pitcher} ({hand_lbl})", transform=ax.transAxes,
                 ha='center', va='top', fontsize=9, style='italic')
 
+    # left descriptions column
     axd = fig.add_subplot(gs[:, 0]); axd.axis('off')
     y0 = 1.0; dy = 1.0 / (max(1, n_pa) * 5.0)
     for i, lines in enumerate(descriptions, start=1):
@@ -412,6 +418,7 @@ def create_hitter_report(df, batter, ncols=3):
             yln -= dy
         y0 = yln - dy*0.05
 
+    # legends (nudged lower)
     res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
                           markerfacecolor=v, markersize=10, markeredgecolor='k')
                    for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
@@ -429,64 +436,55 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STREAMLIT (ALTAIR) HEATMAPS — no Matplotlib visuals for heatmaps
+# MATPLOTLIB HEATMAPS (Profiles filters) — Contact / Whiffs / Damage
 # ──────────────────────────────────────────────────────────────────────────────
-def make_zone_layers():
-    # strike zone rectangle + dashed thirds (Altair)
-    zone_df = pd.DataFrame([{"x0": -0.83, "x1": 0.83, "y0": 1.5, "y1": 3.5}])
-    rect = alt.Chart(zone_df).mark_rect(fillOpacity=0, stroke="black", strokeWidth=2).encode(
-        x=alt.X("x0:Q", scale=alt.Scale(domain=list(X_LIM)), title=""),
-        x2="x1:Q",
-        y=alt.Y("y0:Q", scale=alt.Scale(domain=list(Y_LIM)), title=""),
-        y2="y1:Q",
-    )
-    thirds = []
-    for fx in (1/3, 2/3):
-        x = -0.83 + (0.83 - (-0.83)) * fx
-        thirds.append(alt.Chart(pd.DataFrame({"x": [x]})).mark_rule(strokeDash=[4,4], stroke="gray").encode(x="x:Q"))
-    for fy in (1/3, 2/3):
-        y = 1.5 + (3.5 - 1.5) * fy
-        thirds.append(alt.Chart(pd.DataFrame({"y": [y]})).mark_rule(strokeDash=[4,4], stroke="gray").encode(y="y:Q"))
-    return rect, thirds
-
-def altair_heatmap(df_sub: pd.DataFrame, title: str):
-    if df_sub is None or df_sub.empty:
-        return alt.Chart(pd.DataFrame({"PlateLocSide": [], "PlateLocHeight": []})).mark_rect().properties(
-            width=320, height=320, title=title
-        )
-
-    base = alt.Chart(df_sub).transform_filter(
-        (alt.datum.PlateLocSide >= X_LIM[0]) & (alt.datum.PlateLocSide <= X_LIM[1]) &
-        (alt.datum.PlateLocHeight >= Y_LIM[0]) & (alt.datum.PlateLocHeight <= Y_LIM[1])
-    ).mark_rect().encode(
-        x=alt.X("PlateLocSide:Q", bin=alt.Bin(maxbins=30), scale=alt.Scale(domain=list(X_LIM)), title=""),
-        y=alt.Y("PlateLocHeight:Q", bin=alt.Bin(maxbins=30), scale=alt.Scale(domain=list(Y_LIM)), title=""),
-        color=alt.Color("count():Q", title="Count", scale=alt.Scale(scheme="reds")),
-        tooltip=[alt.Tooltip("count():Q", title="Count")]
-    ).properties(width=320, height=320, title=title)
-
-    rect, thirds = make_zone_layers()
-    chart = alt.layer(base, rect, *thirds).resolve_scale(color='independent')
-    return chart
-
-def hitter_heatmaps_altair(df_b: pd.DataFrame, batter: str):
+def hitter_heatmaps_matplotlib(df_b: pd.DataFrame, batter: str, hand_choice: str):
     sub = df_b[df_b.get('Batter') == batter].copy()
     if sub.empty:
-        return None, None, None
+        return None
 
-    sub["PlateLocSide"]   = pd.to_numeric(sub.get("PlateLocSide"), errors="coerce")
-    sub["PlateLocHeight"] = pd.to_numeric(sub.get("PlateLocHeight"), errors="coerce")
-    sub["ExitSpeed"]      = pd.to_numeric(sub.get("ExitSpeed"), errors="coerce")
+    # Apply pitcher hand filter from Profiles section
+    if hand_choice == "LHP":
+        sub = sub[sub.get('PitcherThrows').astype(str).str.upper().str.startswith('L')]
+    elif hand_choice == "RHP":
+        sub = sub[sub.get('PitcherThrows').astype(str).str.upper().str.startswith('R')]
 
-    contact = sub[sub.get("PitchCall").isin(["InPlay","FoulBallFieldable","FoulBallNotFieldable"])]
-    whiffs  = sub[sub.get("PitchCall").eq("StrikeSwinging")]
-    damage  = sub[sub.get("ExitSpeed") >= 95]
+    if sub.empty:
+        return None
 
-    return (
-        altair_heatmap(contact, "Contact"),
-        altair_heatmap(whiffs,  "Whiffs"),
-        altair_heatmap(damage,  "Damage"),
-    )
+    sub['iscontact'] = sub.get('PitchCall').isin(['InPlay','FoulBallFieldable','FoulBallNotFieldable'])
+    sub['iswhiff']   = sub.get('PitchCall').eq('StrikeSwinging')
+    sub['is95plus']  = pd.to_numeric(sub.get('ExitSpeed'), errors="coerce") >= 95
+
+    fig = plt.figure(figsize=(18, 6))
+    gs = GridSpec(1, 3, figure=fig, wspace=0.25, hspace=0.15)
+
+    def _panel(ax, title, frame):
+        draw_strikezone(ax)
+        x = pd.to_numeric(frame.get('PlateLocSide'), errors='coerce').to_numpy()
+        y = pd.to_numeric(frame.get('PlateLocHeight'), errors='coerce').to_numpy()
+        mask = np.isfinite(x) & np.isfinite(y); x, y = x[mask], y[mask]
+
+        if len(x) < 10:
+            ax.plot(x, y, 'o', color='deepskyblue', alpha=0.85, markersize=6, markeredgecolor='black')
+        else:
+            xi = np.linspace(*X_LIM, 200)
+            yi = np.linspace(*Y_LIM, 200)
+            xi_m, yi_m = np.meshgrid(xi, yi)
+            zi = compute_density_hitter(x, y, xi_m, yi_m)
+            ax.imshow(zi, origin='lower', extent=[*X_LIM, *Y_LIM], aspect='equal', cmap=custom_cmap)
+            draw_strikezone(ax)
+
+        ax.set_xlim(*X_LIM); ax.set_ylim(*Y_LIM)
+        ax.set_aspect('equal', 'box'); ax.set_title(title, fontsize=12, pad=6, fontweight='bold')
+        ax.set_xticks([]); ax.set_yticks([])
+
+    ax1 = fig.add_subplot(gs[0, 0]); _panel(ax1, "Contact", sub[sub['iscontact']])
+    ax2 = fig.add_subplot(gs[0, 1]); _panel(ax2, "Whiffs",  sub[sub['iswhiff']])
+    ax3 = fig.add_subplot(gs[0, 2]); _panel(ax3, "Damage",  sub[sub['is95plus']])
+
+    plt.tight_layout()
+    return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
 # LOAD DATA
@@ -570,17 +568,19 @@ else:
         st.pyplot(fig_std)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOWER FILTERS — apply to Profiles & Altair Heatmaps
+# LOWER FILTERS — apply to Profiles & (Matplotlib) Heatmaps
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### Profiles & Heatmaps Filters")
 
+# Give the hand radio more room so options fit in one line
 colM, colD, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
-present_dates_all = (
-    pd.to_datetime(df_neb_bat[df_neb_bat['Batter'] == batter]['Date'], errors="coerce")
-      .dropna().dt.date if batter else pd.Series([], dtype="datetime64[ns]")
-)
+# Months / Days
+present_dates_all = pd.to_datetime(
+    df_neb_bat[df_neb_bat['Batter'] == batter]['Date'], errors="coerce"
+).dropna().dt.date if batter else pd.Series([], dtype="datetime64[ns]")
+
 present_months = sorted(pd.Series(present_dates_all).map(lambda d: d.month).unique().tolist()) if len(present_dates_all) else []
 sel_months = colM.multiselect(
     "Months",
@@ -590,7 +590,7 @@ sel_months = colM.multiselect(
     key="prof_months",
 )
 
-# Days for the chosen months
+# Days derive from selected months (for this batter)
 if batter:
     dser = pd.Series(present_dates_all)
     if sel_months:
@@ -600,7 +600,10 @@ else:
     present_days = []
 sel_days = colD.multiselect("Days", options=present_days, default=[], key="prof_days")
 
+# Last N games (remove "(optional)")
 lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
+
+# Pitcher Hand (ensure same line)
 hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
 
 # Build filtered dataset for profiles/heatmaps
@@ -627,14 +630,14 @@ if lastN and not df_profiles.empty:
     last_dates = set(uniq_dates[-lastN:])
     df_profiles = df_profiles[pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
 
-# Pitcher hand filter
+# Pitcher hand filter (applied again here to the profiles data)
 if hand_choice == "LHP":
     df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
 elif hand_choice == "RHP":
     df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PROFILES (stacked) + ALTAIR HEATMAPS on filtered data
+# PROFILES (stacked) + MATPLOTLIB HEATMAPS on filtered data
 # ──────────────────────────────────────────────────────────────────────────────
 if batter and df_profiles.empty:
     st.info("No rows for the selected filters.")
@@ -679,21 +682,25 @@ elif batter:
     # Batting Statistics
     st_df, pa_cnt, ab_cnt = create_batting_stats_profile(df_profiles)
     st_df = st_df.copy()
+    # Format: AVG/OBP/SLG/OPS as .xxx
     for c in ["AVG", "OBP", "SLG", "OPS"]:
         if c in st_df.columns:
             st_df[c] = st_df[c].apply(fmt_avg3)
+    # EV & LA already rounded to 2 decimals in creation; stringify
     if "Avg Exit Vel" in st_df.columns:
         st_df["Avg Exit Vel"] = st_df["Avg Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
     if "Max Exit Vel" in st_df.columns:
         st_df["Max Exit Vel"] = st_df["Max Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
     if "Avg Angle" in st_df.columns:
         st_df["Avg Angle"] = st_df["Avg Angle"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
+    # Percentages
     if "HardHit %" in st_df.columns:
         st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
     if "K %" in st_df.columns:
         st_df["K %"] = st_df["K %"].apply(fmt_pct2)
     if "BB %" in st_df.columns:
         st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
+    # Rename headers to keep on one line
     rename_map = {
         "Avg Exit Vel": "Avg EV",
         "Max Exit Vel": "Max EV",
@@ -710,13 +717,8 @@ elif batter:
     st.markdown("### Batting Statistics")
     st.table(themed_styler(st_df, nowrap=True))
 
-    # Altair Heatmaps (use Profiles filters; single panel each)
+    # Matplotlib Heatmaps (use Profiles filters; single panel each)
     st.markdown("### Hitter Heatmaps")
-    c_chart, w_chart, d_chart = hitter_heatmaps_altair(df_profiles, batter)
-    cols = st.columns(3)
-    if c_chart is not None:
-        cols[0].altair_chart(c_chart, use_container_width=True)
-    if w_chart is not None:
-        cols[1].altair_chart(w_chart, use_container_width=True)
-    if d_chart is not None:
-        cols[2].altair_chart(d_chart, use_container_width=True)
+    fig_hm = hitter_heatmaps_matplotlib(df_profiles, batter, hand_choice)
+    if fig_hm:
+        st.pyplot(fig_hm)

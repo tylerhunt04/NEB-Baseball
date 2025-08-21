@@ -16,12 +16,9 @@ from matplotlib import colors
 # ───────────────────────────── Page setup ─────────────────────────────
 st.set_page_config(layout="wide", page_title="Nebraska Baseball – Hitter Report", initial_sidebar_state="expanded")
 
-# Change this to your file path if different
 DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"
-
-# Optional assets
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
-BANNER_IMG = "NebraskaChampions.jpg"  # shown at the very top if present
+BANNER_IMG = "NebraskaChampions.jpg"  # optional banner
 
 # ───────────────────────────── Helpers: dates ─────────────────────────
 DATE_CANDIDATES = [
@@ -48,19 +45,16 @@ def _ordinal(n: int) -> str:
     return f"{n}{'th' if 10 <= n % 100 <= 20 else {1:'st',2:'nd',3:'rd'}.get(n % 10, 'th')}"
 
 def format_date_long(d) -> str:
-    if d is None or pd.isna(d):
-        return ""
+    if d is None or pd.isna(d): return ""
     d = pd.to_datetime(d).date()
     return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
 
 def summarize_dates_range(series_like) -> str:
-    if series_like is None:
-        return ""
+    if series_like is None: return ""
     if not isinstance(series_like, pd.Series):
         series_like = pd.Series(series_like)
     ser = pd.to_datetime(series_like, errors="coerce").dropna()
-    if ser.empty:
-        return ""
+    if ser.empty: return ""
     uniq = ser.dt.date.unique()
     if len(uniq) == 1:
         return format_date_long(uniq[0])
@@ -69,52 +63,24 @@ def summarize_dates_range(series_like) -> str:
 
 # ─────────────────────────── Normalization ───────────────────────────
 RENAME_MAP = {
-    # PA & pitch indexing
-    "PitchOfPA": "PitchofPA",
-    "PitchNumberInPA": "PitchofPA",
-    "Pitch#": "PitchofPA",
-    "PAOfInning": "PAofInning",
-    "PAIndex": "PAofInning",
-    "TopBottom": "Top/Bottom",
-    "HalfInning": "Top/Bottom",
-    "TB": "Top/Bottom",
-
-    # Types & calls
-    "Auto Pitch Type": "AutoPitchType",
-    "PitchType": "AutoPitchType",
-    "TaggedPitchType": "AutoPitchType",
-    "Pitch Call": "PitchCall",
-    "Call": "PitchCall",
-
-    # Velo
-    "EffectiveVeloMPH": "EffectiveVelo",
-    "EVelo": "EffectiveVelo",
-
-    # Names & handedness
-    "Batter Name": "Batter",
-    "BatterName": "Batter",
-    "Pitcher Name": "Pitcher",
-    "PitcherName": "Pitcher",
-    "PitcherLastFirst": "Pitcher",
-    "Pitcher Throws": "PitcherThrows",
-    "P_Throws": "PitcherThrows",
-    "PitcherHand": "PitcherThrows",
-
-    # Location
-    "PlateLocSideX": "PlateLocSide",
-    "PlateLocHeightZ": "PlateLocHeight",
-
-    # Misc
-    "Game Id": "GameID",
-    "Game_ID": "GameID",
-    "InningNumber": "Inning",
+    "PitchOfPA":"PitchofPA","PitchNumberInPA":"PitchofPA","Pitch#":"PitchofPA",
+    "PAOfInning":"PAofInning","PAIndex":"PAofInning",
+    "TopBottom":"Top/Bottom","HalfInning":"Top/Bottom","TB":"Top/Bottom",
+    "Auto Pitch Type":"AutoPitchType","PitchType":"AutoPitchType","TaggedPitchType":"AutoPitchType",
+    "Pitch Call":"PitchCall","Call":"PitchCall",
+    "EffectiveVeloMPH":"EffectiveVelo","EVelo":"EffectiveVelo",
+    "Batter Name":"Batter","BatterName":"Batter",
+    "Pitcher Name":"Pitcher","PitcherName":"Pitcher","PitcherLastFirst":"Pitcher",
+    "Pitcher Throws":"PitcherThrows","P_Throws":"PitcherThrows","PitcherHand":"PitcherThrows",
+    "PlateLocSideX":"PlateLocSide","PlateLocHeightZ":"PlateLocHeight",
+    "Game Id":"GameID","Game_ID":"GameID","InningNumber":"Inning",
 }
 
 def normalize_core_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    to_apply = {k: v for k, v in RENAME_MAP.items() if k in df.columns and v not in df.columns}
-    if to_apply:
-        df = df.rename(columns=to_apply)
+    need = {k: v for k, v in RENAME_MAP.items() if k in df.columns and v not in df.columns}
+    if need:
+        df = df.rename(columns=need)
     for col in [
         "GameID","Inning","Top/Bottom","PAofInning","PitchofPA",
         "AutoPitchType","EffectiveVelo","PitchCall","PitcherThrows",
@@ -155,6 +121,7 @@ def get_pitch_color(ptype):
     return palette.get(str(ptype).lower(), "#E60026")
 
 def draw_strikezone(ax):
+    # fixed extents so "size" never changes
     left, bottom, width, height = -0.83, 1.17, 1.66, 2.75
     ax.add_patch(Rectangle((left, bottom), width, height, fill=False, lw=2, color="black"))
     for f in (1/3, 2/3):
@@ -173,6 +140,7 @@ def compute_density_hitter(x, y, xi_m, yi_m):
         return np.zeros(xi_m.shape)
 
 def compute_density_hitter_plot(ax, sub, title):
+    # fixed viewing window to keep strikezone drawn at the same visual scale
     left, bottom, width, height = -0.83, 1.17, 1.66, 2.75
     x_min, x_max = left - width*0.8, left + width + width*0.8
     y_min, y_max = bottom - height*0.6, bottom + height + height*0.6
@@ -248,7 +216,7 @@ def combined_hitter_heatmap_report(df, batter, logo_img=None):
 def _safe_pitch_number(row) -> str:
     for key in ("PitchofPA","PitchOfPA","PitchNumberInPA","Pitch#"):
         if key in row and pd.notna(row[key]):
-            val = pd.to_numeric(row[key], errors="coerce")
+            val = pd.to_numeric(row[key], errors='coerce')
             if pd.notna(val):
                 return str(int(val))
     return "?"
@@ -259,7 +227,7 @@ def create_hitter_report(df, batter, ncols=3):
         st.error("No data for that hitter with current filters.")
         return None
 
-    # Choose grouping columns; fallback if missing
+    # Group into plate appearances
     group_cols = [c for c in ['GameID','Inning','Top/Bottom','PAofInning'] if c in bdf.columns]
     if len(group_cols) >= 2:
         grouped = list(bdf.groupby(group_cols, sort=False))
@@ -276,34 +244,27 @@ def create_hitter_report(df, batter, ncols=3):
     n_pa = len(grouped)
     nrows = max(1, math.ceil(n_pa / ncols))
 
-    # >>> Layout fix for 1-row cases (spacious, non-cramped)
-    if nrows == 1:
-        fig_h = 7.5        # taller single row
-        title_y = 0.96     # move title down a bit
-        stats_y = 0.92     # move stats line further down
-        hspace = 0.30
-    else:
-        fig_h = 4.0 * nrows + 0.5   # per-row height
-        title_y = 0.98
-        stats_y = 0.94
-        hspace = 0.35
-
+    # Keep strikezone visuals constant; only increase bottom gap for 1-row
+    fig_h = 4.5 if nrows == 1 else (4.0 * nrows + 0.5)
     fig_w = 3 + 4*ncols + 1
     fig = plt.figure(figsize=(fig_w, fig_h))
     gs = GridSpec(
         nrows, ncols+1,
-        width_ratios=[0.9] + [1]*ncols,  # a bit more room for the left description
-        wspace=0.16, hspace=hspace
+        width_ratios=[0.9] + [1]*ncols,
+        wspace=0.16, hspace=0.35
     )
 
-    # Logo (optional)
+    # Optional logo
     if os.path.exists(LOGO_PATH):
-        axl = fig.add_axes([0.88, 0.88, 0.12, 0.12], anchor='NE'); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
+        axl = fig.add_axes([0.88, 0.88, 0.12, 0.12], anchor='NE')
+        axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
-    # Title
+    # Title + date
     date_title = summarize_dates_range(bdf.get("Date", pd.Series(dtype="datetime64[ns]")))
-    fig.suptitle(f"{batter} Hitter Report{(' — ' + date_title) if date_title else ''}",
-                 fontsize=16, x=0.55, y=title_y, fontweight='bold')
+    fig.suptitle(
+        f"{batter} Hitter Report{(' — ' + date_title) if date_title else ''}",
+        fontsize=16, x=0.55, y=0.98, fontweight='bold'
+    )
 
     # Global stats line
     gd = pd.concat([grp for _, grp in grouped]) if grouped else bdf
@@ -314,19 +275,17 @@ def create_hitter_report(df, batter, ncols=3):
                    (pd.to_numeric(gd['PlateLocSide'], errors='coerce')>0.83)|
                    (pd.to_numeric(gd['PlateLocHeight'], errors='coerce')<1.5)|
                    (pd.to_numeric(gd['PlateLocHeight'], errors='coerce')>3.5))].shape[0]
-    fig.text(0.55, stats_y, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
+    fig.text(0.55, 0.94, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
              ha='center', va='top', fontsize=12)
 
     # Left description panel
     axd = fig.add_subplot(gs[:,0]); axd.axis('off')
-
-    # Space lines nicely even when n_pa is small (avoid cramming)
+    # evenly spaced block for each PA; gap amount is independent from axes scale
     lines_per_pa = 5.0
-    denom = max(3.0, min(8.0, n_pa * lines_per_pa))  # bound density so single PA isn't jammed
+    denom = max(3.0, min(8.0, n_pa * lines_per_pa))
     y0 = 1.0
     dy = 1.0 / denom
 
-    # Panels per PA
     for idx, (gkey, padf) in enumerate(grouped):
         lines=[]
         for _, p in padf.iterrows():
@@ -349,7 +308,6 @@ def create_hitter_report(df, batter, ncols=3):
             if balls>=4: lines.append('▶ PA Result: Walk')
             elif strikes>=3: lines.append('▶ PA Result: Strikeout')
 
-        # Add to left description panel
         axd.hlines(y0-dy*0.1, 0, 1, transform=axd.transAxes, color='black', lw=1)
         axd.text(0.02, y0, f"PA {idx+1}", fontsize=7, fontweight='bold', transform=axd.transAxes)
         yln = y0 - dy
@@ -358,7 +316,7 @@ def create_hitter_report(df, batter, ncols=3):
             yln -= dy
         y0 = yln - dy*0.05
 
-        # Plot this PA
+        # Strike-zone panel (fixed limits -> same size feel)
         row,col=divmod(idx,ncols)
         ax=fig.add_subplot(gs[row,col+1]); draw_strikezone(ax)
         for _,p in padf.iterrows():
@@ -373,6 +331,7 @@ def create_hitter_report(df, batter, ncols=3):
                 yoff=-0.05 if p.get('AutoPitchType','')=='Slider' else 0
                 ax.text(x, y+yoff, pitch_no, ha='center', va='center', fontsize=7, fontweight='bold', zorder=3)
 
+        # fixed axis limits (strikezone size never changes)
         ax.set_xlim(-3,3); ax.set_ylim(0,5); ax.set_xticks([]); ax.set_yticks([])
         inn = padf.get('Inning'); inn = int(pd.to_numeric(inn.iloc[0], errors='coerce')) if hasattr(inn, "iloc") and pd.notna(inn.iloc[0]) else "—"
         tb  = str(padf.get('Top/Bottom', pd.Series(['—'])).iloc[0])
@@ -380,7 +339,7 @@ def create_hitter_report(df, batter, ncols=3):
         throws = str(padf.get('PitcherThrows', pd.Series(['—'])).iloc[0])
         hand='LHP' if str(throws).startswith('L') else 'RHP'
         ax.set_title(f"PA {idx+1} | Inning {inn} {tb}", fontsize=10, fontweight='bold')
-        ax.text(0.5,0.1,f"vs {pitchr} ({hand})", transform=ax.transAxes, ha='center', va='top', fontsize=9, style='italic')
+        ax.text(0.5,0.10,f"vs {pitchr} ({hand})", transform=ax.transAxes, ha='center', va='top', fontsize=9, style='italic')
 
     # Legends
     res_handles=[Line2D([0],[0], marker='o', color='w', label=k, markerfacecolor=v, ms=10, markeredgecolor='k')
@@ -390,14 +349,13 @@ def create_hitter_report(df, batter, ncols=3):
                    for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
     fig.legend(pitch_handles, [h.get_label() for h in pitch_handles], title='Pitches', loc='lower right', bbox_to_anchor=(0.98,0.02))
 
-    # Leave a bit more top/bottom margin for single-row figures
-    rect_top = 0.90 if nrows == 1 else 0.88
-    rect_bottom = 0.08 if nrows == 1 else 0.05
-    plt.tight_layout(rect=[0.12, rect_bottom, 1, rect_top])
+    # ─── ONLY change: enlarge bottom gap for single-row layout ───
+    rect_bottom = 0.18 if nrows == 1 else 0.08  # bigger gap beneath panels when only one row
+    plt.tight_layout(rect=[0.12, rect_bottom, 1, 0.88])
     return fig
 
 # ────────────────────────────── UI / App ─────────────────────────────
-# Banner (optional)
+# Banner
 if os.path.exists(BANNER_IMG):
     st.image(BANNER_IMG, use_container_width=True)
 

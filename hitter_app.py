@@ -71,7 +71,7 @@ def draw_strikezone(ax, left=-0.83, right=0.83, bottom=1.5, top=3.5):
         ax.add_line(Line2D([left+i*dx]*2, [bottom, top], linestyle='--', color='gray', linewidth=1))
         ax.add_line(Line2D([left, right], [bottom+i*dy]*2, linestyle='--', color='gray', linewidth=1))
 
-# Keep panel size fixed
+# Keep panel size fixed for strike-zone visuals
 X_LIM = (-3, 3)
 Y_LIM = (0, 5)
 
@@ -82,7 +82,7 @@ custom_cmap = colors.LinearSegmentedColormap.from_list(
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# DENSITY
+# DENSITY (for Matplotlib standard report only)
 # ──────────────────────────────────────────────────────────────────────────────
 def compute_density_hitter(x, y, xi_m, yi_m):
     coords = np.vstack([x, y])
@@ -321,7 +321,7 @@ def create_batting_stats_profile(df: pd.DataFrame):
     return stats, pa, ab
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STANDARD HITTER REPORT (single game)
+# STANDARD HITTER REPORT (single game) — Matplotlib figure
 # ──────────────────────────────────────────────────────────────────────────────
 def create_hitter_report(df, batter, ncols=3):
     bdf = df[df.get('Batter') == batter]
@@ -429,7 +429,7 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STREAMLIT (ALTair) HEATMAPS — use Profiles filters (single panel each)
+# STREAMLIT (ALTAIR) HEATMAPS — no Matplotlib visuals for heatmaps
 # ──────────────────────────────────────────────────────────────────────────────
 def make_zone_layers():
     # strike zone rectangle + dashed thirds (Altair)
@@ -523,7 +523,7 @@ show_banner()
 st.markdown("### Nebraska Hitter Reports")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TOP FILTERS — Standard Hitter Report (Player LEFT → Date RIGHT, single game)
+# TOP FILTERS — Standard Hitter Report (Player LEFT → Date RIGHT)
 # ──────────────────────────────────────────────────────────────────────────────
 colB_player, colB_date = st.columns([1, 1])
 
@@ -541,7 +541,7 @@ def opponent_for_date(df: pd.DataFrame, batter_name: str, date_val) -> str | Non
             return opps.mode().iloc[0]
     return None
 
-# Dates just for selected batter
+# Dates limited to selected batter
 if batter:
     date_opts = sorted(pd.to_datetime(df_neb_bat[df_neb_bat['Batter'] == batter]['Date'],
                                       errors="coerce").dropna().dt.date.unique().tolist())
@@ -710,7 +710,7 @@ elif batter:
     st.markdown("### Batting Statistics")
     st.table(themed_styler(st_df, nowrap=True))
 
-    # Altair Heatmaps (use Profiles filters)
+    # Altair Heatmaps (use Profiles filters; single panel each)
     st.markdown("### Hitter Heatmaps")
     c_chart, w_chart, d_chart = hitter_heatmaps_altair(df_profiles, batter)
     cols = st.columns(3)

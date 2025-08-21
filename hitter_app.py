@@ -5,17 +5,15 @@ import math
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
 import streamlit as st
 from matplotlib.patches import Rectangle
 from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
 from scipy.stats import gaussian_kde
-from numpy.linalg import LinAlgError
 from matplotlib import colors
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CONFIG / PATHS
+# CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # wide OFF
 
@@ -25,8 +23,10 @@ BANNER_CANDIDATES = [
    
 ]
 
+HUSKER_RED = "#E60026"
+
 # ──────────────────────────────────────────────────────────────────────────────
-# HELPERS — DATES, FORMATTING
+# DATE HELPERS
 # ──────────────────────────────────────────────────────────────────────────────
 def ensure_date_column(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -70,7 +70,7 @@ def draw_strikezone(ax, left=-0.83, right=0.83, bottom=1.5, top=3.5):
         ax.add_line(Line2D([left+i*dx]*2, [bottom, top], linestyle='--', color='gray', linewidth=1))
         ax.add_line(Line2D([left, right], [bottom+i*dy]*2, linestyle='--', color='gray', linewidth=1))
 
-# Keep the same axes across all panels so visual size never changes
+# Keep panel size fixed
 X_LIM = (-3, 3)
 Y_LIM = (0, 5)
 
@@ -95,7 +95,7 @@ def compute_density_hitter(x, y, xi_m, yi_m):
         return np.zeros(xi_m.shape)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# FORMATTING HELPERS
+# FORMATTERS
 # ──────────────────────────────────────────────────────────────────────────────
 def fmt_pct(x, decimals=1):
     try:
@@ -120,16 +120,20 @@ def fmt_avg3(x):
     except Exception:
         return "—"
 
-def fmt_one_decimal(x):
-    try:
-        if pd.isna(x): return "—"
-        return f"{round(float(x), 1)}"
-    except Exception:
-        return "—"
+def themed_styler(df: pd.DataFrame, nowrap=True) -> pd.io.formats.style.Styler:
+    styles = [
+        {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white;'},
+        {'selector': 'th.col_heading', 'props': f'background-color: {HUSKER_RED}; color: white;'},
+        {'selector': 'th', 'props': f'background-color: {HUSKER_RED}; color: white;'},
+    ]
+    if nowrap:
+        styles.append({'selector': 'td', 'props': 'white-space: nowrap;'})
+    return (df.style
+            .hide(axis="index")
+            .set_table_styles(styles))
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BATTED BALL / DISCIPLINE / STATS METRIC CALC
-# (robust to missing optional columns)
+# BATTED BALL / DISCIPLINE / STATS
 # ──────────────────────────────────────────────────────────────────────────────
 def assign_spray_category(row):
     ang  = row.get('Bearing', np.nan)
@@ -215,12 +219,12 @@ def create_batting_stats_profile(df: pd.DataFrame):
     walk_mask = korbb.eq('Walk')
     hbp_mask  = s_call.eq('HitByPitch')
 
-    hits = int(hit_mask.sum())
-    so   = int(so_mask.sum())
+    hits   = int(hit_mask.sum())
+    so     = int(so_mask.sum())
     bbouts = int(bbout.sum())
-    fc   = int(fc_mask.sum())
-    err  = int(err_mask.sum())
-    ab   = hits + so + bbouts + fc + err
+    fc     = int(fc_mask.sum())
+    err    = int(err_mask.sum())
+    ab     = hits + so + bbouts + fc + err
 
     walks = int(walk_mask.sum())
     hbp   = int(hbp_mask.sum())
@@ -244,10 +248,11 @@ def create_batting_stats_profile(df: pd.DataFrame):
     k_pct = (so/pa*100) if pa else 0.0
     bb_pct = (walks/pa*100) if pa else 0.0
 
+    # NOTE: EV & LA → 2 decimals (leave AVG/OBP/SLG/OPS unformatted here; we format later)
     stats = pd.DataFrame([{
-        "Avg Exit Vel": round(avg_exit, 1) if pd.notna(avg_exit) else np.nan,
-        "Max Exit Vel": round(max_exit, 1) if pd.notna(max_exit) else np.nan,
-        "Avg Angle":    round(avg_angle, 1) if pd.notna(avg_angle) else np.nan,
+        "Avg Exit Vel": round(avg_exit, 2) if pd.notna(avg_exit) else np.nan,
+        "Max Exit Vel": round(max_exit, 2) if pd.notna(max_exit) else np.nan,
+        "Avg Angle":    round(avg_angle, 2) if pd.notna(avg_angle) else np.nan,
         "Hits":         hits,
         "SO":           so,
         "AVG":          ba,
@@ -323,7 +328,6 @@ def create_hitter_report(df, batter, ncols=3):
         row, col = divmod(idx, ncols)
         ax = fig.add_subplot(gs[row, col+1])
         draw_strikezone(ax)  # fixed size
-        # scatter of pitches with numbers
         hand_lbl = "RHP"
         thr = str(pa_df.get('PitcherThrows').iloc[0]) if not pa_df.empty else ""
         if thr.upper().startswith('L'): hand_lbl = "LHP"
@@ -378,7 +382,7 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HITTER HEATMAPS (works for any filtered subset)
+# HITTER HEATMAPS
 # ──────────────────────────────────────────────────────────────────────────────
 def hitter_heatmaps(df_b: pd.DataFrame, batter: str):
     sub = df_b[df_b.get('Batter') == batter].copy()
@@ -425,7 +429,7 @@ def hitter_heatmaps(df_b: pd.DataFrame, batter: str):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# DATA LOADING
+# LOAD DATA
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
 def load_csv(path: str) -> pd.DataFrame:
@@ -456,7 +460,6 @@ def show_banner():
             return
 
 show_banner()
-
 st.markdown("### Nebraska Hitter Reports")
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -480,18 +483,19 @@ else:
         st.pyplot(fig_std)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOWER FILTERS — apply to Profiles & Heatmaps (not the Standard single-game)
+# LOWER FILTERS — apply to Profiles & Heatmaps
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### Profiles & Heatmaps Filters")
 
-colM, colD, colN, colH = st.columns([1.2, 1.2, 0.8, 1.0])
+# Give the hand radio more room so options fit in one line
+colM, colD, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
 # Months / Days
 present_dates_all = pd.to_datetime(df_neb_bat[df_neb_bat['Batter'] == batter]['Date'], errors="coerce").dropna().dt.date if batter else pd.Series([], dtype="datetime64[ns]")
-present_months = sorted(pd.Series(present_dates_all).map(lambda d: d.month).unique().tolist()) if not present_dates_all.empty else []
+present_months = sorted(pd.Series(present_dates_all).map(lambda d: d.month).unique().tolist()) if len(present_dates_all) else []
 sel_months = colM.multiselect(
-    "Months (optional)",
+    "Months",
     options=present_months,
     format_func=lambda n: MONTH_NAME_BY_NUM.get(n, str(n)),
     default=[],
@@ -506,12 +510,12 @@ if batter:
     present_days = sorted(pd.Series(dser).map(lambda d: d.day).unique().tolist())
 else:
     present_days = []
-sel_days = colD.multiselect("Days (optional)", options=present_days, default=[], key="prof_days")
+sel_days = colD.multiselect("Days", options=present_days, default=[], key="prof_days")
 
-# Last N games
-lastN = int(colN.number_input("Last N games (optional)", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
+# Last N games (remove "(optional)")
+lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
 
-# Pitcher Hand
+# Pitcher Hand (ensure same line)
 hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
 
 # Build filtered dataset for profiles/heatmaps
@@ -531,7 +535,7 @@ else:
     mask_d = pd.Series(True, index=df_player_all.index)
 df_profiles = df_player_all[mask_m & mask_d].copy()
 
-# Last N games filter (applies after month/day filter, if >0)
+# Last N games (after month/day filter)
 if lastN and not df_profiles.empty:
     uniq_dates = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.dropna().unique()
     uniq_dates = sorted(uniq_dates)
@@ -550,7 +554,7 @@ elif hand_choice == "RHP":
 if batter and df_profiles.empty:
     st.info("No rows for the selected filters.")
 elif batter:
-    # Season year for first column — if mixed years, show "Multiple"
+    # Season column (year). If mixed, "Multiple".
     year_vals = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.year.dropna().unique()
     if len(year_vals) == 1:
         season_year = int(year_vals[0])
@@ -559,41 +563,57 @@ elif batter:
     else:
         season_year = int(pd.to_datetime(selected_date).year) if selected_date else "—"
 
+    # Month column (if any months chosen)
+    month_label = ", ".join(MONTH_NAME_BY_NUM.get(m, str(m)) for m in sorted(sel_months)) if sel_months else None
+
     # Batted Ball Profile
     bb_df = create_batted_ball_profile(df_profiles).copy()
     for c in bb_df.columns:
         bb_df[c] = bb_df[c].apply(lambda v: fmt_pct(v, decimals=1))
     bb_df.insert(0, "Season", season_year)
+    if month_label:
+        bb_df.insert(1, "Month", month_label)
     st.markdown("### Batted Ball Profile")
-    st.table(bb_df)
+    st.table(themed_styler(bb_df))
 
     # Plate Discipline Profile
     pd_df = create_plate_discipline_profile(df_profiles).copy()
-    for c in ["Zone %", "Zone Contact %"]:
-        if c in pd_df.columns:
-            pd_df[c] = pd_df[c].apply(lambda v: fmt_pct(v, decimals=1))
-    for c in ["Zone Swing %", "Chase %", "Swing %", "Whiff %"]:
+    # one-decimal % where appropriate; whiff/swing/chase/toggle 2-dec
+    if "Zone %" in pd_df.columns:
+        pd_df["Zone %"] = pd_df["Zone %"].apply(lambda v: fmt_pct(v, decimals=1))
+    if "Zone Contact %" in pd_df.columns:
+        pd_df["Zone Contact %"] = pd_df["Zone Contact %"].apply(lambda v: fmt_pct(v, decimals=1))
+    for c in ["Zone Swing %","Chase %","Swing %","Whiff %"]:
         if c in pd_df.columns:
             pd_df[c] = pd_df[c].apply(fmt_pct2)
     pd_df.insert(0, "Season", season_year)
+    if month_label:
+        pd_df.insert(1, "Month", month_label)
     st.markdown("### Plate Discipline Profile")
-    st.table(pd_df)
+    st.table(themed_styler(pd_df))
 
-    # Batting Statistics — abbreviate headers + no-wrap so each fits on one line in centered layout
+    # Batting Statistics
     st_df, pa_cnt, ab_cnt = create_batting_stats_profile(df_profiles)
     st_df = st_df.copy()
-    # Format values
+    # Format: AVG/OBP/SLG/OPS as .xxx
     for c in ["AVG", "OBP", "SLG", "OPS"]:
         if c in st_df.columns:
             st_df[c] = st_df[c].apply(fmt_avg3)
+    # EV & LA already rounded to 2 decimals in creation; convert to strings (ensure fixed two decimals)
+    if "Avg Exit Vel" in st_df.columns:
+        st_df["Avg Exit Vel"] = st_df["Avg Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
+    if "Max Exit Vel" in st_df.columns:
+        st_df["Max Exit Vel"] = st_df["Max Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
+    if "Avg Angle" in st_df.columns:
+        st_df["Avg Angle"] = st_df["Avg Angle"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
+    # Percentages
     if "HardHit %" in st_df.columns:
         st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
     if "K %" in st_df.columns:
         st_df["K %"] = st_df["K %"].apply(fmt_pct2)
     if "BB %" in st_df.columns:
         st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
-
-    # Rename columns shorter to prevent wrapping
+    # Rename headers to keep on one line
     rename_map = {
         "Avg Exit Vel": "Avg EV",
         "Max Exit Vel": "Max EV",
@@ -604,16 +624,11 @@ elif batter:
     }
     st_df.rename(columns={k:v for k,v in rename_map.items() if k in st_df.columns}, inplace=True)
     st_df.insert(0, "Season", season_year)
+    if month_label:
+        st_df.insert(1, "Month", month_label)
 
-    # Build a Styler to force no-wrap in this table
-    styler = (st_df.style
-              .set_table_styles([
-                  {'selector': 'th', 'props': 'white-space: nowrap;'},
-                  {'selector': 'td', 'props': 'white-space: nowrap;'}
-              ])
-              .hide(axis="index"))
     st.markdown("### Batting Statistics")
-    st.table(styler)
+    st.table(themed_styler(st_df, nowrap=True))
 
     # Heatmaps
     st.markdown("### Hitter Heatmaps")

@@ -16,8 +16,8 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG / PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH   = "B10C25_hitter_app_columns.csv"  # Nebraska dataset (streamlit columns)
-BANNER_PATH = "NebraskaChampions.jpg"                   # banner image
+DATA_PATH   = "/mnt/data/B10C25_streamlit_streamlit_columns.csv"  # Nebraska dataset (streamlit columns)
+BANNER_PATH = "/mnt/data/NebraskaChampions.jpg"                   # banner image
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"                     # optional logo inside figures
 
 st.set_page_config(layout="wide")
@@ -101,7 +101,33 @@ CUSTOM_CMAP = colors.LinearSegmentedColormap.from_list(
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BATTED BALL / PLATE DISCIPLINE / BATTING STATS (stacked tables)
+# DISPLAY FORMATTERS (ROUNDING RULES)
+# ──────────────────────────────────────────────────────────────────────────────
+def fmt_pct(value, decimals=1):
+    """Format a percentage value (e.g., 30 or 30.5) with trimmed trailing zeros."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "—"
+    s = f"{round(float(value), decimals):.{decimals}f}"
+    s = s.rstrip("0").rstrip(".")
+    return s + "%"
+
+def fmt_pct2(value):
+    """Percentage with 2-dec precision for any *Whiff%* or *Swing%* metric."""
+    return fmt_pct(value, decimals=2)
+
+def fmt_one_decimal(value):
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "—"
+    return f"{float(value):.1f}"
+
+def fmt_avg3(value):
+    """Batting average-like numbers to 3 decimals, no leading zero (e.g., .382)."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "—"
+    return f"{float(value):.3f}".lstrip("0")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BATTED BALL / PLATE DISCIPLINE / BATTING STATS (calculations)
 # ──────────────────────────────────────────────────────────────────────────────
 def _spray_cat(row):
     ang = row.get("Bearing", np.nan)
@@ -114,10 +140,11 @@ def _spray_cat(row):
         return "Pull" if side == "R" else "Opposite"
     return "Opposite" if side == "R" else "Pull"
 
-def pct(series_bool):
+def pct_num(series_bool):
+    """Return numeric percent (e.g., 30.0) from boolean series."""
     if series_bool is None or len(series_bool) == 0:
         return 0.0
-    return round(float(series_bool.mean()) * 100.0, 1)
+    return float(series_bool.mean() * 100.0)
 
 def create_batted_ball_profile(df: pd.DataFrame) -> pd.DataFrame:
     inplay = df[df.get("PitchCall","") == "InPlay"].copy()
@@ -132,13 +159,13 @@ def create_batted_ball_profile(df: pd.DataFrame) -> pd.DataFrame:
         inplay["spray_cat"] = np.nan
 
     out = pd.DataFrame([{
-        "Ground ball %": pct(inplay["TaggedHitType"].eq("GroundBall")) if "TaggedHitType" in inplay else 0.0,
-        "Fly ball %":    pct(inplay["TaggedHitType"].eq("FlyBall")) if "TaggedHitType" in inplay else 0.0,
-        "Line drive %":  pct(inplay["TaggedHitType"].eq("LineDrive")) if "TaggedHitType" in inplay else 0.0,
-        "Popup %":       pct(inplay["TaggedHitType"].eq("Popup")) if "TaggedHitType" in inplay else 0.0,
-        "Pull %":        pct(inplay["spray_cat"].eq("Pull")),
-        "Straight %":    pct(inplay["spray_cat"].eq("Straight")),
-        "Opposite %":    pct(inplay["spray_cat"].eq("Opposite")),
+        "Ground ball %": pct_num(inplay["TaggedHitType"].eq("GroundBall")),
+        "Fly ball %":    pct_num(inplay["TaggedHitType"].eq("FlyBall")),
+        "Line drive %":  pct_num(inplay["TaggedHitType"].eq("LineDrive")),
+        "Popup %":       pct_num(inplay["TaggedHitType"].eq("Popup")),
+        "Pull %":        pct_num(inplay["spray_cat"].eq("Pull")),
+        "Straight %":    pct_num(inplay["spray_cat"].eq("Straight")),
+        "Opposite %":    pct_num(inplay["spray_cat"].eq("Opposite")),
     }])
     return out
 
@@ -155,21 +182,28 @@ def create_plate_discipline_profile(df: pd.DataFrame) -> pd.DataFrame:
     zp = d["isinzone"]
     sw = d["isswing"]
 
-    zone_swing = pct(sw[zp]) if zp.any() else 0.0
-    zone_contact = 0.0
+    # numeric percents
+    zone_pct       = pct_num(zp)
+    zone_swing_pct = pct_num(sw[zp]) if zp.any() else 0.0
+    # Zone contact % = contact on swings in zone
     denom = int(sw[zp].sum())
     if denom > 0:
         num = int(d.loc[zp & d["iscontact"], "iscontact"].sum())
-        zone_contact = round(num / denom * 100.0, 1)
+        zone_contact_pct = float(num / denom * 100.0)
+    else:
+        zone_contact_pct = 0.0
+    chase_pct      = pct_num(sw & ~zp)
+    swing_pct      = pct_num(sw)
+    whiff_pct      = float(int(d["iswhiff"].sum()) / int(sw.sum()) * 100.0) if int(sw.sum()) > 0 else 0.0
 
     return pd.DataFrame([{
         "Zone Pitches":   int(zp.sum()),
-        "Zone %":         pct(zp),
-        "Zone Swing %":   zone_swing,
-        "Zone Contact %": zone_contact,
-        "Chase %":        pct(sw & ~zp),
-        "Swing %":        pct(sw),
-        "Whiff %":        round((int(d["iswhiff"].sum()) / int(sw.sum()) * 100.0), 1) if int(sw.sum()) > 0 else 0.0,
+        "Zone %":         zone_pct,         # general percent (1 decimal, trimmed)
+        "Zone Swing %":   zone_swing_pct,   # Swing% -> 2 decimals
+        "Zone Contact %": zone_contact_pct, # general percent (1 decimal, trimmed)
+        "Chase %":        chase_pct,        # Swing% family -> 2 decimals
+        "Swing %":        swing_pct,        # Swing% -> 2 decimals
+        "Whiff %":        whiff_pct,        # Whiff% -> 2 decimals
     }])
 
 def create_batting_stats_profile(df: pd.DataFrame):
@@ -215,18 +249,18 @@ def create_batting_stats_profile(df: pd.DataFrame):
     hard = (int((es >= 95).sum()) / len(inplay) * 100.0) if len(inplay) else 0.0
 
     out = pd.DataFrame([{
-        "Avg Exit Vel": round(avg_exit,1) if not np.isnan(avg_exit) else "—",
-        "Max Exit Vel": round(max_exit,1) if not np.isnan(max_exit) else "—",
-        "Avg Angle":    round(avg_angle,1) if not np.isnan(avg_angle) else "—",
+        "Avg Exit Vel": avg_exit,  # 1 decimal (later)
+        "Max Exit Vel": max_exit,  # 1 decimal (later)
+        "Avg Angle":    avg_angle, # leave 1 decimal (unchanged)
         "Hits":         hits,
         "SO":           so,
-        "AVG":          round(ba,3),
-        "OBP":          round(obp,3),
-        "SLG":          round(slg,3),
-        "OPS":          round(ops,3),
-        "HardHit %":    round(hard,1),
-        "K %":          round((so/pa)*100.0,1) if pa else 0.0,
-        "BB %":         round((walks/pa)*100.0,1) if pa else 0.0,
+        "AVG":          ba,        # 3 decimals, no leading zero
+        "OBP":          obp,       # 3 decimals, no leading zero
+        "SLG":          slg,       # 3 decimals, no leading zero
+        "OPS":          ops,       # 3 decimals, no leading zero
+        "HardHit %":    hard,      # as percent (we'll format 1-dec trimmed)
+        "K %":          (so/pa*100.0) if pa else 0.0,  # percent
+        "BB %":         (walks/pa*100.0) if pa else 0.0,  # percent
     }])
 
     return out, pa, ab
@@ -349,18 +383,18 @@ def hitter_standard_report(df_date: pd.DataFrame, batter: str, ncols=3):
             axd.text(0.02, yln, ln, fontsize=6, transform=axd.transAxes); yln -= dy
         y0 = yln - dy*0.05
 
-    # Legends
+    # Legends — moved slightly further DOWN in the bottom-right
     res_handles = [Line2D([0],[0], marker="o", color="w", label=k,
                           markerfacecolor=v, ms=10, markeredgecolor="k")
                    for k, v in COLOR_MAP.items()]
     fig.legend(res_handles, [h.get_label() for h in res_handles],
-               title="Result", loc="lower right", bbox_to_anchor=(0.90, 0.02))
+               title="Result", loc="lower right", bbox_to_anchor=(0.90, 0.01))
 
     pitch_handles = [Line2D([0],[0], marker=m, color="w", label=k,
                             markerfacecolor="gray", ms=10, markeredgecolor="k")
                      for k, m in SHAPE_MAP.items()]
     fig.legend(pitch_handles, [h.get_label() for h in pitch_handles],
-               title="Pitches", loc="lower right", bbox_to_anchor=(0.98, 0.02))
+               title="Pitches", loc="lower right", bbox_to_anchor=(0.98, 0.01))
 
     plt.tight_layout(rect=[0.12, 0.05, 1, 0.90])
     return fig
@@ -489,21 +523,58 @@ with tabs[0]:
         if fig_std:
             st.pyplot(fig_std)
 
+        # Profiles (stacked) with requested rounding/formatting
         bdf_player = bdf_date[bdf_date["Batter"] == batter].copy()
+
         bb_df   = create_batted_ball_profile(bdf_player)
         pd_df   = create_plate_discipline_profile(bdf_player)
         stats_df, pa_cnt, ab_cnt = create_batting_stats_profile(bdf_player)
 
+        # Format: Batted Ball — 1-decimal, trimmed zeros
+        bb_disp = bb_df.copy()
+        for c in bb_disp.columns:
+            bb_disp[c] = bb_disp[c].apply(lambda v: fmt_pct(v, decimals=1))
+
+        # Format: Plate Discipline — apply rules
+        pd_disp = pd_df.copy()
+        # 1-dec trimmed
+        for c in ["Zone %", "Zone Contact %"]:
+            if c in pd_disp.columns:
+                pd_disp[c] = pd_disp[c].apply(lambda v: fmt_pct(v, decimals=1))
+        # 2-dec for swing/whiff family
+        for c in ["Zone Swing %", "Chase %", "Swing %", "Whiff %"]:
+            if c in pd_disp.columns:
+                pd_disp[c] = pd_disp[c].apply(fmt_pct2)
+
+        # Format: Batting Stats
+        st_disp = stats_df.copy()
+        # Exit velo to 1 decimal
+        for c in ["Avg Exit Vel", "Max Exit Vel"]:
+            if c in st_disp.columns:
+                st_disp[c] = st_disp[c].apply(fmt_one_decimal)
+        # Averages to .xxx
+        for c in ["AVG","OBP","SLG","OPS"]:
+            if c in st_disp.columns:
+                st_disp[c] = st_disp[c].apply(fmt_avg3)
+        # Percentages (HardHit %, K %, BB %) — 1-dec trimmed for HardHit, 2-dec trimmed for K/BB?
+        # You only specified swing/whiff at 2-dec. We'll keep HardHit at 1-dec trimmed; K%/BB% at 2-dec is reasonable.
+        if "HardHit %" in st_disp.columns:
+            st_disp["HardHit %"] = st_disp["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
+        if "K %" in st_disp.columns:
+            st_disp["K %"] = st_disp["K %"].apply(fmt_pct2)
+        if "BB %" in st_disp.columns:
+            st_disp["BB %"] = st_disp["BB %"].apply(fmt_pct2)
+
         st.markdown("### Batted Ball Profile")
-        st.table(bb_df)
+        st.table(bb_disp)
 
         st.markdown("---")
         st.markdown("### Plate Discipline Profile")
-        st.table(pd_df)
+        st.table(pd_disp)
 
         st.markdown("---")
         st.markdown("### Batting Statistics")
-        st.table(stats_df)
+        st.table(st_disp)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # HEATMAPS TAB

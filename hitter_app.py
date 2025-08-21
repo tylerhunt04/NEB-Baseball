@@ -17,12 +17,12 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG / PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-st.set_page_config(layout="wide", page_title="Nebraska Hitter Reports")
+st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # wide OFF
 
 DATA_PATH = "B10C25_hitter_app_columns.csv"  # update if needed
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
-  
+   
 ]
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -30,7 +30,6 @@ BANNER_CANDIDATES = [
 # ──────────────────────────────────────────────────────────────────────────────
 def ensure_date_column(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    # Try common date columns; if none, create empty
     cand = None
     lower = {c.lower(): c for c in df.columns}
     for name in ["date", "gamedate", "game date", "datetime", "game_datetime", "gamedatetime"]:
@@ -132,9 +131,6 @@ def fmt_one_decimal(x):
 # BATTED BALL / DISCIPLINE / STATS METRIC CALC
 # (robust to missing optional columns)
 # ──────────────────────────────────────────────────────────────────────────────
-def _safe(series, default=np.nan):
-    return series if series is not None else pd.Series(dtype=type(default))
-
 def assign_spray_category(row):
     ang  = row.get('Bearing', np.nan)
     side = str(row.get('BatterSide', "")).upper()[:1]  # 'L' or 'R'
@@ -147,10 +143,8 @@ def assign_spray_category(row):
     return 'Opposite' if side == 'R' else 'Pull'
 
 def create_batted_ball_profile(df: pd.DataFrame):
-    # Requires: PitchCall, TaggedHitType (optional), Bearing (optional), BatterSide (optional)
     inplay = df[df.get('PitchCall', pd.Series(dtype=object)) == 'InPlay'].copy()
     if 'TaggedHitType' not in inplay.columns:
-        # Graceful fallback if column was dropped in your slim CSV
         inplay['TaggedHitType'] = pd.NA
     if 'Bearing' not in inplay.columns:
         inplay['Bearing'] = np.nan
@@ -177,7 +171,6 @@ def create_batted_ball_profile(df: pd.DataFrame):
     return bb
 
 def create_plate_discipline_profile(df: pd.DataFrame):
-    # Uses PlateLocSide/PlateLocHeight; robust if missing
     s_call = df.get('PitchCall', pd.Series(dtype=object))
     lside  = pd.to_numeric(df.get('PlateLocSide', pd.Series(dtype=float)), errors="coerce")
     lht    = pd.to_numeric(df.get('PlateLocHeight', pd.Series(dtype=float)), errors="coerce")
@@ -461,7 +454,6 @@ def show_banner():
         if os.path.exists(p):
             st.image(p, use_container_width=True)
             return
-    # If not found, do nothing silently
 
 show_banner()
 
@@ -565,7 +557,6 @@ elif batter:
     elif len(year_vals) > 1:
         season_year = "Multiple"
     else:
-        # fallback to selected_date year if available
         season_year = int(pd.to_datetime(selected_date).year) if selected_date else "—"
 
     # Batted Ball Profile
@@ -578,11 +569,9 @@ elif batter:
 
     # Plate Discipline Profile
     pd_df = create_plate_discipline_profile(df_profiles).copy()
-    # One decimal for Zone % & Zone Contact %
     for c in ["Zone %", "Zone Contact %"]:
         if c in pd_df.columns:
             pd_df[c] = pd_df[c].apply(lambda v: fmt_pct(v, decimals=1))
-    # Two decimals for swing/whiff style rates
     for c in ["Zone Swing %", "Chase %", "Swing %", "Whiff %"]:
         if c in pd_df.columns:
             pd_df[c] = pd_df[c].apply(fmt_pct2)
@@ -590,10 +579,10 @@ elif batter:
     st.markdown("### Plate Discipline Profile")
     st.table(pd_df)
 
-    # Batting Statistics
+    # Batting Statistics — abbreviate headers + no-wrap so each fits on one line in centered layout
     st_df, pa_cnt, ab_cnt = create_batting_stats_profile(df_profiles)
     st_df = st_df.copy()
-    # Exit velo: 1 decimal already; AVG/OBP/SLG/OPS exact formatting
+    # Format values
     for c in ["AVG", "OBP", "SLG", "OPS"]:
         if c in st_df.columns:
             st_df[c] = st_df[c].apply(fmt_avg3)
@@ -603,9 +592,28 @@ elif batter:
         st_df["K %"] = st_df["K %"].apply(fmt_pct2)
     if "BB %" in st_df.columns:
         st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
+
+    # Rename columns shorter to prevent wrapping
+    rename_map = {
+        "Avg Exit Vel": "Avg EV",
+        "Max Exit Vel": "Max EV",
+        "Avg Angle":    "Avg LA",
+        "HardHit %":    "HardHit%",
+        "K %":          "K%",
+        "BB %":         "BB%",
+    }
+    st_df.rename(columns={k:v for k,v in rename_map.items() if k in st_df.columns}, inplace=True)
     st_df.insert(0, "Season", season_year)
+
+    # Build a Styler to force no-wrap in this table
+    styler = (st_df.style
+              .set_table_styles([
+                  {'selector': 'th', 'props': 'white-space: nowrap;'},
+                  {'selector': 'td', 'props': 'white-space: nowrap;'}
+              ])
+              .hide(axis="index"))
     st.markdown("### Batting Statistics")
-    st.table(st_df)
+    st.table(styler)
 
     # Heatmaps
     st.markdown("### Hitter Heatmaps")

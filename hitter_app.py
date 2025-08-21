@@ -16,8 +16,8 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG / PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH   = "/mnt/data/B10C25_streamlit_streamlit_columns.csv"  # Nebraska dataset (streamlit columns)
-BANNER_PATH = "/mnt/data/NebraskaChampions.jpg"                   # banner image
+DATA_PATH   = "B10C25_hitter_app_columns.csv"  # Nebraska dataset (streamlit columns)
+BANNER_PATH = "NebraskaChampions.jpg"                   # banner image
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"                     # optional logo inside figures
 
 st.set_page_config(layout="wide")

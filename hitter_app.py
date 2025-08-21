@@ -12,13 +12,15 @@ from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
 
 # ───────────────────────────── Page setup ─────────────────────────────
-st.set_page_config(layout="wide", page_title="Nebraska Baseball – Hitter Report", initial_sidebar_state="expanded")
+st.set_page_config(
+    layout="wide",
+    page_title="Nebraska Baseball – Hitter Report",
+    initial_sidebar_state="expanded"
+)
 
-# Default data hints (your file first, with a fallback)
-DATA_CANDIDATES = [
-    "B10C25_streamlit_streamlit_columns.csv",
-]
-LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
+# Fixed data paths (Nebraska-only app)
+DATA_PATH  = "B10C25_streamlit_streamlit_columns.csv"
+LOGO_PATH  = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG = "NebraskaChampions.jpg"  # optional banner
 
 # ─────────────────────────── Helpers: dates ───────────────────────────
@@ -66,7 +68,7 @@ RENAME_MAP = {
 REQUIRED_COLS = [
     "Batter","GameID","Inning","Top/Bottom","PAofInning","PitchofPA",
     "AutoPitchType","EffectiveVelo","PitchCall","PitcherThrows","Pitcher",
-    "PlateLocSide","PlateLocHeight","ExitSpeed","PlayResult","Date"
+    "PlateLocSide","PlateLocHeight","ExitSpeed","PlayResult","Date","BatterTeam"
 ]
 def normalize_core_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -79,36 +81,33 @@ def normalize_core_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # ─────────────────────────── Load & cache ────────────────────────────
+if not os.path.exists(DATA_PATH):
+    st.error(f"Data file not found at: {DATA_PATH}")
+    st.stop()
+
 @st.cache_data(show_spinner=True)
-def load_csv_norm(path: str):
+def load_csv_norm(path: str, _mtime: float):
     df = pd.read_csv(path, low_memory=False)
     df = ensure_date_column(df)
     df = normalize_core_columns(df)
     return df
 
-def pick_first_existing(paths):
-    for p in paths:
-        if os.path.exists(p):
-            return p
-    return None
-
-# File uploader (optional) + fallback to candidates
-with st.sidebar:
-    st.markdown("### 📁 Data")
-    up = st.file_uploader("Upload CSV (optional)", type=["csv"])
-    if up is not None:
-        DATA_PATH = up
-    else:
-        DATA_PATH = pick_first_existing(DATA_CANDIDATES)
-
-if DATA_PATH is None:
-    st.error("No data file found. Upload a CSV in the sidebar or place one at /mnt/data.")
-    st.stop()
-
+# Include file mtime in the cache-key without altering the path string
+mtime = os.path.getmtime(DATA_PATH)
 try:
-    df_all = load_csv_norm(DATA_PATH)
+    df_all = load_csv_norm(DATA_PATH, mtime)
 except Exception as e:
     st.error(f"Failed to load data: {e}")
+    st.stop()
+
+# Enforce Nebraska-only hitters
+if "BatterTeam" not in df_all.columns:
+    st.error("The data file is missing the 'BatterTeam' column. Cannot restrict to Nebraska hitters.")
+    st.stop()
+
+df_all = df_all[df_all["BatterTeam"] == "NEB"].copy()
+if df_all.empty:
+    st.info("No Nebraska hitter rows found in the data.")
     st.stop()
 
 # ───────────────────────── Visual helpers ────────────────────────────
@@ -138,7 +137,7 @@ def draw_strikezone(ax, left=-0.83, right=0.83, bottom=1.5, top=3.5):
 def create_hitter_report(fig_df: pd.DataFrame, batter: str, ncols: int = 3):
     bdf = fig_df[fig_df['Batter'] == batter].copy()
     if bdf.empty:
-        st.info("No data for that batter with the chosen date.")
+        st.info("No data for that batter on the chosen date.")
         return None
 
     pa_groups = list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning'], sort=False))
@@ -150,7 +149,6 @@ def create_hitter_report(fig_df: pd.DataFrame, batter: str, ncols: int = 3):
     for _, pa_df in pa_groups:
         lines = []
         for _, p in pa_df.iterrows():
-            # robust formatting
             try:
                 pitch_no = int(pd.to_numeric(p.get("PitchofPA", np.nan), errors="coerce"))
             except Exception:
@@ -178,7 +176,7 @@ def create_hitter_report(fig_df: pd.DataFrame, batter: str, ncols: int = 3):
 
         descriptions.append(lines)
 
-    # figure
+    # figure size & grid
     fig_h = (3.0 + 1.0) if nrows == 1 else (4*nrows)
     fig = plt.figure(figsize=(3 + 4*ncols + 1, fig_h))
     gs = GridSpec(nrows, ncols+1, width_ratios=[0.8]+[1]*ncols, wspace=0.1, hspace=0.35)
@@ -227,7 +225,8 @@ def create_hitter_report(fig_df: pd.DataFrame, batter: str, ncols: int = 3):
             y  = pd.to_numeric(p.get("PlateLocHeight", np.nan), errors='coerce')
             if pd.notna(x) and pd.notna(y):
                 ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', linewidth=1, zorder=2)
-                pitch_no = int(pd.to_numeric(p.get("PitchofPA", np.nan), errors="coerce")) if pd.notna(pd.to_numeric(p.get("PitchofPA", np.nan), errors="coerce")) else "?"
+                pno_val = pd.to_numeric(p.get("PitchofPA", np.nan), errors="coerce")
+                pitch_no = int(pno_val) if pd.notna(pno_val) else "?"
                 y_off = -0.05 if p.get("AutoPitchType","")=='Slider' else 0
                 ax.text(x, y+y_off, str(pitch_no), ha='center', va='center',
                         color='black', fontsize=6, fontweight='bold', zorder=3)
@@ -241,9 +240,8 @@ def create_hitter_report(fig_df: pd.DataFrame, batter: str, ncols: int = 3):
                 transform=ax.transAxes, ha='center', va='top',
                 fontsize=9, style='italic')
 
-    # descriptions column
+    # descriptions column (with extra spacing if only one row of zones)
     ax_desc = fig.add_subplot(gs[:,0]); ax_desc.axis('off')
-    # space the lines nicely; enlarge bottom margin automatically for single-row
     lines_per_pa = 5.0
     denom = max(3.0, min(8.0, len(descriptions) * lines_per_pa))
     y0 = 1.0; dy = 1.0 / denom
@@ -285,14 +283,10 @@ if os.path.exists(BANNER_IMG):
 
 st.subheader("Nebraska Hitter Report")
 
-# Let the user choose a date → batter
-df_all = df_all.copy()
-# If you want to restrict to NEB hitters only, uncomment the next line:
-# df_all = df_all[df_all.get('BatterTeam','') == 'NEB']
-
+# Date → Batter (Nebraska-only)
 available_dates = sorted(df_all['Date'].dropna().dt.date.unique().tolist())
 if not available_dates:
-    st.info("No valid dates found in the data.")
+    st.info("No valid dates found for Nebraska hitters.")
     st.stop()
 
 col1, col2 = st.columns([1,2])
@@ -303,10 +297,10 @@ df_date = df_all[df_all['Date'].dt.date == sel_date]
 batters = sorted(df_date['Batter'].dropna().unique().tolist())
 
 with col2:
-    batter = st.selectbox("Batter", batters) if batters else None
+    batter = st.selectbox("Batter (NEB)", batters) if batters else None
 
 if not batter:
-    st.info("Choose a batter.")
+    st.info("Choose a Nebraska batter.")
     st.stop()
 
 fig = create_hitter_report(df_date, batter, ncols=3)

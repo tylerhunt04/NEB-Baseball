@@ -11,6 +11,7 @@ from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
 from scipy.stats import gaussian_kde
 from matplotlib import colors
+from matplotlib import patheffects  # <- for outlined text on banner
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG
@@ -20,7 +21,7 @@ st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # w
 DATA_PATH = "B10C25_hitter_app_columns.csv"  # update if needed
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
-
+  
 ]
 
 HUSKER_RED = "#E60026"
@@ -121,10 +122,12 @@ def fmt_avg3(x):
         return "—"
 
 def themed_styler(df: pd.DataFrame, nowrap=True) -> pd.io.formats.style.Styler:
+    # Force headers to one line (nowrap) and brand the header row
+    header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
     styles = [
-        {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white;'},
-        {'selector': 'th.col_heading', 'props': f'background-color: {HUSKER_RED}; color: white;'},
-        {'selector': 'th', 'props': f'background-color: {HUSKER_RED}; color: white;'},
+        {'selector': 'thead th',      'props': header_props},
+        {'selector': 'th.col_heading','props': header_props},
+        {'selector': 'th',            'props': header_props},
     ]
     if nowrap:
         styles.append({'selector': 'td', 'props': 'white-space: nowrap;'})
@@ -302,7 +305,6 @@ def create_batting_stats_profile(df: pd.DataFrame):
     k_pct  = (so/pa*100) if pa else 0.0
     bb_pct = (walks/pa*100) if pa else 0.0
 
-    # NOTE: EV & LA → 2 decimals (leave AVG/OBP/SLG/OPS formatting for later)
     stats = pd.DataFrame([{
         "Avg Exit Vel": round(avg_exit,  2) if pd.notna(avg_exit)  else np.nan,
         "Max Exit Vel": round(max_exit,  2) if pd.notna(max_exit)  else np.nan,
@@ -509,12 +511,28 @@ if df_neb_bat.empty:
     st.stop()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BANNER
+# BANNER (with centered "Nebraska Baseball" title)
 # ──────────────────────────────────────────────────────────────────────────────
 def show_banner():
     for p in BANNER_CANDIDATES:
         if os.path.exists(p):
-            st.image(p, use_container_width=True)
+            img = plt.imread(p)
+            h, w = img.shape[:2]
+            aspect = w / max(h, 1)
+            fig_h = 2.8  # banner height (inches); width scales with container
+            fig_w = fig_h * aspect
+            fig = plt.figure(figsize=(fig_w, fig_h))
+            ax = fig.add_axes([0, 0, 1, 1])
+            ax.imshow(img)
+            ax.axis("off")
+            txt = ax.text(
+                0.5, 0.5, "Nebraska Baseball",
+                ha="center", va="center",
+                fontsize=42, fontweight="bold", color="white"
+            )
+            txt.set_path_effects([patheffects.withStroke(linewidth=6, foreground="black")])
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
             return
 
 show_banner()
@@ -573,10 +591,8 @@ else:
 st.markdown("---")
 st.markdown("### Profiles & Heatmaps Filters")
 
-# Give the hand radio more room so options fit in one line
 colM, colD, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
-# Months / Days
 present_dates_all = pd.to_datetime(
     df_neb_bat[df_neb_bat['Batter'] == batter]['Date'], errors="coerce"
 ).dropna().dt.date if batter else pd.Series([], dtype="datetime64[ns]")
@@ -590,7 +606,6 @@ sel_months = colM.multiselect(
     key="prof_months",
 )
 
-# Days derive from selected months (for this batter)
 if batter:
     dser = pd.Series(present_dates_all)
     if sel_months:
@@ -600,19 +615,15 @@ else:
     present_days = []
 sel_days = colD.multiselect("Days", options=present_days, default=[], key="prof_days")
 
-# Last N games (remove "(optional)")
 lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
 
-# Pitcher Hand (ensure same line)
 hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
 
-# Build filtered dataset for profiles/heatmaps
 if batter:
     df_player_all = df_neb_bat[df_neb_bat['Batter'] == batter].copy()
 else:
     df_player_all = df_neb_bat.iloc[0:0].copy()
 
-# Month/Day filter
 if sel_months:
     mask_m = pd.to_datetime(df_player_all['Date'], errors="coerce").dt.month.isin(sel_months)
 else:
@@ -623,14 +634,12 @@ else:
     mask_d = pd.Series(True, index=df_player_all.index)
 df_profiles = df_player_all[mask_m & mask_d].copy()
 
-# Last N games (after month/day filter)
 if lastN and not df_profiles.empty:
     uniq_dates = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.dropna().unique()
     uniq_dates = sorted(uniq_dates)
     last_dates = set(uniq_dates[-lastN:])
     df_profiles = df_profiles[pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
 
-# Pitcher hand filter (applied again here to the profiles data)
 if hand_choice == "LHP":
     df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
 elif hand_choice == "RHP":
@@ -642,7 +651,6 @@ elif hand_choice == "RHP":
 if batter and df_profiles.empty:
     st.info("No rows for the selected filters.")
 elif batter:
-    # Season column (year). If mixed, "Multiple".
     year_vals = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.year.dropna().unique()
     if len(year_vals) == 1:
         season_year = int(year_vals[0])
@@ -651,7 +659,6 @@ elif batter:
     else:
         season_year = int(pd.to_datetime(selected_date).year) if selected_date else "—"
 
-    # Month column (if any months chosen)
     month_label = ", ".join(MONTH_NAME_BY_NUM.get(m, str(m)) for m in sorted(sel_months)) if sel_months else None
 
     # Batted Ball Profile
@@ -682,25 +689,21 @@ elif batter:
     # Batting Statistics
     st_df, pa_cnt, ab_cnt = create_batting_stats_profile(df_profiles)
     st_df = st_df.copy()
-    # Format: AVG/OBP/SLG/OPS as .xxx
     for c in ["AVG", "OBP", "SLG", "OPS"]:
         if c in st_df.columns:
             st_df[c] = st_df[c].apply(fmt_avg3)
-    # EV & LA already rounded to 2 decimals in creation; stringify
     if "Avg Exit Vel" in st_df.columns:
         st_df["Avg Exit Vel"] = st_df["Avg Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
     if "Max Exit Vel" in st_df.columns:
         st_df["Max Exit Vel"] = st_df["Max Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
     if "Avg Angle" in st_df.columns:
         st_df["Avg Angle"] = st_df["Avg Angle"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
-    # Percentages
     if "HardHit %" in st_df.columns:
         st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
     if "K %" in st_df.columns:
         st_df["K %"] = st_df["K %"].apply(fmt_pct2)
     if "BB %" in st_df.columns:
         st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
-    # Rename headers to keep on one line
     rename_map = {
         "Avg Exit Vel": "Avg EV",
         "Max Exit Vel": "Max EV",
@@ -717,7 +720,7 @@ elif batter:
     st.markdown("### Batting Statistics")
     st.table(themed_styler(st_df, nowrap=True))
 
-    # Matplotlib Heatmaps (use Profiles filters; single panel each)
+    # Matplotlib Heatmaps (Profiles filters; single panel each)
     st.markdown("### Hitter Heatmaps")
     fig_hm = hitter_heatmaps_matplotlib(df_profiles, batter, hand_choice)
     if fig_hm:

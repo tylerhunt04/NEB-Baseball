@@ -273,20 +273,37 @@ def create_hitter_report(df, batter, ncols=3):
         bdf['__grp__'] = starts.cumsum()
         grouped = list(bdf.groupby('__grp__', sort=False))
 
-    n_pa = len(grouped); nrows = max(1, math.ceil(n_pa/ncols))
-    descs = []
+    n_pa = len(grouped)
+    nrows = max(1, math.ceil(n_pa / ncols))
 
-    fig = plt.figure(figsize=(3+4*ncols+1, 4*nrows))
-    gs = GridSpec(nrows, ncols+1, width_ratios=[0.8]+[1]*ncols, wspace=0.1)
+    # >>> Layout fix for 1-row cases (spacious, non-cramped)
+    if nrows == 1:
+        fig_h = 7.5        # taller single row
+        title_y = 0.96     # move title down a bit
+        stats_y = 0.92     # move stats line further down
+        hspace = 0.30
+    else:
+        fig_h = 4.0 * nrows + 0.5   # per-row height
+        title_y = 0.98
+        stats_y = 0.94
+        hspace = 0.35
+
+    fig_w = 3 + 4*ncols + 1
+    fig = plt.figure(figsize=(fig_w, fig_h))
+    gs = GridSpec(
+        nrows, ncols+1,
+        width_ratios=[0.9] + [1]*ncols,  # a bit more room for the left description
+        wspace=0.16, hspace=hspace
+    )
 
     # Logo (optional)
     if os.path.exists(LOGO_PATH):
-        axl = fig.add_axes([0.88,0.88,0.12,0.12], anchor='NE'); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
+        axl = fig.add_axes([0.88, 0.88, 0.12, 0.12], anchor='NE'); axl.imshow(mpimg.imread(LOGO_PATH)); axl.axis('off')
 
     # Title
     date_title = summarize_dates_range(bdf.get("Date", pd.Series(dtype="datetime64[ns]")))
     fig.suptitle(f"{batter} Hitter Report{(' — ' + date_title) if date_title else ''}",
-                 fontsize=16, x=0.55, y=1.0, fontweight='bold')
+                 fontsize=16, x=0.55, y=title_y, fontweight='bold')
 
     # Global stats line
     gd = pd.concat([grp for _, grp in grouped]) if grouped else bdf
@@ -297,12 +314,17 @@ def create_hitter_report(df, batter, ncols=3):
                    (pd.to_numeric(gd['PlateLocSide'], errors='coerce')>0.83)|
                    (pd.to_numeric(gd['PlateLocHeight'], errors='coerce')<1.5)|
                    (pd.to_numeric(gd['PlateLocHeight'], errors='coerce')>3.5))].shape[0]
-    fig.text(0.55,0.96,f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
+    fig.text(0.55, stats_y, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
              ha='center', va='top', fontsize=12)
 
     # Left description panel
     axd = fig.add_subplot(gs[:,0]); axd.axis('off')
-    y0=1.0; dy=1.0/(max(1,n_pa)*5.0)
+
+    # Space lines nicely even when n_pa is small (avoid cramming)
+    lines_per_pa = 5.0
+    denom = max(3.0, min(8.0, n_pa * lines_per_pa))  # bound density so single PA isn't jammed
+    y0 = 1.0
+    dy = 1.0 / denom
 
     # Panels per PA
     for idx, (gkey, padf) in enumerate(grouped):
@@ -326,7 +348,15 @@ def create_hitter_report(df, batter, ncols=3):
             strikes=padf['PitchCall'].isin(['StrikeCalled','StrikeSwinging']).sum()
             if balls>=4: lines.append('▶ PA Result: Walk')
             elif strikes>=3: lines.append('▶ PA Result: Strikeout')
-        descs.append(lines)
+
+        # Add to left description panel
+        axd.hlines(y0-dy*0.1, 0, 1, transform=axd.transAxes, color='black', lw=1)
+        axd.text(0.02, y0, f"PA {idx+1}", fontsize=7, fontweight='bold', transform=axd.transAxes)
+        yln = y0 - dy
+        for ln in lines:
+            axd.text(0.02, yln, ln, fontsize=7, transform=axd.transAxes)
+            yln -= dy
+        y0 = yln - dy*0.05
 
         # Plot this PA
         row,col=divmod(idx,ncols)
@@ -339,10 +369,9 @@ def create_hitter_report(df, batter, ncols=3):
             y = pd.to_numeric(p.get('PlateLocHeight', np.nan), errors='coerce')
             if pd.notna(x) and pd.notna(y):
                 ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', lw=1, zorder=2)
-                # Label with pitch number (robust)
                 pitch_no = _safe_pitch_number(p)
                 yoff=-0.05 if p.get('AutoPitchType','')=='Slider' else 0
-                ax.text(x, y+yoff, pitch_no, ha='center', va='center', fontsize=6, fontweight='bold', zorder=3)
+                ax.text(x, y+yoff, pitch_no, ha='center', va='center', fontsize=7, fontweight='bold', zorder=3)
 
         ax.set_xlim(-3,3); ax.set_ylim(0,5); ax.set_xticks([]); ax.set_yticks([])
         inn = padf.get('Inning'); inn = int(pd.to_numeric(inn.iloc[0], errors='coerce')) if hasattr(inn, "iloc") and pd.notna(inn.iloc[0]) else "—"
@@ -353,15 +382,6 @@ def create_hitter_report(df, batter, ncols=3):
         ax.set_title(f"PA {idx+1} | Inning {inn} {tb}", fontsize=10, fontweight='bold')
         ax.text(0.5,0.1,f"vs {pitchr} ({hand})", transform=ax.transAxes, ha='center', va='top', fontsize=9, style='italic')
 
-    # Write the left column details
-    for i,lines in enumerate(descs,1):
-        axd.hlines(y0-dy*0.1,0,1, transform=axd.transAxes, color='black', lw=1)
-        axd.text(0.02,y0,f"PA {i}", fontsize=6, fontweight='bold', transform=axd.transAxes)
-        yln=y0-dy
-        for ln in lines:
-            axd.text(0.02,yln,ln, fontsize=6, transform=axd.transAxes); yln-=dy
-        y0=yln-dy*0.05
-
     # Legends
     res_handles=[Line2D([0],[0], marker='o', color='w', label=k, markerfacecolor=v, ms=10, markeredgecolor='k')
                  for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan','InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.items()]
@@ -369,7 +389,11 @@ def create_hitter_report(df, batter, ncols=3):
     pitch_handles=[Line2D([0],[0], marker=m, color='w', label=k, markerfacecolor='gray', ms=10, markeredgecolor='k')
                    for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
     fig.legend(pitch_handles, [h.get_label() for h in pitch_handles], title='Pitches', loc='lower right', bbox_to_anchor=(0.98,0.02))
-    plt.tight_layout(rect=[0.12,0.05,1,0.88])
+
+    # Leave a bit more top/bottom margin for single-row figures
+    rect_top = 0.90 if nrows == 1 else 0.88
+    rect_bottom = 0.08 if nrows == 1 else 0.05
+    plt.tight_layout(rect=[0.12, rect_bottom, 1, rect_top])
     return fig
 
 # ────────────────────────────── UI / App ─────────────────────────────

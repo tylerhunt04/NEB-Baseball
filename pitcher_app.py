@@ -22,7 +22,7 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Nebraska Baseball — Pitcher Reports",
-    layout="wide",
+    layout="centered",              # wide OFF per request
     initial_sidebar_state="collapsed",
 )
 st.set_option("client.showErrorDetails", True)
@@ -30,7 +30,7 @@ st.set_option("client.showErrorDetails", True)
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"  # <-- your CSV
+DATA_PATH = "B10C25_hitter_app_columns.csv"  # <-- your CSV
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG = "NebraskaChampions.jpg"  # uploaded earlier
 
@@ -343,13 +343,22 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER HEATMAPS (top 3 pitches + whiffs/K/damage) with LHH/RHH/Both
+#  (Outcome panels can be filtered by pitch type via outcome_pitch_types)
 # ──────────────────────────────────────────────────────────────────────────────
-def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season"):
+def combined_pitcher_heatmap_report(
+    df,
+    pitcher_name,
+    hand_filter="Both",
+    grid_size=100,
+    season_label="Season",
+    outcome_pitch_types=None,  # NEW: filter only whiffs/K/damage by selected pitch type(s)
+):
     df_p = df[df['Pitcher'] == pitcher_name].copy()
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters.")
         return None
 
+    # Batter-side filter (Both/LHH/RHH)
     side_col = find_batter_side_col(df_p)
     hand_label = "Both"
     if side_col is not None:
@@ -365,6 +374,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
         st.info("No pitches for the selected batter-side filter.")
         return None
 
+    # ---- heatmap canvas helpers
     x_min, x_max, y_min, y_max = get_view_bounds()
     xi = np.linspace(x_min, x_max, grid_size); yi = np.linspace(y_min, y_max, grid_size)
     xi_mesh, yi_mesh = np.meshgrid(xi, yi); grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
@@ -388,7 +398,7 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
     fig = plt.figure(figsize=(18, 14))
     gs = GridSpec(3, 3, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.35, wspace=0.3)
 
-    # Top 3 pitches
+    # Top 3 pitch-type heatmaps (unchanged / not filtered by outcome types)
     top3 = list(df_p['AutoPitchType'].value_counts().index[:3])
     for i in range(3):
         ax = fig.add_subplot(gs[0, i])
@@ -402,10 +412,17 @@ def combined_pitcher_heatmap_report(df, pitcher_name, hand_filter="Both", grid_s
             ax.set_xticks([]); ax.set_yticks([])
             ax.set_title("—", fontweight='bold')
 
-    # Whiffs / K / Damage
-    sub_wh = df_p[df_p['PitchCall'] == 'StrikeSwinging']
-    sub_ks = df_p[df_p['KorBB'] == 'Strikeout']
-    sub_dg = df_p[df_p['ExitSpeed'] >= 95]
+    # Limit outcome panels (Whiffs / K / Damage) to selected pitch types only (if provided)
+    type_col = pick_col(df_p, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+    df_out = df_p
+    if outcome_pitch_types and isinstance(outcome_pitch_types, (list, tuple, set)):
+        outcome_pitch_types = [str(t) for t in outcome_pitch_types]
+        df_out = df_p[df_p[type_col].astype(str).isin(outcome_pitch_types)].copy()
+
+    # Outcome panels
+    sub_wh = df_out[df_out['PitchCall'] == 'StrikeSwinging']
+    sub_ks = df_out[df_out['KorBB'] == 'Strikeout']
+    sub_dg = df_out[pd.to_numeric(df_out['ExitSpeed'], errors='coerce') >= 95]
 
     ax = fig.add_subplot(gs[1, 0]); panel(ax, sub_wh, f"Whiffs (n={len(sub_wh)})")
     ax = fig.add_subplot(gs[1, 1]); panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})")
@@ -645,7 +662,27 @@ with tabs[0]:
 
         # 2) Heatmaps
         st.markdown("### Pitcher Heatmaps")
-        fig_h = combined_pitcher_heatmap_report(neb_df, player, hand_filter=hand_choice, season_label=season_label)
+
+        # NEW: Pitch-type filter for outcome panels only (Whiffs/K/Damage)
+        types_available_hm = (
+            neb_df.get('AutoPitchType', pd.Series(dtype=object))
+                  .dropna().astype(str).unique().tolist()
+        )
+        types_available_hm = sorted(types_available_hm)
+        hm_types = st.multiselect(
+            "Pitch Types (applies to Whiffs / Strikeouts / Damage only)",
+            options=types_available_hm,
+            default=types_available_hm,
+            key="std_hm_types",
+        )
+
+        fig_h = combined_pitcher_heatmap_report(
+            neb_df,
+            player,
+            hand_filter=hand_choice,
+            season_label=season_label,
+            outcome_pitch_types=(hm_types if hm_types else None),
+        )
         if fig_h:
             show_and_close(fig_h)
 
@@ -676,7 +713,7 @@ with tabs[1]:
     cmp_n = st.selectbox("Number of windows", [2,3], index=0, key="cmp_n")
     cmp_hand = st.radio("Batter Side (heatmaps)", ["Both","LHH","RHH"], index=0, horizontal=True, key="cmp_hand")
 
-    # Available pitch types across full pitcher season
+    # Available pitch types across full pitcher season (release plot)
     types_avail_all = (
         df_pitcher_all.get('AutoPitchType', pd.Series(dtype=object))
             .dropna().map(canonicalize_type)
@@ -688,6 +725,19 @@ with tabs[1]:
         options=types_avail_all,
         default=types_avail_all,
         key="cmp_types",
+    )
+
+    # NEW: Outcome heatmaps pitch-type filter (shared across windows)
+    types_avail_out = (
+        df_pitcher_all.get('AutoPitchType', pd.Series(dtype=object))
+            .dropna().astype(str).unique().tolist()
+    )
+    types_avail_out = sorted(types_avail_out)
+    cmp_types_outcomes = st.multiselect(
+        "Pitch Types (heatmaps — applies only to Whiffs / Strikeouts / Damage)",
+        options=types_avail_out,
+        default=types_avail_out,
+        key="cmp_types_outcomes",
     )
 
     # Build per-window filters (months/days ONLY)
@@ -732,7 +782,13 @@ with tabs[1]:
                 fig_m, _ = out_win
                 show_and_close(fig_m)
 
-            fig_h = combined_pitcher_heatmap_report(df_win, player, hand_filter=cmp_hand, season_label=season_lab)
+            fig_h = combined_pitcher_heatmap_report(
+                df_win,
+                player,
+                hand_filter=cmp_hand,
+                season_label=season_lab,
+                outcome_pitch_types=(cmp_types_outcomes if cmp_types_outcomes else None),
+            )
             if fig_h:
                 show_and_close(fig_h)
 

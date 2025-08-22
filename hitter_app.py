@@ -11,7 +11,7 @@ from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
 from scipy.stats import gaussian_kde
 from matplotlib import colors
-from matplotlib import patheffects  # <- for outlined text on banner
+from matplotlib import patheffects  # for outlined text on banner
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG
@@ -21,7 +21,7 @@ st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # w
 DATA_PATH = "B10C25_hitter_app_columns.csv"  # update if needed
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
-  
+   
 ]
 
 HUSKER_RED = "#E60026"
@@ -121,7 +121,8 @@ def fmt_avg3(x):
     except Exception:
         return "—"
 
-def themed_styler(df: pd.DataFrame, nowrap=True) -> pd.io.formats.style.Styler:
+# ⬇️ Removed the return type that referenced pandas internals to avoid AttributeError
+def themed_styler(df: pd.DataFrame, nowrap=True):
     # Force headers to one line (nowrap) and brand the header row
     header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
     styles = [

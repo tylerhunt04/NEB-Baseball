@@ -1,6 +1,7 @@
 # pitcher_app.py
 import os
 import gc
+import re
 import base64
 import math
 import numpy as np
@@ -22,7 +23,7 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Nebraska Baseball — Pitcher Reports",
-    layout="wide",                    # WIDE MODE ON (per your note)
+    layout="wide",                    # WIDE MODE ON
     initial_sidebar_state="collapsed",
 )
 st.set_option("client.showErrorDetails", True)
@@ -249,7 +250,10 @@ def compute_density(x, y, grid_coords, mesh_shape):
         return np.zeros(mesh_shape)
 
 def strike_rate(df):
-    if len(df) == 0: return np.nan
+    if len(df) == 0:
+        return np.nan
+    if "PitchCall" not in df.columns:
+        return np.nan
     strike_calls = ['StrikeCalled','StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay']
     return df['PitchCall'].isin(strike_calls).mean() * 100
 
@@ -281,59 +285,152 @@ def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
     return None
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCHER REPORT (movement + summary)
+# UI HELPER: “button-like” multi-select with Select All (checkbox grid)
+# ──────────────────────────────────────────────────────────────────────────────
+def _safe_key(s: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_]+", "_", str(s))
+
+def pitchtype_selector(label: str, options: list[str], key_prefix: str, default_all=True, columns_per_row=6) -> list[str] | None:
+    """Render a non-dropdown multi-select:
+       - 'Select all' checkbox
+       - grid of checkboxes for each pitch type
+       Returns list of selected types, or None if 'all'.
+    """
+    if not options:
+        st.caption("No pitch types available.")
+        return None
+
+    st.write(f"**{label}**")
+    select_all = st.checkbox("All pitch types", value=default_all, key=f"{key_prefix}_all")
+    selected: list[str] = []
+
+    cols = st.columns(columns_per_row)
+    for i, opt in enumerate(options):
+        col = cols[i % columns_per_row]
+        k = f"{key_prefix}_{_safe_key(opt)}"
+        # if select_all is True, render as checked visually, but we ignore the individual states anyway
+        checked = col.checkbox(opt, value=True if default_all else False, key=k)
+        if not select_all and checked:
+            selected.append(opt)
+
+    # If select_all, return None (treat as no filtering)
+    if select_all:
+        return None
+
+    # If none manually selected, also treat as no filtering (use all)
+    if not selected:
+        return None
+
+    return selected
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PITCHER REPORT (movement + summary) — tolerant to column name variants
 # ──────────────────────────────────────────────────────────────────────────────
 def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_label="Season"):
-    df_p = df[df['Pitcher'] == pitcher_name]
+    # Resolve core columns
+    type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+    pitch_col = pick_col(df, "PitchCall","Pitch Call","Call") or "PitchCall"
+
+    speed_col = pick_col(df, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
+    spin_col  = pick_col(df, "SpinRate","Spinrate","ReleaseSpinRate","Spin")
+    ivb_col   = pick_col(df, "InducedVertBreak","IVB","Induced Vert Break","IndVertBreak")
+    hb_col    = pick_col(df, "HorzBreak","HorizontalBreak","HB","HorizBreak")
+    rh_col    = pick_col(df, "RelHeight","Relheight","ReleaseHeight","Release_Height","release_pos_z")
+    vaa_col   = pick_col(df, "VertApprAngle","VAA","VerticalApproachAngle")
+    ext_col   = pick_col(df, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")
+
+    df_p = df[df.get('Pitcher', '') == pitcher_name]
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters.")
         return None
 
-    total = len(df_p)
-    is_strike = df_p['PitchCall'].isin(['StrikeCalled','StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
-    grp = df_p.groupby('AutoPitchType')
+    # group
+    try:
+        grp = df_p.groupby(type_col, dropna=False)
+    except KeyError:
+        st.error(f"Pitch type column not found (tried '{type_col}').")
+        return None
 
+    counts = grp.size()
+    total = int(len(df_p))
+
+    # Base summary frame
     summary = pd.DataFrame({
-        'Pitch Type': grp.size().index,
-        'Pitches': grp.size().values,
-        'Usage %': grp.size().values / total * 100,
-        'Strike %': grp.apply(lambda g: is_strike.loc[g.index].mean() * 100).values,
-        'Rel Speed': grp['RelSpeed'].mean().values,
-        'Spin Rate': grp['SpinRate'].mean().values,
-        'IVB': grp['InducedVertBreak'].mean().values,
-        'HB': grp['HorzBreak'].mean().values,
-        'Rel Height': grp['RelHeight'].mean().values,
-        'VAA': grp['VertApprAngle'].mean().values,
-        'Extension': grp['Extension'].mean().values
-    }).round({'Usage %':1,'Strike %':1,'Rel Speed':1,'Spin Rate':1,'IVB':1,'HB':1,'Rel Height':2,'VAA':1,'Extension':2}) \
-     .sort_values('Pitches', ascending=False)
+        'Pitch Type': counts.index.astype(str),
+        'Pitches': counts.values,
+        'Usage %': np.round((counts.values / max(total, 1)) * 100, 1),
+    })
 
+    # Strike %
+    if pitch_col in df_p.columns:
+        is_strike = df_p[pitch_col].isin(['StrikeCalled','StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
+        strike_pct = grp.apply(lambda g: is_strike.loc[g.index].mean() * 100 if len(g) else np.nan).values
+        summary['Strike %'] = np.round(strike_pct, 1)
+
+    # Helper to add mean column if present
+    def add_mean(col_name, label, r=1):
+        nonlocal summary
+        if col_name and col_name in df_p.columns:
+            vals = grp[col_name].mean().values
+            summary[label] = np.round(vals, r)
+
+    add_mean(speed_col, 'Rel Speed', r=1)
+    add_mean(spin_col,  'Spin Rate', r=1)
+    add_mean(ivb_col,   'IVB', r=1)
+    add_mean(hb_col,    'HB', r=1)
+    add_mean(rh_col,    'Rel Height', r=2)
+    add_mean(vaa_col,   'VAA', r=1)
+    add_mean(ext_col,   'Extension', r=2)
+
+    # sort
+    summary = summary.sort_values('Pitches', ascending=False)
+
+    # ── Figure: movement + table
     fig = plt.figure(figsize=(8, 12))
     gs = GridSpec(2, 1, figure=fig, height_ratios=[1.5, 0.7], hspace=0.3)
 
-    # Movement
+    # Movement plot (uses IVB/HB if available; otherwise scatter the best we have)
     axm = fig.add_subplot(gs[0, 0]); axm.set_title('Movement Plot', fontweight='bold')
-    chi2v = chi2.ppf(coverage, df=2)
     axm.axhline(0, ls='--', color='grey'); axm.axvline(0, ls='--', color='grey')
-    for ptype, g in grp:
-        x, y = g['HorzBreak'], g['InducedVertBreak']; clr = get_pitch_color(ptype)
-        axm.scatter(x, y, label=ptype, color=clr, alpha=0.7)
-        if len(g) > 1:
-            cov = np.cov(np.vstack((x, y))); vals, vecs = np.linalg.eigh(cov)
-            ord_ = vals.argsort()[::-1]; vals, vecs = vals[ord_], vecs[:, ord_]
-            ang = np.degrees(np.arctan2(*vecs[:,0][::-1])); w, h = 2*np.sqrt(vals*chi2v)
-            axm.add_patch(Ellipse((x.mean(), y.mean()), w, h, angle=ang, edgecolor=clr, facecolor=clr, alpha=0.2, ls='--', lw=1.5))
+    chi2v = chi2.ppf(coverage, df=2)
+
+    for ptype, g in df_p.groupby(type_col, dropna=False):
+        clr = get_pitch_color(ptype)
+        x_series = g[hb_col] if hb_col in g.columns else pd.Series([np.nan]*len(g))
+        y_series = g[ivb_col] if ivb_col in g.columns else pd.Series([np.nan]*len(g))
+        x = pd.to_numeric(x_series, errors='coerce')
+        y = pd.to_numeric(y_series, errors='coerce')
+        mask = x.notna() & y.notna()
+        if mask.any():
+            axm.scatter(x[mask], y[mask], label=str(ptype), color=clr, alpha=0.7)
+            if mask.sum() > 1:
+                X = np.vstack((x[mask], y[mask]))
+                cov = np.cov(X)
+                try:
+                    vals, vecs = np.linalg.eigh(cov)
+                    ord_ = vals.argsort()[::-1]; vals, vecs = vals[ord_], vecs[:, ord_]
+                    ang = np.degrees(np.arctan2(*vecs[:,0][::-1]))
+                    w, h = 2*np.sqrt(vals*chi2v)
+                    axm.add_patch(Ellipse((x[mask].mean(), y[mask].mean()), w, h,
+                                          angle=ang, edgecolor=clr, facecolor=clr,
+                                          alpha=0.2, ls='--', lw=1.5))
+                except Exception:
+                    pass  # fallback if cov is singular
+        else:
+            axm.scatter([], [], label=str(ptype), color=clr, alpha=0.7)
+
     axm.set_xlim(-30,30); axm.set_ylim(-30,30); axm.set_aspect('equal','box')
     axm.set_xlabel('Horizontal Break'); axm.set_ylabel('Induced Vertical Break')
     axm.legend(title='Pitch Type', fontsize=8, title_fontsize=9, loc='upper right')
 
-    # Summary
+    # Summary table
     axt = fig.add_subplot(gs[1, 0]); axt.axis('off')
     tbl = axt.table(cellText=summary.values, colLabels=summary.columns, cellLoc='center', loc='center')
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
     axt.set_title('Summary Metrics', fontweight='bold', y=0.87)
 
     # Logo
+    logo_img = load_logo_img()
     if logo_img is not None:
         axl = fig.add_axes([1, 0.88, 0.12, 0.12], anchor='NE', zorder=10); axl.imshow(logo_img); axl.axis('off')
 
@@ -353,10 +450,13 @@ def combined_pitcher_heatmap_report(
     season_label="Season",
     outcome_pitch_types=None,  # filter only whiffs/K/damage by selected pitch type(s)
 ):
-    df_p = df[df['Pitcher'] == pitcher_name].copy()
+    df_p = df[df.get('Pitcher','') == pitcher_name].copy()
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters.")
         return None
+
+    # Type column once, used everywhere
+    type_col = pick_col(df_p, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
 
     # Batter-side filter (Both/LHH/RHH)
     side_col = find_batter_side_col(df_p)
@@ -398,13 +498,17 @@ def combined_pitcher_heatmap_report(
     fig = plt.figure(figsize=(18, 14))
     gs = GridSpec(3, 3, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.35, wspace=0.3)
 
-    # Top 3 pitch-type heatmaps (not filtered by outcome types)
-    top3 = list(df_p['AutoPitchType'].value_counts().index[:3])
+    # Top 3 pitch-type heatmaps (use resolved type_col)
+    try:
+        top3 = list(df_p[type_col].value_counts().index[:3])
+    except KeyError:
+        top3 = []
+
     for i in range(3):
         ax = fig.add_subplot(gs[0, i])
         if i < len(top3):
             pitch = top3[i]
-            sub = df_p[df_p['AutoPitchType'] == pitch]
+            sub = df_p[df_p[type_col] == pitch]
             panel(ax, sub, f"{pitch} (n={len(sub)})")
         else:
             draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
@@ -413,27 +517,36 @@ def combined_pitcher_heatmap_report(
             ax.set_title("—", fontweight='bold')
 
     # Limit outcome panels (Whiffs / K / Damage) to selected pitch types only (if provided)
-    type_col = pick_col(df_p, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
     df_out = df_p
     if outcome_pitch_types is not None and isinstance(outcome_pitch_types, (list, tuple, set)):
         outcome_pitch_types = [str(t) for t in outcome_pitch_types]
-        df_out = df_p[df_p[type_col].astype(str).isin(outcome_pitch_types)].copy()
+        if type_col in df_p.columns:
+            df_out = df_p[df_p[type_col].astype(str).isin(outcome_pitch_types)].copy()
 
     # Outcome panels
-    sub_wh = df_out[df_out['PitchCall'] == 'StrikeSwinging']
-    sub_ks = df_out[df_out['KorBB'] == 'Strikeout']
-    sub_dg = df_out[pd.to_numeric(df_out['ExitSpeed'], errors='coerce') >= 95]
+    sub_wh = df_out[df_out.get('PitchCall','') == 'StrikeSwinging']
+    sub_ks = df_out[df_out.get('KorBB','') == 'Strikeout']
+    sub_dg = df_out[pd.to_numeric(df_out.get('ExitSpeed', pd.Series(dtype=float)), errors='coerce') >= 95]
 
     ax = fig.add_subplot(gs[1, 0]); panel(ax, sub_wh, f"Whiffs (n={len(sub_wh)})")
     ax = fig.add_subplot(gs[1, 1]); panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})")
     ax = fig.add_subplot(gs[1, 2]); panel(ax, sub_dg, f"Damage (n={len(sub_dg)})", color='orange')
 
-    # Strike % by count
+    # Strike % by count (tolerant to missing columns)
     axt = fig.add_subplot(gs[2, :]); axt.axis('off')
-    fp  = strike_rate(df_p[(df_p['Balls']==0) & (df_p['Strikes']==0)])
-    mix = strike_rate(df_p[((df_p['Balls']==1)&(df_p['Strikes']==0)) | ((df_p['Balls']==0)&(df_p['Strikes']==1)) | ((df_p['Balls']==1)&(df_p['Strikes']==1))])
-    hp  = strike_rate(df_p[((df_p['Balls']==2)&(df_p['Strikes']==0)) | ((df_p['Balls']==2)&(df_p['Strikes']==1)) | ((df_p['Balls']==3)&(df_p['Strikes']==1))])
-    two = strike_rate(df_p[(df_p['Strikes']==2) & (df_p['Balls']<3)])
+    def _safe_mask(q):
+        for col in ("Balls","Strikes"):
+            if col not in df_p.columns:
+                return df_p.iloc[0:0]
+        return q
+    fp  = strike_rate(_safe_mask(df_p[(df_p.get('Balls',0)==0) & (df_p.get('Strikes',0)==0)]))
+    mix = strike_rate(_safe_mask(df_p[((df_p.get('Balls',0)==1)&(df_p.get('Strikes',0)==0)) |
+                                      ((df_p.get('Balls',0)==0)&(df_p.get('Strikes',0)==1)) |
+                                      ((df_p.get('Balls',0)==1)&(df_p.get('Strikes',0)==1))]))
+    hp  = strike_rate(_safe_mask(df_p[((df_p.get('Balls',0)==2)&(df_p.get('Strikes',0)==0)) |
+                                      ((df_p.get('Balls',0)==2)&(df_p.get('Strikes',0)==1)) |
+                                      ((df_p.get('Balls',0)==3)&(df_p.get('Strikes',0)==1))]))
+    two = strike_rate(_safe_mask(df_p[(df_p.get('Strikes',0)==2) & (df_p.get('Balls',0)<3)]))
     metrics = pd.DataFrame({'1st Pitch %':[fp],'Mix Count %':[mix],'Hitter+ %':[hp],'2-Strike %':[two]}).round(1)
     tbl = axt.table(cellText=metrics.values, colLabels=metrics.columns, cellLoc='center', loc='center')
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
@@ -663,53 +776,49 @@ with tabs[0]:
         # 2) Heatmaps
         st.markdown("### Pitcher Heatmaps")
 
-        # PITCH-TYPE FILTER — always rendered (even if the list is empty)
+        # Button-like pitch-type selector (outcome panels only)
+        type_col_for_hm = pick_col(neb_df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
         types_available_hm = (
-            neb_df.get('AutoPitchType', pd.Series(dtype=object))
+            neb_df.get(type_col_for_hm, pd.Series(dtype=object))
                   .dropna().astype(str).unique().tolist()
         )
         types_available_hm = sorted(types_available_hm)
-        st.caption("Filter Whiffs / Strikeouts / Damage by pitch type:")
-        hm_types = st.multiselect(
-            "Pitch Types (outcome panels only)",
-            options=types_available_hm if types_available_hm else ["(no pitch types in selection)"],
-            default=types_available_hm,
-            key="std_hm_types",
+        hm_selected = pitchtype_selector(
+            "Filter Whiffs / Strikeouts / Damage by Pitch Type",
+            options=types_available_hm,
+            key_prefix="std_hm_types",
+            default_all=True,
+            columns_per_row=6,
         )
-        # If dummy option ended up selected, ignore it
-        if hm_types and "(no pitch types in selection)" in hm_types:
-            hm_types = []
-
         fig_h = combined_pitcher_heatmap_report(
             neb_df,
             player,
             hand_filter=hand_choice,
             season_label=season_label,
-            outcome_pitch_types=(hm_types if hm_types else None),
+            outcome_pitch_types=hm_selected,  # None = all
         )
         if fig_h:
             show_and_close(fig_h)
 
-        # 3) Release Points (+ pitch-type filter)
+        # 3) Release Points (+ button-like pitch-type selector)
+        type_col_all = pick_col(neb_df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
         types_available = (
-            neb_df.get('AutoPitchType', pd.Series(dtype=object))
+            neb_df.get(type_col_all, pd.Series(dtype=object))
                  .dropna().map(canonicalize_type)
                  .replace("Unknown", np.nan).dropna().unique().tolist()
         )
         types_available = sorted(types_available)
         st.markdown("### Release Points")
-        if types_available:
-            sel_types = st.multiselect(
-                "Pitch Types to Show",
-                options=types_available,
-                default=types_available,
-                key="std_release_types"
-            )
-            rel_fig = release_points_figure(neb_df, player, include_types=sel_types if sel_types else [])
-            if rel_fig:
-                show_and_close(rel_fig)
-        else:
-            st.info("No recognizable pitch types available to plot.")
+        rel_selected = pitchtype_selector(
+            "Pitch Types to Show",
+            options=types_available,
+            key_prefix="std_release_types",
+            default_all=True,
+            columns_per_row=6,
+        )
+        rel_fig = release_points_figure(neb_df, player, include_types=rel_selected)
+        if rel_fig:
+            show_and_close(rel_fig)
 
 # ── COMPARE TAB ────────────────────────────────────────────────────────────────
 with tabs[1]:
@@ -718,34 +827,37 @@ with tabs[1]:
     cmp_hand = st.radio("Batter Side (heatmaps)", ["Both","LHH","RHH"], index=0, horizontal=True, key="cmp_hand")
 
     # Available pitch types across full pitcher season (release plot)
+    type_col_all = pick_col(df_pitcher_all, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
     types_avail_all = (
-        df_pitcher_all.get('AutoPitchType', pd.Series(dtype=object))
+        df_pitcher_all.get(type_col_all, pd.Series(dtype=object))
             .dropna().map(canonicalize_type)
             .replace("Unknown", np.nan).dropna().unique().tolist()
     )
     types_avail_all = sorted(types_avail_all)
-    cmp_types = st.multiselect(
-        "Pitch Types (release plot, all windows)",
+
+    st.markdown("**Pitch Types (Release Plot, all windows)**")
+    cmp_types_selected = pitchtype_selector(
+        "Select pitch types",
         options=types_avail_all,
-        default=types_avail_all,
-        key="cmp_types",
+        key_prefix="cmp_rel_types",
+        default_all=True,
+        columns_per_row=6,
     )
 
-    # Outcome heatmaps pitch-type filter (shared across windows) — always rendered
+    # Outcome heatmaps pitch-type filter (shared across windows)
     types_avail_out = (
-        df_pitcher_all.get('AutoPitchType', pd.Series(dtype=object))
+        df_pitcher_all.get(type_col_all, pd.Series(dtype=object))
             .dropna().astype(str).unique().tolist()
     )
     types_avail_out = sorted(types_avail_out)
-    st.caption("Filter Whiffs / Strikeouts / Damage by pitch type (applies to all windows):")
-    cmp_types_outcomes = st.multiselect(
-        "Pitch Types (heatmaps — outcome panels only)",
-        options=types_avail_out if types_avail_out else ["(no pitch types available)"],
-        default=types_avail_out,
-        key="cmp_types_outcomes",
+    st.markdown("**Pitch Types (Heatmaps — Whiffs / Strikeouts / Damage)**")
+    cmp_types_out_selected = pitchtype_selector(
+        "Select outcome pitch types",
+        options=types_avail_out,
+        key_prefix="cmp_types_outcomes",
+        default_all=True,
+        columns_per_row=6,
     )
-    if cmp_types_outcomes and "(no pitch types available)" in cmp_types_outcomes:
-        cmp_types_outcomes = []
 
     # Build per-window filters (months/days ONLY)
     date_ser_all = df_pitcher_all['Date'].dropna()
@@ -794,11 +906,11 @@ with tabs[1]:
                 player,
                 hand_filter=cmp_hand,
                 season_label=season_lab,
-                outcome_pitch_types=(cmp_types_outcomes if cmp_types_outcomes else None),
+                outcome_pitch_types=cmp_types_out_selected,  # None = all
             )
             if fig_h:
                 show_and_close(fig_h)
 
-            fig_r = release_points_figure(df_win, player, include_types=cmp_types if cmp_types else None)
+            fig_r = release_points_figure(df_win, player, include_types=cmp_types_selected)
             if fig_r:
                 show_and_close(fig_r)

@@ -22,7 +22,7 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Nebraska Baseball — Pitcher Reports",
-    layout="centered",              # wide OFF per request
+    layout="wide",                    # WIDE MODE ON (per your note)
     initial_sidebar_state="collapsed",
 )
 st.set_option("client.showErrorDetails", True)
@@ -351,7 +351,7 @@ def combined_pitcher_heatmap_report(
     hand_filter="Both",
     grid_size=100,
     season_label="Season",
-    outcome_pitch_types=None,  # NEW: filter only whiffs/K/damage by selected pitch type(s)
+    outcome_pitch_types=None,  # filter only whiffs/K/damage by selected pitch type(s)
 ):
     df_p = df[df['Pitcher'] == pitcher_name].copy()
     if df_p.empty:
@@ -398,7 +398,7 @@ def combined_pitcher_heatmap_report(
     fig = plt.figure(figsize=(18, 14))
     gs = GridSpec(3, 3, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.35, wspace=0.3)
 
-    # Top 3 pitch-type heatmaps (unchanged / not filtered by outcome types)
+    # Top 3 pitch-type heatmaps (not filtered by outcome types)
     top3 = list(df_p['AutoPitchType'].value_counts().index[:3])
     for i in range(3):
         ax = fig.add_subplot(gs[0, i])
@@ -415,7 +415,7 @@ def combined_pitcher_heatmap_report(
     # Limit outcome panels (Whiffs / K / Damage) to selected pitch types only (if provided)
     type_col = pick_col(df_p, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
     df_out = df_p
-    if outcome_pitch_types and isinstance(outcome_pitch_types, (list, tuple, set)):
+    if outcome_pitch_types is not None and isinstance(outcome_pitch_types, (list, tuple, set)):
         outcome_pitch_types = [str(t) for t in outcome_pitch_types]
         df_out = df_p[df_p[type_col].astype(str).isin(outcome_pitch_types)].copy()
 
@@ -625,7 +625,7 @@ tabs = st.tabs(["Standard", "Compare"])
 with tabs[0]:
     # Filters for this pitcher only (below the header)
     present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
-    col_m, col_d, col_side = st.columns([1,1,1.2])
+    col_m, col_d, col_side = st.columns([1,1,1.6])
     months_sel = col_m.multiselect(
         "Months (optional)",
         options=present_months,
@@ -663,18 +663,22 @@ with tabs[0]:
         # 2) Heatmaps
         st.markdown("### Pitcher Heatmaps")
 
-        # NEW: Pitch-type filter for outcome panels only (Whiffs/K/Damage)
+        # PITCH-TYPE FILTER — always rendered (even if the list is empty)
         types_available_hm = (
             neb_df.get('AutoPitchType', pd.Series(dtype=object))
                   .dropna().astype(str).unique().tolist()
         )
         types_available_hm = sorted(types_available_hm)
+        st.caption("Filter Whiffs / Strikeouts / Damage by pitch type:")
         hm_types = st.multiselect(
-            "Pitch Types (applies to Whiffs / Strikeouts / Damage only)",
-            options=types_available_hm,
+            "Pitch Types (outcome panels only)",
+            options=types_available_hm if types_available_hm else ["(no pitch types in selection)"],
             default=types_available_hm,
             key="std_hm_types",
         )
+        # If dummy option ended up selected, ignore it
+        if hm_types and "(no pitch types in selection)" in hm_types:
+            hm_types = []
 
         fig_h = combined_pitcher_heatmap_report(
             neb_df,
@@ -727,18 +731,21 @@ with tabs[1]:
         key="cmp_types",
     )
 
-    # NEW: Outcome heatmaps pitch-type filter (shared across windows)
+    # Outcome heatmaps pitch-type filter (shared across windows) — always rendered
     types_avail_out = (
         df_pitcher_all.get('AutoPitchType', pd.Series(dtype=object))
             .dropna().astype(str).unique().tolist()
     )
     types_avail_out = sorted(types_avail_out)
+    st.caption("Filter Whiffs / Strikeouts / Damage by pitch type (applies to all windows):")
     cmp_types_outcomes = st.multiselect(
-        "Pitch Types (heatmaps — applies only to Whiffs / Strikeouts / Damage)",
-        options=types_avail_out,
+        "Pitch Types (heatmaps — outcome panels only)",
+        options=types_avail_out if types_avail_out else ["(no pitch types available)"],
         default=types_avail_out,
         key="cmp_types_outcomes",
     )
+    if cmp_types_outcomes and "(no pitch types available)" in cmp_types_outcomes:
+        cmp_types_outcomes = []
 
     # Build per-window filters (months/days ONLY)
     date_ser_all = df_pitcher_all['Date'].dropna()

@@ -2,6 +2,7 @@
 
 import os
 import math
+import base64
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -11,7 +12,6 @@ from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
 from scipy.stats import gaussian_kde
 from matplotlib import colors
-from matplotlib import patheffects  # for outlined text on banner
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG
@@ -96,7 +96,7 @@ def compute_density_hitter(x, y, xi_m, yi_m):
         return np.zeros(xi_m.shape)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# FORMATTERS
+# FORMATTERS / TABLE STYLE
 # ──────────────────────────────────────────────────────────────────────────────
 def fmt_pct(x, decimals=1):
     try:
@@ -121,14 +121,12 @@ def fmt_avg3(x):
     except Exception:
         return "—"
 
-# ⬇️ Removed the return type that referenced pandas internals to avoid AttributeError
 def themed_styler(df: pd.DataFrame, nowrap=True):
-    # Force headers to one line (nowrap) and brand the header row
     header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
     styles = [
-        {'selector': 'thead th',      'props': header_props},
-        {'selector': 'th.col_heading','props': header_props},
-        {'selector': 'th',            'props': header_props},
+        {'selector': 'thead th', 'props': header_props},
+        {'selector': 'th.col_heading', 'props': header_props},
+        {'selector': 'th', 'props': header_props},
     ]
     if nowrap:
         styles.append({'selector': 'td', 'props': 'white-space: nowrap;'})
@@ -136,12 +134,53 @@ def themed_styler(df: pd.DataFrame, nowrap=True):
             .hide(axis="index")
             .set_table_styles(styles))
 
-def pick_col(df: pd.DataFrame, *cands) -> str | None:
-    lower = {c.lower(): c for c in df.columns}
-    for name in cands:
-        if name and name.lower() in lower:
-            return lower[name.lower()]
-    return None
+# ──────────────────────────────────────────────────────────────────────────────
+# BANNER (same style as pitcher_app.py)
+# ──────────────────────────────────────────────────────────────────────────────
+def _img_to_b64(path: str):
+    try:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode("utf-8")
+    except Exception:
+        return None
+
+def render_nb_banner(
+    image_candidates=BANNER_CANDIDATES,
+    title="Nebraska Baseball",
+    height_px=180
+):
+    b64 = None
+    for p in image_candidates:
+        b64 = _img_to_b64(p)
+        if b64:
+            break
+    if not b64:
+        return  # silently skip if not found
+
+    st.markdown(
+        f"""
+        <div style="
+            position: relative;
+            width: 100%;
+            height: {height_px}px;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 10px;">
+          <img src="data:image/jpeg;base64,{b64}"
+               style="width:100%; height:100%; object-fit:cover; filter: brightness(0.9);" />
+          <div style="
+              position:absolute; inset:0;
+              display:flex; align-items:center; justify-content:center;">
+            <div style="
+                font-size:40px; font-weight:800; color:white;
+                text-shadow: 0 2px 12px rgba(0,0,0,.9);">
+              {title}
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # BATTED BALL / DISCIPLINE / STATS
@@ -158,71 +197,32 @@ def assign_spray_category(row):
     return 'Opposite' if side == 'R' else 'Pull'
 
 def create_batted_ball_profile(df: pd.DataFrame):
-    pitchcall_col = pick_col(df, "PitchCall", "Pitch Call", "Pitch_Call", "Pitch_Result")
-    tag_col       = pick_col(df, "TaggedHitType", "Tagged Hit Type", "BBType", "HitType", "BattedBallType")
-    bearing_col   = pick_col(df, "Bearing", "SprayAngle", "Spray Angle", "Spray")
-    batside_col   = pick_col(df, "BatterSide", "Batter Side", "Bats", "Stand", "BatterBatSide", "BatterBats")
+    inplay = df[df.get('PitchCall', pd.Series(dtype=object)) == 'InPlay'].copy()
+    if 'TaggedHitType' not in inplay.columns:
+        inplay['TaggedHitType'] = pd.NA
+    if 'Bearing' not in inplay.columns:
+        inplay['Bearing'] = np.nan
+    if 'BatterSide' not in inplay.columns:
+        inplay['BatterSide'] = ""
 
-    s_call = df.get(pitchcall_col, pd.Series(dtype=object)).astype(str).str.replace(r"\s+", "", regex=True).str.lower()
-    inplay = df[s_call.eq("inplay")].copy()
+    inplay['spray_cat'] = inplay.apply(assign_spray_category, axis=1)
 
-    if tag_col is None:
-        inplay["__tag"] = pd.NA
-        tag_use = "__tag"
-    else:
-        tag_use = tag_col
-
-    if bearing_col is None:
-        inplay["__bearing"] = np.nan
-        bearing_use = "__bearing"
-    else:
-        bearing_use = bearing_col
-
-    if batside_col is None:
-        inplay["__batside"] = ""
-        batside_use = "__batside"
-    else:
-        batside_use = batside_col
-
-    def norm_tag(x: str) -> str:
-        t = "".join(ch for ch in str(x).lower() if ch.isalpha())
-        if t.startswith("ground"): return "groundball"
-        if t.startswith("fly"):    return "flyball"
-        if t.startswith("line"):   return "linedrive"
-        if "pop" in t or "infieldfly" in t: return "popup"
-        return ""
-
-    inplay["_tag_norm"] = inplay[tag_use].apply(norm_tag)
-    inplay["_bearing"]  = pd.to_numeric(inplay[bearing_use], errors="coerce")
-    inplay["_side1"]    = inplay[batside_use].astype(str).str.strip().str.upper().str[0]
-
-    def assign_spray_category_row(row):
-        ang  = row["_bearing"]
-        side = row["_side1"]
-        if not np.isfinite(ang):
-            return np.nan
-        if -15 <= ang <= 15:
-            return "Straight"
-        if ang < -15:
-            return "Pull" if side == "R" else "Opposite"
-        return "Opposite" if side == "R" else "Pull"
-
-    inplay["spray_cat"] = inplay.apply(assign_spray_category_row, axis=1)
-
-    tot = len(inplay)
-    def pct(mask: pd.Series) -> float:
-        return round(100 * float(mask.mean()), 1) if tot else 0.0
+    def pct(mask):
+        try:
+            mask = pd.Series(mask).astype(bool)
+            return round(100 * float(mask.mean()), 1) if len(mask) else 0.0
+        except Exception:
+            return 0.0
 
     bb = pd.DataFrame([{
-        "Ground ball %": pct(inplay["_tag_norm"].eq("groundball")),
-        "Fly ball %":    pct(inplay["_tag_norm"].eq("flyball")),
-        "Line drive %":  pct(inplay["_tag_norm"].eq("linedrive")),
-        "Popup %":       pct(inplay["_tag_norm"].eq("popup")),
+        "Ground ball %": pct(inplay["TaggedHitType"].astype(str).str.contains("GroundBall", case=False, na=False)),
+        "Fly ball %":    pct(inplay["TaggedHitType"].astype(str).str.contains("FlyBall",   case=False, na=False)),
+        "Line drive %":  pct(inplay["TaggedHitType"].astype(str).str.contains("LineDrive", case=False, na=False)),
+        "Popup %":       pct(inplay["TaggedHitType"].astype(str).str.contains("Popup",     case=False, na=False)),
         "Pull %":        pct(inplay["spray_cat"].astype(str).eq("Pull")),
         "Straight %":    pct(inplay["spray_cat"].astype(str).eq("Straight")),
         "Opposite %":    pct(inplay["spray_cat"].astype(str).eq("Opposite")),
     }])
-
     return bb
 
 def create_plate_discipline_profile(df: pd.DataFrame):
@@ -254,28 +254,21 @@ def create_plate_discipline_profile(df: pd.DataFrame):
     }])
 
 def create_batting_stats_profile(df: pd.DataFrame):
-    pitchcall_col = pick_col(df, "PitchCall", "Pitch Call", "Pitch_Call", "Pitch_Result")
-    play_col      = pick_col(df, "PlayResult", "Play Result", "Play_Result")
-    korbb_col     = pick_col(df, "KorBB", "K_or_BB", "K/BB", "BB/K")
-    exit_col      = pick_col(df, "ExitSpeed", "ExitVelo", "ExitVelocity", "Exit_Speed", "EV")
-    angle_col     = pick_col(df, "Angle", "LaunchAngle", "Launch_Angle", "Launch Angle", "LA")
-    pitchofpa_col = pick_col(df, "PitchofPA", "PitchOfPA", "Pitch_of_PA", "Pitch # of PA")
-
-    s_call    = df.get(pitchcall_col, pd.Series(dtype=object))
-    play      = df.get(play_col,      pd.Series(dtype=object))
-    korbb     = df.get(korbb_col,     pd.Series(dtype=object))
-    exitv     = pd.to_numeric(df.get(exit_col,  pd.Series(dtype=float)), errors="coerce")
-    angle     = pd.to_numeric(df.get(angle_col, pd.Series(dtype=float)), errors="coerce")
-    pitchofpa = pd.to_numeric(df.get(pitchofpa_col, pd.Series(dtype=float)), errors="coerce")
+    s_call = df.get('PitchCall', pd.Series(dtype=object))
+    play   = df.get('PlayResult', pd.Series(dtype=object))
+    korbb  = df.get('KorBB', pd.Series(dtype=object))
+    exitv  = pd.to_numeric(df.get('ExitSpeed', pd.Series(dtype=float)), errors="coerce")
+    angle  = pd.to_numeric(df.get('Angle', pd.Series(dtype=float)), errors="coerce")
+    pitchofpa = pd.to_numeric(df.get('PitchofPA', pd.Series(dtype=float)), errors="coerce")
 
     pa_mask   = pitchofpa.eq(1)
-    hit_mask  = (s_call.astype(str).eq("InPlay") & play.astype(str).isin(["Single","Double","Triple","HomeRun"]))
-    so_mask   = korbb.astype(str).eq("Strikeout")
-    bbout     = s_call.astype(str).eq("InPlay") & play.astype(str).eq("Out")
-    fc_mask   = play.astype(str).eq("FieldersChoice")
-    err_mask  = play.astype(str).eq("Error")
-    walk_mask = korbb.astype(str).eq("Walk")
-    hbp_mask  = s_call.astype(str).eq("HitByPitch")
+    hit_mask  = (s_call.eq('InPlay') & play.isin(['Single','Double','Triple','HomeRun']))
+    so_mask   = korbb.eq('Strikeout')
+    bbout     = s_call.eq('InPlay') & play.eq('Out')
+    fc_mask   = play.eq('FieldersChoice')
+    err_mask  = play.eq('Error')
+    walk_mask = korbb.eq('Walk')
+    hbp_mask  = s_call.eq('HitByPitch')
 
     hits   = int(hit_mask.sum())
     so     = int(so_mask.sum())
@@ -288,11 +281,11 @@ def create_batting_stats_profile(df: pd.DataFrame):
     hbp   = int(hbp_mask.sum())
     pa    = int(pa_mask.sum())
 
-    inplay_mask = s_call.astype(str).eq("InPlay")
-    bases = (play.astype(str).eq("Single").sum()
-             + 2*play.astype(str).eq("Double").sum()
-             + 3*play.astype(str).eq("Triple").sum()
-             + 4*play.astype(str).eq("HomeRun").sum())
+    inplay_mask = s_call.eq('InPlay')
+    bases = (play.eq('Single').sum()
+             + 2*play.eq('Double').sum()
+             + 3*play.eq('Triple').sum()
+             + 4*play.eq('HomeRun').sum())
 
     avg_exit  = exitv[inplay_mask].mean()
     max_exit  = exitv[inplay_mask].max()
@@ -303,12 +296,12 @@ def create_batting_stats_profile(df: pd.DataFrame):
     slg = bases/ab if ab else 0.0
     ops = obp + slg
     hard = (exitv[inplay_mask] >= 95).mean()*100 if inplay_mask.any() else 0.0
-    k_pct  = (so/pa*100) if pa else 0.0
+    k_pct = (so/pa*100) if pa else 0.0
     bb_pct = (walks/pa*100) if pa else 0.0
 
     stats = pd.DataFrame([{
-        "Avg Exit Vel": round(avg_exit,  2) if pd.notna(avg_exit)  else np.nan,
-        "Max Exit Vel": round(max_exit,  2) if pd.notna(max_exit)  else np.nan,
+        "Avg Exit Vel": round(avg_exit, 2) if pd.notna(avg_exit) else np.nan,
+        "Max Exit Vel": round(max_exit, 2) if pd.notna(max_exit) else np.nan,
         "Avg Angle":    round(avg_angle, 2) if pd.notna(avg_angle) else np.nan,
         "Hits":         hits,
         "SO":           so,
@@ -439,19 +432,10 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MATPLOTLIB HEATMAPS (Profiles filters) — Contact / Whiffs / Damage
+# HITTER HEATMAPS — 3 panels (Contact, Whiffs, Damage) using filtered data
 # ──────────────────────────────────────────────────────────────────────────────
-def hitter_heatmaps_matplotlib(df_b: pd.DataFrame, batter: str, hand_choice: str):
-    sub = df_b[df_b.get('Batter') == batter].copy()
-    if sub.empty:
-        return None
-
-    # Apply pitcher hand filter from Profiles section
-    if hand_choice == "LHP":
-        sub = sub[sub.get('PitcherThrows').astype(str).str.upper().str.startswith('L')]
-    elif hand_choice == "RHP":
-        sub = sub[sub.get('PitcherThrows').astype(str).str.upper().str.startswith('R')]
-
+def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
+    sub = df_filtered_for_profiles[df_filtered_for_profiles.get('Batter') == batter].copy()
     if sub.empty:
         return None
 
@@ -467,9 +451,8 @@ def hitter_heatmaps_matplotlib(df_b: pd.DataFrame, batter: str, hand_choice: str
         x = pd.to_numeric(frame.get('PlateLocSide'), errors='coerce').to_numpy()
         y = pd.to_numeric(frame.get('PlateLocHeight'), errors='coerce').to_numpy()
         mask = np.isfinite(x) & np.isfinite(y); x, y = x[mask], y[mask]
-
         if len(x) < 10:
-            ax.plot(x, y, 'o', color='deepskyblue', alpha=0.85, markersize=6, markeredgecolor='black')
+            ax.plot(x, y, 'o', color='deepskyblue', alpha=0.8, markersize=6)
         else:
             xi = np.linspace(*X_LIM, 200)
             yi = np.linspace(*Y_LIM, 200)
@@ -477,14 +460,13 @@ def hitter_heatmaps_matplotlib(df_b: pd.DataFrame, batter: str, hand_choice: str
             zi = compute_density_hitter(x, y, xi_m, yi_m)
             ax.imshow(zi, origin='lower', extent=[*X_LIM, *Y_LIM], aspect='equal', cmap=custom_cmap)
             draw_strikezone(ax)
-
         ax.set_xlim(*X_LIM); ax.set_ylim(*Y_LIM)
-        ax.set_aspect('equal', 'box'); ax.set_title(title, fontsize=12, pad=6, fontweight='bold')
+        ax.set_aspect('equal', 'box'); ax.set_title(title, fontsize=10, pad=6, fontweight='bold')
         ax.set_xticks([]); ax.set_yticks([])
 
     ax1 = fig.add_subplot(gs[0, 0]); _panel(ax1, "Contact", sub[sub['iscontact']])
     ax2 = fig.add_subplot(gs[0, 1]); _panel(ax2, "Whiffs",  sub[sub['iswhiff']])
-    ax3 = fig.add_subplot(gs[0, 2]); _panel(ax3, "Damage",  sub[sub['is95plus']])
+    ax3 = fig.add_subplot(gs[0, 2]); _panel(ax3, "Damage (95+ EV)", sub[sub['is95plus']])
 
     plt.tight_layout()
     return fig
@@ -512,74 +494,58 @@ if df_neb_bat.empty:
     st.stop()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BANNER (with centered "Nebraska Baseball" title)
+# BANNER
 # ──────────────────────────────────────────────────────────────────────────────
-def show_banner():
-    for p in BANNER_CANDIDATES:
-        if os.path.exists(p):
-            img = plt.imread(p)
-            h, w = img.shape[:2]
-            aspect = w / max(h, 1)
-            fig_h = 2.8  # banner height (inches); width scales with container
-            fig_w = fig_h * aspect
-            fig = plt.figure(figsize=(fig_w, fig_h))
-            ax = fig.add_axes([0, 0, 1, 1])
-            ax.imshow(img)
-            ax.axis("off")
-            txt = ax.text(
-                0.5, 0.5, "Nebraska Baseball",
-                ha="center", va="center",
-                fontsize=42, fontweight="bold", color="white"
-            )
-            txt.set_path_effects([patheffects.withStroke(linewidth=6, foreground="black")])
-            st.pyplot(fig, use_container_width=True)
-            plt.close(fig)
-            return
+render_nb_banner(title="Nebraska Baseball")
 
-show_banner()
 st.markdown("### Nebraska Hitter Reports")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TOP FILTERS — Standard Hitter Report (Player LEFT → Date RIGHT)
+# TOP FILTERS — Batter first, then date (single game). Date shows opponent(s).
 # ──────────────────────────────────────────────────────────────────────────────
-colB_player, colB_date = st.columns([1, 1])
+colB, colD = st.columns([1, 1])
 
-all_batters = sorted(df_neb_bat.get('Batter').dropna().unique().tolist())
-batter = colB_player.selectbox("Player", options=all_batters, index=0 if all_batters else None)
+# Batter select (from all NEB hitters)
+batters_global = sorted(df_neb_bat.get('Batter').dropna().unique().tolist())
+batter = colB.selectbox("Player", options=batters_global, index=0 if batters_global else None)
 
-def opponent_for_date(df: pd.DataFrame, batter_name: str, date_val) -> str | None:
-    if batter_name is None: return None
-    day = pd.to_datetime(df['Date'], errors="coerce").dt.date
-    rows = df[(df['Batter'] == batter_name) & (day == date_val)]
-    if "PitcherTeam" in rows.columns and not rows.empty:
-        opps = rows["PitcherTeam"].dropna()
-        opps = opps[opps != "NEB"]
-        if not opps.empty:
-            return opps.mode().iloc[0]
-    return None
-
-# Dates limited to selected batter
+# Date options for the selected batter, with opponent label
 if batter:
-    date_opts = sorted(pd.to_datetime(df_neb_bat[df_neb_bat['Batter'] == batter]['Date'],
-                                      errors="coerce").dropna().dt.date.unique().tolist())
-else:
+    df_b_all = df_neb_bat[df_neb_bat['Batter'] == batter].copy()
+    # Build mapping date -> opponents string from PitcherTeam
+    df_b_all['DateOnly'] = pd.to_datetime(df_b_all['Date'], errors="coerce").dt.date
+    date_groups = df_b_all.groupby('DateOnly')['PitcherTeam'].agg(lambda s: sorted(set([str(x) for x in s if pd.notna(x)])))
     date_opts = []
+    date_labels = {}
+    for d, teams in date_groups.items():
+        if pd.isna(d): 
+            continue
+        label = f"{format_date_long(d)}"
+        if teams:
+            label += f" ({'/'.join(teams)})"
+        date_opts.append(d)
+        date_labels[d] = label
+    date_opts = sorted(date_opts)
+else:
+    df_b_all = df_neb_bat.iloc[0:0].copy()
+    date_opts, date_labels = [], {}
 
-def date_label(d):
-    opp = opponent_for_date(df_neb_bat, batter, d)
-    return f"{format_date_long(d)} ({opp})" if opp else format_date_long(d)
-
-selected_date = colB_date.selectbox(
+selected_date = colD.selectbox(
     "Game Date",
     options=date_opts,
-    format_func=date_label,
+    format_func=lambda d: date_labels.get(d, format_date_long(d)),
     index=len(date_opts)-1 if date_opts else 0
-)
+) if date_opts else None
 
-df_date = df_neb_bat[pd.to_datetime(df_neb_bat['Date'], errors="coerce").dt.date == selected_date]
+# Data for that single game
+if batter and selected_date:
+    df_date = df_b_all[df_b_all['DateOnly'] == selected_date].copy()
+else:
+    df_date = df_b_all.iloc[0:0].copy()
 
-if not batter:
-    st.info("Select a player to see the Standard Hitter Report.")
+# Standard Hitter Report
+if not batter or df_date.empty:
+    st.info("Select a player and game date to see the Standard Hitter Report.")
 else:
     st.markdown("### Standard Hitter Report")
     fig_std = create_hitter_report(df_date, batter, ncols=3)
@@ -587,18 +553,21 @@ else:
         st.pyplot(fig_std)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOWER FILTERS — apply to Profiles & (Matplotlib) Heatmaps
+# LOWER FILTERS — apply to Profiles & Heatmaps (independent of standard report)
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### Profiles & Heatmaps Filters")
 
-colM, colD, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
+# Give the hand radio more room so options fit in one line
+colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
-present_dates_all = pd.to_datetime(
-    df_neb_bat[df_neb_bat['Batter'] == batter]['Date'], errors="coerce"
-).dropna().dt.date if batter else pd.Series([], dtype="datetime64[ns]")
-
-present_months = sorted(pd.Series(present_dates_all).map(lambda d: d.month).unique().tolist()) if len(present_dates_all) else []
+# Months / Days (built from this batter's season)
+if batter:
+    dates_all = pd.to_datetime(df_b_all['Date'], errors="coerce").dropna().dt.date
+    present_months = sorted(pd.Series(dates_all).map(lambda d: d.month).unique().tolist())
+else:
+    dates_all = pd.Series([], dtype="datetime64[ns]")
+    present_months = []
 sel_months = colM.multiselect(
     "Months",
     options=present_months,
@@ -607,24 +576,29 @@ sel_months = colM.multiselect(
     key="prof_months",
 )
 
+# Days derive from selected months
 if batter:
-    dser = pd.Series(present_dates_all)
+    dser = pd.Series(dates_all)
     if sel_months:
         dser = dser[dser.map(lambda d: d.month).isin(sel_months)]
     present_days = sorted(pd.Series(dser).map(lambda d: d.day).unique().tolist())
 else:
     present_days = []
-sel_days = colD.multiselect("Days", options=present_days, default=[], key="prof_days")
+sel_days = colD2.multiselect("Days", options=present_days, default=[], key="prof_days")
 
+# Last N games (remove "(optional)")
 lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
 
+# Pitcher Hand
 hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
 
+# Build filtered dataset for profiles/heatmaps
 if batter:
     df_player_all = df_neb_bat[df_neb_bat['Batter'] == batter].copy()
 else:
     df_player_all = df_neb_bat.iloc[0:0].copy()
 
+# Month/Day filter
 if sel_months:
     mask_m = pd.to_datetime(df_player_all['Date'], errors="coerce").dt.month.isin(sel_months)
 else:
@@ -635,23 +609,26 @@ else:
     mask_d = pd.Series(True, index=df_player_all.index)
 df_profiles = df_player_all[mask_m & mask_d].copy()
 
+# Last N games (after month/day filter)
 if lastN and not df_profiles.empty:
     uniq_dates = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.dropna().unique()
     uniq_dates = sorted(uniq_dates)
     last_dates = set(uniq_dates[-lastN:])
     df_profiles = df_profiles[pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
 
+# Pitcher hand filter
 if hand_choice == "LHP":
     df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
 elif hand_choice == "RHP":
     df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PROFILES (stacked) + MATPLOTLIB HEATMAPS on filtered data
+# PROFILES (stacked) + HEATMAPS on filtered data
 # ──────────────────────────────────────────────────────────────────────────────
 if batter and df_profiles.empty:
     st.info("No rows for the selected filters.")
 elif batter:
+    # Season column (year). If mixed, "Multiple".
     year_vals = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.year.dropna().unique()
     if len(year_vals) == 1:
         season_year = int(year_vals[0])
@@ -660,6 +637,7 @@ elif batter:
     else:
         season_year = int(pd.to_datetime(selected_date).year) if selected_date else "—"
 
+    # Month column (if any months chosen)
     month_label = ", ".join(MONTH_NAME_BY_NUM.get(m, str(m)) for m in sorted(sel_months)) if sel_months else None
 
     # Batted Ball Profile
@@ -690,21 +668,25 @@ elif batter:
     # Batting Statistics
     st_df, pa_cnt, ab_cnt = create_batting_stats_profile(df_profiles)
     st_df = st_df.copy()
+    # Format: AVG/OBP/SLG/OPS as .xxx
     for c in ["AVG", "OBP", "SLG", "OPS"]:
         if c in st_df.columns:
             st_df[c] = st_df[c].apply(fmt_avg3)
+    # EV & LA fixed to two decimals
     if "Avg Exit Vel" in st_df.columns:
         st_df["Avg Exit Vel"] = st_df["Avg Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
     if "Max Exit Vel" in st_df.columns:
         st_df["Max Exit Vel"] = st_df["Max Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
     if "Avg Angle" in st_df.columns:
         st_df["Avg Angle"] = st_df["Avg Angle"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
+    # Percentages
     if "HardHit %" in st_df.columns:
         st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
     if "K %" in st_df.columns:
         st_df["K %"] = st_df["K %"].apply(fmt_pct2)
     if "BB %" in st_df.columns:
         st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
+    # Short headers to keep on one line
     rename_map = {
         "Avg Exit Vel": "Avg EV",
         "Max Exit Vel": "Max EV",
@@ -721,8 +703,8 @@ elif batter:
     st.markdown("### Batting Statistics")
     st.table(themed_styler(st_df, nowrap=True))
 
-    # Matplotlib Heatmaps (Profiles filters; single panel each)
+    # Heatmaps (use the same filtered dataset as profiles)
     st.markdown("### Hitter Heatmaps")
-    fig_hm = hitter_heatmaps_matplotlib(df_profiles, batter, hand_choice)
+    fig_hm = hitter_heatmaps(df_profiles, batter)
     if fig_hm:
         st.pyplot(fig_hm)

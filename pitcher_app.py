@@ -23,7 +23,7 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Nebraska Baseball — Pitcher Reports",
-    layout="wide",                    # WIDE MODE ON
+    layout="wide",                    # wide mode ON
     initial_sidebar_state="collapsed",
 )
 st.set_option("client.showErrorDetails", True)
@@ -286,34 +286,21 @@ def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
     return None
 
 # ──────────────────────────────────────────────────────────────────────────────
-# UI HELPER: button-like multi-select with true Select All behavior
+# UI HELPER: grid of per-pitch checkboxes (no dropdown) + Select/Clear all
 # ──────────────────────────────────────────────────────────────────────────────
 def _safe_key(s: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]+", "_", str(s))
 
-def pitchtype_selector(label: str, options: list[str], key_prefix: str, default_all=True, columns_per_row=6) -> list[str]:
+def pitchtype_checkbox_grid(label: str, options: list[str], key_prefix: str, default_all=True, columns_per_row=6) -> list[str]:
     """
-    Renders:
-      - 'All pitch types' master checkbox.
-      - A grid of per-pitch checkboxes.
-    Behavior:
-      - If All is checked => all pitch checkboxes become True and the returned list = all options.
-      - If All is unchecked => all pitch checkboxes become False and the returned list = [].
-      - User can then toggle individual boxes. 'All' will auto-sync to True if all are checked, else False.
-    Returns the list of selected pitch types (possibly the full list, or []).
+    Renders a label, then a 'Select all' and 'Clear all' button row,
+    followed by a grid of checkboxes (no dropdown).
+    Returns the list of selected pitch types.
     """
-    options = list(dict.fromkeys([str(o) for o in options]))  # unique, preserve order
+    options = list(dict.fromkeys([str(o) for o in options]))  # unique, stable order
     if not options:
         st.caption("No pitch types available.")
         return []
-
-    # init master state
-    key_all = f"{key_prefix}_all"
-    key_all_prev = f"{key_prefix}_all_prev"
-    if key_all not in st.session_state:
-        st.session_state[key_all] = bool(default_all)
-    if key_all_prev not in st.session_state:
-        st.session_state[key_all_prev] = st.session_state[key_all]
 
     # init per-option states
     opt_keys = [f"{key_prefix}_{_safe_key(o)}" for o in options]
@@ -321,41 +308,22 @@ def pitchtype_selector(label: str, options: list[str], key_prefix: str, default_
         if k not in st.session_state:
             st.session_state[k] = bool(default_all)
 
-    # draw master checkbox
     st.write(f"**{label}**")
-    all_val = st.checkbox("All pitch types", value=st.session_state[key_all], key=key_all)
-
-    # if master changed this run, push to children
-    if st.session_state[key_all] != st.session_state[key_all_prev]:
-        new_val = st.session_state[key_all]
+    col_a, col_b = st.columns([0.12, 0.12])
+    if col_a.button("Select all", key=f"{key_prefix}_select_all"):
         for k in opt_keys:
-            st.session_state[k] = new_val
-        st.session_state[key_all_prev] = st.session_state[key_all]
+            st.session_state[k] = True
+    if col_b.button("Clear all", key=f"{key_prefix}_clear_all"):
+        for k in opt_keys:
+            st.session_state[k] = False
 
-    # render children in grid
     cols = st.columns(columns_per_row)
     for i, (o, k) in enumerate(zip(options, opt_keys)):
         col = cols[i % columns_per_row]
         col.checkbox(o, value=st.session_state[k], key=k)
 
-    # compute current selection
     selected = [o for o, k in zip(options, opt_keys) if st.session_state[k]]
-
-    # auto-sync master if user changed children
-    if len(selected) == len(options) and not st.session_state[key_all]:
-        st.session_state[key_all] = True
-        st.session_state[key_all_prev] = True
-    elif len(selected) != len(options) and st.session_state[key_all]:
-        st.session_state[key_all] = False
-        st.session_state[key_all_prev] = False
-
-    # enforce the requested behavior:
-    # - master True => every pitch selected
-    # - master False => every pitch deselected
-    if st.session_state[key_all]:
-        return options[:]  # all selected
-    else:
-        return []          # none selected
+    return selected
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER REPORT (movement + summary) — tolerant to column name variants
@@ -551,7 +519,6 @@ def combined_pitcher_heatmap_report(
     # Limit outcome panels (whiffs/K/damage) to selected pitch types if provided (list may be empty)
     df_out = df_p
     if outcome_pitch_types is not None:
-        # outcome_pitch_types is a concrete list from the selector
         if len(outcome_pitch_types) == 0:
             df_out = df_p.iloc[0:0].copy()
         else:
@@ -599,7 +566,7 @@ def combined_pitcher_heatmap_report(
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RELEASE POINTS (with pitch-type filter)
+# RELEASE POINTS (with pitch-type checkbox grid filter)
 # ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
@@ -733,16 +700,17 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCHER PROFILES (Batted Ball & Plate Discipline) — from your snippet, safe to missing data
+# PITCHER PROFILES (Batted Ball & Plate Discipline by Pitch Type)
 # ──────────────────────────────────────────────────────────────────────────────
 def _assign_spray_category_row(row):
     ang = row.get('Bearing', np.nan)
     side = str(row.get('BatterSide', "")).upper()[:1]
     if not pd.notna(ang):
         return np.nan
-    if -15 <= float(ang) <= 15:
+    ang = float(ang)
+    if -15 <= ang <= 15:
         return "Straight"
-    if float(ang) < -15:
+    if ang < -15:
         return "Pull" if side == "R" else "Opposite"
     return "Opposite" if side == "R" else "Pull"
 
@@ -777,33 +745,42 @@ def make_pitcher_batted_ball_profile(df: pd.DataFrame) -> pd.DataFrame:
         'Straight %':     pct(inplay['spray_cat'].astype(str).eq('Straight')),
         'Opposite %':     pct(inplay['spray_cat'].astype(str).eq('Opposite')),
     }])
+    # ensure 1-decimals everywhere possible
+    for c in bb.columns:
+        if c.endswith('%'):
+            bb[c] = bb[c].astype(float).round(1)
+    bb['Pitches'] = bb['Pitches'].astype(int)
     return bb
 
-def make_pitcher_plate_discipline_profile(df: pd.DataFrame) -> pd.DataFrame:
-    s_call = df.get('PitchCall', pd.Series(dtype=object))
-    lside  = pd.to_numeric(df.get('PlateLocSide', pd.Series(dtype=float)), errors="coerce")
-    lht    = pd.to_numeric(df.get('PlateLocHeight', pd.Series(dtype=float)), errors="coerce")
+def _plate_metrics(sub: pd.DataFrame) -> dict:
+    """Compute plate discipline metrics for a subset; return rounded (1-decimal) dict."""
+    s_call = sub.get('PitchCall', pd.Series(dtype=object))
+    lside  = pd.to_numeric(sub.get('PlateLocSide', pd.Series(dtype=float)), errors="coerce")
+    lht    = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors="coerce")
 
     isswing   = s_call.isin(['StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
     iswhiff   = s_call.eq('StrikeSwinging')
     iscontact = s_call.isin(['InPlay','FoulBallNotFieldable','FoulBallFieldable'])
     isinzone  = lside.between(-0.83, 0.83) & lht.between(1.5, 3.5)
 
-    total_pitches = int(len(df))
+    total_pitches = int(len(sub))
     total_swings  = int(isswing.sum())
     z_count       = int(isinzone.sum())
 
     def pct(val):
-        return round(float(val) * 100, 1)
+        try:
+            return round(float(val) * 100, 1)
+        except Exception:
+            return 0.0
 
     zone_pct   = pct(isinzone.mean()) if total_pitches else 0.0
     zone_sw    = pct(isswing[isinzone].mean()) if z_count else 0.0
     zone_ct    = pct((iscontact & isinzone).sum() / max(isswing[isinzone].sum(), 1)) if z_count else 0.0
     chase      = pct(isswing[~isinzone].mean()) if (~isinzone).sum() else 0.0
-    swing_all  = pct(total_swings / total_pitches) if total_pitches else 0.0
+    swing_all  = pct(total_swings / max(total_pitches, 1)) if total_pitches else 0.0
     whiff_pct  = pct(iswhiff.sum() / max(total_swings, 1)) if total_swings else 0.0
 
-    pd_df = pd.DataFrame([{
+    return {
         'Pitches':        total_pitches,
         'Zone Pitches':   z_count,
         'Zone %':         zone_pct,
@@ -812,8 +789,53 @@ def make_pitcher_plate_discipline_profile(df: pd.DataFrame) -> pd.DataFrame:
         'Chase %':        chase,
         'Swing %':        swing_all,
         'Whiff %':        whiff_pct,
-    }])
-    return pd_df
+    }
+
+def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build a table:
+      - First column: Pitch Type
+      - First row: 'total' (overall across all pitches)
+      - Then each pitch type (≥ 20 pitches only), sorted by Pitches desc
+      - All percentage metrics rounded to 1 decimal
+    """
+    type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+    if type_col not in df.columns:
+        # just return a single 'total' row if pitch type missing
+        tot = _plate_metrics(df)
+        out = pd.DataFrame([{'Pitch Type': 'total', **tot}])
+        # round percentages to 1 decimal
+        for c in out.columns:
+            if c.endswith('%'):
+                out[c] = out[c].astype(float).round(1)
+        out['Pitches'] = out['Pitches'].astype(int)
+        out['Zone Pitches'] = out['Zone Pitches'].astype(int)
+        return out
+
+    # total row
+    rows = [{'Pitch Type': 'total', **_plate_metrics(df)}]
+
+    # per-type rows
+    for ptype, sub in df.groupby(type_col, dropna=False):
+        ptype_str = str(ptype)
+        metrics = _plate_metrics(sub)
+        if metrics['Pitches'] >= 20:  # threshold
+            rows.append({'Pitch Type': ptype_str, **metrics})
+
+    out = pd.DataFrame(rows)
+    # sort after keeping 'total' first
+    if len(out) > 1:
+        total_row = out.iloc[[0]]
+        others = out.iloc[1:].sort_values('Pitches', ascending=False)
+        out = pd.concat([total_row, others], ignore_index=True)
+
+    # ensure proper dtypes & rounding
+    for c in out.columns:
+        if c.endswith('%'):
+            out[c] = out[c].astype(float).round(1)
+    out['Pitches'] = out['Pitches'].astype(int)
+    out['Zone Pitches'] = out['Zone Pitches'].astype(int)
+    return out
 
 def themed_table(df: pd.DataFrame):
     styles = [
@@ -899,17 +921,15 @@ with tabs[0]:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        # 2) Heatmaps
+        # 2) Heatmaps — pitch-type outcome filter (checkbox grid)
         st.markdown("### Pitcher Heatmaps")
-
-        # Outcome pitch-type selector (button-like with Select All)
         type_col_for_hm = pick_col(neb_df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
         types_available_hm = (
             neb_df.get(type_col_for_hm, pd.Series(dtype=object))
                   .dropna().astype(str).unique().tolist()
         )
         types_available_hm = sorted(types_available_hm)
-        hm_selected = pitchtype_selector(
+        hm_selected = pitchtype_checkbox_grid(
             "Filter Whiffs / Strikeouts / Damage by Pitch Type",
             options=types_available_hm,
             key_prefix="std_hm_types",
@@ -921,12 +941,12 @@ with tabs[0]:
             player,
             hand_filter=hand_choice,
             season_label=season_label,
-            outcome_pitch_types=hm_selected,  # list (possibly []), per your requested behavior
+            outcome_pitch_types=hm_selected,  # list (possibly [])
         )
         if fig_h:
             show_and_close(fig_h)
 
-        # 3) Release Points (+ button-like pitch-type selector)
+        # 3) Release Points (+ checkbox grid)
         type_col_all = pick_col(neb_df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
         types_available = (
             neb_df.get(type_col_all, pd.Series(dtype=object))
@@ -935,7 +955,7 @@ with tabs[0]:
         )
         types_available = sorted(types_available)
         st.markdown("### Release Points")
-        rel_selected = pitchtype_selector(
+        rel_selected = pitchtype_checkbox_grid(
             "Pitch Types to Show",
             options=types_available,
             key_prefix="std_release_types",
@@ -962,7 +982,7 @@ with tabs[1]:
     types_avail_all = sorted(types_avail_all)
 
     st.markdown("**Pitch Types (Release Plot, all windows)**")
-    cmp_types_selected = pitchtype_selector(
+    cmp_types_selected = pitchtype_checkbox_grid(
         "Select pitch types",
         options=types_avail_all,
         key_prefix="cmp_rel_types",
@@ -977,7 +997,7 @@ with tabs[1]:
     )
     types_avail_out = sorted(types_avail_out)
     st.markdown("**Pitch Types (Heatmaps — Whiffs / Strikeouts / Damage)**")
-    cmp_types_out_selected = pitchtype_selector(
+    cmp_types_out_selected = pitchtype_checkbox_grid(
         "Select outcome pitch types",
         options=types_avail_out,
         key_prefix="cmp_types_outcomes",
@@ -1071,11 +1091,14 @@ with tabs[2]:
     if df_prof.empty:
         st.info("No rows for the selected profile filters.")
     else:
+        # Batted Ball Profile (1-decimal)
         bb_df = make_pitcher_batted_ball_profile(df_prof)
-        pd_df = make_pitcher_plate_discipline_profile(df_prof)
 
         st.markdown("### Batted Ball Profile")
         st.table(themed_table(bb_df))
 
-        st.markdown("### Plate Discipline Profile")
-        st.table(themed_table(pd_df))
+        # Plate Discipline Profile BY PITCH TYPE (first col pitch type, first row 'total', exclude <20)
+        pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof)
+
+        st.markdown("### Plate Discipline Profile (by Pitch Type)")
+        st.table(themed_table(pd_df_typed))

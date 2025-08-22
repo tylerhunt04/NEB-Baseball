@@ -391,7 +391,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     fig = plt.figure(figsize=(8, 12))
     gs = GridSpec(2, 1, figure=fig, height_ratios=[1.5, 0.7], hspace=0.3)
 
-    # Movement plot (uses IVB/HB if available; otherwise scatter the best we have)
+    # Movement plot
     axm = fig.add_subplot(gs[0, 0]); axm.set_title('Movement Plot', fontweight='bold')
     axm.axhline(0, ls='--', color='grey'); axm.axvline(0, ls='--', color='grey')
     chi2v = chi2.ppf(coverage, df=2)
@@ -714,11 +714,11 @@ def _assign_spray_category_row(row):
         return "Pull" if side == "R" else "Opposite"
     return "Opposite" if side == "R" else "Pull"
 
-def make_pitcher_batted_ball_profile(df: pd.DataFrame) -> pd.DataFrame:
-    s_call = df.get('PitchCall', pd.Series(dtype=object))
-    inplay = df[s_call == 'InPlay'].copy()
+def _bb_metrics_for_subset(sub_all: pd.DataFrame) -> dict:
+    """Compute batted-ball % metrics for a subset; returns dict with 1-decimal rounding."""
+    s_call = sub_all.get('PitchCall', pd.Series(dtype=object))
+    inplay = sub_all[s_call == 'InPlay'].copy()
 
-    # columns may be missing — fill safely
     if 'TaggedHitType' not in inplay.columns:
         inplay['TaggedHitType'] = pd.NA
     if 'Bearing' not in inplay.columns:
@@ -727,6 +727,7 @@ def make_pitcher_batted_ball_profile(df: pd.DataFrame) -> pd.DataFrame:
         inplay['BatterSide'] = ""
 
     inplay['spray_cat'] = inplay.apply(_assign_spray_category_row, axis=1)
+    tt = inplay['TaggedHitType'].astype(str).str.lower()
 
     def pct(mask):
         try:
@@ -734,23 +735,50 @@ def make_pitcher_batted_ball_profile(df: pd.DataFrame) -> pd.DataFrame:
         except Exception:
             return 0.0
 
-    tt = inplay['TaggedHitType'].astype(str).str.lower()
-    bb = pd.DataFrame([{
-        'Pitches':        int(len(df)),
+    return {
+        'Pitches':        int(len(sub_all)),
         'Ground ball %':  pct(tt.str.contains('groundball', na=False)),
-        'Fly ball %':     pct(tt.str.contains('flyball',   na=False)),
+        'Fly ball %':     pct(tt.str_contains('flyball',   regex=False, na=False)) if hasattr(tt, "str_contains") else pct(tt.str.contains('flyball',   na=False)),
         'Line drive %':   pct(tt.str.contains('linedrive', na=False)),
         'Popup %':        pct(tt.str.contains('popup',     na=False)),
         'Pull %':         pct(inplay['spray_cat'].astype(str).eq('Pull')),
         'Straight %':     pct(inplay['spray_cat'].astype(str).eq('Straight')),
         'Opposite %':     pct(inplay['spray_cat'].astype(str).eq('Opposite')),
-    }])
-    # ensure 1-decimals everywhere possible
-    for c in bb.columns:
+    }
+
+def make_pitcher_batted_ball_by_type(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build a batted-ball table:
+      - First column: Pitch Type
+      - First row: 'Total' (overall across all pitches)
+      - Then each pitch type (≥ 20 pitches only), sorted by Pitches desc
+      - All percentage metrics rounded to 1 decimal
+    """
+    type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+
+    # Total row
+    rows = [{'Pitch Type': 'Total', **_bb_metrics_for_subset(df)}]
+
+    # Per-type rows (≥ 20 pitches)
+    if type_col in df.columns:
+        for ptype, sub in df.groupby(type_col, dropna=False):
+            metrics = _bb_metrics_for_subset(sub)
+            if metrics['Pitches'] >= 20:
+                rows.append({'Pitch Type': str(ptype), **metrics})
+
+    out = pd.DataFrame(rows)
+    # Keep Total first, then sort others by Pitches
+    if len(out) > 1:
+        total_row = out.iloc[[0]]
+        others = out.iloc[1:].sort_values('Pitches', ascending=False)
+        out = pd.concat([total_row, others], ignore_index=True)
+
+    # Dtypes & rounding (ensure 1-decimal floats, ints for counts)
+    for c in out.columns:
         if c.endswith('%'):
-            bb[c] = bb[c].astype(float).round(1)
-    bb['Pitches'] = bb['Pitches'].astype(int)
-    return bb
+            out[c] = out[c].astype(float).round(1)
+    out['Pitches'] = out['Pitches'].astype(int)
+    return out
 
 def _plate_metrics(sub: pd.DataFrame) -> dict:
     """Compute plate discipline metrics for a subset; return rounded (1-decimal) dict."""
@@ -795,41 +823,27 @@ def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
     """
     Build a table:
       - First column: Pitch Type
-      - First row: 'total' (overall across all pitches)
+      - First row: 'Total' (overall across all pitches)
       - Then each pitch type (≥ 20 pitches only), sorted by Pitches desc
       - All percentage metrics rounded to 1 decimal
     """
     type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
-    if type_col not in df.columns:
-        # just return a single 'total' row if pitch type missing
-        tot = _plate_metrics(df)
-        out = pd.DataFrame([{'Pitch Type': 'total', **tot}])
-        # round percentages to 1 decimal
-        for c in out.columns:
-            if c.endswith('%'):
-                out[c] = out[c].astype(float).round(1)
-        out['Pitches'] = out['Pitches'].astype(int)
-        out['Zone Pitches'] = out['Zone Pitches'].astype(int)
-        return out
+    rows = [{'Pitch Type': 'Total', **_plate_metrics(df)}]  # Total row FIRST (capitalized)
 
-    # total row
-    rows = [{'Pitch Type': 'total', **_plate_metrics(df)}]
-
-    # per-type rows
-    for ptype, sub in df.groupby(type_col, dropna=False):
-        ptype_str = str(ptype)
-        metrics = _plate_metrics(sub)
-        if metrics['Pitches'] >= 20:  # threshold
-            rows.append({'Pitch Type': ptype_str, **metrics})
+    if type_col in df.columns:
+        for ptype, sub in df.groupby(type_col, dropna=False):
+            metrics = _plate_metrics(sub)
+            if metrics['Pitches'] >= 20:  # threshold
+                rows.append({'Pitch Type': str(ptype), **metrics})
 
     out = pd.DataFrame(rows)
-    # sort after keeping 'total' first
+    # sort after keeping 'Total' first
     if len(out) > 1:
         total_row = out.iloc[[0]]
         others = out.iloc[1:].sort_values('Pitches', ascending=False)
         out = pd.concat([total_row, others], ignore_index=True)
 
-    # ensure proper dtypes & rounding
+    # enforce 1-decimal percentages & int counts
     for c in out.columns:
         if c.endswith('%'):
             out[c] = out[c].astype(float).round(1)
@@ -838,12 +852,23 @@ def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 def themed_table(df: pd.DataFrame):
+    """Styled table with Husker red headers, white text, nowrap headers & cells, 1-decimal floats."""
+    # Build format map: all float columns and any column ending in '%' -> 1 decimal
+    float_cols = df.select_dtypes(include=["float", "float64"]).columns.tolist()
+    percent_cols = [c for c in df.columns if c.strip().endswith('%')]
+    fmt_map = {c: "{:.1f}" for c in set(float_cols) | set(percent_cols)}
+
     styles = [
-        {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white;'},
-        {'selector': 'th',       'props': f'background-color: {HUSKER_RED}; color: white;'},
+        {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'},
+        {'selector': 'th',       'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'},
         {'selector': 'td',       'props': 'white-space: nowrap;'},
     ]
-    return df.style.hide(axis="index").set_table_styles(styles)
+    return (
+        df.style
+          .hide(axis="index")
+          .format(fmt_map, na_rep="—")
+          .set_table_styles(styles)
+    )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # LOAD DATA
@@ -876,7 +901,8 @@ if not player:
     st.stop()
 
 df_pitcher_all = neb_df_all[neb_df_all['Pitcher'] == player].copy()
-appearances = int(pd.to_datetime(df_pitcher_all['Date'], errors="coerce").dt.date.nunique())
+df_pitcher_all['Date'] = pd.to_datetime(df_pitcher_all['Date'], errors="coerce")
+appearances = int(df_pitcher_all['Date'].dropna().dt.date.nunique())
 st.subheader(f"{format_name(player)} ({appearances} Appearances)")
 
 # Tabs: Standard / Compare / Profiles
@@ -1091,14 +1117,12 @@ with tabs[2]:
     if df_prof.empty:
         st.info("No rows for the selected profile filters.")
     else:
-        # Batted Ball Profile (1-decimal)
-        bb_df = make_pitcher_batted_ball_profile(df_prof)
+        # Batted Ball Profile — by Pitch Type (Total first, ≥20 only)
+        bb_df_typed = make_pitcher_batted_ball_by_type(df_prof)
+        st.markdown("### Batted Ball Profile (by Pitch Type)")
+        st.table(themed_table(bb_df_typed))
 
-        st.markdown("### Batted Ball Profile")
-        st.table(themed_table(bb_df))
-
-        # Plate Discipline Profile BY PITCH TYPE (first col pitch type, first row 'total', exclude <20)
+        # Plate Discipline Profile — by Pitch Type (Total first, ≥20 only)
         pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof)
-
         st.markdown("### Plate Discipline Profile (by Pitch Type)")
         st.table(themed_table(pd_df_typed))

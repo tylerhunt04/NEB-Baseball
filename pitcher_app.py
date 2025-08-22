@@ -738,7 +738,7 @@ def _bb_metrics_for_subset(sub_all: pd.DataFrame) -> dict:
     return {
         'Pitches':        int(len(sub_all)),
         'Ground ball %':  pct(tt.str.contains('groundball', na=False)),
-        'Fly ball %':     pct(tt.str_contains('flyball',   regex=False, na=False)) if hasattr(tt, "str_contains") else pct(tt.str.contains('flyball',   na=False)),
+        'Fly ball %':     pct(tt.str.contains('flyball',   na=False)),
         'Line drive %':   pct(tt.str.contains('linedrive', na=False)),
         'Popup %':        pct(tt.str.contains('popup',     na=False)),
         'Pull %':         pct(inplay['spray_cat'].astype(str).eq('Pull')),
@@ -1091,9 +1091,10 @@ with tabs[1]:
 with tabs[2]:
     st.markdown("#### Pitcher Profiles")
 
-    # Independent month/day filters for profiles
+    # Independent filters for profiles
     prof_months_all = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
-    col_pm, col_pd = st.columns([1,1])
+    col_pm, col_pd, col_ln, col_side = st.columns([1,1,1,1.4])
+
     prof_months = col_pm.multiselect(
         "Months (optional)",
         options=prof_months_all,
@@ -1101,10 +1102,12 @@ with tabs[2]:
         default=[],
         key="prof_months"
     )
+
     dser_prof = df_pitcher_all['Date'].dropna()
     if prof_months:
         dser_prof = dser_prof[dser_prof.dt.month.isin(prof_months)]
     prof_days_all = sorted(dser_prof.dt.day.unique().tolist())
+
     prof_days = col_pd.multiselect(
         "Days (optional)",
         options=prof_days_all,
@@ -1112,7 +1115,25 @@ with tabs[2]:
         key="prof_days"
     )
 
-    df_prof = filter_by_month_day(df_pitcher_all, months=prof_months, days=prof_days)
+    last_n_games = int(col_ln.number_input("Last N games", min_value=0, max_value=50, value=0, step=1, format="%d", key="prof_lastn"))
+    prof_hand = col_side.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
+
+    # Build filtered dataset for PROFILES
+    df_prof = filter_by_month_day(df_pitcher_all, months=prof_months, days=prof_days).copy()
+
+    # Batter-side filter
+    side_col = find_batter_side_col(df_prof)
+    if prof_hand in ("LHH","RHH") and side_col is not None and not df_prof.empty:
+        sides = normalize_batter_side(df_prof[side_col])
+        target = "L" if prof_hand == "LHH" else "R"
+        df_prof = df_prof[sides == target].copy()
+
+    # Last N games (applied after month/day & hand filters)
+    if last_n_games and not df_prof.empty:
+        uniq_dates = pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.dropna().unique()
+        uniq_dates = sorted(uniq_dates)
+        last_dates = set(uniq_dates[-last_n_games:])
+        df_prof = df_prof[pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
 
     if df_prof.empty:
         st.info("No rows for the selected profile filters.")

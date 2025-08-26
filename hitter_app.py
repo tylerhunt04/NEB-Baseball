@@ -22,7 +22,7 @@ st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # w
 DATA_PARTS = {
     "game_context":   "hitter_game_context.parquet",    # Identity / Game context
     "pitch_location": "hitter_pitch_location.parquet",  # Pitch + location
-    "entities":       "hitter_entities.parquet",        # Entities
+    "entities":       "_hitter_entities.parquet",        # Entities
     "batted_ball":    "hitter_batted_ball.parquet",     # Batted ball
 }
 

@@ -18,11 +18,11 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # wide OFF
 
-# Four split Parquet files
+# Four split Parquet files (update paths if needed)
 DATA_PARTS = {
     "game_context":   "hitter_game_context.parquet",     # Identity / Game context
     "pitch_location": "hitter_pitch_location.parquet",   # Pitch + location
-    "entities":       "_hitter_entities.parquet",        # Entities (now includes PitcherTeam)
+    "entities":       "_hitter_entities.parquet",        # Entities (includes PitcherTeam)
     "batted_ball":    "hitter_batted_ball.parquet",      # Batted ball
 }
 
@@ -95,7 +95,8 @@ MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
 # STRIKE ZONE / VIEW / COLORS
 # ──────────────────────────────────────────────────────────────────────────────
 def draw_strikezone(ax, left=-0.83, right=0.83, bottom=1.5, top=3.5):
-    ax.add_patch(Rectangle((left, bottom), right-left, top-bottom, fill=False, linewidth=2, color='black'))
+    ax.add_patch(Rectangle((left, bottom), right-left, top-bottom,
+                           fill=False, linewidth=2, color='black'))
     dx, dy = (right-left)/3, (top-bottom)/3
     for i in (1, 2):
         ax.add_line(Line2D([left+i*dx]*2, [bottom, top], linestyle='--', color='gray', linewidth=1))
@@ -284,7 +285,10 @@ def create_batting_stats_profile(df: pd.DataFrame):
     pa    = int(pa_mask.sum())
 
     inplay_mask = s_call.eq('InPlay')
-    bases = (play.eq('Single').sum() + 2*play.eq('Double').sum() + 3*play.eq('Triple').sum() + 4*play.eq('HomeRun').sum())
+    bases = (play.eq('Single').sum()
+             + 2*play.eq('Double').sum()
+             + 3*play.eq('Triple').sum()
+             + 4*play.eq('HomeRun').sum())
 
     avg_exit  = exitv[inplay_mask].mean()
     max_exit  = exitv[inplay_mask].max()
@@ -302,17 +306,20 @@ def create_batting_stats_profile(df: pd.DataFrame):
         "Avg Exit Vel": round(avg_exit, 2) if pd.notna(avg_exit) else np.nan,
         "Max Exit Vel": round(max_exit, 2) if pd.notna(max_exit) else np.nan,
         "Avg Angle":    round(avg_angle, 2) if pd.notna(avg_angle) else np.nan,
-        "Hits":         hits, "SO": so,
-        "AVG": ba, "OBP": obp, "SLG": slg, "OPS": ops,
-        "HardHit %": round(hard, 1) if pd.notna(hard) else np.nan,
-        "K %": k_pct, "BB %": bb_pct,
+        "Hits":         hits, "SO":           so,
+        "AVG":          ba,   "OBP":          obp,
+        "SLG":          slg,  "OPS":          ops,
+        "HardHit %":    round(hard, 1) if pd.notna(hard) else np.nan,
+        "K %":          k_pct, "BB %":        bb_pct,
     }])
 
     return stats, pa, ab
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOADERS (four-part Parquet merge by row position)
+# LOADERS (robust merge with key-first, RowID-outer fallback)
 # ──────────────────────────────────────────────────────────────────────────────
+KEY_COLS = ["GameID","Inning","Top/Bottom","PAofInning","PitchofPA"]  # natural key across parts
+
 @st.cache_data(show_spinner=True)
 def _read_parquet_safe(path: str, columns: list[str] | None = None) -> pd.DataFrame:
     try:
@@ -320,30 +327,83 @@ def _read_parquet_safe(path: str, columns: list[str] | None = None) -> pd.DataFr
     except Exception:
         return pd.read_parquet(path)
 
+def _has_all_keys(df: pd.DataFrame) -> bool:
+    return all(c in df.columns for c in KEY_COLS)
+
+def _add_rowid(df: pd.DataFrame) -> pd.DataFrame:
+    # deterministic RowID for fallback when we cannot key-merge
+    return df.reset_index(drop=False).rename(columns={"index": "RowID"})
+
+def _diagnose_counts(dfs: dict[str, pd.DataFrame], merged: pd.DataFrame, used_keys: list[str], join_type: str):
+    # Compact diagnostic banner to help spot row loss; comment out if you want it silent.
+    parts_counts = " | ".join(f"{k}:{len(v):,}" for k,v in dfs.items())
+    st.caption(
+        f"Merge: {join_type} on {used_keys or ['RowID']} — parts: {parts_counts} — merged: {len(merged):,}"
+    )
+
+@st.cache_data(show_spinner=True)
 def _merge_four_parts(parts: dict) -> pd.DataFrame:
+    # load
     missing = [p for p in parts.values() if not os.path.exists(p)]
     if missing:
         st.error("Missing split files:\n" + "\n".join(f"• {m}" for m in missing))
         return pd.DataFrame()
 
-    dfs = {}
-    for key, path in parts.items():
-        dfp = _read_parquet_safe(path)
-        dfp = dfp.reset_index(drop=False).rename(columns={"index": "RowID"})
-        dfs[key] = dfp
+    dfs = {name: _read_parquet_safe(path) for name, path in parts.items()}
 
-    base = dfs["game_context"]
+    # Prefer key-based merge if all parts have the key columns
+    if all(_has_all_keys(df) for df in dfs.values()):
+        base = dfs["game_context"].copy()
+        for k in ("pitch_location", "entities", "batted_ball"):
+            if k in dfs:
+                # Keep all columns, but ensure keys are present in the right order
+                cols = KEY_COLS + [c for c in dfs[k].columns if c not in KEY_COLS]
+                base = base.merge(
+                    dfs[k][cols],
+                    on=KEY_COLS,
+                    how="outer",   # OUTER to avoid silent row loss
+                    suffixes=("", f"_{k}")
+                )
+        _diagnose_counts(dfs, base, KEY_COLS, "outer")
+        return base
+
+    # Fallback: RowID-based OUTER merge (safer than inner when order drifted)
+    dfs_rowid = {name: _add_rowid(df) for name, df in dfs.items()}
+    base = dfs_rowid["game_context"]
     for k in ("pitch_location", "entities", "batted_ball"):
-        if k in dfs:
-            base = base.merge(dfs[k], on="RowID", how="inner", suffixes=("", f"_{k}"))
+        if k in dfs_rowid:
+            base = base.merge(
+                dfs_rowid[k],
+                on="RowID",
+                how="outer",  # keep all positions that exist anywhere
+                suffixes=("", f"_{k}")
+            )
 
     base.drop(columns=["RowID"], errors="ignore", inplace=True)
+
+    # Optional: detect rows that are incomplete (missing data from some part)
+    rep_cols = []
+    for k in ("pitch_location","entities","batted_ball"):
+        if k in dfs:
+            rep_cols += [c for c in dfs[k].columns if c not in KEY_COLS][:2]  # sample a couple reps
+
+    if rep_cols:
+        incomplete = base[rep_cols].isna().all(axis=1).sum()
+        if incomplete:
+            st.caption(f"Note: {incomplete:,} merged rows are incomplete (present in some parts but missing in others).")
+
+    _diagnose_counts(dfs, base, [], "outer(RowID)")
     return base
 
 @st.cache_data(show_spinner=True)
 def load_data() -> pd.DataFrame:
     df = _merge_four_parts(DATA_PARTS)
     return ensure_date_column(df)
+
+# Optional — help when you swap files during development
+if st.sidebar.button("🔄 Clear cache & reload"):
+    st.cache_data.clear()
+    st.experimental_rerun()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # OPPONENT LABELING (date dropdown)
@@ -364,6 +424,7 @@ def infer_opponents_from_gameid(series_gameid: pd.Series, known_codes: list[str]
 def get_opponents_for_date(df_date: pd.DataFrame) -> list[str]:
     if "PitcherTeam" in df_date.columns:
         return _codes_to_pretty_names(df_date["PitcherTeam"].dropna().astype(str).unique().tolist())
+    # Fallback: infer from GameID if needed
     return infer_opponents_from_gameid(df_date.get("GameID", pd.Series(dtype=object)), KNOWN_TEAM_CODES)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -394,8 +455,10 @@ def create_hitter_report(df, batter, ncols=3):
         else:
             balls = (pa_df.get('PitchCall')=='BallCalled').sum()
             strikes = pa_df.get('PitchCall').isin(['StrikeCalled','StrikeSwinging']).sum()
-            if balls >= 4: lines.append("  ▶ PA Result: Walk 🚶")
-            elif strikes >= 3: lines.append("  ▶ PA Result: Strikeout 💥")
+            if balls >= 4:
+                lines.append("  ▶ PA Result: Walk 🚶")
+            elif strikes >= 3:
+                lines.append("  ▶ PA Result: Strikeout 💥")
         descriptions.append(lines)
 
     fig = plt.figure(figsize=(3 + 4*ncols + 1, 4*nrows))
@@ -405,7 +468,8 @@ def create_hitter_report(df, batter, ncols=3):
     if pa_groups:
         date = pa_groups[0][1].get('Date').iloc[0]
         date_str = format_date_long(date)
-        fig.suptitle(f"{batter} Hitter Report for {date_str}", fontsize=16, x=0.55, y=1.0, fontweight='bold')
+        fig.suptitle(f"{batter} Hitter Report for {date_str}",
+                     fontsize=16, x=0.55, y=1.0, fontweight='bold')
 
     # summary line
     gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
@@ -445,7 +509,8 @@ def create_hitter_report(df, batter, ncols=3):
         ax.set_xlim(*X_LIM); ax.set_ylim(*Y_LIM)
         ax.set_xticks([]); ax.set_yticks([])
         ax.set_title(f"PA {idx+1} | Inning {inn} {tb}", fontsize=10, fontweight='bold', pad=6)
-        ax.text(0.5, 0.1, f"vs {pitcher} ({hand_lbl})", transform=ax.transAxes, ha='center', va='top', fontsize=9, style='italic')
+        ax.text(0.5, 0.1, f"vs {pitcher} ({hand_lbl})", transform=ax.transAxes,
+                ha='center', va='top', fontsize=9, style='italic')
 
     # left descriptions column
     axd = fig.add_subplot(gs[:, 0]); axd.axis('off')
@@ -537,20 +602,16 @@ view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps"], 
 # ──────────────────────────────────────────────────────────────────────────────
 # MODE: STANDARD HITTER REPORT (batter → date with opponent names)
 # ──────────────────────────────────────────────────────────────────────────────
-def get_opponents_for_date(df_date: pd.DataFrame) -> list[str]:
-    # Prefer PitcherTeam (now present in entities parquet)
-    if "PitcherTeam" in df_date.columns:
-        return _codes_to_pretty_names(df_date["PitcherTeam"].dropna().astype(str).unique().tolist())
-    # Fallback: infer from GameID
-    return infer_opponents_from_gameid(df_date.get("GameID", pd.Series(dtype=object)), KNOWN_TEAM_CODES)
-
 if view_mode == "Standard Hitter Report":
     st.markdown("### Nebraska Hitter Reports")
+
     colB, colD = st.columns([1, 1])
 
+    # Batter select (from all NEB hitters)
     batters_global = sorted(df_neb_bat.get('Batter').dropna().unique().tolist())
     batter_std = colB.selectbox("Player", options=batters_global, index=0 if batters_global else None)
 
+    # Date options for the selected batter, with opponent label (mapped to names)
     if batter_std:
         df_b_all = df_neb_bat[df_neb_bat['Batter'] == batter_std].copy()
         df_b_all['DateOnly'] = pd.to_datetime(df_b_all['Date'], errors="coerce").dt.date
@@ -558,12 +619,15 @@ if view_mode == "Standard Hitter Report":
         date_opts = []
         date_labels = {}
         for d, df_date in df_b_all.groupby('DateOnly'):
-            if pd.isna(d): continue
+            if pd.isna(d):
+                continue
             label = f"{format_date_long(d)}"
-            opp_names = get_opponents_for_date(df_date)
+            opp_names = get_opponents_for_date(df_date)  # prefers PitcherTeam
             if opp_names:
                 label += f" ({'/'.join(opp_names)})"
-            date_opts.append(d); date_labels[d] = label
+            date_opts.append(d)
+            date_labels[d] = label
+
         date_opts = sorted(date_opts)
     else:
         df_b_all = df_neb_bat.iloc[0:0].copy()
@@ -576,17 +640,20 @@ if view_mode == "Standard Hitter Report":
         index=len(date_opts)-1 if date_opts else 0
     ) if date_opts else None
 
+    # Data for that single game
     if batter_std and selected_date:
         df_date = df_b_all[df_b_all['DateOnly'] == selected_date].copy()
     else:
         df_date = df_b_all.iloc[0:0].copy()
 
+    # Standard Hitter Report
     if not batter_std or df_date.empty:
         st.info("Select a player and game date to see the Standard Hitter Report.")
     else:
         st.markdown("### Standard Hitter Report")
         fig_std = create_hitter_report(df_date, batter_std, ncols=3)
-        if fig_std: st.pyplot(fig_std)
+        if fig_std:
+            st.pyplot(fig_std)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # MODE: PROFILES & HEATMAPS (separate section with its own filters)
@@ -594,12 +661,15 @@ if view_mode == "Standard Hitter Report":
 else:
     st.markdown("### Profiles & Heatmaps")
 
+    # Batter select for profiles section
     batters_global = sorted(df_neb_bat.get('Batter').dropna().unique().tolist())
     batter = st.selectbox("Player", options=batters_global, index=0 if batters_global else None)
 
     st.markdown("#### Filters")
+
     colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
+    # Months / Days (built from this batter's season)
     if batter:
         df_b_all = df_neb_bat[df_neb_bat['Batter'] == batter].copy()
         dates_all = pd.to_datetime(df_b_all['Date'], errors="coerce").dropna().dt.date
@@ -610,11 +680,14 @@ else:
         present_months = []
 
     sel_months = colM.multiselect(
-        "Months", options=present_months,
+        "Months",
+        options=present_months,
         format_func=lambda n: MONTH_NAME_BY_NUM.get(n, str(n)),
-        default=[], key="prof_months",
+        default=[],
+        key="prof_months",
     )
 
+    # Days derive from selected months
     if batter:
         dser = pd.Series(dates_all)
         if sel_months:
@@ -624,14 +697,19 @@ else:
         present_days = []
     sel_days = colD2.multiselect("Days", options=present_days, default=[], key="prof_days")
 
+    # Last N games
     lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
+
+    # Pitcher Hand
     hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
 
+    # Build filtered dataset for profiles/heatmaps
     if batter:
         df_player_all = df_neb_bat[df_neb_bat['Batter'] == batter].copy()
     else:
         df_player_all = df_neb_bat.iloc[0:0].copy()
 
+    # Month/Day filter
     if sel_months:
         mask_m = pd.to_datetime(df_player_all['Date'], errors="coerce").dt.month.isin(sel_months)
     else:
@@ -642,65 +720,111 @@ else:
         mask_d = pd.Series(True, index=df_player_all.index)
     df_profiles = df_player_all[mask_m & mask_d].copy()
 
+    # Last N games (after month/day filter)
     if lastN and not df_profiles.empty:
         uniq_dates = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.dropna().unique()
         uniq_dates = sorted(uniq_dates)
         last_dates = set(uniq_dates[-lastN:])
         df_profiles = df_profiles[pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
 
+    # Pitcher hand filter
     if hand_choice == "LHP":
         df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
     elif hand_choice == "RHP":
         df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
+    # Render profiles & heatmaps
     if batter and df_profiles.empty:
         st.info("No rows for the selected filters.")
     elif batter:
+        # Season column (year). If mixed, "Multiple".
         year_vals = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.year.dropna().unique()
-        season_year = int(year_vals[0]) if len(year_vals) == 1 else ("Multiple" if len(year_vals) > 1 else "—")
+        if len(year_vals) == 1:
+            season_year = int(year_vals[0])
+        elif len(year_vals) > 1:
+            season_year = "Multiple"
+        else:
+            season_year = "—"
+
+        # Month column (if any months chosen)
         month_label = ", ".join(MONTH_NAME_BY_NUM.get(m, str(m)) for m in sorted(sel_months)) if sel_months else None
 
+        # Opponents (mapped to names) within the filtered set
         opp_codes = df_profiles.get('PitcherTeam', pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
         opp_fullnames = [TEAM_NAME_MAP.get(code, code) for code in sorted(opp_codes)]
         opp_label = "/".join(opp_fullnames) if opp_fullnames else None
 
+        # Batted Ball Profile
         bb_df = create_batted_ball_profile(df_profiles).copy()
-        for c in bb_df.columns: bb_df[c] = bb_df[c].apply(lambda v: fmt_pct(v, decimals=1))
+        for c in bb_df.columns:
+            bb_df[c] = bb_df[c].apply(lambda v: fmt_pct(v, decimals=1))
         bb_df.insert(0, "Season", season_year)
         if month_label:
             bb_df.insert(1, "Month", month_label)
-            if opp_label: bb_df.insert(2, "Opponent(s)", opp_label)
-        st.markdown("#### Batted Ball Profile"); st.table(themed_styler(bb_df))
+            if opp_label:
+                bb_df.insert(2, "Opponent(s)", opp_label)
+        st.markdown("#### Batted Ball Profile")
+        st.table(themed_styler(bb_df))
 
+        # Plate Discipline Profile
         pd_df = create_plate_discipline_profile(df_profiles).copy()
-        if "Zone %" in pd_df.columns: pd_df["Zone %"] = pd_df["Zone %"].apply(lambda v: fmt_pct(v, decimals=1))
-        if "Zone Contact %" in pd_df.columns: pd_df["Zone Contact %"] = pd_df["Zone Contact %"].apply(lambda v: fmt_pct(v, decimals=1))
+        if "Zone %" in pd_df.columns:
+            pd_df["Zone %"] = pd_df["Zone %"].apply(lambda v: fmt_pct(v, decimals=1))
+        if "Zone Contact %" in pd_df.columns:
+            pd_df["Zone Contact %"] = pd_df["Zone Contact %"].apply(lambda v: fmt_pct(v, decimals=1))
         for c in ["Zone Swing %","Chase %","Swing %","Whiff %"]:
-            if c in pd_df.columns: pd_df[c] = pd_df[c].apply(fmt_pct2)
+            if c in pd_df.columns:
+                pd_df[c] = pd_df[c].apply(fmt_pct2)
         pd_df.insert(0, "Season", season_year)
         if month_label:
             pd_df.insert(1, "Month", month_label)
-            if opp_label: pd_df.insert(2, "Opponent(s)", opp_label)
-        st.markdown("#### Plate Discipline Profile"); st.table(themed_styler(pd_df))
+            if opp_label:
+                pd_df.insert(2, "Opponent(s)", opp_label)
+        st.markdown("#### Plate Discipline Profile")
+        st.table(themed_styler(pd_df))
 
+        # Batting Statistics
         st_df, pa_cnt, ab_cnt = create_batting_stats_profile(df_profiles)
         st_df = st_df.copy()
-        for c in ["AVG","OBP","SLG","OPS"]:
-            if c in st_df.columns: st_df[c] = st_df[c].apply(fmt_avg3)
-        if "Avg Exit Vel" in st_df.columns: st_df["Avg Exit Vel"] = st_df["Avg Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
-        if "Max Exit Vel" in st_df.columns: st_df["Max Exit Vel"] = st_df["Max Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
-        if "Avg Angle" in st_df.columns: st_df["Avg Angle"] = st_df["Avg Angle"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
-        if "HardHit %" in st_df.columns: st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
-        if "K %" in st_df.columns: st_df["K %"] = st_df["K %"].apply(fmt_pct2)
-        if "BB %" in st_df.columns: st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
-        rename_map = {"Avg Exit Vel":"Avg EV","Max Exit Vel":"Max EV","Avg Angle":"Avg LA","HardHit %":"HardHit%","K %":"K%","BB %":"BB%"}
+        # Format: AVG/OBP/SLG/OPS as .xxx
+        for c in ["AVG", "OBP", "SLG", "OPS"]:
+            if c in st_df.columns:
+                st_df[c] = st_df[c].apply(fmt_avg3)
+        # EV & LA fixed to two decimals
+        if "Avg Exit Vel" in st_df.columns:
+            st_df["Avg Exit Vel"] = st_df["Avg Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
+        if "Max Exit Vel" in st_df.columns:
+            st_df["Max Exit Vel"] = st_df["Max Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
+        if "Avg Angle" in st_df.columns:
+            st_df["Avg Angle"] = st_df["Avg Angle"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
+        # Percentages
+        if "HardHit %" in st_df.columns:
+            st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
+        if "K %" in st_df.columns:
+            st_df["K %"] = st_df["K %"].apply(fmt_pct2)
+        if "BB %" in st_df.columns:
+            st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
+        # Short headers to keep on one line
+        rename_map = {
+            "Avg Exit Vel": "Avg EV",
+            "Max Exit Vel": "Max EV",
+            "Avg Angle":    "Avg LA",
+            "HardHit %":    "HardHit%",
+            "K %":          "K%",
+            "BB %":         "BB%",
+        }
         st_df.rename(columns={k:v for k,v in rename_map.items() if k in st_df.columns}, inplace=True)
         st_df.insert(0, "Season", season_year)
         if month_label:
             st_df.insert(1, "Month", month_label)
-            if opp_label: st_df.insert(2, "Opponent(s)", opp_label)
-        st.markdown("#### Batting Statistics"); st.table(themed_styler(st_df, nowrap=True))
+            if opp_label:
+                st_df.insert(2, "Opponent(s)", opp_label)
 
+        st.markdown("#### Batting Statistics")
+        st.table(themed_styler(st_df, nowrap=True))
+
+        # Heatmaps (use the same filtered dataset as profiles)
         st.markdown("#### Hitter Heatmaps")
         fig_hm = hitter_heatmaps(df_profiles, batter)
-        if fig_hm: st.pyplot(fig_hm)
+        if fig_hm:
+            st.pyplot(fig_hm)

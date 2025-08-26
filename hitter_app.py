@@ -20,10 +20,10 @@ st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # w
 
 # Four split Parquet files (update paths if needed)
 DATA_PARTS = {
-    "game_context":   "hitter_game_context.parquet",     # Identity / Game context
-    "pitch_location": "hitter_pitch_location.parquet",   # Pitch + location
-    "entities":       "_hitter_entities.parquet",        # Entities (includes PitcherTeam)
-    "batted_ball":    "hitter_batted_ball.parquet",      # Batted ball
+    "game_context":   "hitter_app_data.parquet",     # Identity / Game context
+    "pitch_location": "Pitcher_app_data.parquet",   # Pitch + location
+    "entities":       "d1_stats_app_data.parquet",        # Entities (includes PitcherTeam)
+    
 }
 
 BANNER_CANDIDATES = ["NebraskaChampions.jpg"]

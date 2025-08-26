@@ -20,10 +20,10 @@ st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # w
 
 # Four split CSVs created by your splitter
 DATA_PARTS = {
-    "game_context":   "hitter_game_context.csv",    # Identity / Game context
-    "pitch_location": "hitter_pitch_location.csv",  # Pitch + location
-    "entities":       "hitter_entities.csv",        # Entities
-    "batted_ball":    "hitter_batted_ball.csv",     # Batted ball
+    "game_context":   "hitter_game_context.parquet",    # Identity / Game context
+    "pitch_location": "hitter_pitch_location.parquet",  # Pitch + location
+    "entities":       "hitter_entities.parquet",        # Entities
+    "batted_ball":    "hitter_batted_ball.parquet",     # Batted ball
 }
 
 BANNER_CANDIDATES = [

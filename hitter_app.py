@@ -32,26 +32,99 @@ BANNER_CANDIDATES = [
 
 HUSKER_RED = "#E60026"
 
-# Pretty names (used when PitcherTeam exists in your data)
+# ──────────────────────────────────────────────────────────────────────────────
+# TEAMS / CONFERENCES (full map provided by you)
+# ──────────────────────────────────────────────────────────────────────────────
 TEAM_NAME_MAP = {
+    # Big Ten
     "ILL_ILL": "Illinois",
-    "MIC_SPA": "Michigan State",
-    "UCLA": "UCLA",
+    "IND_SYC": "Indiana",
     "IOW_HAW": "Iowa",
-    "IU": "Indiana",
     "MAR_TER": "Maryland",
     "MIC_WOL": "Michigan",
-    "MIN_GOL": "Minnesota",
-    "NEB": "Nebraska",
-    "NOR_CAT": "Northwestern",
-    "ORE_DUC": "Oregon",
+    "MIC_SPA": "Michigan State",
+    "MIN_GOP": "Minnesota",
+    "NEB":     "Nebraska",
     "OSU_BUC": "Ohio State",
+    "ORE_DUC": "Oregon",
     "PEN_NIT": "Penn State",
     "PUR_BOI": "Purdue",
     "RUT_SCA": "Rutgers",
-    "SOU_TRO": "USC",
+    "UCLA":    "UCLA",
+    "USC_BEA": "USC",
     "WAS_HUS": "Washington",
+
+    # ACC
+    "BOC_EAG": "Boston College",
+    "CAL_BEA": "California",
+    "CLE_TIG": "Clemson",
+    "DUK_BLU": "Duke",
+    "FLO_SEM": "Florida State",
+    "GIT_YEL": "Georgia Tech",
+    "LOU_CAR": "Louisville",
+    "MIA_HUR": "Miami",
+    "NCB":     "North Carolina",
+    "NOR_WOL": "NC State",
+    "NOT_IRI": "Notre Dame",
+    "PIT_PAN": "Pittsburgh",
+    "SMU_SAI": "SMU",
+    "STA_CAR": "Stanford",
+    "VIR_CAV": "Virginia",
+    "VIR_TEC": "Virginia Tech",
+    "WAK_DEA": "Wake Forest",
+
+    # Big 12
+    "ARI_WIL": "Arizona",
+    "ARI_SUN": "Arizona State",
+    "BAY_BEA": "Baylor",
+    "BYU_COU": "BYU",
+    "CIN_BEA": "Cincinnati",
+    "HOU_COU": "Houston",
+    "KAN_JAY": "Kansas",
+    "KAN_WIL": "Kansas State",
+    "OKL_SOO": "Oklahoma",
+    "OKL_COW": "Oklahoma State",
+    "TCU_HFG": "TCU",
+    "TEX_RAI": "Texas Tech",
+    "UCF_KNI": "UCF",
+    "UTA_UTE": "Utah",
+    "VIR_WES": "West Virginia",
+
+    # SEC
+    "ALA_CRI": "Alabama",
+    "ARK_RAZ": "Arkansas",
+    "AUB_TIG": "Auburn",
+    "FLA_GAT": "Florida",
+    "GEO_BUL": "Georgia",
+    "KEN_WIL": "Kentucky",
+    "LSU_TIG": "LSU",
+    "MSU_BDG": "Mississippi State",
+    "MIZ_TIG": "Missouri",
+    "OLE_REB": "Ole Miss",
+    "SOU_GAM": "South Carolina",
+    "TEN_VOL": "Tennessee",
+    "TEX_LON": "Texas",
+    "TEX_AGG": "Texas A&M",
+    "VAN_COM": "Vanderbilt",
 }
+TEAM_TO_CONF = {
+    # Big Ten
+    "ILL_ILL":"Big Ten","IND_SYC":"Big Ten","IOW_HAW":"Big Ten","MAR_TER":"Big Ten","MIC_WOL":"Big Ten",
+    "MIC_SPA":"Big Ten","MIN_GOP":"Big Ten","NEB":"Big Ten","OSU_BUC":"Big Ten","ORE_DUC":"Big Ten",
+    "PEN_NIT":"Big Ten","PUR_BOI":"Big Ten","RUT_SCA":"Big Ten","UCLA":"Big Ten","USC_BEA":"Big Ten","WAS_HUS":"Big Ten",
+    # ACC
+    "BOC_EAG":"ACC","CAL_BEA":"ACC","CLE_TIG":"ACC","DUK_BLU":"ACC","FLO_SEM":"ACC","GIT_YEL":"ACC","LOU_CAR":"ACC",
+    "MIA_HUR":"ACC","NCB":"ACC","NOR_WOL":"ACC","NOT_IRI":"ACC","PIT_PAN":"ACC","SMU_SAI":"ACC","STA_CAR":"ACC",
+    "VIR_CAV":"ACC","VIR_TEC":"ACC","WAK_DEA":"ACC",
+    # Big 12
+    "ARI_WIL":"Big 12","ARI_SUN":"Big 12","BAY_BEA":"Big 12","BYU_COU":"Big 12","CIN_BEA":"Big 12","HOU_COU":"Big 12",
+    "KAN_JAY":"Big 12","KAN_WIL":"Big 12","OKL_SOO":"Big 12","OKL_COW":"Big 12","TCU_HFG":"Big 12","TEX_RAI":"Big 12",
+    "UCF_KNI":"Big 12","UTA_UTE":"Big 12","VIR_WES":"Big 12",
+    # SEC
+    "ALA_CRI":"SEC","ARK_RAZ":"SEC","AUB_TIG":"SEC","FLA_GAT":"SEC","GEO_BUL":"SEC","KEN_WIL":"SEC","LSU_TIG":"SEC",
+    "MSU_BDG":"SEC","MIZ_TIG":"SEC","OLE_REB":"SEC","SOU_GAM":"SEC","TEN_VOL":"SEC","TEX_LON":"SEC","TEX_AGG":"SEC","VAN_COM":"SEC",
+}
+KNOWN_TEAM_CODES = list(TEAM_NAME_MAP.keys())
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DATE HELPERS
@@ -349,22 +422,10 @@ def create_batting_stats_profile(df: pd.DataFrame):
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
 def _read_parquet_safe(path: str, columns: list[str] | None = None) -> pd.DataFrame:
-    """
-    Robust Parquet reader with optional column projection.
-    """
     try:
         return pd.read_parquet(path, columns=columns)
     except Exception:
-        # Fall back to reading all columns if projection fails (schema diffs, etc.)
         return pd.read_parquet(path)
-
-def _summarize_loaded_df(name: str, df: pd.DataFrame):
-    try:
-        nrows, ncols = df.shape
-        cols = ", ".join(list(df.columns[:8])) + ("..." if ncols > 8 else "")
-        st.info(f"Loaded **{name}** → {nrows:,} rows, {ncols} cols | {cols}")
-    except Exception:
-        pass
 
 def _merge_four_parts(parts: dict) -> pd.DataFrame:
     """
@@ -380,7 +441,6 @@ def _merge_four_parts(parts: dict) -> pd.DataFrame:
     dfs = {}
     for key, path in parts.items():
         dfp = _read_parquet_safe(path)
-        _summarize_loaded_df(key, dfp)
         dfp = dfp.reset_index(drop=False).rename(columns={"index": "RowID"})
         dfs[key] = dfp
 
@@ -401,6 +461,31 @@ def _merge_four_parts(parts: dict) -> pd.DataFrame:
 def load_data() -> pd.DataFrame:
     df = _merge_four_parts(DATA_PARTS)
     return ensure_date_column(df)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# OPPONENT LABELING (date dropdown)
+# ──────────────────────────────────────────────────────────────────────────────
+def _codes_to_pretty_names(codes):
+    out = []
+    for code in sorted(set([str(c) for c in codes if pd.notna(c)])):
+        out.append(TEAM_NAME_MAP.get(code, code))
+    return out
+
+def infer_opponents_from_gameid(series_gameid: pd.Series, known_codes: list[str]) -> list[str]:
+    found = set()
+    known_codes_sorted = sorted(known_codes, key=len, reverse=True)
+    for gid in series_gameid.dropna().astype(str).unique().tolist():
+        gid_up = gid.upper()
+        for code in known_codes_sorted:
+            if code and code in gid_up:
+                found.add(code)
+    return _codes_to_pretty_names(list(found))
+
+def get_opponents_for_date(df_date: pd.DataFrame) -> list[str]:
+    if "PitcherTeam" in df_date.columns:
+        return _codes_to_pretty_names(df_date["PitcherTeam"].dropna().astype(str).unique().tolist())
+    # fallback: scan GameID for known codes
+    return infer_opponents_from_gameid(df_date.get("GameID", pd.Series(dtype=object)), KNOWN_TEAM_CODES)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # STANDARD HITTER REPORT (single game)
@@ -474,8 +559,7 @@ def create_hitter_report(df, batter, ncols=3):
             clr = {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
                    'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
             sz = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
-            x = p.get('PlateLocSide')
-            y = p.get('PlateLocHeight')
+            x = p.get('PlateLocSide'); y = p.get('PlateLocHeight')
             if pd.notna(x) and pd.notna(y):
                 ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', linewidth=1, zorder=2)
                 yoff = -0.05 if str(p.get('AutoPitchType'))=='Slider' else 0
@@ -580,7 +664,7 @@ render_nb_banner(title="Nebraska Baseball")
 view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps"], horizontal=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: STANDARD HITTER REPORT
+# MODE: STANDARD HITTER REPORT (batter → date with opponent names)
 # ──────────────────────────────────────────────────────────────────────────────
 if view_mode == "Standard Hitter Report":
     st.markdown("### Nebraska Hitter Reports")
@@ -596,24 +680,18 @@ if view_mode == "Standard Hitter Report":
         df_b_all = df_neb_bat[df_neb_bat['Batter'] == batter_std].copy()
         df_b_all['DateOnly'] = pd.to_datetime(df_b_all['Date'], errors="coerce").dt.date
 
-        # Opponents by date if PitcherTeam exists
-        if 'PitcherTeam' in df_b_all.columns:
-            date_groups = df_b_all.groupby('DateOnly')['PitcherTeam'].agg(
-                lambda s: sorted(set([TEAM_NAME_MAP.get(str(x), str(x)) for x in s if pd.notna(x)]))
-            )
-        else:
-            date_groups = pd.Series({d: [] for d in df_b_all['DateOnly'].dropna().unique()})
-
         date_opts = []
         date_labels = {}
-        for d, teams in date_groups.items():
+        for d, df_date in df_b_all.groupby('DateOnly'):
             if pd.isna(d):
                 continue
             label = f"{format_date_long(d)}"
-            if teams:
-                label += f" ({'/'.join(teams)})"
+            opp_names = get_opponents_for_date(df_date)  # uses PitcherTeam if present, else infers from GameID
+            if opp_names:
+                label += f" ({'/'.join(opp_names)})"
             date_opts.append(d)
             date_labels[d] = label
+
         date_opts = sorted(date_opts)
     else:
         df_b_all = df_neb_bat.iloc[0:0].copy()
@@ -642,7 +720,7 @@ if view_mode == "Standard Hitter Report":
             st.pyplot(fig_std)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: PROFILES & HEATMAPS
+# MODE: PROFILES & HEATMAPS (separate section with its own filters)
 # ──────────────────────────────────────────────────────────────────────────────
 else:
     st.markdown("### Profiles & Heatmaps")
@@ -723,7 +801,6 @@ else:
     if batter and df_profiles.empty:
         st.info("No rows for the selected filters.")
     elif batter:
-        # Season column (year). If mixed, "Multiple".
         year_vals = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.year.dropna().unique()
         if len(year_vals) == 1:
             season_year = int(year_vals[0])
@@ -732,10 +809,8 @@ else:
         else:
             season_year = "—"
 
-        # Month column (if any months chosen)
         month_label = ", ".join(MONTH_NAME_BY_NUM.get(m, str(m)) for m in sorted(sel_months)) if sel_months else None
 
-        # Opponents (mapped to names) within the filtered set — only if PitcherTeam exists
         opp_codes = df_profiles.get('PitcherTeam', pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
         opp_fullnames = [TEAM_NAME_MAP.get(code, code) for code in sorted(opp_codes)]
         opp_label = "/".join(opp_fullnames) if opp_fullnames else None
@@ -772,25 +847,21 @@ else:
         # Batting Statistics
         st_df, pa_cnt, ab_cnt = create_batting_stats_profile(df_profiles)
         st_df = st_df.copy()
-        # Format: AVG/OBP/SLG/OPS as .xxx
         for c in ["AVG", "OBP", "SLG", "OPS"]:
             if c in st_df.columns:
                 st_df[c] = st_df[c].apply(fmt_avg3)
-        # EV & LA fixed to two decimals
         if "Avg Exit Vel" in st_df.columns:
             st_df["Avg Exit Vel"] = st_df["Avg Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
         if "Max Exit Vel" in st_df.columns:
             st_df["Max Exit Vel"] = st_df["Max Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
         if "Avg Angle" in st_df.columns:
             st_df["Avg Angle"] = st_df["Avg Angle"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
-        # Percentages
         if "HardHit %" in st_df.columns:
             st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
         if "K %" in st_df.columns:
             st_df["K %"] = st_df["K %"].apply(fmt_pct2)
         if "BB %" in st_df.columns:
             st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
-        # Short headers
         rename_map = {
             "Avg Exit Vel": "Avg EV",
             "Max Exit Vel": "Max EV",

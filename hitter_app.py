@@ -14,14 +14,20 @@ from scipy.stats import gaussian_kde
 from matplotlib import colors
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CONFIG
+# CONFIG (four-part mode)
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # wide OFF
 
-DATA_PATH = "B10C25_hitter_app_columns.csv"  # update if needed
+# Four split CSVs created by your splitter
+DATA_PARTS = {
+    "game_context":   "hitter_game_context.csv",    # Identity / Game context
+    "pitch_location": "hitter_pitch_location.csv",  # Pitch + location
+    "entities":       "hitter_entities.csv",        # Entities
+    "batted_ball":    "hitter_batted_ball.csv",     # Batted ball
+}
+
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
-  
 ]
 
 HUSKER_RED = "#E60026"
@@ -340,6 +346,51 @@ def create_batting_stats_profile(df: pd.DataFrame):
     return stats, pa, ab
 
 # ──────────────────────────────────────────────────────────────────────────────
+# LOADERS (four-part merge by row position)
+# ──────────────────────────────────────────────────────────────────────────────
+@st.cache_data(show_spinner=True)
+def _read_csv_safe(path: str) -> pd.DataFrame:
+    try:
+        return pd.read_csv(path, low_memory=False)
+    except UnicodeDecodeError:
+        return pd.read_csv(path, low_memory=False, encoding="latin-1")
+
+def _merge_four_parts(parts: dict) -> pd.DataFrame:
+    """
+    Merge the four split CSVs back into one DataFrame by row position.
+    Assumes the four files were produced from the same source in the same order.
+    If row counts mismatch, it will inner-align to the shortest.
+    """
+    # Ensure files exist
+    missing = [p for p in parts.values() if not os.path.exists(p)]
+    if missing:
+        st.error("Missing split files:\n" + "\n".join(f"• {m}" for m in missing))
+        return pd.DataFrame()
+
+    dfs = {}
+    for key, path in parts.items():
+        dfp = _read_csv_safe(path)
+        dfp = dfp.reset_index(drop=False).rename(columns={"index": "RowID"})
+        dfs[key] = dfp
+
+    base = dfs["game_context"]
+    for k in ("pitch_location", "entities", "batted_ball"):
+        if k in dfs:
+            base = base.merge(
+                dfs[k],
+                on="RowID",
+                how="inner",
+                suffixes=("", f"_{k}")
+            )
+    base.drop(columns=["RowID"], errors="ignore", inplace=True)
+    return base
+
+@st.cache_data(show_spinner=True)
+def load_data() -> pd.DataFrame:
+    df = _merge_four_parts(DATA_PARTS)
+    return ensure_date_column(df)
+
+# ──────────────────────────────────────────────────────────────────────────────
 # STANDARD HITTER REPORT (single game)
 # ──────────────────────────────────────────────────────────────────────────────
 def create_hitter_report(df, batter, ncols=3):
@@ -455,7 +506,7 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HITTER HEATMAPS — 3 panels (Contact, Whiffs, Damage) using filtered data
+# HITTER HEATMAPS — 3 panels (Contact, Whiffs, Damage)
 # ──────────────────────────────────────────────────────────────────────────────
 def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
     sub = df_filtered_for_profiles[df_filtered_for_profiles.get('Batter') == batter].copy()
@@ -497,15 +548,7 @@ def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
 # ──────────────────────────────────────────────────────────────────────────────
 # LOAD DATA
 # ──────────────────────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner=True)
-def load_csv(path: str) -> pd.DataFrame:
-    try:
-        df = pd.read_csv(path, low_memory=False)
-    except UnicodeDecodeError:
-        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
-    return ensure_date_column(df)
-
-df_all = load_csv(DATA_PATH)
+df_all = load_data()
 if df_all.empty:
     st.error("No data loaded.")
     st.stop()
@@ -540,10 +583,16 @@ if view_mode == "Standard Hitter Report":
     if batter_std:
         df_b_all = df_neb_bat[df_neb_bat['Batter'] == batter_std].copy()
         df_b_all['DateOnly'] = pd.to_datetime(df_b_all['Date'], errors="coerce").dt.date
-        # Opponents by date
-        date_groups = df_b_all.groupby('DateOnly')['PitcherTeam'].agg(
-            lambda s: sorted(set([TEAM_NAME_MAP.get(str(x), str(x)) for x in s if pd.notna(x)]))
-        )
+
+        # Opponents by date (safe if PitcherTeam missing)
+        if 'PitcherTeam' in df_b_all.columns:
+            date_groups = df_b_all.groupby('DateOnly')['PitcherTeam'].agg(
+                lambda s: sorted(set([TEAM_NAME_MAP.get(str(x), str(x)) for x in s if pd.notna(x)]))
+            )
+        else:
+            # No opponent column; fall back to empty labels
+            date_groups = pd.Series({d: [] for d in df_b_all['DateOnly'].dropna().unique()})
+
         date_opts = []
         date_labels = {}
         for d, teams in date_groups.items():

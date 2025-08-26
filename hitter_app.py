@@ -14,11 +14,11 @@ from scipy.stats import gaussian_kde
 from matplotlib import colors
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CONFIG (four-part mode)
+# CONFIG (four-part Parquet mode)
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # wide OFF
 
-# Four split CSVs created by your splitter
+# Four split Parquet files created by your splitter
 DATA_PARTS = {
     "game_context":   "hitter_game_context.parquet",    # Identity / Game context
     "pitch_location": "hitter_pitch_location.parquet",  # Pitch + location
@@ -32,7 +32,7 @@ BANNER_CANDIDATES = [
 
 HUSKER_RED = "#E60026"
 
-# Big Ten / opponents pretty names
+# Pretty names (used when PitcherTeam exists in your data)
 TEAM_NAME_MAP = {
     "ILL_ILL": "Illinois",
     "MIC_SPA": "Michigan State",
@@ -162,7 +162,7 @@ def themed_styler(df: pd.DataFrame, nowrap=True):
             .set_table_styles(styles))
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BANNER (darker background like pitcher app)
+# BANNER
 # ──────────────────────────────────────────────────────────────────────────────
 def _img_to_b64(path: str):
     try:
@@ -184,7 +184,6 @@ def render_nb_banner(
     if not b64:
         return  # silently skip if not found
 
-    # Add dark overlay + slight image darkening so title stands out
     st.markdown(
         f"""
         <div style="
@@ -346,22 +345,33 @@ def create_batting_stats_profile(df: pd.DataFrame):
     return stats, pa, ab
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOADERS (four-part merge by row position)
+# LOADERS (four-part Parquet merge by row position)
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
-def _read_csv_safe(path: str) -> pd.DataFrame:
+def _read_parquet_safe(path: str, columns: list[str] | None = None) -> pd.DataFrame:
+    """
+    Robust Parquet reader with optional column projection.
+    """
     try:
-        return pd.read_csv(path, low_memory=False)
-    except UnicodeDecodeError:
-        return pd.read_csv(path, low_memory=False, encoding="latin-1")
+        return pd.read_parquet(path, columns=columns)
+    except Exception:
+        # Fall back to reading all columns if projection fails (schema diffs, etc.)
+        return pd.read_parquet(path)
+
+def _summarize_loaded_df(name: str, df: pd.DataFrame):
+    try:
+        nrows, ncols = df.shape
+        cols = ", ".join(list(df.columns[:8])) + ("..." if ncols > 8 else "")
+        st.info(f"Loaded **{name}** → {nrows:,} rows, {ncols} cols | {cols}")
+    except Exception:
+        pass
 
 def _merge_four_parts(parts: dict) -> pd.DataFrame:
     """
-    Merge the four split CSVs back into one DataFrame by row position.
+    Merge the four split Parquet files back into one DataFrame by row position.
     Assumes the four files were produced from the same source in the same order.
-    If row counts mismatch, it will inner-align to the shortest.
+    If row counts mismatch, inner-align to the shortest to avoid misalignment.
     """
-    # Ensure files exist
     missing = [p for p in parts.values() if not os.path.exists(p)]
     if missing:
         st.error("Missing split files:\n" + "\n".join(f"• {m}" for m in missing))
@@ -369,7 +379,8 @@ def _merge_four_parts(parts: dict) -> pd.DataFrame:
 
     dfs = {}
     for key, path in parts.items():
-        dfp = _read_csv_safe(path)
+        dfp = _read_parquet_safe(path)
+        _summarize_loaded_df(key, dfp)
         dfp = dfp.reset_index(drop=False).rename(columns={"index": "RowID"})
         dfs[key] = dfp
 
@@ -379,9 +390,10 @@ def _merge_four_parts(parts: dict) -> pd.DataFrame:
             base = base.merge(
                 dfs[k],
                 on="RowID",
-                how="inner",
+                how="inner",   # keep rows present in every file
                 suffixes=("", f"_{k}")
             )
+
     base.drop(columns=["RowID"], errors="ignore", inplace=True)
     return base
 
@@ -488,7 +500,7 @@ def create_hitter_report(df, batter, ncols=3):
             yln -= dy
         y0 = yln - dy*0.05
 
-    # legends (nudged lower)
+    # legends
     res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
                           markerfacecolor=v, markersize=10, markeredgecolor='k')
                    for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
@@ -568,7 +580,7 @@ render_nb_banner(title="Nebraska Baseball")
 view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps"], horizontal=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: STANDARD HITTER REPORT (batter → date with opponent names)
+# MODE: STANDARD HITTER REPORT
 # ──────────────────────────────────────────────────────────────────────────────
 if view_mode == "Standard Hitter Report":
     st.markdown("### Nebraska Hitter Reports")
@@ -584,13 +596,12 @@ if view_mode == "Standard Hitter Report":
         df_b_all = df_neb_bat[df_neb_bat['Batter'] == batter_std].copy()
         df_b_all['DateOnly'] = pd.to_datetime(df_b_all['Date'], errors="coerce").dt.date
 
-        # Opponents by date (safe if PitcherTeam missing)
+        # Opponents by date if PitcherTeam exists
         if 'PitcherTeam' in df_b_all.columns:
             date_groups = df_b_all.groupby('DateOnly')['PitcherTeam'].agg(
                 lambda s: sorted(set([TEAM_NAME_MAP.get(str(x), str(x)) for x in s if pd.notna(x)]))
             )
         else:
-            # No opponent column; fall back to empty labels
             date_groups = pd.Series({d: [] for d in df_b_all['DateOnly'].dropna().unique()})
 
         date_opts = []
@@ -631,7 +642,7 @@ if view_mode == "Standard Hitter Report":
             st.pyplot(fig_std)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: PROFILES & HEATMAPS (separate section with its own filters)
+# MODE: PROFILES & HEATMAPS
 # ──────────────────────────────────────────────────────────────────────────────
 else:
     st.markdown("### Profiles & Heatmaps")
@@ -642,7 +653,6 @@ else:
 
     st.markdown("#### Filters")
 
-    # Give the hand radio more room so options fit in one line
     colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
     # Months / Days (built from this batter's season)
@@ -720,13 +730,12 @@ else:
         elif len(year_vals) > 1:
             season_year = "Multiple"
         else:
-            # fallback if no dates but batter chosen
             season_year = "—"
 
         # Month column (if any months chosen)
         month_label = ", ".join(MONTH_NAME_BY_NUM.get(m, str(m)) for m in sorted(sel_months)) if sel_months else None
 
-        # Opponents (mapped to names) within the filtered set
+        # Opponents (mapped to names) within the filtered set — only if PitcherTeam exists
         opp_codes = df_profiles.get('PitcherTeam', pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
         opp_fullnames = [TEAM_NAME_MAP.get(code, code) for code in sorted(opp_codes)]
         opp_label = "/".join(opp_fullnames) if opp_fullnames else None
@@ -781,7 +790,7 @@ else:
             st_df["K %"] = st_df["K %"].apply(fmt_pct2)
         if "BB %" in st_df.columns:
             st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
-        # Short headers to keep on one line
+        # Short headers
         rename_map = {
             "Avg Exit Vel": "Avg EV",
             "Max Exit Vel": "Max EV",

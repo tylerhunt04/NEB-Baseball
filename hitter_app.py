@@ -1,4 +1,5 @@
-# hitter_app.py  — Nebraska Hitter Reports (3-parquet merge; key dtype-normalized; color-fixed)
+# hitter_app.py  — Full app (Standard Hitter Report + Profiles & Heatmaps)
+# Uses three split Parquets and merges them safely; colors-by-result fixed.
 
 import os
 import math
@@ -14,30 +15,39 @@ from scipy.stats import gaussian_kde
 from matplotlib import colors
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PAGE CONFIG
+# CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")
-st.set_option("client.showErrorDetails", True)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# DATA PATHS (three-parquet merge; keep these filenames)
-# ──────────────────────────────────────────────────────────────────────────────
+# Three Parquets (each may contain different columns; we merge them)
 DATA_PARTS = {
-    "hitter":   "hitter_app_data.parquet",
-    "pitcher":  "pitcher_app_data.parquet",
-    "d1":       "d1_stats_app_data.parquet",
+    "hitter_app_data":   "hitter_app_data.parquet",
+    "pitcher_app_data":  "pitcher_app_data.parquet",
+    "d1_stats_app_data": "d1_stats_app_data.parquet",
 }
 
 BANNER_CANDIDATES = ["NebraskaChampions.jpg"]
 HUSKER_RED = "#E60026"
 
+# Column groups used throughout
+IDENTITY_COLS = ["Date","GameID","Inning","Top/Bottom","PAofInning"]
+PITCH_LOC_COLS = ["PitchCall","AutoPitchType","PitchofPA","Balls","Strikes",
+                  "PlateLocSide","PlateLocHeight","EffectiveVelo"]
+ENTITY_COLS = ["Batter","BatterTeam","BatterSide","Pitcher","PitcherThrows","PitcherTeam"]
+BATTED_COLS = ["PlayResult","ExitSpeed","Angle","TaggedHitType","Bearing"]
+
+KEY_COLS = ["GameID","Inning","Top/Bottom","PAofInning","PitchofPA"]
+
+# Ensure all “standard” columns that the app expects
+COLUMNS_USED = list(dict.fromkeys(IDENTITY_COLS + PITCH_LOC_COLS + ENTITY_COLS + BATTED_COLS))
+
 # ──────────────────────────────────────────────────────────────────────────────
-# TEAM MAP
+# TEAMS / CONFERENCES (full map for opponent labels)
 # ──────────────────────────────────────────────────────────────────────────────
 TEAM_NAME_MAP = {
     # Big Ten
     "ILL_ILL": "Illinois","IND_SYC": "Indiana","IOW_HAW": "Iowa","MAR_TER": "Maryland",
-    "MIC_WOL": "Michigan","MIC_SPA": "Michigan State","MIN_GOP": "Minnesota","NEB":"Nebraska",
+    "MIC_WOL": "Michigan","MIC_SPA": "Michigan State","MIN_GOP": "Minnesota","NEB": "Nebraska",
     "OSU_BUC":"Ohio State","ORE_DUC":"Oregon","PEN_NIT":"Penn State","PUR_BOI":"Purdue",
     "RUT_SCA":"Rutgers","UCLA":"UCLA","USC_BEA":"USC","WAS_HUS":"Washington",
     # ACC
@@ -60,6 +70,41 @@ TEAM_NAME_MAP = {
 KNOWN_TEAM_CODES = list(TEAM_NAME_MAP.keys())
 
 # ──────────────────────────────────────────────────────────────────────────────
+# DATE HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+def ensure_date_column(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    cand = None
+    lower = {c.lower(): c for c in df.columns}
+    for name in ["date","gamedate","game date","datetime","game_datetime","gamedatetime"]:
+        if name in lower:
+            cand = lower[name]
+            break
+    if cand is None:
+        if "Date" not in df.columns:
+            df["Date"] = pd.NaT
+        return df
+    dt = pd.to_datetime(df[cand], errors="coerce")
+    df["Date"] = pd.to_datetime(dt.dt.date, errors="coerce")
+    return df
+
+def _ordinal(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1:'st',2:'nd',3:'rd'}.get(n % 10, 'th')}"
+
+def format_date_long(d) -> str:
+    if d is None or pd.isna(d):
+        return ""
+    d = pd.to_datetime(d).date()
+    return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
+
+MONTH_CHOICES = [
+    (1,"January"), (2,"February"), (3,"March"), (4,"April"),
+    (5,"May"), (6,"June"), (7,"July"), (8,"August"),
+    (9,"September"), (10,"October"), (11,"November"), (12,"December")
+]
+MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # STRIKE ZONE / VIEW / COLORS
 # ──────────────────────────────────────────────────────────────────────────────
 def draw_strikezone(ax, left=-0.83, right=0.83, bottom=1.5, top=3.5):
@@ -79,199 +124,8 @@ custom_cmap = colors.LinearSegmentedColormap.from_list(
     N=256,
 )
 
-RESULT_COLOR = {
-    'StrikeCalled': '#CCCC00',
-    'BallCalled': 'green',
-    'FoulBallNotFieldable': 'tan',
-    'FoulBallFieldable': 'tan',
-    'InPlay': '#6699CC',
-    'StrikeSwinging': 'red',
-    'HitByPitch': 'lime',
-}
-PITCH_MARKER = {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}
-
 # ──────────────────────────────────────────────────────────────────────────────
-# DATE HELPERS
-# ──────────────────────────────────────────────────────────────────────────────
-def ensure_date_column(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    cand = None
-    lower = {c.lower(): c for c in df.columns}
-    for name in ["date","gamedate","game date","datetime","game_datetime","gamedatetime","Date"]:
-        if name in lower:
-            cand = lower[name]
-            break
-    if cand is None:
-        df["Date"] = pd.NaT
-        return df
-    dt = pd.to_datetime(df[cand], errors="coerce")
-    df["Date"] = pd.to_datetime(dt.dt.date, errors="coerce")
-    return df
-
-def _ordinal(n: int) -> str:
-    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1:'st',2:'nd',3:'rd'}.get(n % 10, 'th')}"
-
-def format_date_long(d) -> str:
-    if d is None or pd.isna(d): return ""
-    d = pd.to_datetime(d).date()
-    return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
-
-MONTH_CHOICES = [(1,"January"),(2,"February"),(3,"March"),(4,"April"),(5,"May"),(6,"June"),(7,"July"),
-                 (8,"August"),(9,"September"),(10,"October"),(11,"November"),(12,"December")]
-MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
-
-# ──────────────────────────────────────────────────────────────────────────────
-# LOAD & MERGE (three parquets, robust coalesce) — FIXED: key dtype normalization
-# ──────────────────────────────────────────────────────────────────────────────
-KEY_COLS = ["GameID","Inning","Top/Bottom","PAofInning","PitchofPA"]
-
-@st.cache_data(show_spinner=True)
-def _read_parquet(path: str, cols: list[str] | None = None) -> pd.DataFrame:
-    try:
-        return pd.read_parquet(path, columns=cols)
-    except Exception:
-        return pd.read_parquet(path)
-
-def _normalize_key_col(s: pd.Series) -> pd.Series:
-    """
-    Normalize a merge-key column to pandas 'string' dtype.
-    - Keep missing as <NA>
-    - For numeric floats that are whole numbers, drop trailing '.0' (123.0 -> '123')
-    - Strip whitespace
-    """
-    if s.dtype.kind in "if":
-        out = s.apply(
-            lambda v: pd.NA if pd.isna(v)
-            else (str(int(v)) if float(v).is_integer() else f"{v}")
-        )
-    else:
-        out = s.astype("string")
-    out = out.str.strip()
-    out = out.where(out.ne(""), pd.NA)          # empty -> <NA>
-    out = out.where(out.str.lower() != "nan", pd.NA)
-    out = out.where(out.str.lower() != "none", pd.NA)
-    return out.astype("string")
-
-def _normalize_key_columns(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    for k in KEY_COLS:
-        if k not in df.columns:
-            df[k] = pd.NA
-        df[k] = _normalize_key_col(df[k])
-    return df
-
-def _coalesce_columns(df: pd.DataFrame, mapping: dict[str, list[str]]) -> pd.DataFrame:
-    out = df.copy()
-    for out_col, cands in mapping.items():
-        series_list = []
-        for c in cands:
-            if c in out.columns:
-                s = out[c]
-                if pd.api.types.is_categorical_dtype(s):
-                    s = s.astype(object)
-                elif pd.api.types.is_integer_dtype(s):
-                    s = s.astype("float")
-                else:
-                    s = s.astype(object)
-                series_list.append(s)
-        if not series_list:
-            continue
-        merged = series_list[0]
-        for s in series_list[1:]:
-            merged = pd.Series(np.where(pd.isna(merged), s, merged), index=out.index, dtype=object)
-        out[out_col] = merged
-    return out
-
-@st.cache_data(show_spinner=True)
-def load_all_merged(parts: dict) -> pd.DataFrame:
-    missing = [p for p in parts.values() if not os.path.exists(p)]
-    if missing:
-        st.error("Missing data files:\n" + "\n".join(f"• {m}" for m in missing))
-        return pd.DataFrame()
-
-    df_h = _read_parquet(parts["hitter"])
-    df_p = _read_parquet(parts["pitcher"])
-    df_d = _read_parquet(parts["d1"])
-
-    dfs = [d for d in (df_h, df_p, df_d) if d is not None and not d.empty]
-    if not dfs:
-        return pd.DataFrame()
-
-    # Ensure keys exist and have the SAME dtype (string) across all frames
-    dfs = [_normalize_key_columns(d) for d in dfs]
-
-    # De-duplicate on key tuple to reduce merge explosions
-    for i, d in enumerate(dfs):
-        present_keys = [k for k in KEY_COLS if k in d.columns]
-        dfs[i] = d.drop_duplicates(subset=present_keys)
-
-    # Progressive OUTER merge on normalized string keys (no dtype mismatch now)
-    merged = dfs[0]
-    for other in dfs[1:]:
-        merged = merged.merge(other, on=KEY_COLS, how="outer", suffixes=("", "_dup"))
-
-    COALESCE = {
-        "Date": ["Date","date","GameDate","Datetime","DateTime"],
-        "Batter": ["Batter","BatterName","Batter_Name"],
-        "BatterTeam": ["BatterTeam","BTeam","HitterTeam"],
-        "BatterSide": ["BatterSide","BatSide","BatterBatSide","BatterBats","Bats"],
-        "Pitcher": ["Pitcher","PitcherName","Pitcher_Name"],
-        "PitcherTeam": ["PitcherTeam","PTeam"],
-        "PitcherThrows": ["PitcherThrows","Throwing","ThrowHand","Pitcher_Throws"],
-        "PitchCall": ["PitchCall","Call"],
-        "AutoPitchType": ["AutoPitchType","PitchType","TaggedPitchType"],
-        "Balls": ["Balls","BallCt"], "Strikes": ["Strikes","StrikeCt"],
-        "PlateLocSide": ["PlateLocSide","PlateSide","PlateX","px"],
-        "PlateLocHeight": ["PlateLocHeight","PlateHeight","PlateY","pz"],
-        "EffectiveVelo": ["EffectiveVelo","RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH"],
-        "PlayResult": ["PlayResult","Result"],
-        "ExitSpeed": ["ExitSpeed","EV","ExitVelo"],
-        "Angle": ["Angle","LaunchAngle"],
-        "TaggedHitType": ["TaggedHitType","HitType"],
-        "Bearing": ["Bearing","SprayAngle"],
-        "KorBB": ["KorBB","KBB","PA_Result","PAResult"],
-    }
-    merged = _coalesce_columns(merged, COALESCE)
-
-    keep = list({*KEY_COLS, *COALESCE.keys()})
-    keep = [c for c in keep if c in merged.columns]
-    merged = merged[keep].copy()
-
-    merged = ensure_date_column(merged)
-    return merged
-
-# ──────────────────────────────────────────────────────────────────────────────
-# BANNER
-# ──────────────────────────────────────────────────────────────────────────────
-def _img_to_b64(path: str):
-    try:
-        with open(path, "rb") as f:
-            return base64.b64encode(f.read()).decode("utf-8")
-    except Exception:
-        return None
-
-def render_nb_banner(title="Nebraska Baseball", height_px=180):
-    b64 = None
-    for p in BANNER_CANDIDATES:
-        b64 = _img_to_b64(p)
-        if b64: break
-    if not b64:
-        return
-    st.markdown(
-        f"""
-        <div style="position: relative; width: 100%; height: {height_px}px; border-radius: 12px; overflow: hidden; margin-bottom: 10px;">
-          <img src="data:image/jpeg;base64,{b64}" style="width:100%; height:100%; object-fit:cover; filter: brightness(0.6);" />
-          <div style="position:absolute; inset:0; background: rgba(0,0,0,0.35);"></div>
-          <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
-            <div style="font-size:40px; font-weight:800; color:white; text-shadow: 0 2px 12px rgba(0,0,0,.9);">{title}</div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# ──────────────────────────────────────────────────────────────────────────────
-# DENSITY & TABLE HELPERS
+# DENSITY
 # ──────────────────────────────────────────────────────────────────────────────
 def compute_density_hitter(x, y, xi_m, yi_m):
     coords = np.vstack([x, y])
@@ -284,6 +138,9 @@ def compute_density_hitter(x, y, xi_m, yi_m):
     except Exception:
         return np.zeros(xi_m.shape)
 
+# ──────────────────────────────────────────────────────────────────────────────
+# FORMATTERS / TABLE STYLE
+# ──────────────────────────────────────────────────────────────────────────────
 def fmt_pct(x, decimals=1):
     try:
         if pd.isna(x): return "—"
@@ -317,6 +174,37 @@ def themed_styler(df: pd.DataFrame, nowrap=True):
     if nowrap:
         styles.append({'selector': 'td', 'props': 'white-space: nowrap;'})
     return (df.style.hide(axis="index").set_table_styles(styles))
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BANNER
+# ──────────────────────────────────────────────────────────────────────────────
+def _img_to_b64(path: str):
+    try:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode("utf-8")
+    except Exception:
+        return None
+
+def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Baseball", height_px=180):
+    b64 = None
+    for p in image_candidates:
+        b64 = _img_to_b64(p)
+        if b64:
+            break
+    if not b64:
+        return
+    st.markdown(
+        f"""
+        <div style="position: relative; width: 100%; height: {height_px}px; border-radius: 12px; overflow: hidden; margin-bottom: 10px;">
+          <img src="data:image/jpeg;base64,{b64}" style="width:100%; height:100%; object-fit:cover; filter: brightness(0.6);" />
+          <div style="position:absolute; inset:0; background: rgba(0,0,0,0.35);"></div>
+          <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
+            <div style="font-size:40px; font-weight:800; color:white; text-shadow: 0 2px 12px rgba(0,0,0,.9);">{title}</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # BATTED BALL / DISCIPLINE / STATS
@@ -431,17 +319,136 @@ def create_batting_stats_profile(df: pd.DataFrame):
         "Avg Exit Vel": round(avg_exit, 2) if pd.notna(avg_exit) else np.nan,
         "Max Exit Vel": round(max_exit, 2) if pd.notna(max_exit) else np.nan,
         "Avg Angle":    round(avg_angle, 2) if pd.notna(avg_angle) else np.nan,
-        "Hits":         hits, "SO":           so,
-        "AVG":          ba,   "OBP":          obp,
-        "SLG":          slg,  "OPS":          ops,
+        "Hits":         hits,
+        "SO":           so,
+        "AVG":          ba,
+        "OBP":          obp,
+        "SLG":          slg,
+        "OPS":          ops,
         "HardHit %":    round(hard, 1) if pd.notna(hard) else np.nan,
-        "K %":          k_pct, "BB %":        bb_pct,
+        "K %":          k_pct,
+        "BB %":         bb_pct,
     }])
 
     return stats, pa, ab
 
 # ──────────────────────────────────────────────────────────────────────────────
-# OPPONENT LABELS
+# DATA LOADING & MERGE (robust)
+# ──────────────────────────────────────────────────────────────────────────────
+@st.cache_data(show_spinner=True)
+def _read_parquet(path: str) -> pd.DataFrame:
+    return pd.read_parquet(path)
+
+def _coerce_key_types(df: pd.DataFrame) -> pd.DataFrame:
+    """Force merge keys to consistent dtypes across all inputs."""
+    df = df.copy()
+    # GameID often mixed: object/float → make string without decimals
+    if "GameID" in df.columns:
+        s = df["GameID"]
+        if pd.api.types.is_numeric_dtype(s):
+            df["GameID"] = s.fillna(-1).astype("Int64").astype(str).replace({"<NA>": np.nan})
+        else:
+            df["GameID"] = s.astype(str)
+    for c in ["Inning","PAofInning","PitchofPA"]:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce").astype("Int64")
+    if "Top/Bottom" in df.columns:
+        df["Top/Bottom"] = df["Top/Bottom"].astype(str)
+    return df
+
+def _coalesce_columns(df: pd.DataFrame, candidates: dict[str, list[str]]) -> pd.DataFrame:
+    """Combine duplicate-same-meaning columns from merged frames."""
+    out = df.copy()
+    for target, cols in candidates.items():
+        present = [c for c in cols if c in out.columns]
+        if not present:
+            continue
+        # Start with the first column; overlay with subsequent non-null values
+        base = out[present[0]]
+        for c in present[1:]:
+            # align dtype to avoid Categorical vs object conflicts
+            s = out[c]
+            if str(base.dtype) != str(s.dtype):
+                s = s.astype(base.dtype, errors="ignore")
+            base = base.where(base.notna(), s)
+        out[target] = base
+        # Drop extras, keep only target
+        drop_cols = [c for c in present if c != target]
+        out.drop(columns=drop_cols, inplace=True, errors="ignore")
+    return out
+
+COALESCE_CANDIDATES = {
+    # identity
+    "Date": ["Date","GameDate","Datetime","GameDateTime"],
+    "GameID": ["GameID"],
+    "Inning": ["Inning"],
+    "Top/Bottom": ["Top/Bottom","TopBottom","TB"],
+    "PAofInning": ["PAofInning","PA"],
+    # pitch + location
+    "PitchCall": ["PitchCall"],
+    "AutoPitchType": ["AutoPitchType","PitchType","TaggedPitchType"],
+    "PitchofPA": ["PitchofPA"],
+    "Balls": ["Balls"],
+    "Strikes": ["Strikes"],
+    "PlateLocSide": ["PlateLocSide","PlateSide","px"],
+    "PlateLocHeight": ["PlateLocHeight","PlateHeight","pz"],
+    "EffectiveVelo": ["EffectiveVelo","RelSpeed","ReleaseSpeed","RelSpeedMPH"],
+    # entities
+    "Batter": ["Batter"],
+    "BatterTeam": ["BatterTeam"],
+    "BatterSide": ["BatterSide","Bats","Stand"],
+    "Pitcher": ["Pitcher"],
+    "PitcherThrows": ["PitcherThrows","Throws"],
+    "PitcherTeam": ["PitcherTeam"],
+    # batted ball
+    "PlayResult": ["PlayResult"],
+    "ExitSpeed": ["ExitSpeed","EV"],
+    "Angle": ["Angle","LA"],
+    "TaggedHitType": ["TaggedHitType"],
+    "Bearing": ["Bearing","SprayAngle"],
+    # misc that some of your tables reference
+    "KorBB": ["KorBB"],
+}
+
+@st.cache_data(show_spinner=True)
+def load_all_merged(parts: dict) -> pd.DataFrame:
+    missing = [p for p in parts.values() if not os.path.exists(p)]
+    if missing:
+        st.error("Missing files:\n" + "\n".join(f"• {m}" for m in missing))
+        return pd.DataFrame()
+
+    dfs = []
+    for name, path in parts.items():
+        dfp = _read_parquet(path)
+        dfp = _coerce_key_types(dfp)
+        dfs.append(dfp)
+
+    # Outer-merge all frames on the natural keys. We merge pairwise.
+    merged = dfs[0]
+    for other in dfs[1:]:
+        # Ensure all KEY_COLS exist in both sides (create if missing)
+        for k in KEY_COLS:
+            if k not in merged.columns: merged[k] = pd.NA
+            if k not in other.columns:  other[k]  = pd.NA
+        # Re-coerce keys after new columns introduced
+        merged = _coerce_key_types(merged)
+        other  = _coerce_key_types(other)
+        merged = merged.merge(other, on=KEY_COLS, how="outer", suffixes=("", "_dup"))
+
+    # Coalesce duplicate-same-meaning columns to canonical names
+    merged = _coalesce_columns(merged, COALESCE_CANDIDATES)
+
+    # Keep only the columns the app uses (plus keys)
+    keep = list(dict.fromkeys(COLUMNS_USED + KEY_COLS))
+    keep = [c for c in keep if c in merged.columns]
+    merged = merged[keep].copy()
+
+    # Final cleanups
+    merged = ensure_date_column(merged)
+    return merged
+
+# ──────────────────────────────────────────────────────────────────────────────
+# OPPONENT LABELING (date dropdown)
 # ──────────────────────────────────────────────────────────────────────────────
 def _codes_to_pretty_names(codes):
     return [TEAM_NAME_MAP.get(code, code) for code in sorted(set([str(c) for c in codes if pd.notna(c)]))]
@@ -462,14 +469,26 @@ def get_opponents_for_date(df_date: pd.DataFrame) -> list[str]:
     return infer_opponents_from_gameid(df_date.get("GameID", pd.Series(dtype=object)), KNOWN_TEAM_CODES)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STANDARD HITTER REPORT (color-fixed scatter)
+# STANDARD HITTER REPORT (colors-by-result fixed)
 # ──────────────────────────────────────────────────────────────────────────────
-def create_hitter_report(df, batter, ncols=3):
-    bdf = df[df.get('Batter') == batter]
+SHAPE_MAP = {'Fastball': 'o', 'Curveball': 's', 'Slider': '^', 'Changeup': 'D'}
+COLOR_MAP = {
+    'StrikeCalled': '#CCCC00',
+    'BallCalled': 'green',
+    'FoulBallNotFieldable': 'tan',
+    'FoulBallFieldable': 'tan',
+    'InPlay': '#6699CC',
+    'StrikeSwinging': 'red',
+    'HitByPitch': 'lime',
+}
+
+def create_hitter_report(df: pd.DataFrame, batter: str, ncols=3):
+    bdf = df[df.get('Batter') == batter].copy()
     pa_groups = list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning']))
     n_pa = len(pa_groups)
     nrows = max(1, math.ceil(n_pa / ncols))
 
+    # textual descriptions per PA
     descriptions = []
     for _, pa_df in pa_groups:
         lines = []
@@ -497,12 +516,14 @@ def create_hitter_report(df, batter, ncols=3):
     fig = plt.figure(figsize=(3 + 4*ncols + 1, 4*nrows))
     gs = GridSpec(nrows, ncols+1, width_ratios=[0.8] + [1]*ncols, wspace=0.15, hspace=0.55)
 
+    # Optional date title
     if pa_groups:
         date = pa_groups[0][1].get('Date').iloc[0]
         date_str = format_date_long(date)
         fig.suptitle(f"{batter} Hitter Report for {date_str}",
                      fontsize=16, x=0.55, y=1.0, fontweight='bold')
 
+    # summary line
     gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
     whiffs = (gd.get('PitchCall')=='StrikeSwinging').sum() if not gd.empty else 0
     hardhits = (pd.to_numeric(gd.get('ExitSpeed'), errors="coerce") > 95).sum() if not gd.empty else 0
@@ -515,33 +536,28 @@ def create_hitter_report(df, batter, ncols=3):
     fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
              ha='center', va='top', fontsize=12)
 
+    # panels
     for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
         row, col = divmod(idx, ncols)
         ax = fig.add_subplot(gs[row, col+1])
-        draw_strikezone(ax)
-        hand_lbl = "RHP"
+        draw_strikezone(ax)  # fixed size
         thr = str(pa_df.get('PitcherThrows').iloc[0]) if not pa_df.empty else ""
-        if thr.upper().startswith('L'): hand_lbl = "LHP"
+        hand_lbl = "LHP" if thr.upper().startswith('L') else "RHP"
         pitcher = str(pa_df.get('Pitcher').iloc[0]) if not pa_df.empty else "—"
 
         for _, p in pa_df.iterrows():
-            mk  = PITCH_MARKER.get(str(p.get('AutoPitchType')), 'o')
-            clr = RESULT_COLOR.get(str(p.get('PitchCall')), 'black')
-            sz  = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
-            x   = p.get('PlateLocSide'); y = p.get('PlateLocHeight')
+            ptype = str(p.get('AutoPitchType'))
+            pcall = str(p.get('PitchCall'))
+            mk = SHAPE_MAP.get(ptype, 'o')
+            clr = COLOR_MAP.get(pcall, 'black')
+            sz = 200 if ptype == 'Slider' else 150
+            x = p.get('PlateLocSide'); y = p.get('PlateLocHeight')
             if pd.notna(x) and pd.notna(y):
-                ax.scatter(
-                    x, y,
-                    marker=mk,
-                    s=sz,
-                    facecolors=clr,
-                    edgecolors='white',
-                    linewidths=1.0,
-                    zorder=2,
-                )
-                yoff = -0.05 if str(p.get('AutoPitchType'))=='Slider' else 0
+                # NOTE: pass facecolor via 'c=clr' (works) OR use 'facecolors=clr'. Keep edgecolor white.
+                ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', linewidth=1, zorder=2)
+                yoff = -0.05 if ptype=='Slider' else 0
                 ax.text(x, y + yoff, str(int(p.get('PitchofPA', 0))), ha='center', va='center',
-                        fontsize=6, fontweight='bold', zorder=3)
+                        fontsize=6, fontweight='bold', zorder=3, color='black')
 
         ax.set_xlim(*X_LIM); ax.set_ylim(*Y_LIM)
         ax.set_xticks([]); ax.set_yticks([])
@@ -549,6 +565,7 @@ def create_hitter_report(df, batter, ncols=3):
         ax.text(0.5, 0.1, f"vs {pitcher} ({hand_lbl})", transform=ax.transAxes,
                 ha='center', va='top', fontsize=9, style='italic')
 
+    # left descriptions column
     axd = fig.add_subplot(gs[:, 0]); axd.axis('off')
     y0 = 1.0; dy = 1.0 / (max(1, n_pa) * 5.0)
     for i, lines in enumerate(descriptions, start=1):
@@ -560,32 +577,30 @@ def create_hitter_report(df, batter, ncols=3):
             yln -= dy
         y0 = yln - dy*0.05
 
-    res_handles = [
-        Line2D([0],[0], marker='o', linestyle='none',
-               label=lbl, markerfacecolor=clr, markeredgecolor='k', markersize=10)
-        for lbl, clr in RESULT_COLOR.items()
-    ]
-    fig.legend(res_handles, [h.get_label() for h in res_handles],
-               title='Result', loc='lower right', bbox_to_anchor=(0.90, 0.015))
+    # legends (same as your reference)
+    res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
+                          markerfacecolor=v, markersize=10, markeredgecolor='k')
+                   for k,v in COLOR_MAP.items()]
+    fig.legend(res_handles, list(COLOR_MAP.keys()),
+               title='Result', loc='lower right', bbox_to_anchor=(0.90, 0.02), frameon=True)
 
-    pitch_handles = [
-        Line2D([0],[0], marker=m, linestyle='none',
-               label=lbl, markerfacecolor='gray', markeredgecolor='k', markersize=10)
-        for lbl, m in PITCH_MARKER.items()
-    ]
-    fig.legend(pitch_handles, [h.get_label() for h in pitch_handles],
-               title='Pitches', loc='lower right', bbox_to_anchor=(0.98, 0.015))
+    pitch_handles = [Line2D([0],[0], marker=m, color='w', label=k,
+                             markerfacecolor='gray', markersize=10, markeredgecolor='k')
+                     for k,m in SHAPE_MAP.items()]
+    fig.legend(pitch_handles, list(SHAPE_MAP.keys()),
+               title='Pitches', loc='lower right', bbox_to_anchor=(0.98, 0.02), frameon=True)
 
     plt.tight_layout(rect=[0.12, 0.06, 1, 0.92])
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HITTER HEATMAPS
+# HITTER HEATMAPS — 3 panels (Contact, Whiffs, Damage)
 # ──────────────────────────────────────────────────────────────────────────────
 def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
     sub = df_filtered_for_profiles[df_filtered_for_profiles.get('Batter') == batter].copy()
     if sub.empty:
         return None
+
     sub['iscontact'] = sub.get('PitchCall').isin(['InPlay','FoulBallFieldable','FoulBallNotFieldable'])
     sub['iswhiff']   = sub.get('PitchCall').eq('StrikeSwinging')
     sub['is95plus']  = pd.to_numeric(sub.get('ExitSpeed'), errors="coerce") >= 95
@@ -617,23 +632,39 @@ def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA & FILTER TO NEBRASKA BATTERS
+# LOAD DATA
 # ──────────────────────────────────────────────────────────────────────────────
-df_all = load_all_merged(DATA_PARTS)
-if df_all.empty:
-    st.error("No data loaded."); st.stop()
+@st.cache_data(show_spinner=True)
+def load_data() -> pd.DataFrame:
+    return load_all_merged(DATA_PARTS)
 
+df_all = load_data()
+if df_all.empty:
+    st.error("No data loaded.")
+    st.stop()
+
+# Nebraska hitters only
 df_neb_bat = df_all[df_all.get('BatterTeam') == 'NEB'].copy()
 if df_neb_bat.empty:
-    st.error("No Nebraska hitter rows found in the dataset."); st.stop()
+    st.error("No Nebraska hitter rows found in the dataset.")
+    st.stop()
+
+# Optional — manual cache reset button (useful during dev)
+if st.sidebar.button("🔄 Clear cache & reload"):
+    st.cache_data.clear()
+    st.experimental_rerun()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# UI
+# BANNER
 # ──────────────────────────────────────────────────────────────────────────────
 render_nb_banner(title="Nebraska Baseball")
 
+# Top section selector: Standard vs Profiles & Heatmaps
 view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps"], horizontal=True)
 
+# ──────────────────────────────────────────────────────────────────────────────
+# MODE: STANDARD HITTER REPORT
+# ──────────────────────────────────────────────────────────────────────────────
 if view_mode == "Standard Hitter Report":
     st.markdown("### Nebraska Hitter Reports")
 
@@ -649,14 +680,14 @@ if view_mode == "Standard Hitter Report":
         date_opts = []
         date_labels = {}
         for d, df_date in df_b_all.groupby('DateOnly'):
-            if pd.isna(d): continue
+            if pd.isna(d):
+                continue
             label = f"{format_date_long(d)}"
             opp_names = get_opponents_for_date(df_date)
             if opp_names:
                 label += f" ({'/'.join(opp_names)})"
             date_opts.append(d)
             date_labels[d] = label
-
         date_opts = sorted(date_opts)
     else:
         df_b_all = df_neb_bat.iloc[0:0].copy()
@@ -669,6 +700,7 @@ if view_mode == "Standard Hitter Report":
         index=len(date_opts)-1 if date_opts else 0
     ) if date_opts else None
 
+    # Data for that single game
     if batter_std and selected_date:
         df_date = df_b_all[df_b_all['DateOnly'] == selected_date].copy()
     else:
@@ -682,9 +714,13 @@ if view_mode == "Standard Hitter Report":
         if fig_std:
             st.pyplot(fig_std)
 
+# ──────────────────────────────────────────────────────────────────────────────
+# MODE: PROFILES & HEATMAPS
+# ──────────────────────────────────────────────────────────────────────────────
 else:
     st.markdown("### Profiles & Heatmaps")
 
+    # Batter select for profiles section
     batters_global = sorted(df_neb_bat.get('Batter').dropna().unique().tolist())
     batter = st.selectbox("Player", options=batters_global, index=0 if batters_global else None)
 
@@ -708,6 +744,7 @@ else:
         key="prof_months",
     )
 
+    # Days derive from selected months
     if batter:
         dser = pd.Series(dates_all)
         if sel_months:
@@ -718,13 +755,16 @@ else:
     sel_days = colD2.multiselect("Days", options=present_days, default=[], key="prof_days")
 
     lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
+
     hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
 
+    # Build filtered dataset for profiles/heatmaps
     if batter:
         df_player_all = df_neb_bat[df_neb_bat['Batter'] == batter].copy()
     else:
         df_player_all = df_neb_bat.iloc[0:0].copy()
 
+    # Month/Day filter
     if sel_months:
         mask_m = pd.to_datetime(df_player_all['Date'], errors="coerce").dt.month.isin(sel_months)
     else:
@@ -735,20 +775,24 @@ else:
         mask_d = pd.Series(True, index=df_player_all.index)
     df_profiles = df_player_all[mask_m & mask_d].copy()
 
+    # Last N games (after month/day filter)
     if lastN and not df_profiles.empty:
         uniq_dates = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.dropna().unique()
         uniq_dates = sorted(uniq_dates)
         last_dates = set(uniq_dates[-lastN:])
         df_profiles = df_profiles[pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
 
+    # Pitcher hand filter
     if hand_choice == "LHP":
         df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
     elif hand_choice == "RHP":
         df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
+    # Render profiles & heatmaps
     if batter and df_profiles.empty:
         st.info("No rows for the selected filters.")
     elif batter:
+        # Season column (year). If mixed, "Multiple".
         year_vals = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.year.dropna().unique()
         if len(year_vals) == 1:
             season_year = int(year_vals[0])
@@ -757,11 +801,15 @@ else:
         else:
             season_year = "—"
 
+        # Month label
         month_label = ", ".join(MONTH_NAME_BY_NUM.get(m, str(m)) for m in sorted(sel_months)) if sel_months else None
+
+        # Opponents (mapped to names)
         opp_codes = df_profiles.get('PitcherTeam', pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
         opp_fullnames = [TEAM_NAME_MAP.get(code, code) for code in sorted(opp_codes)]
         opp_label = "/".join(opp_fullnames) if opp_fullnames else None
 
+        # Batted Ball Profile
         bb_df = create_batted_ball_profile(df_profiles).copy()
         for c in bb_df.columns:
             bb_df[c] = bb_df[c].apply(lambda v: fmt_pct(v, decimals=1))
@@ -773,6 +821,7 @@ else:
         st.markdown("#### Batted Ball Profile")
         st.table(themed_styler(bb_df))
 
+        # Plate Discipline Profile
         pd_df = create_plate_discipline_profile(df_profiles).copy()
         if "Zone %" in pd_df.columns:
             pd_df["Zone %"] = pd_df["Zone %"].apply(lambda v: fmt_pct(v, decimals=1))
@@ -789,6 +838,7 @@ else:
         st.markdown("#### Plate Discipline Profile")
         st.table(themed_styler(pd_df))
 
+        # Batting Statistics
         st_df, pa_cnt, ab_cnt = create_batting_stats_profile(df_profiles)
         st_df = st_df.copy()
         for c in ["AVG", "OBP", "SLG", "OPS"]:
@@ -800,14 +850,26 @@ else:
             st_df["Max Exit Vel"] = st_df["Max Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
         if "Avg Angle" in st_df.columns:
             st_df["Avg Angle"] = st_df["Avg Angle"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
-        if "HardHit % " in st_df.columns:
+        if "HardHit % in st_df.columns":
+            pass
+        if "HardHit %%" in st_df.columns:
+            pass
+        if "HardHit %"] = st_df.get("HardHit %")
+        if "HardHit %"] is not None:
             st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
         if "K %" in st_df.columns:
             st_df["K %"] = st_df["K %"].apply(fmt_pct2)
         if "BB %" in st_df.columns:
             st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
 
-        rename_map = {"Avg Exit Vel": "Avg EV","Max Exit Vel": "Max EV","Avg Angle":"Avg LA","HardHit %":"HardHit%","K %":"K%","BB %":"BB%"}
+        rename_map = {
+            "Avg Exit Vel": "Avg EV",
+            "Max Exit Vel": "Max EV",
+            "Avg Angle":    "Avg LA",
+            "HardHit %":    "HardHit%",
+            "K %":          "K%",
+            "BB %":         "BB%",
+        }
         st_df.rename(columns={k:v for k,v in rename_map.items() if k in st_df.columns}, inplace=True)
         st_df.insert(0, "Season", season_year)
         if month_label:
@@ -818,6 +880,7 @@ else:
         st.markdown("#### Batting Statistics")
         st.table(themed_styler(st_df, nowrap=True))
 
+        # Heatmaps
         st.markdown("#### Hitter Heatmaps")
         fig_hm = hitter_heatmaps(df_profiles, batter)
         if fig_hm:

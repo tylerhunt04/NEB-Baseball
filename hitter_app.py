@@ -21,7 +21,7 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # wide OFF
 
-DATA_PATH = "B10C25_small.parquet"  # update if needed
+DATA_PATH = "B10C25_25MB.csv"  # update if needed
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
     "/mnt/data/NebraskaChampions.jpg",

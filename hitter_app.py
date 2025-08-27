@@ -18,30 +18,13 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # wide OFF
 
-# Read from 3 parquet files you attached
-DATA_PATHS = [
-    "hitter_app_data.parquet",
-    "pitcher_app_data.parquet",
-    "d1_stats_app_data.parquet",
-]
-
+DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"  # update if needed
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
     "/mnt/data/NebraskaChampions.jpg",
 ]
 
 HUSKER_RED = "#E60026"
-
-# Shared colors for pitch results (used for scatter AND legend)
-RESULT_COLORS = {
-    'StrikeCalled': '#CCCC00',
-    'BallCalled': 'green',
-    'FoulBallNotFieldable': 'tan',
-    'InPlay': '#6699CC',
-    'StrikeSwinging': 'red',
-    'HitByPitch': 'lime'
-}
-RESULT_ORDER = ['StrikeCalled', 'BallCalled', 'FoulBallNotFieldable', 'InPlay', 'StrikeSwinging', 'HitByPitch']
 
 # Big Ten / opponents pretty names
 TEAM_NAME_MAP = {
@@ -195,6 +178,7 @@ def render_nb_banner(
     if not b64:
         return  # silently skip if not found
 
+    # Add dark overlay + slight image darkening so title stands out
     st.markdown(
         f"""
         <div style="
@@ -423,29 +407,17 @@ def create_hitter_report(df, batter, ncols=3):
         pitcher = str(pa_df.get('Pitcher').iloc[0]) if not pa_df.empty else "—"
 
         for _, p in pa_df.iterrows():
-            mk = {
-                'Fastball':'o',
-                'Curveball':'s',
-                'Slider':'^',
-                'Changeup':'D'
-            }.get(str(p.get('AutoPitchType')), 'o')
-
-            pitch_call = str(p.get('PitchCall'))
-            clr = RESULT_COLORS.get(pitch_call, 'black')
-
+            mk = {'Fastball':'o', 'Curveball':'s', 'Slider':'^', 'Changeup':'D'}.get(str(p.get('AutoPitchType')), 'o')
+            clr = {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
+                   'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
             sz = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
             x = p.get('PlateLocSide')
             y = p.get('PlateLocHeight')
             if pd.notna(x) and pd.notna(y):
-                ax.scatter(
-                    x, y, marker=mk, c=clr, s=sz,
-                    edgecolor='white', linewidth=1, zorder=2
-                )
+                ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', linewidth=1, zorder=2)
                 yoff = -0.05 if str(p.get('AutoPitchType'))=='Slider' else 0
-                ax.text(
-                    x, y + yoff, str(int(p.get('PitchofPA', 0))),
-                    ha='center', va='center', fontsize=6, fontweight='bold', zorder=3
-                )
+                ax.text(x, y + yoff, str(int(p.get('PitchofPA', 0))), ha='center', va='center',
+                        fontsize=6, fontweight='bold', zorder=3)
 
         ax.set_xlim(*X_LIM); ax.set_ylim(*Y_LIM)
         ax.set_xticks([]); ax.set_yticks([])
@@ -465,12 +437,11 @@ def create_hitter_report(df, batter, ncols=3):
             yln -= dy
         y0 = yln - dy*0.05
 
-    # legends (use shared RESULT_COLORS so colors match exactly)
-    res_handles = [
-        Line2D([0],[0], marker='o', color='w', label=k,
-               markerfacecolor=RESULT_COLORS[k], markersize=10, markeredgecolor='k')
-        for k in RESULT_ORDER if k in RESULT_COLORS
-    ]
+    # legends (nudged lower)
+    res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
+                          markerfacecolor=v, markersize=10, markeredgecolor='k')
+                   for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
+                               'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.items()]
     fig.legend(res_handles, [h.get_label() for h in res_handles],
                title='Result', loc='lower right', bbox_to_anchor=(0.90, 0.015))
 
@@ -524,31 +495,25 @@ def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA — from 3 parquet files
+# LOAD DATA
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
-def load_parquets(paths: list[str]) -> pd.DataFrame:
-    frames = []
-    for p in paths:
-        try:
-            if os.path.exists(p):
-                frames.append(pd.read_parquet(p))
-        except Exception:
-            pass
-    if not frames:
-        return pd.DataFrame()
-    df = pd.concat(frames, ignore_index=True, sort=False)
+def load_csv(path: str) -> pd.DataFrame:
+    try:
+        df = pd.read_csv(path, low_memory=False)
+    except UnicodeDecodeError:
+        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
     return ensure_date_column(df)
 
-df_all = load_parquets(DATA_PATHS)
+df_all = load_csv(DATA_PATH)
 if df_all.empty:
-    st.error("No data loaded from parquet files. Please ensure the files exist at /mnt/data.")
+    st.error("No data loaded.")
     st.stop()
 
 # Nebraska hitters only
 df_neb_bat = df_all[df_all.get('BatterTeam') == 'NEB'].copy()
 if df_neb_bat.empty:
-    st.error("No Nebraska hitter rows found in the parquet datasets.")
+    st.error("No Nebraska hitter rows found in the dataset.")
     st.stop()
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -556,11 +521,11 @@ if df_neb_bat.empty:
 # ──────────────────────────────────────────────────────────────────────────────
 render_nb_banner(title="Nebraska Baseball")
 
-# Top section selector: Standard Hitter Report vs Profiles & Heatmaps
+# Top section selector: Standard vs Profiles & Heatmaps
 view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps"], horizontal=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: STANDARD HITTER REPORT
+# MODE: STANDARD HITTER REPORT (batter → date with opponent names)
 # ──────────────────────────────────────────────────────────────────────────────
 if view_mode == "Standard Hitter Report":
     st.markdown("### Nebraska Hitter Reports")
@@ -617,7 +582,7 @@ if view_mode == "Standard Hitter Report":
             st.pyplot(fig_std)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: PROFILES & HEATMAPS
+# MODE: PROFILES & HEATMAPS (separate section with its own filters)
 # ──────────────────────────────────────────────────────────────────────────────
 else:
     st.markdown("### Profiles & Heatmaps")
@@ -628,7 +593,7 @@ else:
 
     st.markdown("#### Filters")
 
-    # Layout
+    # Give the hand radio more room so options fit in one line
     colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
     # Months / Days (built from this batter's season)
@@ -706,6 +671,7 @@ else:
         elif len(year_vals) > 1:
             season_year = "Multiple"
         else:
+            # fallback if no dates but batter chosen
             season_year = "—"
 
         # Month column (if any months chosen)
@@ -766,7 +732,7 @@ else:
             st_df["K %"] = st_df["K %"].apply(fmt_pct2)
         if "BB %" in st_df.columns:
             st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
-        # Short headers
+        # Short headers to keep on one line
         rename_map = {
             "Avg Exit Vel": "Avg EV",
             "Max Exit Vel": "Max EV",

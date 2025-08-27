@@ -4,6 +4,8 @@ import os
 import math
 import base64
 from pathlib import Path
+import re
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -221,32 +223,100 @@ def assign_spray_category(row):
     return 'Opposite' if side == 'R' else 'Pull'
 
 def create_batted_ball_profile(df: pd.DataFrame):
-    inplay = df[df.get('PitchCall', pd.Series(dtype=object)) == 'InPlay'].copy()
-    if 'TaggedHitType' not in inplay.columns:
-        inplay['TaggedHitType'] = pd.NA
-    if 'Bearing' not in inplay.columns:
-        inplay['Bearing'] = np.nan
-    if 'BatterSide' not in inplay.columns:
-        inplay['BatterSide'] = ""
+    """
+    Batted-ball profile using ONLY TaggedHitType.
+    - Rows with non-empty TaggedHitType are treated as BIP.
+    - TaggedHitType tokens are used to classify GroundBall / LineDrive / FlyBall / Popup.
+    - Falls back to alternate column names for Bearing and BatterSide if missing.
+    - Returns np.nan for percentages when no inplay rows exist.
+    """
+    d = df.copy()
 
+    # Normalize TaggedHitType (lower-case, trimmed)
+    if 'TaggedHitType' in d.columns:
+        th = d['TaggedHitType'].fillna("").astype(str).str.strip().str.lower()
+    else:
+        # try common alternate names
+        alt_found = False
+        for alt in ['HitType', 'hit_type', 'tagged_hittype', 'tagged_hittype']:
+            if alt in d.columns:
+                th = d[alt].fillna("").astype(str).str.strip().str.lower()
+                alt_found = True
+                break
+        if not alt_found:
+            th = pd.Series([""] * len(d), index=d.index)
+
+    # Consider a row inplay if TaggedHitType looks meaningful (not empty / not placeholders)
+    non_bip_tokens = {"", "nan", "none", "na", "null"}
+    inplay_mask = ~th.isin(non_bip_tokens) & th.str.len().gt(0)
+
+    inplay = d[inplay_mask].copy()
+
+    # If no inplay rows exist, return NaN percentages so UI shows "—"
+    def pct(s):
+        try:
+            s = pd.Series(s).astype(bool)
+            if len(s) == 0 or s.sum() == 0:
+                return np.nan
+            return round(100 * float(s.mean()), 1)
+        except Exception:
+            return np.nan
+
+    # Ensure TaggedHitType column exists on inplay as normalized text for pattern checks
+    inplay['_th_norm'] = inplay.get('TaggedHitType', "").astype(str).fillna("").str.strip().str.lower()
+
+    # Infer hit type categories from TaggedHitType text
+    is_ground = inplay['_th_norm'].str.contains(r'ground|gb|groundball|ground ball', na=False)
+    is_line   = inplay['_th_norm'].str.contains(r'line|linedrive|line drive|ld', na=False)
+    is_fly    = inplay['_th_norm'].str.contains(r'fly|flyball|fly ball|fb', na=False)
+    is_popup  = inplay['_th_norm'].str.contains(r'popup|pop up|pop_up|pop', na=False)
+
+    # If none of the above matched but TaggedHitType contains "single/double/triple/home", try to infer
+    sac_mask = inplay['_th_norm'].str.contains(r'single|double|triple|home|homer|hr', na=False) & ~(is_ground|is_line|is_fly|is_popup)
+    # Treat sac_mask hits as line drives for distribution purposes (better than forcing ground)
+    is_line = is_line | sac_mask
+
+    # Ensure Bearing numeric (accept alt column names)
+    if 'Bearing' not in inplay.columns:
+        for alt in ['BearingDegrees','bearing_deg','bearing_degrees','AngleBearing','Angle','angle']:
+            if alt in inplay.columns:
+                inplay['Bearing'] = pd.to_numeric(inplay[alt], errors='coerce')
+                break
+        else:
+            inplay['Bearing'] = np.nan
+    else:
+        inplay['Bearing'] = pd.to_numeric(inplay['Bearing'], errors='coerce')
+
+    # Ensure BatterSide fallback
+    if 'BatterSide' not in inplay.columns:
+        for alt in ['Side','Batter_Side','batterside']:
+            if alt in inplay.columns:
+                inplay['BatterSide'] = inplay[alt].astype(str).fillna("")
+                break
+        else:
+            inplay['BatterSide'] = inplay.get('BatterSide', "").fillna("").astype(str)
+    else:
+        inplay['BatterSide'] = inplay['BatterSide'].fillna("").astype(str)
+
+    # spray category (relies on Bearing & BatterSide)
     inplay['spray_cat'] = inplay.apply(assign_spray_category, axis=1)
 
-    def pct(mask):
-        try:
-            mask = pd.Series(mask).astype(bool)
-            return round(100 * float(mask.mean()), 1) if len(mask) else 0.0
-        except Exception:
-            return 0.0
-
+    # Build result
     bb = pd.DataFrame([{
-        "Ground ball %": pct(inplay["TaggedHitType"].astype(str).str.contains("GroundBall", case=False, na=False)),
-        "Fly ball %":    pct(inplay["TaggedHitType"].astype(str).str.contains("FlyBall",   case=False, na=False)),
-        "Line drive %":  pct(inplay["TaggedHitType"].astype(str).str.contains("LineDrive", case=False, na=False)),
-        "Popup %":       pct(inplay["TaggedHitType"].astype(str).str.contains("Popup",     case=False, na=False)),
-        "Pull %":        pct(inplay["spray_cat"].astype(str).eq("Pull")),
-        "Straight %":    pct(inplay["spray_cat"].astype(str).eq("Straight")),
-        "Opposite %":    pct(inplay["spray_cat"].astype(str).eq("Opposite")),
+        "Ground ball %": pct(is_ground),
+        "Fly ball %":    pct(is_fly),
+        "Line drive %":  pct(is_line),
+        "Popup %":       pct(is_popup),
+        "Pull %":        pct(inplay['spray_cat'].astype(str).eq("Pull")),
+        "Straight %":    pct(inplay['spray_cat'].astype(str).eq("Straight")),
+        "Opposite %":    pct(inplay['spray_cat'].astype(str).eq("Opposite")),
     }])
+
+    # clean up temp column if present
+    # (not strictly necessary but keeps memory clean)
+    if '_th_norm' in inplay.columns:
+        del inplay['_th_norm']
+
     return bb
 
 def create_plate_discipline_profile(df: pd.DataFrame):

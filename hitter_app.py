@@ -31,7 +31,7 @@ TEAM_NAME_MAP = {
     "ILL_ILL": "Illinois",
     "MIC_SPA": "Michigan State",
     "UCLA": "UCLA",
-    "IOWA_HAW": "Iowa",
+    "IOW_HAW": "Iowa",
     "IU": "Indiana",
     "MAR_TER": "Maryland",
     "MIC_WOL": "Michigan",

@@ -18,7 +18,13 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # wide OFF
 
-DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"  # update if needed
+# NEW: read from 3 parquet files you attached
+DATA_PATHS = [
+    "/mnt/data/hitter_app_data.parquet",
+    "/mnt/data/pitcher_app_data.parquet",
+    "/mnt/data/d1_stats_app_data.parquet",
+]
+
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
     "/mnt/data/NebraskaChampions.jpg",
@@ -495,25 +501,34 @@ def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA
+# LOAD DATA — from 3 parquet files
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
-def load_csv(path: str) -> pd.DataFrame:
-    try:
-        df = pd.read_csv(path, low_memory=False)
-    except UnicodeDecodeError:
-        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
+def load_parquets(paths: list[str]) -> pd.DataFrame:
+    frames = []
+    missing = []
+    for p in paths:
+        try:
+            if os.path.exists(p):
+                frames.append(pd.read_parquet(p))
+            else:
+                missing.append(p)
+        except Exception as e:
+            missing.append(f"{p} (error: {e})")
+    if not frames:
+        return pd.DataFrame()
+    df = pd.concat(frames, ignore_index=True, sort=False)
     return ensure_date_column(df)
 
-df_all = load_csv(DATA_PATH)
+df_all = load_parquets(DATA_PATHS)
 if df_all.empty:
-    st.error("No data loaded.")
+    st.error("No data loaded from parquet files. Please ensure the files exist at /mnt/data.")
     st.stop()
 
 # Nebraska hitters only
 df_neb_bat = df_all[df_all.get('BatterTeam') == 'NEB'].copy()
 if df_neb_bat.empty:
-    st.error("No Nebraska hitter rows found in the dataset.")
+    st.error("No Nebraska hitter rows found in the parquet datasets.")
     st.stop()
 
 # ──────────────────────────────────────────────────────────────────────────────

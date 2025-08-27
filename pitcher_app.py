@@ -31,7 +31,7 @@ st.set_option("client.showErrorDetails", True)
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH = "B10C25_hitter_app_columns.csv"  # <-- your CSV
+DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"  # <-- your CSV
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG = "NebraskaChampions.jpg"  # uploaded earlier
 HUSKER_RED = "#E60026"

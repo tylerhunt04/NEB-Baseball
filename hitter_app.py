@@ -20,9 +20,9 @@ st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # w
 
 # NEW: read from 3 parquet files you attached
 DATA_PATHS = [
-    "/mnt/data/hitter_app_data.parquet",
-    "/mnt/data/pitcher_app_data.parquet",
-    "/mnt/data/d1_stats_app_data.parquet",
+    "hitter_app_data.parquet",
+    "pitcher_app_data.parquet",
+    "d1_stats_app_data.parquet",
 ]
 
 BANNER_CANDIDATES = [

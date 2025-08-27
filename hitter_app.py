@@ -3,9 +3,6 @@
 import os
 import math
 import base64
-from pathlib import Path
-import re
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -21,7 +18,7 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # wide OFF
 
-DATA_PATH = "B10C25_hitter_app_columns.csv"  # update if needed
+DATA_PATH = "B10C25_streamlit_streamlit_columns.csv"  # update if needed
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
     "/mnt/data/NebraskaChampions.jpg",
@@ -34,7 +31,7 @@ TEAM_NAME_MAP = {
     "ILL_ILL": "Illinois",
     "MIC_SPA": "Michigan State",
     "UCLA": "UCLA",
-    "IOW_HAW": "Iowa",
+    "IOWA_HAW": "Iowa",
     "IU": "Indiana",
     "MAR_TER": "Maryland",
     "MIC_WOL": "Michigan",
@@ -223,107 +220,32 @@ def assign_spray_category(row):
     return 'Opposite' if side == 'R' else 'Pull'
 
 def create_batted_ball_profile(df: pd.DataFrame):
-    """
-    Batted-ball profile using ONLY TaggedHitType.
-    - Works even if TaggedHitType is missing (falls back to alternate column names or an empty Series).
-    - Returns np.nan for categories when no inplay rows exist (so UI shows "—").
-    """
-    d = df.copy()
-
-    # --- get a normalized TaggedHitType series (always a pd.Series) ---
-    alt_names = ['TaggedHitType', 'HitType', 'hit_type', 'tagged_hittype', 'tagged_hittype']
-    th_series = None
-    for name in alt_names:
-        if name in d.columns:
-            th_series = d[name].astype(str).fillna("").str.strip().str.lower()
-            break
-    if th_series is None:
-        th_series = pd.Series([""] * len(d), index=d.index)
-
-    # Consider a row "in play" if TaggedHitType is meaningful (not empty / not placeholders)
-    non_bip_tokens = {"", "nan", "none", "na", "null"}
-    inplay_mask = ~th_series.isin(non_bip_tokens) & th_series.str.len().gt(0)
-    inplay = d.loc[inplay_mask].copy()
-
-    # If no inplay rows exist, return NaN percentages so UI shows "—"
-    def pct(s):
-        try:
-            s = pd.Series(s).astype(bool)
-            if len(s) == 0 or s.sum() == 0:
-                return np.nan
-            return round(100 * float(s.mean()), 1)
-        except Exception:
-            return np.nan
-
-    if inplay.empty:
-        return pd.DataFrame([{
-            "Ground ball %": np.nan,
-            "Fly ball %":    np.nan,
-            "Line drive %":  np.nan,
-            "Popup %":       np.nan,
-            "Pull %":        np.nan,
-            "Straight %":    np.nan,
-            "Opposite %":    np.nan,
-        }])
-
-    # --- normalized TaggedHitType for inplay rows ---
-    if 'TaggedHitType' in inplay.columns:
-        inplay['_th_norm'] = inplay['TaggedHitType'].astype(str).fillna("").str.strip().str.lower()
-    else:
-        # fallback series (shouldn't happen because inplay was defined by th_series)
-        inplay['_th_norm'] = pd.Series([""] * len(inplay), index=inplay.index)
-
-    # Infer hit type categories from TaggedHitType text
-    is_ground = inplay['_th_norm'].str.contains(r'ground|gb|groundball|ground ball', na=False)
-    is_line   = inplay['_th_norm'].str.contains(r'line|linedrive|line drive|ld', na=False)
-    is_fly    = inplay['_th_norm'].str.contains(r'fly|flyball|fly ball|fb', na=False)
-    is_popup  = inplay['_th_norm'].str.contains(r'popup|pop up|pop_up|pop', na=False)
-
-    # If none matched but TaggedHitType contains single/double/triple/home, treat as line drive
-    sac_mask = inplay['_th_norm'].str.contains(r'single|double|triple|home|homer|hr', na=False) & \
-               ~(is_ground | is_line | is_fly | is_popup)
-    is_line = is_line | sac_mask
-
-    # Ensure Bearing numeric (accept alt column names)
+    inplay = df[df.get('PitchCall', pd.Series(dtype=object)) == 'InPlay'].copy()
+    if 'TaggedHitType' not in inplay.columns:
+        inplay['TaggedHitType'] = pd.NA
     if 'Bearing' not in inplay.columns:
-        for alt in ['BearingDegrees','bearing_deg','bearing_degrees','AngleBearing','Angle','angle']:
-            if alt in inplay.columns:
-                inplay['Bearing'] = pd.to_numeric(inplay[alt], errors='coerce')
-                break
-        else:
-            inplay['Bearing'] = np.nan
-    else:
-        inplay['Bearing'] = pd.to_numeric(inplay['Bearing'], errors='coerce')
-
-    # Ensure BatterSide fallback
+        inplay['Bearing'] = np.nan
     if 'BatterSide' not in inplay.columns:
-        for alt in ['Side','Batter_Side','batterside']:
-            if alt in inplay.columns:
-                inplay['BatterSide'] = inplay[alt].astype(str).fillna("")
-                break
-        else:
-            inplay['BatterSide'] = pd.Series([""] * len(inplay), index=inplay.index)
-    else:
-        inplay['BatterSide'] = inplay['BatterSide'].fillna("").astype(str)
+        inplay['BatterSide'] = ""
 
-    # spray category (relies on Bearing & BatterSide)
     inplay['spray_cat'] = inplay.apply(assign_spray_category, axis=1)
 
-    # Build result
+    def pct(mask):
+        try:
+            mask = pd.Series(mask).astype(bool)
+            return round(100 * float(mask.mean()), 1) if len(mask) else 0.0
+        except Exception:
+            return 0.0
+
     bb = pd.DataFrame([{
-        "Ground ball %": pct(is_ground),
-        "Fly ball %":    pct(is_fly),
-        "Line drive %":  pct(is_line),
-        "Popup %":       pct(is_popup),
-        "Pull %":        pct(inplay['spray_cat'].astype(str).eq("Pull")),
-        "Straight %":    pct(inplay['spray_cat'].astype(str).eq("Straight")),
-        "Opposite %":    pct(inplay['spray_cat'].astype(str).eq("Opposite")),
+        "Ground ball %": pct(inplay["TaggedHitType"].astype(str).str.contains("GroundBall", case=False, na=False)),
+        "Fly ball %":    pct(inplay["TaggedHitType"].astype(str).str.contains("FlyBall",   case=False, na=False)),
+        "Line drive %":  pct(inplay["TaggedHitType"].astype(str).str.contains("LineDrive", case=False, na=False)),
+        "Popup %":       pct(inplay["TaggedHitType"].astype(str).str.contains("Popup",     case=False, na=False)),
+        "Pull %":        pct(inplay["spray_cat"].astype(str).eq("Pull")),
+        "Straight %":    pct(inplay["spray_cat"].astype(str).eq("Straight")),
+        "Opposite %":    pct(inplay["spray_cat"].astype(str).eq("Opposite")),
     }])
-
-    # cleanup
-    if '_th_norm' in inplay.columns:
-        del inplay['_th_norm']
-
     return bb
 
 def create_plate_discipline_profile(df: pd.DataFrame):
@@ -573,90 +495,16 @@ def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA - robust loader supporting CSV and Parquet
+# LOAD DATA
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
 def load_csv(path: str) -> pd.DataFrame:
-    """
-    Robust loader that handles CSV and Parquet files.
-    - If path ends with .parquet/.pq -> use pd.read_parquet
-    - If path ends with .csv/.txt -> try pd.read_csv, with a safe fallback
-      (latin1 + engine='python' + on_bad_lines='skip') for malformed CSVs.
-    - If extension unknown, try parquet first then csv.
-    """
-    p = Path(path)
-    if not p.exists():
-        st.error(f"Data file not found at: {path}")
-        st.stop()
-
-    ext = p.suffix.lower()
-    df = None
-
-    # try parquet explicitly
-    def try_read_parquet(pth):
-        try:
-            return pd.read_parquet(pth)
-        except Exception:
-            # try explicit engine fallback
-            try:
-                return pd.read_parquet(pth, engine="pyarrow")
-            except Exception:
-                raise
-
-    # try csv with safe fallback
-    def try_read_csv(pth):
-        try:
-            return pd.read_csv(pth, low_memory=False)
-        except Exception:
-            # fallback: latin-1 encoding, python engine, skip bad lines
-            try:
-                return pd.read_csv(pth, low_memory=False, encoding="latin-1",
-                                   engine="python", on_bad_lines="skip")
-            except Exception:
-                raise
-
     try:
-        if ext in [".parquet", ".pq"]:
-            df = try_read_parquet(path)
-        elif ext in [".csv", ".txt"]:
-            df = try_read_csv(path)
-        else:
-            # unknown extension: prefer parquet, then csv
-            try:
-                df = try_read_parquet(path)
-            except Exception:
-                df = try_read_csv(path)
-    except Exception as exc:
-        st.error(f"Failed to read data file ({p.name}): {type(exc).__name__}. Check file format and installed parquet engine (pyarrow/fastparquet).")
-        st.exception(exc)
-        st.stop()
-
-    if not isinstance(df, pd.DataFrame):
-        st.error("Loaded object is not a DataFrame.")
-        st.stop()
-
+        df = pd.read_csv(path, low_memory=False)
+    except UnicodeDecodeError:
+        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
     return ensure_date_column(df)
 
-# Optional helpers: convert CSV <-> Parquet (use locally or with caution in-app)
-def convert_csv_to_parquet(csv_path: str, parquet_path: str, compression="snappy"):
-    """Convert CSV -> Parquet. Requires pyarrow or fastparquet installed."""
-    df = pd.read_csv(csv_path, low_memory=False)
-    try:
-        df.to_parquet(parquet_path, compression=compression)
-    except Exception:
-        df.to_parquet(parquet_path, engine="pyarrow", compression=compression)
-
-def convert_parquet_to_csv(parquet_path: str, csv_path: str):
-    """Convert Parquet -> CSV."""
-    try:
-        df = pd.read_parquet(parquet_path)
-    except Exception:
-        df = pd.read_parquet(parquet_path, engine="pyarrow")
-    df.to_csv(csv_path, index=False)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA
-# ──────────────────────────────────────────────────────────────────────────────
 df_all = load_csv(DATA_PATH)
 if df_all.empty:
     st.error("No data loaded.")
@@ -686,7 +534,7 @@ if view_mode == "Standard Hitter Report":
 
     # Batter select (from all NEB hitters)
     batters_global = sorted(df_neb_bat.get('Batter').dropna().unique().tolist())
-    batter_std = colB.selectbox("Player", options=batters_global, index=0 if batters_global else 0)
+    batter_std = colB.selectbox("Player", options=batters_global, index=0 if batters_global else None)
 
     # Date options for the selected batter, with opponent label (mapped to names)
     if batter_std:
@@ -711,14 +559,12 @@ if view_mode == "Standard Hitter Report":
         df_b_all = df_neb_bat.iloc[0:0].copy()
         date_opts, date_labels = [], {}
 
-    selected_date = None
-    if date_opts:
-        selected_date = colD.selectbox(
-            "Game Date",
-            options=date_opts,
-            format_func=lambda d: date_labels.get(d, format_date_long(d)),
-            index=len(date_opts)-1
-        )
+    selected_date = colD.selectbox(
+        "Game Date",
+        options=date_opts,
+        format_func=lambda d: date_labels.get(d, format_date_long(d)),
+        index=len(date_opts)-1 if date_opts else 0
+    ) if date_opts else None
 
     # Data for that single game
     if batter_std and selected_date:
@@ -743,7 +589,7 @@ else:
 
     # Batter select for profiles section
     batters_global = sorted(df_neb_bat.get('Batter').dropna().unique().tolist())
-    batter = st.selectbox("Player", options=batters_global, index=0 if batters_global else 0)
+    batter = st.selectbox("Player", options=batters_global, index=0 if batters_global else None)
 
     st.markdown("#### Filters")
 

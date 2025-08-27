@@ -1,4 +1,4 @@
-# hitter_app.py  — Nebraska Hitter Reports (3-parquet merge + color-fixed scatter)
+# hitter_app.py  — Nebraska Hitter Reports (3-parquet merge; key dtype-normalized; color-fixed)
 
 import os
 import math
@@ -32,7 +32,7 @@ BANNER_CANDIDATES = ["NebraskaChampions.jpg"]
 HUSKER_RED = "#E60026"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TEAM MAP (Power-4; can extend if needed)
+# TEAM MAP
 # ──────────────────────────────────────────────────────────────────────────────
 TEAM_NAME_MAP = {
     # Big Ten
@@ -79,7 +79,6 @@ custom_cmap = colors.LinearSegmentedColormap.from_list(
     N=256,
 )
 
-# Result colors (legend + points) & pitch markers
 RESULT_COLOR = {
     'StrikeCalled': '#CCCC00',
     'BallCalled': 'green',
@@ -89,12 +88,7 @@ RESULT_COLOR = {
     'StrikeSwinging': 'red',
     'HitByPitch': 'lime',
 }
-PITCH_MARKER = {
-    'Fastball': 'o',
-    'Curveball': 's',
-    'Slider': '^',
-    'Changeup': 'D',
-}
+PITCH_MARKER = {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DATE HELPERS
@@ -118,20 +112,16 @@ def _ordinal(n: int) -> str:
     return f"{n}{'th' if 10 <= n % 100 <= 20 else {1:'st',2:'nd',3:'rd'}.get(n % 10, 'th')}"
 
 def format_date_long(d) -> str:
-    if d is None or pd.isna(d):
-        return ""
+    if d is None or pd.isna(d): return ""
     d = pd.to_datetime(d).date()
     return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
 
-MONTH_CHOICES = [
-    (1,"January"), (2,"February"), (3,"March"), (4,"April"),
-    (5,"May"), (6,"June"), (7,"July"), (8,"August"),
-    (9,"September"), (10,"October"), (11,"November"), (12,"December")
-]
+MONTH_CHOICES = [(1,"January"),(2,"February"),(3,"March"),(4,"April"),(5,"May"),(6,"June"),(7,"July"),
+                 (8,"August"),(9,"September"),(10,"October"),(11,"November"),(12,"December")]
 MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD & MERGE (three parquets, robust coalesce)
+# LOAD & MERGE (three parquets, robust coalesce) — FIXED: key dtype normalization
 # ──────────────────────────────────────────────────────────────────────────────
 KEY_COLS = ["GameID","Inning","Top/Bottom","PAofInning","PitchofPA"]
 
@@ -142,30 +132,45 @@ def _read_parquet(path: str, cols: list[str] | None = None) -> pd.DataFrame:
     except Exception:
         return pd.read_parquet(path)
 
-def _safe_union_columns(dfs: list[pd.DataFrame]) -> list[str]:
-    cols = set()
-    for d in dfs:
-        cols |= set(d.columns)
-    # keep keys first
-    ordered = [c for c in KEY_COLS if c in cols] + [c for c in sorted(cols) if c not in KEY_COLS]
-    return ordered
+def _normalize_key_col(s: pd.Series) -> pd.Series:
+    """
+    Normalize a merge-key column to pandas 'string' dtype.
+    - Keep missing as <NA>
+    - For numeric floats that are whole numbers, drop trailing '.0' (123.0 -> '123')
+    - Strip whitespace
+    """
+    if s.dtype.kind in "if":
+        out = s.apply(
+            lambda v: pd.NA if pd.isna(v)
+            else (str(int(v)) if float(v).is_integer() else f"{v}")
+        )
+    else:
+        out = s.astype("string")
+    out = out.str.strip()
+    out = out.where(out.ne(""), pd.NA)          # empty -> <NA>
+    out = out.where(out.str.lower() != "nan", pd.NA)
+    out = out.where(out.str.lower() != "none", pd.NA)
+    return out.astype("string")
+
+def _normalize_key_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    for k in KEY_COLS:
+        if k not in df.columns:
+            df[k] = pd.NA
+        df[k] = _normalize_key_col(df[k])
+    return df
 
 def _coalesce_columns(df: pd.DataFrame, mapping: dict[str, list[str]]) -> pd.DataFrame:
-    """
-    For each output column -> take first non-null value across the listed candidates.
-    Handles mixed dtypes (casts to object) to avoid Categorical/Int coercion issues.
-    """
     out = df.copy()
     for out_col, cands in mapping.items():
         series_list = []
         for c in cands:
             if c in out.columns:
                 s = out[c]
-                # uniform object dtype to avoid categorical where() TypeError
                 if pd.api.types.is_categorical_dtype(s):
                     s = s.astype(object)
                 elif pd.api.types.is_integer_dtype(s):
-                    s = s.astype("float")  # allow NaN
+                    s = s.astype("float")
                 else:
                     s = s.astype(object)
                 series_list.append(s)
@@ -173,7 +178,6 @@ def _coalesce_columns(df: pd.DataFrame, mapping: dict[str, list[str]]) -> pd.Dat
             continue
         merged = series_list[0]
         for s in series_list[1:]:
-            # where current isna, take from s
             merged = pd.Series(np.where(pd.isna(merged), s, merged), index=out.index, dtype=object)
         out[out_col] = merged
     return out
@@ -189,27 +193,23 @@ def load_all_merged(parts: dict) -> pd.DataFrame:
     df_p = _read_parquet(parts["pitcher"])
     df_d = _read_parquet(parts["d1"])
 
-    # Outer join on natural keys where present; otherwise row-wise concat + re-merge on best-effort
-    dfs = [df for df in (df_h, df_p, df_d) if not df.empty]
+    dfs = [d for d in (df_h, df_p, df_d) if d is not None and not d.empty]
     if not dfs:
         return pd.DataFrame()
 
-    # make sure key columns exist (even if missing in a file)
-    for d in dfs:
-        for k in KEY_COLS:
-            if k not in d.columns:
-                d[k] = np.nan
+    # Ensure keys exist and have the SAME dtype (string) across all frames
+    dfs = [_normalize_key_columns(d) for d in dfs]
 
-    # Reduce each to unique rows on keys to shrink join dup risk
+    # De-duplicate on key tuple to reduce merge explosions
     for i, d in enumerate(dfs):
-        dfs[i] = d.drop_duplicates(subset=[c for c in KEY_COLS if c in d.columns])
+        present_keys = [k for k in KEY_COLS if k in d.columns]
+        dfs[i] = d.drop_duplicates(subset=present_keys)
 
-    # progressive outer merges
+    # Progressive OUTER merge on normalized string keys (no dtype mismatch now)
     merged = dfs[0]
     for other in dfs[1:]:
         merged = merged.merge(other, on=KEY_COLS, how="outer", suffixes=("", "_dup"))
 
-    # coalesce common columns that may exist with variants across files
     COALESCE = {
         "Date": ["Date","date","GameDate","Datetime","DateTime"],
         "Batter": ["Batter","BatterName","Batter_Name"],
@@ -233,12 +233,10 @@ def load_all_merged(parts: dict) -> pd.DataFrame:
     }
     merged = _coalesce_columns(merged, COALESCE)
 
-    # keep only one copy of each coalesced column + the keys
     keep = list({*KEY_COLS, *COALESCE.keys()})
     keep = [c for c in keep if c in merged.columns]
     merged = merged[keep].copy()
 
-    # final date normalization
     merged = ensure_date_column(merged)
     return merged
 
@@ -256,8 +254,7 @@ def render_nb_banner(title="Nebraska Baseball", height_px=180):
     b64 = None
     for p in BANNER_CANDIDATES:
         b64 = _img_to_b64(p)
-        if b64:
-            break
+        if b64: break
     if not b64:
         return
     st.markdown(
@@ -434,21 +431,17 @@ def create_batting_stats_profile(df: pd.DataFrame):
         "Avg Exit Vel": round(avg_exit, 2) if pd.notna(avg_exit) else np.nan,
         "Max Exit Vel": round(max_exit, 2) if pd.notna(max_exit) else np.nan,
         "Avg Angle":    round(avg_angle, 2) if pd.notna(avg_angle) else np.nan,
-        "Hits":         hits,
-        "SO":           so,
-        "AVG":          ba,
-        "OBP":          obp,
-        "SLG":          slg,
-        "OPS":          ops,
+        "Hits":         hits, "SO":           so,
+        "AVG":          ba,   "OBP":          obp,
+        "SLG":          slg,  "OPS":          ops,
         "HardHit %":    round(hard, 1) if pd.notna(hard) else np.nan,
-        "K %":          k_pct,
-        "BB %":         bb_pct,
+        "K %":          k_pct, "BB %":        bb_pct,
     }])
 
     return stats, pa, ab
 
 # ──────────────────────────────────────────────────────────────────────────────
-# OPPONENT LABELS FOR DATE DROPDOWN
+# OPPONENT LABELS
 # ──────────────────────────────────────────────────────────────────────────────
 def _codes_to_pretty_names(codes):
     return [TEAM_NAME_MAP.get(code, code) for code in sorted(set([str(c) for c in codes if pd.notna(c)]))]
@@ -469,7 +462,7 @@ def get_opponents_for_date(df_date: pd.DataFrame) -> list[str]:
     return infer_opponents_from_gameid(df_date.get("GameID", pd.Series(dtype=object)), KNOWN_TEAM_CODES)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STANDARD HITTER REPORT (with color-fixed scatter)
+# STANDARD HITTER REPORT (color-fixed scatter)
 # ──────────────────────────────────────────────────────────────────────────────
 def create_hitter_report(df, batter, ncols=3):
     bdf = df[df.get('Batter') == batter]
@@ -477,7 +470,6 @@ def create_hitter_report(df, batter, ncols=3):
     n_pa = len(pa_groups)
     nrows = max(1, math.ceil(n_pa / ncols))
 
-    # textual descriptions per PA
     descriptions = []
     for _, pa_df in pa_groups:
         lines = []
@@ -505,14 +497,12 @@ def create_hitter_report(df, batter, ncols=3):
     fig = plt.figure(figsize=(3 + 4*ncols + 1, 4*nrows))
     gs = GridSpec(nrows, ncols+1, width_ratios=[0.8] + [1]*ncols, wspace=0.15, hspace=0.55)
 
-    # Optional date title
     if pa_groups:
         date = pa_groups[0][1].get('Date').iloc[0]
         date_str = format_date_long(date)
         fig.suptitle(f"{batter} Hitter Report for {date_str}",
                      fontsize=16, x=0.55, y=1.0, fontweight='bold')
 
-    # summary line
     gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
     whiffs = (gd.get('PitchCall')=='StrikeSwinging').sum() if not gd.empty else 0
     hardhits = (pd.to_numeric(gd.get('ExitSpeed'), errors="coerce") > 95).sum() if not gd.empty else 0
@@ -525,11 +515,10 @@ def create_hitter_report(df, batter, ncols=3):
     fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
              ha='center', va='top', fontsize=12)
 
-    # panels
     for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
         row, col = divmod(idx, ncols)
         ax = fig.add_subplot(gs[row, col+1])
-        draw_strikezone(ax)  # fixed size
+        draw_strikezone(ax)
         hand_lbl = "RHP"
         thr = str(pa_df.get('PitcherThrows').iloc[0]) if not pa_df.empty else ""
         if thr.upper().startswith('L'): hand_lbl = "LHP"
@@ -541,7 +530,6 @@ def create_hitter_report(df, batter, ncols=3):
             sz  = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
             x   = p.get('PlateLocSide'); y = p.get('PlateLocHeight')
             if pd.notna(x) and pd.notna(y):
-                # IMPORTANT: use facecolors/edgecolors to force solid colors (not colormap)
                 ax.scatter(
                     x, y,
                     marker=mk,
@@ -561,7 +549,6 @@ def create_hitter_report(df, batter, ncols=3):
         ax.text(0.5, 0.1, f"vs {pitcher} ({hand_lbl})", transform=ax.transAxes,
                 ha='center', va='top', fontsize=9, style='italic')
 
-    # left descriptions column
     axd = fig.add_subplot(gs[:, 0]); axd.axis('off')
     y0 = 1.0; dy = 1.0 / (max(1, n_pa) * 5.0)
     for i, lines in enumerate(descriptions, start=1):
@@ -573,7 +560,6 @@ def create_hitter_report(df, batter, ncols=3):
             yln -= dy
         y0 = yln - dy*0.05
 
-    # legends (reuse RESULT_COLOR)
     res_handles = [
         Line2D([0],[0], marker='o', linestyle='none',
                label=lbl, markerfacecolor=clr, markeredgecolor='k', markersize=10)
@@ -594,13 +580,12 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HITTER HEATMAPS — 3 panels (Contact, Whiffs, Damage)
+# HITTER HEATMAPS
 # ──────────────────────────────────────────────────────────────────────────────
 def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
     sub = df_filtered_for_profiles[df_filtered_for_profiles.get('Batter') == batter].copy()
     if sub.empty:
         return None
-
     sub['iscontact'] = sub.get('PitchCall').isin(['InPlay','FoulBallFieldable','FoulBallNotFieldable'])
     sub['iswhiff']   = sub.get('PitchCall').eq('StrikeSwinging')
     sub['is95plus']  = pd.to_numeric(sub.get('ExitSpeed'), errors="coerce") >= 95
@@ -649,9 +634,6 @@ render_nb_banner(title="Nebraska Baseball")
 
 view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps"], horizontal=True)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# MODE: STANDARD HITTER REPORT
-# ──────────────────────────────────────────────────────────────────────────────
 if view_mode == "Standard Hitter Report":
     st.markdown("### Nebraska Hitter Reports")
 
@@ -700,9 +682,6 @@ if view_mode == "Standard Hitter Report":
         if fig_std:
             st.pyplot(fig_std)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# MODE: PROFILES & HEATMAPS
-# ──────────────────────────────────────────────────────────────────────────────
 else:
     st.markdown("### Profiles & Heatmaps")
 

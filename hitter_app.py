@@ -225,32 +225,25 @@ def assign_spray_category(row):
 def create_batted_ball_profile(df: pd.DataFrame):
     """
     Batted-ball profile using ONLY TaggedHitType.
-    - Rows with non-empty TaggedHitType are treated as BIP.
-    - TaggedHitType tokens are used to classify GroundBall / LineDrive / FlyBall / Popup.
-    - Falls back to alternate column names for Bearing and BatterSide if missing.
-    - Returns np.nan for percentages when no inplay rows exist.
+    - Works even if TaggedHitType is missing (falls back to alternate column names or an empty Series).
+    - Returns np.nan for categories when no inplay rows exist (so UI shows "—").
     """
     d = df.copy()
 
-    # Normalize TaggedHitType (lower-case, trimmed)
-    if 'TaggedHitType' in d.columns:
-        th = d['TaggedHitType'].fillna("").astype(str).str.strip().str.lower()
-    else:
-        # try common alternate names
-        alt_found = False
-        for alt in ['HitType', 'hit_type', 'tagged_hittype', 'tagged_hittype']:
-            if alt in d.columns:
-                th = d[alt].fillna("").astype(str).str.strip().str.lower()
-                alt_found = True
-                break
-        if not alt_found:
-            th = pd.Series([""] * len(d), index=d.index)
+    # --- get a normalized TaggedHitType series (always a pd.Series) ---
+    alt_names = ['TaggedHitType', 'HitType', 'hit_type', 'tagged_hittype', 'tagged_hittype']
+    th_series = None
+    for name in alt_names:
+        if name in d.columns:
+            th_series = d[name].astype(str).fillna("").str.strip().str.lower()
+            break
+    if th_series is None:
+        th_series = pd.Series([""] * len(d), index=d.index)
 
-    # Consider a row inplay if TaggedHitType looks meaningful (not empty / not placeholders)
+    # Consider a row "in play" if TaggedHitType is meaningful (not empty / not placeholders)
     non_bip_tokens = {"", "nan", "none", "na", "null"}
-    inplay_mask = ~th.isin(non_bip_tokens) & th.str.len().gt(0)
-
-    inplay = d[inplay_mask].copy()
+    inplay_mask = ~th_series.isin(non_bip_tokens) & th_series.str.len().gt(0)
+    inplay = d.loc[inplay_mask].copy()
 
     # If no inplay rows exist, return NaN percentages so UI shows "—"
     def pct(s):
@@ -262,8 +255,23 @@ def create_batted_ball_profile(df: pd.DataFrame):
         except Exception:
             return np.nan
 
-    # Ensure TaggedHitType column exists on inplay as normalized text for pattern checks
-    inplay['_th_norm'] = inplay.get('TaggedHitType', "").astype(str).fillna("").str.strip().str.lower()
+    if inplay.empty:
+        return pd.DataFrame([{
+            "Ground ball %": np.nan,
+            "Fly ball %":    np.nan,
+            "Line drive %":  np.nan,
+            "Popup %":       np.nan,
+            "Pull %":        np.nan,
+            "Straight %":    np.nan,
+            "Opposite %":    np.nan,
+        }])
+
+    # --- normalized TaggedHitType for inplay rows ---
+    if 'TaggedHitType' in inplay.columns:
+        inplay['_th_norm'] = inplay['TaggedHitType'].astype(str).fillna("").str.strip().str.lower()
+    else:
+        # fallback series (shouldn't happen because inplay was defined by th_series)
+        inplay['_th_norm'] = pd.Series([""] * len(inplay), index=inplay.index)
 
     # Infer hit type categories from TaggedHitType text
     is_ground = inplay['_th_norm'].str.contains(r'ground|gb|groundball|ground ball', na=False)
@@ -271,9 +279,9 @@ def create_batted_ball_profile(df: pd.DataFrame):
     is_fly    = inplay['_th_norm'].str.contains(r'fly|flyball|fly ball|fb', na=False)
     is_popup  = inplay['_th_norm'].str.contains(r'popup|pop up|pop_up|pop', na=False)
 
-    # If none of the above matched but TaggedHitType contains "single/double/triple/home", try to infer
-    sac_mask = inplay['_th_norm'].str.contains(r'single|double|triple|home|homer|hr', na=False) & ~(is_ground|is_line|is_fly|is_popup)
-    # Treat sac_mask hits as line drives for distribution purposes (better than forcing ground)
+    # If none matched but TaggedHitType contains single/double/triple/home, treat as line drive
+    sac_mask = inplay['_th_norm'].str.contains(r'single|double|triple|home|homer|hr', na=False) & \
+               ~(is_ground | is_line | is_fly | is_popup)
     is_line = is_line | sac_mask
 
     # Ensure Bearing numeric (accept alt column names)
@@ -294,7 +302,7 @@ def create_batted_ball_profile(df: pd.DataFrame):
                 inplay['BatterSide'] = inplay[alt].astype(str).fillna("")
                 break
         else:
-            inplay['BatterSide'] = inplay.get('BatterSide', "").fillna("").astype(str)
+            inplay['BatterSide'] = pd.Series([""] * len(inplay), index=inplay.index)
     else:
         inplay['BatterSide'] = inplay['BatterSide'].fillna("").astype(str)
 
@@ -312,8 +320,7 @@ def create_batted_ball_profile(df: pd.DataFrame):
         "Opposite %":    pct(inplay['spray_cat'].astype(str).eq("Opposite")),
     }])
 
-    # clean up temp column if present
-    # (not strictly necessary but keeps memory clean)
+    # cleanup
     if '_th_norm' in inplay.columns:
         del inplay['_th_norm']
 

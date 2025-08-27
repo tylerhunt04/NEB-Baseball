@@ -838,30 +838,32 @@ else:
         st.markdown("#### Plate Discipline Profile")
         st.table(themed_styler(pd_df))
 
-        # Batting Statistics
+         # Batting Statistics
         st_df, pa_cnt, ab_cnt = create_batting_stats_profile(df_profiles)
         st_df = st_df.copy()
+
+        # Format: AVG/OBP/SLG/OPS as .xxx
         for c in ["AVG", "OBP", "SLG", "OPS"]:
             if c in st_df.columns:
                 st_df[c] = st_df[c].apply(fmt_avg3)
+
+        # EV & LA fixed to two decimals
         if "Avg Exit Vel" in st_df.columns:
             st_df["Avg Exit Vel"] = st_df["Avg Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
         if "Max Exit Vel" in st_df.columns:
             st_df["Max Exit Vel"] = st_df["Max Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
         if "Avg Angle" in st_df.columns:
             st_df["Avg Angle"] = st_df["Avg Angle"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
-        if "HardHit % in st_df.columns":
-            pass
-        if "HardHit %%" in st_df.columns:
-            pass
-        if "HardHit %"] = st_df.get("HardHit %")
-        if "HardHit %"] is not None:
+
+        # Percentages
+        if "HardHit %" in st_df.columns:
             st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
         if "K %" in st_df.columns:
             st_df["K %"] = st_df["K %"].apply(fmt_pct2)
         if "BB %" in st_df.columns:
             st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
 
+        # Short headers to keep on one line
         rename_map = {
             "Avg Exit Vel": "Avg EV",
             "Max Exit Vel": "Max EV",
@@ -870,7 +872,7 @@ else:
             "K %":          "K%",
             "BB %":         "BB%",
         }
-        st_df.rename(columns={k:v for k,v in rename_map.items() if k in st_df.columns}, inplace=True)
+        st_df.rename(columns={k: v for k, v in rename_map.items() if k in st_df.columns}, inplace=True)
         st_df.insert(0, "Season", season_year)
         if month_label:
             st_df.insert(1, "Month", month_label)

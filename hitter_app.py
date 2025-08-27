@@ -3,6 +3,7 @@
 import os
 import math
 import base64
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -495,16 +496,90 @@ def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA
+# LOAD DATA - robust loader supporting CSV and Parquet
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
 def load_csv(path: str) -> pd.DataFrame:
+    """
+    Robust loader that handles CSV and Parquet files.
+    - If path ends with .parquet/.pq -> use pd.read_parquet
+    - If path ends with .csv/.txt -> try pd.read_csv, with a safe fallback
+      (latin1 + engine='python' + on_bad_lines='skip') for malformed CSVs.
+    - If extension unknown, try parquet first then csv.
+    """
+    p = Path(path)
+    if not p.exists():
+        st.error(f"Data file not found at: {path}")
+        st.stop()
+
+    ext = p.suffix.lower()
+    df = None
+
+    # try parquet explicitly
+    def try_read_parquet(pth):
+        try:
+            return pd.read_parquet(pth)
+        except Exception:
+            # try explicit engine fallback
+            try:
+                return pd.read_parquet(pth, engine="pyarrow")
+            except Exception:
+                raise
+
+    # try csv with safe fallback
+    def try_read_csv(pth):
+        try:
+            return pd.read_csv(pth, low_memory=False)
+        except Exception:
+            # fallback: latin-1 encoding, python engine, skip bad lines
+            try:
+                return pd.read_csv(pth, low_memory=False, encoding="latin-1",
+                                   engine="python", on_bad_lines="skip")
+            except Exception:
+                raise
+
     try:
-        df = pd.read_csv(path, low_memory=False)
-    except UnicodeDecodeError:
-        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
+        if ext in [".parquet", ".pq"]:
+            df = try_read_parquet(path)
+        elif ext in [".csv", ".txt"]:
+            df = try_read_csv(path)
+        else:
+            # unknown extension: prefer parquet, then csv
+            try:
+                df = try_read_parquet(path)
+            except Exception:
+                df = try_read_csv(path)
+    except Exception as exc:
+        st.error(f"Failed to read data file ({p.name}): {type(exc).__name__}. Check file format and installed parquet engine (pyarrow/fastparquet).")
+        st.exception(exc)
+        st.stop()
+
+    if not isinstance(df, pd.DataFrame):
+        st.error("Loaded object is not a DataFrame.")
+        st.stop()
+
     return ensure_date_column(df)
 
+# Optional helpers: convert CSV <-> Parquet (use locally or with caution in-app)
+def convert_csv_to_parquet(csv_path: str, parquet_path: str, compression="snappy"):
+    """Convert CSV -> Parquet. Requires pyarrow or fastparquet installed."""
+    df = pd.read_csv(csv_path, low_memory=False)
+    try:
+        df.to_parquet(parquet_path, compression=compression)
+    except Exception:
+        df.to_parquet(parquet_path, engine="pyarrow", compression=compression)
+
+def convert_parquet_to_csv(parquet_path: str, csv_path: str):
+    """Convert Parquet -> CSV."""
+    try:
+        df = pd.read_parquet(parquet_path)
+    except Exception:
+        df = pd.read_parquet(parquet_path, engine="pyarrow")
+    df.to_csv(csv_path, index=False)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# LOAD DATA
+# ──────────────────────────────────────────────────────────────────────────────
 df_all = load_csv(DATA_PATH)
 if df_all.empty:
     st.error("No data loaded.")
@@ -534,7 +609,7 @@ if view_mode == "Standard Hitter Report":
 
     # Batter select (from all NEB hitters)
     batters_global = sorted(df_neb_bat.get('Batter').dropna().unique().tolist())
-    batter_std = colB.selectbox("Player", options=batters_global, index=0 if batters_global else None)
+    batter_std = colB.selectbox("Player", options=batters_global, index=0 if batters_global else 0)
 
     # Date options for the selected batter, with opponent label (mapped to names)
     if batter_std:
@@ -559,12 +634,14 @@ if view_mode == "Standard Hitter Report":
         df_b_all = df_neb_bat.iloc[0:0].copy()
         date_opts, date_labels = [], {}
 
-    selected_date = colD.selectbox(
-        "Game Date",
-        options=date_opts,
-        format_func=lambda d: date_labels.get(d, format_date_long(d)),
-        index=len(date_opts)-1 if date_opts else 0
-    ) if date_opts else None
+    selected_date = None
+    if date_opts:
+        selected_date = colD.selectbox(
+            "Game Date",
+            options=date_opts,
+            format_func=lambda d: date_labels.get(d, format_date_long(d)),
+            index=len(date_opts)-1
+        )
 
     # Data for that single game
     if batter_std and selected_date:
@@ -589,7 +666,7 @@ else:
 
     # Batter select for profiles section
     batters_global = sorted(df_neb_bat.get('Batter').dropna().unique().tolist())
-    batter = st.selectbox("Player", options=batters_global, index=0 if batters_global else None)
+    batter = st.selectbox("Player", options=batters_global, index=0 if batters_global else 0)
 
     st.markdown("#### Filters")
 

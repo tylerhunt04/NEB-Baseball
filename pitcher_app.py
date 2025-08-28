@@ -29,11 +29,13 @@ st.set_page_config(
 st.set_option("client.showErrorDetails", True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PATHS
+# PATHS (two data sources)
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH = "pitcher_columns.csv"  # <-- your CSV
+DATA_PATH_PITCHER = "pitcher_columns.csv"  # REQUIRED
+DATA_PATH_HITTER  = "hitter_columns.csv"   # used for Opponent Batting Statistics
+
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
-BANNER_IMG = "NebraskaChampions.jpg"  # uploaded earlier
+BANNER_IMG = "NebraskaChampions.jpg"
 HUSKER_RED = "#E60026"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -115,7 +117,7 @@ def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 260
         unsafe_allow_html=True,
     )
 
-# Render banner (ONLY “Nebraska Baseball” — no subtitle)
+# Render banner
 hero_banner("Nebraska Baseball", subtitle=None, height_px=260)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -192,7 +194,7 @@ def build_pitcher_season_label(months_sel, days_sel, selected_df: pd.DataFrame) 
     return rng if rng else "Season"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SEGMENTS (Season/Scrimmage/Bullpen) — detection + filtering
+# SEGMENTS (Season/Scrimmage/Bullpen)
 # ──────────────────────────────────────────────────────────────────────────────
 SESSION_TYPE_CANDIDATES = [
     "SessionType","Session Type","GameType","Game Type","EventType","Event Type",
@@ -362,17 +364,11 @@ def _safe_key(s: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]+", "_", str(s))
 
 def pitchtype_checkbox_grid(label: str, options: list[str], key_prefix: str, default_all=True, columns_per_row=6) -> list[str]:
-    """
-    Renders a label, then a 'Select all' and 'Clear all' button row,
-    followed by a grid of checkboxes (no dropdown).
-    Returns the list of selected pitch types.
-    """
     options = list(dict.fromkeys([str(o) for o in options]))  # unique, stable order
     if not options:
         st.caption("No pitch types available.")
         return []
 
-    # init per-option states
     opt_keys = [f"{key_prefix}_{_safe_key(o)}" for o in options]
     for k in opt_keys:
         if k not in st.session_state:
@@ -416,7 +412,6 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters.")
         return None
 
-    # group
     try:
         grp = df_p.groupby(type_col, dropna=False)
     except KeyError:
@@ -426,20 +421,17 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     counts = grp.size()
     total = int(len(df_p))
 
-    # Base summary frame
     summary = pd.DataFrame({
         'Pitch Type': counts.index.astype(str),
         'Pitches': counts.values,
         'Usage %': np.round((counts.values / max(total, 1)) * 100, 1),
     })
 
-    # Strike %
     if pitch_col in df_p.columns:
         is_strike = df_p[pitch_col].isin(['StrikeCalled','StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
         strike_pct = grp.apply(lambda g: is_strike.loc[g.index].mean() * 100 if len(g) else np.nan).values
         summary['Strike %'] = np.round(strike_pct, 1)
 
-    # Helper to add mean column if present
     def add_mean(col_name, label, r=1):
         nonlocal summary
         if col_name and col_name in df_p.columns:
@@ -454,14 +446,11 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     add_mean(vaa_col,   'VAA', r=1)
     add_mean(ext_col,   'Extension', r=2)
 
-    # sort
     summary = summary.sort_values('Pitches', ascending=False)
 
-    # ── Figure: movement + table
     fig = plt.figure(figsize=(8, 12))
     gs = GridSpec(2, 1, figure=fig, height_ratios=[1.5, 0.7], hspace=0.3)
 
-    # Movement plot
     axm = fig.add_subplot(gs[0, 0]); axm.set_title('Movement Plot', fontweight='bold')
     axm.axhline(0, ls='--', color='grey'); axm.axvline(0, ls='--', color='grey')
     chi2v = chi2.ppf(coverage, df=2)
@@ -495,13 +484,11 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     axm.set_xlabel('Horizontal Break'); axm.set_ylabel('Induced Vertical Break')
     axm.legend(title='Pitch Type', fontsize=8, title_fontsize=9, loc='upper right')
 
-    # Summary table
     axt = fig.add_subplot(gs[1, 0]); axt.axis('off')
     tbl = axt.table(cellText=summary.values, colLabels=summary.columns, cellLoc='center', loc='center')
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
     axt.set_title('Summary Metrics', fontweight='bold', y=0.87)
 
-    # Logo
     logo_img = load_logo_img()
     if logo_img is not None:
         axl = fig.add_axes([1, 0.88, 0.12, 0.12], anchor='NE', zorder=10); axl.imshow(logo_img); axl.axis('off')
@@ -893,7 +880,7 @@ def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 # ──────────────────────────────────────────────────────────────────────────────
-# NEW: OPPONENT BATTING STATISTICS (overall)
+# OPPONENT BATTING STATISTICS (overall) — uses hitter_columns.csv
 # ──────────────────────────────────────────────────────────────────────────────
 def make_opponent_batting_stats(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -987,15 +974,13 @@ def make_opponent_batting_stats(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 def themed_table(df: pd.DataFrame):
-    """Styled table with Husker red headers, white text, nowrap headers & cells, 1-decimal floats."""
+    """Styled table with Husker red headers, white text, nowrap headers & cells, proper decimals."""
     float_cols = df.select_dtypes(include=["float", "float64"]).columns.tolist()
     percent_cols = [c for c in df.columns if c.strip().endswith('%')]
     fmt_map = {c: "{:.1f}" for c in set(float_cols) | set(percent_cols)}
-    # Preserve 3-decimal for AVG/OBP/SLG/OPS if present
     for c in ["AVG","OBP","SLG","OPS"]:
         if c in df.columns:
             fmt_map[c] = "{:.3f}"
-
     styles = [
         {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'},
         {'selector': 'th',       'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'},
@@ -1009,7 +994,7 @@ def themed_table(df: pd.DataFrame):
     )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA
+# LOAD DATA (two files)
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
 def load_csv_norm(path: str) -> pd.DataFrame:
@@ -1019,10 +1004,18 @@ def load_csv_norm(path: str) -> pd.DataFrame:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
     return ensure_date_column(df)
 
-if not os.path.exists(DATA_PATH):
-    st.error(f"Data not found at {DATA_PATH}")
+# Pitcher file is required
+if not os.path.exists(DATA_PATH_PITCHER):
+    st.error(f"Pitcher data not found at {DATA_PATH_PITCHER}")
     st.stop()
-df_all = load_csv_norm(DATA_PATH)
+df_pitcher_all_raw = load_csv_norm(DATA_PATH_PITCHER)
+
+# Hitter file is optional but recommended (used for Opponent Batting Statistics)
+if not os.path.exists(DATA_PATH_HITTER):
+    st.warning(f"Hitter data not found at {DATA_PATH_HITTER} — Opponent Batting Statistics will be unavailable.")
+    df_hitter_all_raw = pd.DataFrame()
+else:
+    df_hitter_all_raw = load_csv_norm(DATA_PATH_HITTER)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DATA SEGMENT PICKER (Season / Scrimmages / Bullpens / Next Season)
@@ -1034,19 +1027,22 @@ segment_choice = st.selectbox(
     index=0,  # default to 2025 Season
     key="segment_choice"
 )
-df_segment = filter_by_segment(df_all, segment_choice)
-if df_segment.empty:
-    st.info(f"No rows found for **{segment_choice}** with the current dataset.")
+
+# Apply segment filter to BOTH datasets
+df_pitcher_seg = filter_by_segment(df_pitcher_all_raw, segment_choice)
+df_hitter_seg  = filter_by_segment(df_hitter_all_raw,  segment_choice) if not df_hitter_all_raw.empty else df_hitter_all_raw
+
+if df_pitcher_seg.empty:
+    st.info(f"No rows found for **{segment_choice}** in pitcher dataset.")
     st.stop()
 
-# Helper flag for bullpen behavior
 SEG_TYPES = SEGMENT_DEFS.get(segment_choice, {}).get("types", [])
 is_bullpen_segment = "bullpen" in SEG_TYPES
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MAIN UI (no sidebar; filters live in tabs/sections)
+# MAIN UI (no sidebar)
 # ──────────────────────────────────────────────────────────────────────────────
-neb_df_all = df_segment[df_segment.get('PitcherTeam','') == 'NEB'].copy()
+neb_df_all = df_pitcher_seg[df_pitcher_seg.get('PitcherTeam','') == 'NEB'].copy()
 pitchers_all = sorted(neb_df_all.get('Pitcher', pd.Series(dtype=object)).dropna().unique().tolist())
 
 st.markdown("### Pitcher Report")
@@ -1277,35 +1273,57 @@ with tabs[2]:
         last_n_games = int(col_ln.number_input("Last N games", min_value=0, max_value=50, value=0, step=1, format="%d", key="prof_lastn"))
         prof_hand = col_side.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
 
-        # Build filtered dataset for PROFILES
-        df_prof = filter_by_month_day(df_pitcher_all, months=prof_months, days=prof_days).copy()
+        # Pitcher-side data (plate discipline & batted ball)
+        df_prof_pitcher = filter_by_month_day(df_pitcher_all, months=prof_months, days=prof_days).copy()
 
-        # Batter-side filter
-        side_col = find_batter_side_col(df_prof)
-        if prof_hand in ("LHH","RHH") and side_col is not None and not df_prof.empty:
-            sides = normalize_batter_side(df_prof[side_col])
+        # Apply batter-side filter to pitcher-side set
+        side_col_pitch = find_batter_side_col(df_prof_pitcher)
+        if prof_hand in ("LHH","RHH") and side_col_pitch is not None and not df_prof_pitcher.empty:
+            sides = normalize_batter_side(df_prof_pitcher[side_col_pitch])
             target = "L" if prof_hand == "LHH" else "R"
-            df_prof = df_prof[sides == target].copy()
+            df_prof_pitcher = df_prof_pitcher[sides == target].copy()
 
-        # Last N games
-        if last_n_games and not df_prof.empty:
-            uniq_dates = pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.dropna().unique()
+        # Last N games (derive from pitcher data to define "games")
+        if last_n_games and not df_prof_pitcher.empty:
+            uniq_dates = pd.to_datetime(df_prof_pitcher['Date'], errors="coerce").dt.date.dropna().unique()
             uniq_dates = sorted(uniq_dates)
             last_dates = set(uniq_dates[-last_n_games:])
-            df_prof = df_prof[pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
+            df_prof_pitcher = df_prof_pitcher[pd.to_datetime(df_prof_pitcher['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
+        else:
+            last_dates = None  # no enforced date window
 
-        if df_prof.empty:
+        # Hitter-side data (opponent batting stats) from hitter file
+        if df_hitter_seg.empty:
+            st.warning("Hitter dataset not loaded — Opponent Batting Statistics unavailable.")
+            df_prof_hitters = pd.DataFrame()
+        else:
+            df_prof_hitters = filter_by_month_day(df_hitter_seg, months=prof_months, days=prof_days).copy()
+            # Only PAs against this pitcher
+            if 'Pitcher' in df_prof_hitters.columns:
+                df_prof_hitters = df_prof_hitters[df_prof_hitters['Pitcher'] == player].copy()
+            # Apply same batter-side filter
+            side_col_hit = find_batter_side_col(df_prof_hitters)
+            if prof_hand in ("LHH","RHH") and side_col_hit is not None and not df_prof_hitters.empty:
+                sides_h = normalize_batter_side(df_prof_hitters[side_col_hit])
+                target = "L" if prof_hand == "LHH" else "R"
+                df_prof_hitters = df_prof_hitters[sides_h == target].copy()
+            # Enforce same last N game dates if defined
+            if last_dates is not None and not df_prof_hitters.empty and "Date" in df_prof_hitters.columns:
+                df_prof_hitters = df_prof_hitters[pd.to_datetime(df_prof_hitters['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
+
+        # Final check
+        if df_prof_pitcher.empty and (df_prof_hitters.empty or df_hitter_seg.empty):
             st.info("No rows for the selected profile filters.")
         else:
             # ORDER: Batting Statistics → Plate Discipline → Batted Ball
-            stats_df_overall = make_opponent_batting_stats(df_prof)
             st.markdown("### Opponent Batting Statistics (overall)")
+            stats_df_overall = make_opponent_batting_stats(df_prof_hitters)
             st.table(themed_table(stats_df_overall))
 
-            pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof)
             st.markdown("### Plate Discipline Profile (by Pitch Type)")
+            pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof_pitcher)
             st.table(themed_table(pd_df_typed))
 
-            bb_df_typed = make_pitcher_batted_ball_by_type(df_prof)
             st.markdown("### Batted Ball Profile (by Pitch Type)")
+            bb_df_typed = make_pitcher_batted_ball_by_type(df_prof_pitcher)
             st.table(themed_table(bb_df_typed))

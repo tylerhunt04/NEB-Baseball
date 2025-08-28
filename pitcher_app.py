@@ -966,11 +966,14 @@ segment_choice = st.selectbox(
     index=0,  # default to 2025 Season for now
     key="segment_choice"
 )
-
 df_segment = filter_by_segment(df_all, segment_choice)
 if df_segment.empty:
     st.info(f"No rows found for **{segment_choice}** with the current dataset.")
     st.stop()
+
+# Helper flag for bullpen behavior
+SEG_TYPES = SEGMENT_DEFS.get(segment_choice, {}).get("types", [])
+is_bullpen_segment = "bullpen" in SEG_TYPES
 
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN UI (no sidebar; filters live in tabs/sections)
@@ -1034,30 +1037,33 @@ with tabs[0]:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        # 2) Heatmaps — pitch-type outcome filter (checkbox grid)
-        st.markdown("### Pitcher Heatmaps")
-        type_col_for_hm = pick_col(neb_df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
-        types_available_hm = (
-            neb_df.get(type_col_for_hm, pd.Series(dtype=object))
-                  .dropna().astype(str).unique().tolist()
-        )
-        types_available_hm = sorted(types_available_hm)
-        hm_selected = pitchtype_checkbox_grid(
-            "Filter Whiffs / Strikeouts / Damage by Pitch Type",
-            options=types_available_hm,
-            key_prefix="std_hm_types",
-            default_all=True,
-            columns_per_row=6,
-        )
-        fig_h = combined_pitcher_heatmap_report(
-            neb_df,
-            player,
-            hand_filter=hand_choice,
-            season_label=season_label,
-            outcome_pitch_types=hm_selected,  # list (possibly [])
-        )
-        if fig_h:
-            show_and_close(fig_h)
+        # 2) Heatmaps — SKIP for bullpens
+        if not is_bullpen_segment:
+            st.markdown("### Pitcher Heatmaps")
+            type_col_for_hm = pick_col(neb_df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+            types_available_hm = (
+                neb_df.get(type_col_for_hm, pd.Series(dtype=object))
+                      .dropna().astype(str).unique().tolist()
+            )
+            types_available_hm = sorted(types_available_hm)
+            hm_selected = pitchtype_checkbox_grid(
+                "Filter Whiffs / Strikeouts / Damage by Pitch Type",
+                options=types_available_hm,
+                key_prefix="std_hm_types",
+                default_all=True,
+                columns_per_row=6,
+            )
+            fig_h = combined_pitcher_heatmap_report(
+                neb_df,
+                player,
+                hand_filter=hand_choice,
+                season_label=season_label,
+                outcome_pitch_types=hm_selected,  # list (possibly [])
+            )
+            if fig_h:
+                show_and_close(fig_h)
+        else:
+            st.caption("Heatmaps are not shown for **Bullpens** (no batting occurs).")
 
         # 3) Release Points (+ checkbox grid)
         type_col_all = pick_col(neb_df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
@@ -1109,14 +1115,17 @@ with tabs[1]:
             .dropna().astype(str).unique().tolist()
     )
     types_avail_out = sorted(types_avail_out)
-    st.markdown("**Pitch Types (Heatmaps — Whiffs / Strikeouts / Damage)**")
-    cmp_types_out_selected = pitchtype_checkbox_grid(
-        "Select outcome pitch types",
-        options=types_avail_out,
-        key_prefix="cmp_types_outcomes",
-        default_all=True,
-        columns_per_row=6,
-    )
+    if not is_bullpen_segment:
+        st.markdown("**Pitch Types (Heatmaps — Whiffs / Strikeouts / Damage)**")
+        cmp_types_out_selected = pitchtype_checkbox_grid(
+            "Select outcome pitch types",
+            options=types_avail_out,
+            key_prefix="cmp_types_outcomes",
+            default_all=True,
+            columns_per_row=6,
+        )
+    else:
+        cmp_types_out_selected = []
 
     # Build per-window filters (months/days ONLY)
     date_ser_all = df_pitcher_all['Date'].dropna()
@@ -1161,15 +1170,17 @@ with tabs[1]:
                 fig_m, _ = out_win
                 show_and_close(fig_m)
 
-            fig_h = combined_pitcher_heatmap_report(
-                df_win,
-                player,
-                hand_filter=cmp_hand,
-                season_label=season_lab,
-                outcome_pitch_types=cmp_types_out_selected,  # list (possibly [])
-            )
-            if fig_h:
-                show_and_close(fig_h)
+            # Heatmaps — only when not bullpen
+            if not is_bullpen_segment:
+                fig_h = combined_pitcher_heatmap_report(
+                    df_win,
+                    player,
+                    hand_filter=cmp_hand,
+                    season_label=season_lab,
+                    outcome_pitch_types=cmp_types_out_selected,  # list (possibly [])
+                )
+                if fig_h:
+                    show_and_close(fig_h)
 
             fig_r = release_points_figure(df_win, player, include_types=cmp_types_selected)
             if fig_r:
@@ -1178,60 +1189,62 @@ with tabs[1]:
 # ── PROFILES TAB ───────────────────────────────────────────────────────────────
 with tabs[2]:
     st.markdown("#### Pitcher Profiles")
-
-    # Independent filters for profiles
-    prof_months_all = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
-    col_pm, col_pd, col_ln, col_side = st.columns([1,1,1,1.4])
-
-    prof_months = col_pm.multiselect(
-        "Months (optional)",
-        options=prof_months_all,
-        format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
-        default=[],
-        key="prof_months"
-    )
-
-    dser_prof = df_pitcher_all['Date'].dropna()
-    if prof_months:
-        dser_prof = dser_prof[dser_prof.dt.month.isin(prof_months)]
-    prof_days_all = sorted(dser_prof.dt.day.unique().tolist())
-
-    prof_days = col_pd.multiselect(
-        "Days (optional)",
-        options=prof_days_all,
-        default=[],
-        key="prof_days"
-    )
-
-    last_n_games = int(col_ln.number_input("Last N games", min_value=0, max_value=50, value=0, step=1, format="%d", key="prof_lastn"))
-    prof_hand = col_side.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
-
-    # Build filtered dataset for PROFILES
-    df_prof = filter_by_month_day(df_pitcher_all, months=prof_months, days=prof_days).copy()
-
-    # Batter-side filter
-    side_col = find_batter_side_col(df_prof)
-    if prof_hand in ("LHH","RHH") and side_col is not None and not df_prof.empty:
-        sides = normalize_batter_side(df_prof[side_col])
-        target = "L" if prof_hand == "LHH" else "R"
-        df_prof = df_prof[sides == target].copy()
-
-    # Last N games (applied after month/day & hand filters)
-    if last_n_games and not df_prof.empty:
-        uniq_dates = pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.dropna().unique()
-        uniq_dates = sorted(uniq_dates)
-        last_dates = set(uniq_dates[-last_n_games:])
-        df_prof = df_prof[pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
-
-    if df_prof.empty:
-        st.info("No rows for the selected profile filters.")
+    if is_bullpen_segment:
+        st.info("Profiles are not available for **Bullpens** (no batting occurs).")
     else:
-        # Batted Ball Profile — by Pitch Type (Total first, ≥20 only)
-        bb_df_typed = make_pitcher_batted_ball_by_type(df_prof)
-        st.markdown(f"### Batted Ball Profile (by Pitch Type) — {segment_choice}")
-        st.table(themed_table(bb_df_typed))
+        # Independent filters for profiles
+        prof_months_all = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
+        col_pm, col_pd, col_ln, col_side = st.columns([1,1,1,1.4])
 
-        # Plate Discipline Profile — by Pitch Type (Total first, ≥20 only)
-        pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof)
-        st.markdown(f"### Plate Discipline Profile (by Pitch Type) — {segment_choice}")
-        st.table(themed_table(pd_df_typed))
+        prof_months = col_pm.multiselect(
+            "Months (optional)",
+            options=prof_months_all,
+            format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
+            default=[],
+            key="prof_months"
+        )
+
+        dser_prof = df_pitcher_all['Date'].dropna()
+        if prof_months:
+            dser_prof = dser_prof[dser_prof.dt.month.isin(prof_months)]
+        prof_days_all = sorted(dser_prof.dt.day.unique().tolist())
+
+        prof_days = col_pd.multiselect(
+            "Days (optional)",
+            options=prof_days_all,
+            default=[],
+            key="prof_days"
+        )
+
+        last_n_games = int(col_ln.number_input("Last N games", min_value=0, max_value=50, value=0, step=1, format="%d", key="prof_lastn"))
+        prof_hand = col_side.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
+
+        # Build filtered dataset for PROFILES
+        df_prof = filter_by_month_day(df_pitcher_all, months=prof_months, days=prof_days).copy()
+
+        # Batter-side filter
+        side_col = find_batter_side_col(df_prof)
+        if prof_hand in ("LHH","RHH") and side_col is not None and not df_prof.empty:
+            sides = normalize_batter_side(df_prof[side_col])
+            target = "L" if prof_hand == "LHH" else "R"
+            df_prof = df_prof[sides == target].copy()
+
+        # Last N games (applied after month/day & hand filters)
+        if last_n_games and not df_prof.empty:
+            uniq_dates = pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.dropna().unique()
+            uniq_dates = sorted(uniq_dates)
+            last_dates = set(uniq_dates[-last_n_games:])
+            df_prof = df_prof[pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
+
+        if df_prof.empty:
+            st.info("No rows for the selected profile filters.")
+        else:
+            # Batted Ball Profile — by Pitch Type (Total first, ≥20 only)
+            bb_df_typed = make_pitcher_batted_ball_by_type(df_prof)
+            st.markdown(f"### Batted Ball Profile (by Pitch Type) — {segment_choice}")
+            st.table(themed_table(bb_df_typed))
+
+            # Plate Discipline Profile — by Pitch Type (Total first, ≥20 only)
+            pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof)
+            st.markdown(f"### Plate Discipline Profile (by Pitch Type) — {segment_choice}")
+            st.table(themed_table(pd_df_typed))

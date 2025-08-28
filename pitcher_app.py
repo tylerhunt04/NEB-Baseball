@@ -192,6 +192,76 @@ def build_pitcher_season_label(months_sel, days_sel, selected_df: pd.DataFrame) 
     return rng if rng else "Season"
 
 # ──────────────────────────────────────────────────────────────────────────────
+# SEGMENTS (Season/Scrimmage/Bullpen) — detection + filtering
+# ──────────────────────────────────────────────────────────────────────────────
+SESSION_TYPE_CANDIDATES = [
+    "SessionType","Session Type","GameType","Game Type","EventType","Event Type",
+    "Context","context","Type","type","Environment","Env"
+]
+
+def find_session_type_col(df: pd.DataFrame) -> str | None:
+    return pick_col(df, *SESSION_TYPE_CANDIDATES)
+
+def _norm_session_type(val: str) -> str:
+    """Return one of: 'game', 'scrimmage', 'bullpen', or ''."""
+    s = str(val).strip().lower()
+    if not s or s == "nan":
+        return ""
+    if any(k in s for k in ["scrim", "intra", "fall ball", "exhib"]):
+        return "scrimmage"
+    if any(k in s for k in ["bullpen", "pen", "bp"]):
+        return "bullpen"
+    if any(k in s for k in ["game", "regular", "season", "conf", "non-conf", "ncaa"]):
+        return "game"
+    return ""
+
+# Adjust these windows/types to your calendar as needed
+SEGMENT_DEFS = {
+    "2025 Season": {
+        "start": "2025-02-01",
+        "end":   "2025-08-01",
+        "types": ["game"],
+    },
+    "2025/26 Scrimmages": {
+        "start": "2025-08-01",
+        "end":   "2026-02-01",
+        "types": ["scrimmage"],
+    },
+    "2025/26 Bullpens": {
+        "start": "2025-08-01",
+        "end":   "2026-02-01",
+        "types": ["bullpen"],
+    },
+    "2026 Season": {
+        "start": "2026-02-01",
+        "end":   "2026-08-01",
+        "types": ["game"],
+    },
+}
+
+def filter_by_segment(df: pd.DataFrame, segment_name: str) -> pd.DataFrame:
+    """Filter by date window and (if available) session type."""
+    spec = SEGMENT_DEFS.get(segment_name)
+    if spec is None or df.empty:
+        return df
+
+    out = df.copy()
+    # Date filter
+    if "Date" in out.columns:
+        d = pd.to_datetime(out["Date"], errors="coerce")
+        start = pd.to_datetime(spec["start"])
+        end   = pd.to_datetime(spec["end"])
+        out = out[(d >= start) & (d < end)]
+
+    # Session-type filter (optional)
+    st_col = find_session_type_col(out)
+    if st_col and len(spec.get("types", [])) > 0:
+        st_norm = out[st_col].apply(_norm_session_type)
+        out = out[st_norm.isin(spec["types"])]
+
+    return out
+
+# ──────────────────────────────────────────────────────────────────────────────
 # STRIKE ZONE & COLORS
 # ──────────────────────────────────────────────────────────────────────────────
 custom_cmap = colors.LinearSegmentedColormap.from_list(
@@ -887,10 +957,26 @@ if not os.path.exists(DATA_PATH):
 df_all = load_csv_norm(DATA_PATH)
 
 # ──────────────────────────────────────────────────────────────────────────────
+# DATA SEGMENT PICKER (Season / Scrimmages / Bullpens / Next Season)
+# ──────────────────────────────────────────────────────────────────────────────
+st.markdown("### Data Segment")
+segment_choice = st.selectbox(
+    "Choose time period",
+    list(SEGMENT_DEFS.keys()),
+    index=0,  # default to 2025 Season for now
+    key="segment_choice"
+)
+
+df_segment = filter_by_segment(df_all, segment_choice)
+if df_segment.empty:
+    st.info(f"No rows found for **{segment_choice}** with the current dataset.")
+    st.stop()
+
+# ──────────────────────────────────────────────────────────────────────────────
 # MAIN UI (no sidebar; filters live in tabs/sections)
 # ──────────────────────────────────────────────────────────────────────────────
-# Nebraska pitchers
-neb_df_all = df_all[df_all.get('PitcherTeam','') == 'NEB'].copy()
+# Nebraska pitchers (apply team filter after segment)
+neb_df_all = df_segment[df_segment.get('PitcherTeam','') == 'NEB'].copy()
 pitchers_all = sorted(neb_df_all.get('Pitcher', pd.Series(dtype=object)).dropna().unique().tolist())
 
 st.markdown("### Pitcher Report")
@@ -934,7 +1020,8 @@ with tabs[0]:
 
     # Filtered slice
     neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
-    season_label = build_pitcher_season_label(months_sel, days_sel, neb_df)
+    season_label_base = build_pitcher_season_label(months_sel, days_sel, neb_df)
+    season_label = f"{segment_choice} — {season_label_base}" if season_label_base else segment_choice
 
     if neb_df.empty:
         st.info("No rows for the selected filters.")
@@ -1057,6 +1144,7 @@ with tabs[1]:
             )
             df_win = filter_by_month_day(df_pitcher_all, months=mo_sel, days=dy_sel)
             season_lab = build_pitcher_season_label(mo_sel, dy_sel, df_win)
+            season_lab = f"{segment_choice} — {season_lab}" if season_lab else segment_choice
             windows.append((season_lab, df_win))
 
     st.markdown("---")
@@ -1140,10 +1228,10 @@ with tabs[2]:
     else:
         # Batted Ball Profile — by Pitch Type (Total first, ≥20 only)
         bb_df_typed = make_pitcher_batted_ball_by_type(df_prof)
-        st.markdown("### Batted Ball Profile (by Pitch Type)")
+        st.markdown(f"### Batted Ball Profile (by Pitch Type) — {segment_choice}")
         st.table(themed_table(bb_df_typed))
 
         # Plate Discipline Profile — by Pitch Type (Total first, ≥20 only)
         pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof)
-        st.markdown("### Plate Discipline Profile (by Pitch Type)")
+        st.markdown(f"### Plate Discipline Profile (by Pitch Type) — {segment_choice}")
         st.table(themed_table(pd_df_typed))

@@ -31,8 +31,8 @@ st.set_option("client.showErrorDetails", True)
 # ──────────────────────────────────────────────────────────────────────────────
 # PATHS (two data sources)
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_PATH_PITCHER = "pitcher_columns.csv"  # REQUIRED
-DATA_PATH_HITTER  = "hitter_columns.csv"   # used for Opponent Batting Statistics
+DATA_PATH = "combined_pitcher_hitter.csv"
+df_all = load_csv_norm(DATA_PATH)
 
 LOGO_PATH = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG = "NebraskaChampions.jpg"

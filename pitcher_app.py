@@ -396,7 +396,7 @@ def pitchtype_checkbox_grid(label: str, options: list[str], key_prefix: str, def
     return selected
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCHER REPORT (movement + summary) — tolerant to column name variants
+# PITCHER REPORT (movement + summary)
 # ──────────────────────────────────────────────────────────────────────────────
 def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_label="Season"):
     # Resolve core columns
@@ -511,7 +511,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     return fig, summary
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCHER HEATMAPS (top 3 + whiffs/K/damage), with LHH/RHH/Both and pitch-type filter for outcomes
+# PITCHER HEATMAPS
 # ──────────────────────────────────────────────────────────────────────────────
 def combined_pitcher_heatmap_report(
     df,
@@ -519,7 +519,7 @@ def combined_pitcher_heatmap_report(
     hand_filter="Both",
     grid_size=100,
     season_label="Season",
-    outcome_pitch_types=None,  # list of allowed pitch types for outcomes (whiffs/K/damage)
+    outcome_pitch_types=None,
 ):
     df_p = df[df.get('Pitcher','') == pitcher_name].copy()
     if df_p.empty:
@@ -586,7 +586,7 @@ def combined_pitcher_heatmap_report(
             ax.set_xticks([]); ax.set_yticks([])
             ax.set_title("—", fontweight='bold')
 
-    # Limit outcome panels (whiffs/K/damage) to selected pitch types if provided (list may be empty)
+    # Limit outcome panels (whiffs/K/damage) to selected pitch types if provided
     df_out = df_p
     if outcome_pitch_types is not None:
         if len(outcome_pitch_types) == 0:
@@ -636,7 +636,7 @@ def combined_pitcher_heatmap_report(
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RELEASE POINTS (with pitch-type checkbox grid filter)
+# RELEASE POINTS
 # ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
@@ -770,7 +770,7 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCHER PROFILES (Batted Ball & Plate Discipline by Pitch Type)
+# PROFILES: helper calcs (batted ball & plate discipline by pitch type)
 # ──────────────────────────────────────────────────────────────────────────────
 def _assign_spray_category_row(row):
     ang = row.get('Bearing', np.nan)
@@ -785,7 +785,6 @@ def _assign_spray_category_row(row):
     return "Opposite" if side == "R" else "Pull"
 
 def _bb_metrics_for_subset(sub_all: pd.DataFrame) -> dict:
-    """Compute batted-ball % metrics for a subset; returns dict with 1-decimal rounding."""
     s_call = sub_all.get('PitchCall', pd.Series(dtype=object))
     inplay = sub_all[s_call == 'InPlay'].copy()
 
@@ -817,33 +816,18 @@ def _bb_metrics_for_subset(sub_all: pd.DataFrame) -> dict:
     }
 
 def make_pitcher_batted_ball_by_type(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Build a batted-ball table:
-      - First column: Pitch Type
-      - First row: 'Total' (overall across all pitches)
-      - Then each pitch type (≥ 20 pitches only), sorted by Pitches desc
-      - All percentage metrics rounded to 1 decimal
-    """
     type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
-
-    # Total row
     rows = [{'Pitch Type': 'Total', **_bb_metrics_for_subset(df)}]
-
-    # Per-type rows (≥ 20 pitches)
     if type_col in df.columns:
         for ptype, sub in df.groupby(type_col, dropna=False):
             metrics = _bb_metrics_for_subset(sub)
             if metrics['Pitches'] >= 20:
                 rows.append({'Pitch Type': str(ptype), **metrics})
-
     out = pd.DataFrame(rows)
-    # Keep Total first, then sort others by Pitches
     if len(out) > 1:
         total_row = out.iloc[[0]]
         others = out.iloc[1:].sort_values('Pitches', ascending=False)
         out = pd.concat([total_row, others], ignore_index=True)
-
-    # Dtypes & rounding (ensure 1-decimal floats, ints for counts)
     for c in out.columns:
         if c.endswith('%'):
             out[c] = out[c].astype(float).round(1)
@@ -851,7 +835,6 @@ def make_pitcher_batted_ball_by_type(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 def _plate_metrics(sub: pd.DataFrame) -> dict:
-    """Compute plate discipline metrics for a subset; return rounded (1-decimal) dict."""
     s_call = sub.get('PitchCall', pd.Series(dtype=object))
     lside  = pd.to_numeric(sub.get('PlateLocSide', pd.Series(dtype=float)), errors="coerce")
     lht    = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors="coerce")
@@ -890,30 +873,18 @@ def _plate_metrics(sub: pd.DataFrame) -> dict:
     }
 
 def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Build a table:
-      - First column: Pitch Type
-      - First row: 'Total' (overall across all pitches)
-      - Then each pitch type (≥ 20 pitches only), sorted by Pitches desc
-      - All percentage metrics rounded to 1 decimal
-    """
     type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
-    rows = [{'Pitch Type': 'Total', **_plate_metrics(df)}]  # Total row FIRST (capitalized)
-
+    rows = [{'Pitch Type': 'Total', **_plate_metrics(df)}]
     if type_col in df.columns:
         for ptype, sub in df.groupby(type_col, dropna=False):
             metrics = _plate_metrics(sub)
-            if metrics['Pitches'] >= 20:  # threshold
+            if metrics['Pitches'] >= 20:
                 rows.append({'Pitch Type': str(ptype), **metrics})
-
     out = pd.DataFrame(rows)
-    # sort after keeping 'Total' first
     if len(out) > 1:
         total_row = out.iloc[[0]]
         others = out.iloc[1:].sort_values('Pitches', ascending=False)
         out = pd.concat([total_row, others], ignore_index=True)
-
-    # enforce 1-decimal percentages & int counts
     for c in out.columns:
         if c.endswith('%'):
             out[c] = out[c].astype(float).round(1)
@@ -921,12 +892,109 @@ def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
     out['Zone Pitches'] = out['Zone Pitches'].astype(int)
     return out
 
+# ──────────────────────────────────────────────────────────────────────────────
+# NEW: OPPONENT BATTING STATISTICS (overall)
+# ──────────────────────────────────────────────────────────────────────────────
+def make_opponent_batting_stats(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Overall opponent batting stats against the selected pitcher for the current filtered sample.
+    Returns one row with AVG/OBP/SLG/OPS, K%, BB%, Avg/Max EV, Avg Angle, HardHit %.
+    Tolerant to column name variants.
+    """
+    if df.empty:
+        cols = ["Avg Exit Vel","Max Exit Vel","Avg Angle","Hits","SO","AVG","OBP","SLG","OPS","HardHit %","K %","BB %"]
+        return pd.DataFrame([{c: np.nan for c in cols}])
+
+    # Column resolution
+    pitchcall_col = pick_col(df, "PitchCall","Pitch Call","Call") or "PitchCall"
+    playres_col   = pick_col(df, "PlayResult","Play Result","Result") or "PlayResult"
+    korbb_col     = pick_col(df, "KorBB","K or BB","K/BB") or "KorBB"
+    pitchofpa_col = pick_col(df, "PitchofPA","PitchOfPA","Pitch Of PA","PitchOfPlateAppearance","PitchOfPa")
+    exitspeed_col = pick_col(df, "ExitSpeed","Exit Speed","EV") or "ExitSpeed"
+    angle_col     = pick_col(df, "Angle","LaunchAngle","Launch Angle") or "Angle"
+
+    ev  = pd.to_numeric(df.get(exitspeed_col, pd.Series(dtype=float)), errors="coerce")
+    ang = pd.to_numeric(df.get(angle_col,     pd.Series(dtype=float)), errors="coerce")
+
+    s_pitchcall = df.get(pitchcall_col, pd.Series(dtype=object)).astype(str)
+    s_playres   = df.get(playres_col,   pd.Series(dtype=object)).astype(str)
+    s_korbb     = df.get(korbb_col,     pd.Series(dtype=object)).astype(str)
+
+    inplay      = s_pitchcall.eq("InPlay")
+    hits_mask   = inplay & s_playres.isin(["Single","Double","Triple","HomeRun"])
+    bbouts_mask = inplay & s_playres.eq("Out")
+    fc_mask     = s_playres.eq("FieldersChoice")
+    err_mask    = s_playres.eq("Error")
+    so_mask     = s_korbb.eq("Strikeout")
+    bb_mask     = s_korbb.eq("Walk")
+    hbp_mask    = s_pitchcall.eq("HitByPitch")
+
+    hits = int(hits_mask.sum())
+    so   = int(so_mask.sum())
+    bb   = int(bb_mask.sum())
+    hbp  = int(hbp_mask.sum())
+    bbouts = int(bbouts_mask.sum())
+    fc     = int(fc_mask.sum())
+    err    = int(err_mask.sum())
+
+    # At-Bats (common scouting calc)
+    ab = hits + so + bbouts + fc + err
+
+    # Plate Appearances
+    if pitchofpa_col and pitchofpa_col in df.columns:
+        pa = int(pd.to_numeric(df[pitchofpa_col], errors="coerce").eq(1).sum())
+    else:
+        pa = int((hits_mask | so_mask | bb_mask | hbp_mask | bbouts_mask | fc_mask | err_mask).sum())
+
+    # Total Bases
+    singles = s_playres.eq("Single").sum()
+    doubles = s_playres.eq("Double").sum()
+    triples = s_playres.eq("Triple").sum()
+    hr      = s_playres.eq("HomeRun").sum()
+    total_bases = int(singles + 2*doubles + 3*triples + 4*hr)
+
+    # EV & Angle on balls in play
+    ev_inplay  = ev[inplay]
+    avg_ev  = float(ev_inplay.mean()) if ev_inplay.size else np.nan
+    max_ev  = float(ev_inplay.max())  if ev_inplay.size else np.nan
+    avg_ang = float(ang[inplay].mean()) if ev_inplay.size else np.nan
+    hard_pct = float((ev_inplay >= 95).mean() * 100) if ev_inplay.size else np.nan
+
+    # Rate stats
+    ba  = float(hits / ab) if ab else np.nan
+    obp = float((hits + bb + hbp) / pa) if pa else np.nan
+    slg = float(total_bases / ab) if ab else np.nan
+    ops = (obp + slg) if (not np.isnan(obp) and not np.isnan(slg)) else np.nan
+    k_pct  = float(so / pa * 100) if pa else np.nan
+    bb_pct = float(bb / pa * 100) if pa else np.nan
+
+    out = pd.DataFrame([{
+        "Avg Exit Vel": np.round(avg_ev, 1) if not np.isnan(avg_ev) else np.nan,
+        "Max Exit Vel": np.round(max_ev, 1) if not np.isnan(max_ev) else np.nan,
+        "Avg Angle":    np.round(avg_ang, 1) if not np.isnan(avg_ang) else np.nan,
+        "Hits":         int(hits),
+        "SO":           int(so),
+        "AVG":          np.round(ba, 3) if not np.isnan(ba) else np.nan,
+        "OBP":          np.round(obp,3) if not np.isnan(obp) else np.nan,
+        "SLG":          np.round(slg,3) if not np.isnan(slg) else np.nan,
+        "OPS":          np.round(ops,3) if not np.isnan(ops) else np.nan,
+        "HardHit %":    np.round(hard_pct,1) if not np.isnan(hard_pct) else np.nan,
+        "K %":          np.round(k_pct,1) if not np.isnan(k_pct) else np.nan,
+        "BB %":         np.round(bb_pct,1) if not np.isnan(bb_pct) else np.nan,
+    }])
+    out["Hits"] = out["Hits"].astype("Int64")
+    out["SO"]   = out["SO"].astype("Int64")
+    return out
+
 def themed_table(df: pd.DataFrame):
     """Styled table with Husker red headers, white text, nowrap headers & cells, 1-decimal floats."""
-    # Build format map: all float columns and any column ending in '%' -> 1 decimal
     float_cols = df.select_dtypes(include=["float", "float64"]).columns.tolist()
     percent_cols = [c for c in df.columns if c.strip().endswith('%')]
     fmt_map = {c: "{:.1f}" for c in set(float_cols) | set(percent_cols)}
+    # Preserve 3-decimal for AVG/OBP/SLG/OPS if present
+    for c in ["AVG","OBP","SLG","OPS"]:
+        if c in df.columns:
+            fmt_map[c] = "{:.3f}"
 
     styles = [
         {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'},
@@ -963,7 +1031,7 @@ st.markdown("### Data Segment")
 segment_choice = st.selectbox(
     "Choose time period",
     list(SEGMENT_DEFS.keys()),
-    index=0,  # default to 2025 Season for now
+    index=0,  # default to 2025 Season
     key="segment_choice"
 )
 df_segment = filter_by_segment(df_all, segment_choice)
@@ -978,7 +1046,6 @@ is_bullpen_segment = "bullpen" in SEG_TYPES
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN UI (no sidebar; filters live in tabs/sections)
 # ──────────────────────────────────────────────────────────────────────────────
-# Nebraska pitchers (apply team filter after segment)
 neb_df_all = df_segment[df_segment.get('PitcherTeam','') == 'NEB'].copy()
 pitchers_all = sorted(neb_df_all.get('Pitcher', pd.Series(dtype=object)).dropna().unique().tolist())
 
@@ -999,7 +1066,6 @@ tabs = st.tabs(["Standard", "Compare", "Profiles"])
 
 # ── STANDARD TAB ───────────────────────────────────────────────────────────────
 with tabs[0]:
-    # Filters for this pitcher only (below the header)
     present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
     col_m, col_d, col_side = st.columns([1,1,1.6])
     months_sel = col_m.multiselect(
@@ -1021,7 +1087,6 @@ with tabs[0]:
     )
     hand_choice = col_side.radio("Batter Side (heatmaps)", ["Both","LHH","RHH"], index=0, horizontal=True, key="std_hand")
 
-    # Filtered slice
     neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
     season_label_base = build_pitcher_season_label(months_sel, days_sel, neb_df)
     season_label = f"{segment_choice} — {season_label_base}" if season_label_base else segment_choice
@@ -1031,13 +1096,11 @@ with tabs[0]:
     else:
         logo_img = load_logo_img()
 
-        # 1) Metrics
         out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8, season_label=season_label)
         if out:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        # 2) Heatmaps — SKIP for bullpens
         if not is_bullpen_segment:
             st.markdown("### Pitcher Heatmaps")
             type_col_for_hm = pick_col(neb_df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
@@ -1058,14 +1121,13 @@ with tabs[0]:
                 player,
                 hand_filter=hand_choice,
                 season_label=season_label,
-                outcome_pitch_types=hm_selected,  # list (possibly [])
+                outcome_pitch_types=hm_selected,
             )
             if fig_h:
                 show_and_close(fig_h)
         else:
             st.caption("Heatmaps are not shown for **Bullpens** (no batting occurs).")
 
-        # 3) Release Points (+ checkbox grid)
         type_col_all = pick_col(neb_df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
         types_available = (
             neb_df.get(type_col_all, pd.Series(dtype=object))
@@ -1091,7 +1153,6 @@ with tabs[1]:
     cmp_n = st.selectbox("Number of windows", [2,3], index=0, key="cmp_n")
     cmp_hand = st.radio("Batter Side (heatmaps)", ["Both","LHH","RHH"], index=0, horizontal=True, key="cmp_hand")
 
-    # Available pitch types across full pitcher season (release plot)
     type_col_all = pick_col(df_pitcher_all, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
     types_avail_all = (
         df_pitcher_all.get(type_col_all, pd.Series(dtype=object))
@@ -1109,7 +1170,6 @@ with tabs[1]:
         columns_per_row=6,
     )
 
-    # Outcome heatmaps pitch-type filter (shared across windows)
     types_avail_out = (
         df_pitcher_all.get(type_col_all, pd.Series(dtype=object))
             .dropna().astype(str).unique().tolist()
@@ -1127,7 +1187,6 @@ with tabs[1]:
     else:
         cmp_types_out_selected = []
 
-    # Build per-window filters (months/days ONLY)
     date_ser_all = df_pitcher_all['Date'].dropna()
     month_options = sorted(date_ser_all.dt.month.unique().tolist())
 
@@ -1170,14 +1229,13 @@ with tabs[1]:
                 fig_m, _ = out_win
                 show_and_close(fig_m)
 
-            # Heatmaps — only when not bullpen
             if not is_bullpen_segment:
                 fig_h = combined_pitcher_heatmap_report(
                     df_win,
                     player,
                     hand_filter=cmp_hand,
                     season_label=season_lab,
-                    outcome_pitch_types=cmp_types_out_selected,  # list (possibly [])
+                    outcome_pitch_types=cmp_types_out_selected,
                 )
                 if fig_h:
                     show_and_close(fig_h)
@@ -1229,7 +1287,7 @@ with tabs[2]:
             target = "L" if prof_hand == "LHH" else "R"
             df_prof = df_prof[sides == target].copy()
 
-        # Last N games (applied after month/day & hand filters)
+        # Last N games
         if last_n_games and not df_prof.empty:
             uniq_dates = pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.dropna().unique()
             uniq_dates = sorted(uniq_dates)
@@ -1239,12 +1297,15 @@ with tabs[2]:
         if df_prof.empty:
             st.info("No rows for the selected profile filters.")
         else:
-            # Batted Ball Profile — by Pitch Type (Total first, ≥20 only)
-            bb_df_typed = make_pitcher_batted_ball_by_type(df_prof)
-            st.markdown(f"### Batted Ball Profile (by Pitch Type) — {segment_choice}")
-            st.table(themed_table(bb_df_typed))
+            # ORDER: Batting Statistics → Plate Discipline → Batted Ball
+            stats_df_overall = make_opponent_batting_stats(df_prof)
+            st.markdown("### Opponent Batting Statistics (overall)")
+            st.table(themed_table(stats_df_overall))
 
-            # Plate Discipline Profile — by Pitch Type (Total first, ≥20 only)
             pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof)
-            st.markdown(f"### Plate Discipline Profile (by Pitch Type) — {segment_choice}")
+            st.markdown("### Plate Discipline Profile (by Pitch Type)")
             st.table(themed_table(pd_df_typed))
+
+            bb_df_typed = make_pitcher_batted_ball_by_type(df_prof)
+            st.markdown("### Batted Ball Profile (by Pitch Type)")
+            st.table(themed_table(bb_df_typed))

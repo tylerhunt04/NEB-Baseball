@@ -757,7 +757,7 @@ def _decide_pitcher_hand(sub: pd.DataFrame) -> str:
     return "R"
 
 def extensions_topN_figure(df: pd.DataFrame, pitcher_name: str, include_types=None, top_n: int = 3,
-                           figsize=(4.8, 6.4), title_size=10):
+                           figsize=(4.8, 5), title_size=6):
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
     type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
     ext_col  = pick_col(df, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")

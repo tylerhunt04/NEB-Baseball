@@ -981,7 +981,7 @@ def _plate_metrics(sub: pd.DataFrame) -> dict:
     isinzone = lside.between(-0.83, 0.83) & lht.between(1.5, 3.5)
 
     total_pitches = int(len(sub))
-    total_swings  = int(isswing.sum()))
+ total_swings  = int(isswing.sum())
     z_count       = int(isinzone.sum())
 
     def pct(val):

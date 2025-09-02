@@ -1176,7 +1176,7 @@ with tabs[0]:
         )
         if ext_fig:
             # Force a fixed pixel width on screen so it doesn't look massive
-            show_image_scaled(ext_fig, width_px=480, dpi=200, pad_inches=0.1)
+            show_image_scaled(ext_fig, width_px=420, dpi=200, pad_inches=0.1)
 
 # ── COMPARE TAB ────────────────────────────────────────────────────────────────
 with tabs[1]:

@@ -2,8 +2,8 @@
 # - Heatmaps moved to Profiles tab (not shown in Standard)
 # - Extensions figure added under Release Points in Standard, shares pitch-type filter
 # - Banner rendered via components.html to avoid stray </div>
-# - Extensions visual size reduced
 # - _plate_metrics syntax fixed
+# - NEW: show_image_scaled() to render Extensions at a fixed on-screen width
 
 import os
 import gc
@@ -65,6 +65,16 @@ def show_and_close(fig, *, use_container_width: bool = False):
     finally:
         plt.close(fig)
         gc.collect()
+
+def show_image_scaled(fig, *, width_px: int = 480, dpi: int = 200, pad_inches: float = 0.1):
+    """Render a Matplotlib fig to PNG and show at a fixed pixel width (prevents Streamlit stretching)."""
+    import io
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight", pad_inches=pad_inches)
+    buf.seek(0)
+    st.image(buf, width=width_px)
+    plt.close(fig)
+    gc.collect()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SIMPLE HERO BANNER (isolated HTML via components.html)
@@ -728,7 +738,6 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
 # ──────────────────────────────────────────────────────────────────────────────
 # NEW: EXTENSIONS FIGURE (Top-3 by usage, ordered by mean extension desc)
 # ──────────────────────────────────────────────────────────────────────────────
-# Visual config
 RELEASE_X_OFFSET_FT = 2.0
 SHOULDER_X_R = 0.7
 SHOULDER_X_L = -0.7
@@ -757,7 +766,7 @@ def _decide_pitcher_hand(sub: pd.DataFrame) -> str:
     return "R"
 
 def extensions_topN_figure(df: pd.DataFrame, pitcher_name: str, include_types=None, top_n: int = 3,
-                           figsize=(.5, 1), title_size=1):
+                           figsize=(5.2, 7.0), title_size=14):
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
     type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
     ext_col  = pick_col(df, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")
@@ -1161,9 +1170,13 @@ with tabs[0]:
 
         # 3) Extensions (Top-3), ordered by mean extension (desc), RESPECT same pitch filter
         st.markdown("### Extensions (Top-3 by usage, sorted by mean extension ↓)")
-        ext_fig = extensions_topN_figure(neb_df, player, include_types=rel_selected, top_n=3, figsize=(5.2, 7.0), title_size=14)
+        ext_fig = extensions_topN_figure(
+            neb_df, player, include_types=rel_selected, top_n=3,
+            figsize=(5.2, 7.0), title_size=14  # this no longer controls on-screen size
+        )
         if ext_fig:
-            show_and_close(ext_fig, use_container_width=False)  # keep compact
+            # Force a fixed pixel width on screen so it doesn't look massive
+            show_image_scaled(ext_fig, width_px=480, dpi=200, pad_inches=0.1)
 
 # ── COMPARE TAB ────────────────────────────────────────────────────────────────
 with tabs[1]:

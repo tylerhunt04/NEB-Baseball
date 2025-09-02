@@ -1,7 +1,9 @@
 # pitcher_app.py (UPDATED)
-# - Heatmaps moved to Profiles tab
-# - New Extensions figure added under Release Points in Standard tab
-# - Extensions plot respects the same pitch-type filter as Release Points
+# - Heatmaps moved to Profiles tab (not shown in Standard)
+# - Extensions figure added under Release Points in Standard, shares pitch-type filter
+# - Banner rendered via components.html to avoid stray </div>
+# - Extensions visual size reduced
+# - _plate_metrics syntax fixed
 
 import os
 import gc
@@ -56,23 +58,23 @@ def load_logo_img():
         return mpimg.imread(LOGO_PATH)
     return None
 
-def show_and_close(fig):
+def show_and_close(fig, *, use_container_width: bool = False):
     """Display a Matplotlib figure and free its memory immediately."""
     try:
-        st.pyplot(fig=fig, clear_figure=False)
+        st.pyplot(fig=fig, clear_figure=False, use_container_width=use_container_width)
     finally:
         plt.close(fig)
         gc.collect()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SIMPLE HERO BANNER (image + overlayed title)
+# SIMPLE HERO BANNER (isolated HTML via components.html)
 # ──────────────────────────────────────────────────────────────────────────────
-
 def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 260):
+    from streamlit.components.v1 import html as _html
     b64 = load_banner_b64()
     bg_url = f"data:image/jpeg;base64,{b64}" if b64 else ""
     sub_html = f'<div class="hero-sub">{subtitle}</div>' if subtitle else ""
-    st.markdown(
+    _html(
         f"""
         <style>
         .hero-wrap {{
@@ -84,20 +86,26 @@ def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 260
             background: linear-gradient(to bottom, rgba(0,0,0,0.45), rgba(0,0,0,0.60)), url('{bg_url}');
             background-size: cover; background-position: center; filter: saturate(105%);
         }}
-        .hero-text {{ position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-            flex-direction: column; color: #fff; text-align: center; }}
-        .hero-title {{ font-size: 40px; font-weight: 800; letter-spacing: .5px; text-shadow: 0 2px 8px rgba(0,0,0,.45); margin: 0; }}
-        .hero-sub {{ font-size: 18px; font-weight: 600; opacity: .95; margin-top: 6px; }}
+        .hero-text {{
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            flex-direction: column; color: #fff; text-align: center;
+        }}
+        .hero-title {{
+            font-size: 40px; font-weight: 800; letter-spacing: .5px; text-shadow: 0 2px 8px rgba(0,0,0,.45); margin: 0;
+        }}
+        .hero-sub {{
+            font-size: 18px; font-weight: 600; opacity: .95; margin-top: 6px;
+        }}
         </style>
         <div class="hero-wrap">
-            <div class="hero-bg"></div>
-            <div class="hero-text">
-                <h1 class="hero-title">{title}</h1>
-                {sub_html}
-            </div>
+          <div class="hero-bg"></div>
+          <div class="hero-text">
+            <h1 class="hero-title">{title}</h1>
+            {sub_html}
+          </div>
         </div>
         """,
-        unsafe_allow_html=True,
+        height=height_px + 28,  # a little extra to avoid clipping
     )
 
 # Render banner (ONLY “Nebraska Baseball” — no subtitle)
@@ -209,26 +217,10 @@ def _norm_session_type(val: str) -> str:
 
 # Adjust these windows/types to your calendar as needed
 SEGMENT_DEFS = {
-    "2025 Season": {
-        "start": "2025-02-01",
-        "end": "2025-08-01",
-        "types": ["game"],
-    },
-    "2025/26 Scrimmages": {
-        "start": "2025-08-01",
-        "end": "2026-02-01",
-        "types": ["scrimmage"],
-    },
-    "2025/26 Bullpens": {
-        "start": "2025-08-01",
-        "end": "2026-02-01",
-        "types": ["bullpen"],
-    },
-    "2026 Season": {
-        "start": "2026-02-01",
-        "end": "2026-08-01",
-        "types": ["game"],
-    },
+    "2025 Season": {"start": "2025-02-01", "end": "2025-08-01", "types": ["game"]},
+    "2025/26 Scrimmages": {"start": "2025-08-01", "end": "2026-02-01", "types": ["scrimmage"]},
+    "2025/26 Bullpens": {"start": "2025-08-01", "end": "2026-02-01", "types": ["bullpen"]},
+    "2026 Season": {"start": "2026-02-01", "end": "2026-08-01", "types": ["game"]},
 }
 
 def filter_by_segment(df: pd.DataFrame, segment_name: str) -> pd.DataFrame:
@@ -271,9 +263,9 @@ def get_view_bounds():
 
 def draw_strikezone(ax, sz_left=None, sz_bottom=None, sz_width=None, sz_height=None):
     l, b, w, h = get_zone_bounds()
-    sz_left = l if sz_left is None else sz_left
+    sz_left   = l if sz_left   is None else sz_left
     sz_bottom = b if sz_bottom is None else sz_bottom
-    sz_width = w if sz_width is None else sz_width
+    sz_width  = w if sz_width  is None else sz_width
     sz_height = h if sz_height is None else sz_height
     ax.add_patch(Rectangle((sz_left, sz_bottom), sz_width, sz_height, fill=False, lw=2, color="black"))
     for f in (1/3, 2/3):
@@ -298,7 +290,6 @@ def format_name(name):
 # ──────────────────────────────────────────────────────────────────────────────
 # DENSITY / UTILS
 # ──────────────────────────────────────────────────────────────────────────────
-
 def compute_density(x, y, grid_coords, mesh_shape):
     mask = np.isfinite(x) & np.isfinite(y)
     x, y = x[mask], y[mask]
@@ -330,16 +321,13 @@ def normalize_batter_side(series: pd.Series) -> pd.Series:
 def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
     s = str(hand_filter).strip().lower()
     s = s.replace("vs", "").replace("batters", "").replace("hitters", "").strip()
-    if s in {"l", "lhh", "lhb", "left", "left-handed", "left handed"}:
-        return "L"
-    if s in {"r", "rhh", "rhb", "right", "right-handed", "right handed"}:
-        return "R"
+    if s in {"l", "lhh", "lhb", "left", "left-handed", "left handed"}:  return "L"
+    if s in {"r", "rhh", "rhb", "right", "right-handed", "right handed"}: return "R"
     return None
 
 # ──────────────────────────────────────────────────────────────────────────────
 # UI HELPER: grid of per-pitch checkboxes (no dropdown) + Select/Clear all
 # ──────────────────────────────────────────────────────────────────────────────
-
 def _safe_key(s: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]+", "_", str(s))
 
@@ -378,18 +366,17 @@ def pitchtype_checkbox_grid(label: str, options: list[str], key_prefix: str, def
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER REPORT (movement + summary)
 # ──────────────────────────────────────────────────────────────────────────────
-
 def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_label="Season"):
     # Resolve core columns
     type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
     pitch_col = pick_col(df, "PitchCall","Pitch Call","Call") or "PitchCall"
     speed_col = pick_col(df, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
-    spin_col = pick_col(df, "SpinRate","Spinrate","ReleaseSpinRate","Spin")
-    ivb_col = pick_col(df, "InducedVertBreak","IVB","Induced Vert Break","IndVertBreak")
-    hb_col = pick_col(df, "HorzBreak","HorizontalBreak","HB","HorizBreak")
-    rh_col = pick_col(df, "RelHeight","Relheight","ReleaseHeight","Release_Height","release_pos_z")
-    vaa_col = pick_col(df, "VertApprAngle","VAA","VerticalApproachAngle")
-    ext_col = pick_col(df, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")
+    spin_col  = pick_col(df, "SpinRate","Spinrate","ReleaseSpinRate","Spin")
+    ivb_col   = pick_col(df, "InducedVertBreak","IVB","Induced Vert Break","IndVertBreak")
+    hb_col    = pick_col(df, "HorzBreak","HorizontalBreak","HB","HorizBreak")
+    rh_col    = pick_col(df, "RelHeight","Relheight","ReleaseHeight","Release_Height","release_pos_z")
+    vaa_col   = pick_col(df, "VertApprAngle","VAA","VerticalApproachAngle")
+    ext_col   = pick_col(df, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")
 
     df_p = df[df.get('Pitcher', '') == pitcher_name]
     if df_p.empty:
@@ -427,12 +414,12 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
             summary[label] = np.round(vals, r)
 
     add_mean(speed_col, 'Rel Speed', r=1)
-    add_mean(spin_col, 'Spin Rate', r=1)
-    add_mean(ivb_col, 'IVB', r=1)
-    add_mean(hb_col, 'HB', r=1)
-    add_mean(rh_col, 'Rel Height', r=2)
-    add_mean(vaa_col, 'VAA', r=1)
-    add_mean(ext_col, 'Extension', r=2)
+    add_mean(spin_col,  'Spin Rate', r=1)
+    add_mean(ivb_col,   'IVB',       r=1)
+    add_mean(hb_col,    'HB',        r=1)
+    add_mean(rh_col,    'Rel Height',r=2)
+    add_mean(vaa_col,   'VAA',       r=1)
+    add_mean(ext_col,   'Extension', r=2)
 
     # sort
     summary = summary.sort_values('Pitches', ascending=False)
@@ -490,9 +477,8 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     return fig, summary
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCHER HEATMAPS (top 3 + whiffs/K/damage)
+# PITCHER HEATMAPS (top 3 + whiffs/K/damage) — function (used in Profiles & Compare)
 # ──────────────────────────────────────────────────────────────────────────────
-
 def combined_pitcher_heatmap_report(
     df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season", outcome_pitch_types=None,
 ):
@@ -604,10 +590,7 @@ def combined_pitcher_heatmap_report(
     if logo_img is not None:
         axl = fig.add_axes([0.88, 0.92, 0.10, 0.10], anchor='NE', zorder=10); axl.imshow(logo_img); axl.axis('off')
 
-    fig.suptitle(
-        f"{format_name(pitcher_name)} Heatmaps\n({season_label}) ({hand_label})",
-        fontsize=18, y=0.98, fontweight='bold'
-    )
+    fig.suptitle(f"{format_name(pitcher_name)} Heatmaps\n({season_label}) ({hand_label})", fontsize=18, y=0.98, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
 
@@ -745,7 +728,6 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
 # ──────────────────────────────────────────────────────────────────────────────
 # NEW: EXTENSIONS FIGURE (Top-3 by usage, ordered by mean extension desc)
 # ──────────────────────────────────────────────────────────────────────────────
-
 # Visual config
 RELEASE_X_OFFSET_FT = 2.0
 SHOULDER_X_R = 0.7
@@ -774,7 +756,8 @@ def _decide_pitcher_hand(sub: pd.DataFrame) -> str:
             return "R" if med >= 0 else "L"
     return "R"
 
-def extensions_topN_figure(df: pd.DataFrame, pitcher_name: str, include_types=None, top_n: int = 3):
+def extensions_topN_figure(df: pd.DataFrame, pitcher_name: str, include_types=None, top_n: int = 3,
+                           figsize=(5.2, 7.0), title_size=14):
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
     type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
     ext_col  = pick_col(df, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")
@@ -816,7 +799,7 @@ def extensions_topN_figure(df: pd.DataFrame, pitcher_name: str, include_types=No
     hand = _decide_pitcher_hand(sub)
 
     # Draw
-    fig, ax = plt.subplots(figsize=(7.5, 10))
+    fig, ax = plt.subplots(figsize=figsize)
     mound_radius = 9.0
     rubber_len, rubber_wid = 2.0, 0.5
     distance_plate = 60 + 6/12
@@ -877,7 +860,7 @@ def extensions_topN_figure(df: pd.DataFrame, pitcher_name: str, include_types=No
     ax.axis("off")
 
     # Suptitle
-    fig.suptitle(f"{format_name(pitcher_name)} Extension", fontsize=16, fontweight="bold", y=0.98)
+    fig.suptitle(f"{format_name(pitcher_name)} Extension", fontsize=title_size, fontweight="bold", y=0.98)
 
     # Legend ABOVE mound
     if handles:
@@ -891,7 +874,6 @@ def extensions_topN_figure(df: pd.DataFrame, pitcher_name: str, include_types=No
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER PROFILES (Batted Ball & Plate Discipline by Pitch Type)
 # ──────────────────────────────────────────────────────────────────────────────
-
 def _assign_spray_category_row(row):
     ang = row.get('Bearing', np.nan)
     side = str(row.get('BatterSide', "")).upper()[:1]
@@ -975,10 +957,10 @@ def _plate_metrics(sub: pd.DataFrame) -> dict:
     lside = pd.to_numeric(sub.get('PlateLocSide',   pd.Series(dtype=float)), errors="coerce")
     lht   = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors="coerce")
 
-    isswing  = s_call.isin(['StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
-    iswhiff  = s_call.eq('StrikeSwinging')
-    iscontact= s_call.isin(['InPlay','FoulBallNotFieldable','FoulBallFieldable'])
-    isinzone = lside.between(-0.83, 0.83) & lht.between(1.5, 3.5)
+    isswing   = s_call.isin(['StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
+    iswhiff   = s_call.eq('StrikeSwinging')
+    iscontact = s_call.isin(['InPlay','FoulBallNotFieldable','FoulBallFieldable'])
+    isinzone  = lside.between(-0.83, 0.83) & lht.between(1.5, 3.5)
 
     total_pitches = int(len(sub))
     total_swings  = int(isswing.sum())
@@ -1044,7 +1026,6 @@ def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
 
 def themed_table(df: pd.DataFrame):
     """Styled table with Husker red headers, white text, nowrap headers & cells, 1-decimal floats."""
-    # Build format map: all float columns and any column ending in '%' -> 1 decimal
     float_cols = df.select_dtypes(include=["float", "float64"]).columns.tolist()
     percent_cols = [c for c in df.columns if c.strip().endswith('%')]
     fmt_map = {c: "{:.1f}" for c in set(float_cols) | set(percent_cols)}
@@ -1139,7 +1120,8 @@ with tabs[0]:
         default=[],
         key="std_days",
     )
-    hand_choice = col_side.radio("Batter Side (for heatmaps — now in Profiles)", ["Both","LHH","RHH"], index=0, horizontal=True, key="std_hand")
+    # Keeping this here just for context (heatmaps moved to Profiles)
+    col_side.radio("Batter Side (for heatmaps — now in Profiles)", ["Both","LHH","RHH"], index=0, horizontal=True, key="std_hand")
 
     # Filtered slice
     neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
@@ -1179,9 +1161,9 @@ with tabs[0]:
 
         # 3) Extensions (Top-3), ordered by mean extension (desc), RESPECT same pitch filter
         st.markdown("### Extensions (Top-3 by usage, sorted by mean extension ↓)")
-        ext_fig = extensions_topN_figure(neb_df, player, include_types=rel_selected, top_n=3)
+        ext_fig = extensions_topN_figure(neb_df, player, include_types=rel_selected, top_n=3, figsize=(5.2, 7.0), title_size=14)
         if ext_fig:
-            show_and_close(ext_fig)
+            show_and_close(ext_fig, use_container_width=False)  # keep compact
 
 # ── COMPARE TAB ────────────────────────────────────────────────────────────────
 with tabs[1]:
@@ -1269,7 +1251,7 @@ with tabs[1]:
             if not is_bullpen_segment:
                 fig_h = combined_pitcher_heatmap_report(
                     df_win, player, hand_filter=cmp_hand, season_label=season_lab,
-                    outcome_pitch_types=cmp_types_out_selected,  # list (possibly [])
+                    outcome_pitch_types=cmp_types_out_selected,
                 )
                 if fig_h:
                     show_and_close(fig_h)

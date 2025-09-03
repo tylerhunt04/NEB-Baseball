@@ -765,11 +765,20 @@ def _decide_pitcher_hand(sub: pd.DataFrame) -> str:
             return "R" if med >= 0 else "L"
     return "R"
 
-def extensions_topN_figure(df: pd.DataFrame, pitcher_name: str, include_types=None, top_n: int = 3,
-                           figsize=(5.2, 7.0), title_size=14):
+def extensions_topN_figure(
+    df: pd.DataFrame,
+    pitcher_name: str,
+    include_types=None,
+    top_n: int = 3,
+    figsize=(5.2, 7.0),
+    title_size=14,
+    show_plate: bool = False,     # ← default now hides the plate
+    xlim_pad: float = 6.0,        # ← horizontal half-width when plate is hidden
+    ylim_pad: float = 1.5         # ← extra space above mound/extensions
+):
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
-    type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
-    ext_col  = pick_col(df, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")
+    type_col    = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+    ext_col     = pick_col(df, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")
 
     if ext_col is None:
         st.warning("No Extension column found in data; skipping extensions plot.")
@@ -789,97 +798,109 @@ def extensions_topN_figure(df: pd.DataFrame, pitcher_name: str, include_types=No
     sub["_type_canon"] = sub[type_col].apply(canonicalize_type)
     sub = sub[sub["_type_canon"] != "Unknown"].copy()
 
-    # Respect pitch-type filter (same as release figure)
+    # Respect same pitch-type filter the Release plot uses
     if include_types is not None and len(include_types) > 0:
         sub = sub[sub["_type_canon"].isin(include_types)]
     if sub.empty:
         st.warning("No pitches after applying pitch-type filter (extensions).")
         return None
 
-    # Pick top-N by usage, THEN order by mean extension desc
+    # Top-N by usage, then order by mean extension (desc)
     usage_top = sub["_type_canon"].value_counts().head(max(1, top_n)).index.tolist()
     mean_ext  = sub.groupby("_type_canon")[ext_col].mean().dropna()
     mean_sel  = mean_ext[mean_ext.index.isin(usage_top)].sort_values(ascending=False)
     entries   = list(mean_sel.items())
-    if len(entries) == 0:
+    if not entries:
         st.warning("Not enough data to compute top extensions.")
         return None
 
     hand = _decide_pitcher_hand(sub)
 
-    # Draw
+    # ── Draw (mound-only view by default)
     fig, ax = plt.subplots(figsize=figsize)
-    mound_radius = 9.0
-    rubber_len, rubber_wid = 2.0, 0.5
-    distance_plate = 60 + 6/12
 
-    # Mound (darker brown) & rubber
+    mound_radius  = 9.0
+    rubber_len, rubber_wid = 2.0, 0.5
+
+    # Mound & rubber
     ax.add_patch(Circle((0, 0), mound_radius, facecolor=MOUND_COLOR, edgecolor=MOUND_EDGE,
                         linewidth=1.0, alpha=MOUND_ALPHA, zorder=1))
     ax.add_patch(Rectangle((-rubber_len/2, -rubber_wid), rubber_len, rubber_wid,
                            linewidth=1.5, edgecolor="black", facecolor="white", zorder=5))
 
-    # Home plate — point AWAY from mound (flat edge toward mound)
-    plate_width = 17/12
-    point_depth = 8.5/12
-    plate_y = distance_plate
-    plate = [
-        (-plate_width/2, plate_y),
-        ( plate_width/2, plate_y),
-        ( plate_width/2, plate_y + point_depth),
-        ( 0, plate_y + 2*point_depth),  # point toward backstop
-        (-plate_width/2, plate_y + point_depth),
-    ]
-    ax.add_patch(Polygon(plate, closed=True, facecolor="white", edgecolor="black", zorder=3))
+    # Optionally draw plate (off by default)
+    if show_plate:
+        distance_plate = 60 + 6/12
+        plate_width = 17/12
+        point_depth = 8.5/12
+        plate_y = distance_plate
+        plate = [
+            (-plate_width/2, plate_y),
+            ( plate_width/2, plate_y),
+            ( plate_width/2, plate_y + point_depth),
+            ( 0, plate_y + 2*point_depth),
+            (-plate_width/2, plate_y + point_depth),
+        ]
+        ax.add_patch(Polygon(plate, closed=True, facecolor="white", edgecolor="black", zorder=3))
 
     # Shoulder anchor
     throw_right = hand.upper() == "R"
-    shoulder_x = SHOULDER_X_R if throw_right else SHOULDER_X_L
-    shoulder_y = SHOULDER_Y
+    shoulder_x  = SHOULDER_X_R if throw_right else SHOULDER_X_L
+    shoulder_y  = SHOULDER_Y
 
     handles, labels = [], []
     for i, (canon_name, ext_val) in enumerate(entries[:top_n]):
-        clr = color_for_release(canon_name)
+        clr   = color_for_release(canon_name)
         x_end = RELEASE_X_OFFSET_FT if throw_right else -RELEASE_X_OFFSET_FT
         y_end = float(ext_val)
 
         # Arm polygon oriented from shoulder → (x_end, y_end)
-        v = np.array([x_end - shoulder_x, y_end - shoulder_y], dtype=float)
+        v     = np.array([x_end - shoulder_x, y_end - shoulder_y], dtype=float)
         v_len = np.hypot(v[0], v[1]) + 1e-9
-        n = v / v_len
-        p = np.array([-n[1], n[0]])
-        sL = (shoulder_x + p[0]*ARM_THICK_BASE, shoulder_y + p[1]*ARM_THICK_BASE)
-        sR = (shoulder_x - p[0]*ARM_THICK_BASE, shoulder_y - p[1]*ARM_THICK_BASE)
-        tL = (x_end + p[0]*ARM_THICK_TIP, y_end + p[1]*ARM_THICK_TIP)
-        tR = (x_end - p[0]*ARM_THICK_TIP, y_end - p[1]*ARM_THICK_TIP)
-        ax.add_patch(Polygon([sL, sR, tR, tL], closed=True, facecolor="#111111", edgecolor="#111111", alpha=0.9, zorder=6+i))
+        n     = v / v_len
+        p     = np.array([-n[1], n[0]])
+        sL    = (shoulder_x + p[0]*ARM_THICK_BASE, shoulder_y + p[1]*ARM_THICK_BASE)
+        sR    = (shoulder_x - p[0]*ARM_THICK_BASE, shoulder_y - p[1]*ARM_THICK_BASE)
+        tL    = (x_end + p[0]*ARM_THICK_TIP, y_end + p[1]*ARM_THICK_TIP)
+        tR    = (x_end - p[0]*ARM_THICK_TIP, y_end - p[1]*ARM_THICK_TIP)
+        ax.add_patch(Polygon([sL, sR, tR, tL], closed=True,
+                             facecolor="#111111", edgecolor="#111111", alpha=0.9, zorder=6+i))
 
-        # Colored ball at the tip
+        # Colored ball at tip
         ax.add_patch(Circle((x_end, y_end), radius=0.30, facecolor=clr, edgecolor=clr, zorder=7+i))
-        ax.add_patch(Circle((x_end, y_end), radius=0.30*0.55, facecolor="#2b2b2b", edgecolor="#2b2b2b", zorder=8+i))
+        ax.add_patch(Circle((x_end, y_end), radius=0.165, facecolor="#2b2b2b", edgecolor="#2b2b2b", zorder=8+i))
 
-        # Legend
-        handles.append(Line2D([0],[0], marker='o', linestyle='none', markersize=8, markerfacecolor=clr, markeredgecolor=clr))
+        # Legend entry
+        handles.append(Line2D([0],[0], marker='o', linestyle='none', markersize=8,
+                              markerfacecolor=clr, markeredgecolor=clr))
         labels.append(f"{canon_name} ({ext_val:.2f} ft)")
 
-    # Clean diagram
-    ax.set_xlim(-10, 12)
-    ax.set_ylim(-5, distance_plate+5)
+    # View limits: mound-only or full (with plate)
+    if show_plate:
+        distance_plate = 60 + 6/12
+        ax.set_xlim(-10, 12)
+        ax.set_ylim(-5, distance_plate + 5)
+    else:
+        # Focus from just below mound to a bit above the highest extension
+        max_ext = max([v for _, v in entries]) if entries else 7.0
+        top_y   = max(mound_radius + ylim_pad, max_ext + 2.0)
+        ax.set_xlim(-xlim_pad, xlim_pad)
+        ax.set_ylim(-3.0, top_y)
+
     ax.set_aspect("equal")
     ax.axis("off")
 
-    # Suptitle
+    # Title & Legend (above mound)
     fig.suptitle(f"{format_name(pitcher_name)} Extension", fontsize=title_size, fontweight="bold", y=0.98)
-
-    # Legend ABOVE mound
     if handles:
-        ax.legend(handles, labels, title="Pitch Type", loc=LEGEND_LOC,
-                  bbox_to_anchor=LEGEND_ANCHOR_FRAC, borderaxespad=0.0,
-                  frameon=True, fancybox=False, edgecolor="#d0d0d0")
+        ax.legend(
+            handles, labels, title="Pitch Type", loc=LEGEND_LOC,
+            bbox_to_anchor=LEGEND_ANCHOR_FRAC, borderaxespad=0.0,
+            frameon=True, fancybox=False, edgecolor="#d0d0d0"
+        )
 
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
-
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER PROFILES (Batted Ball & Plate Discipline by Pitch Type)
 # ──────────────────────────────────────────────────────────────────────────────

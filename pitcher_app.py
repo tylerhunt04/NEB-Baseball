@@ -6,6 +6,7 @@
 # - Fixed-size rendering for Extensions via show_image_scaled()
 # - Banner via components.html (no stray </div>)
 # - NEW: Uses Fall_WinterScrimmages.csv when segment = "2025/26 Scrimmages"
+# - NEW: For "2025/26 Scrimmages", choose a single date; label as "September 3rd, 2025 (FB Only)"
 
 import os
 import gc
@@ -1129,25 +1130,39 @@ tabs = st.tabs(["Standard", "Compare", "Profiles"])
 
 # ── STANDARD TAB ───────────────────────────────────────────────────────────────
 with tabs[0]:
-    present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
-    col_m, col_d, col_side = st.columns([1,1,1.6])
-    months_sel = col_m.multiselect(
-        "Months (optional)",
-        options=present_months,
-        format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
-        default=[],
-        key="std_months",
-    )
-    dser = df_pitcher_all['Date'].dropna()
-    if months_sel:
-        dser = dser[dser.dt.month.isin(months_sel)]
-    present_days = sorted(dser.dt.day.unique().tolist())
-    days_sel = col_d.multiselect("Days (optional)", options=present_days, default=[], key="std_days")
-    col_side.radio("Batter Side (for heatmaps — now in Profiles)", ["Both","LHH","RHH"], index=0, horizontal=True, key="std_hand")
+    if segment_choice == "2025/26 Scrimmages":
+        # Single-date selector for scrimmages
+        dates_all = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
+        if not dates_all:
+            st.info("No scrimmage dates available for this pitcher.")
+            st.stop()
+        # default to latest date
+        default_idx = len(dates_all) - 1
+        date_labels = [format_date_long(d) for d in dates_all]
+        sel_label = st.selectbox("Scrimmage Date", options=date_labels, index=default_idx, key="scrim_std_date")
+        sel_date = dates_all[date_labels.index(sel_label)]
+        neb_df = df_pitcher_all[pd.to_datetime(df_pitcher_all['Date']).dt.date == sel_date].copy()
+        season_label = f"{format_date_long(sel_date)} (FB Only)"
+    else:
+        present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
+        col_m, col_d, col_side = st.columns([1,1,1.6])
+        months_sel = col_m.multiselect(
+            "Months (optional)",
+            options=present_months,
+            format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
+            default=[],
+            key="std_months",
+        )
+        dser = df_pitcher_all['Date'].dropna()
+        if months_sel:
+            dser = dser[dser.dt.month.isin(months_sel)]
+        present_days = sorted(dser.dt.day.unique().tolist())
+        days_sel = col_d.multiselect("Days (optional)", options=present_days, default=[], key="std_days")
+        col_side.radio("Batter Side (for heatmaps — now in Profiles)", ["Both","LHH","RHH"], index=0, horizontal=True, key="std_hand")
 
-    neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
-    season_label_base = build_pitcher_season_label(months_sel, days_sel, neb_df)
-    season_label = f"{segment_choice} — {season_label_base}" if season_label_base else segment_choice
+        neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
+        season_label_base = build_pitcher_season_label(months_sel, days_sel, neb_df)
+        season_label = f"{segment_choice} — {season_label_base}" if season_label_base else segment_choice
 
     if neb_df.empty:
         st.info("No rows for the selected filters.")
@@ -1227,28 +1242,50 @@ with tabs[1]:
     else:
         cmp_types_out_selected = []
 
-    date_ser_all = df_pitcher_all['Date'].dropna()
-    month_options = sorted(date_ser_all.dt.month.unique().tolist())
-    cols_filters = st.columns(cmp_n)
-    windows = []
-    for i in range(cmp_n):
-        with cols_filters[i]:
-            st.markdown(f"**Window {'ABC'[i]} Filters**")
-            mo_sel = st.multiselect(
-                f"Months (Window {'ABC'[i]})",
-                options=month_options,
-                format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
-                key=f"cmp_months_{i}"
-            )
-            dser = date_ser_all
-            if mo_sel:
-                dser = dser[dser.dt.month.isin(mo_sel)]
-            day_opts = sorted(dser.dt.day.unique().tolist())
-            dy_sel = st.multiselect(f"Days (Window {'ABC'[i]})", options=day_opts, key=f"cmp_days_{i}")
-            df_win = filter_by_month_day(df_pitcher_all, months=mo_sel, days=dy_sel)
-            season_lab = build_pitcher_season_label(mo_sel, dy_sel, df_win)
-            season_lab = f"{segment_choice} — {season_lab}" if season_lab else segment_choice
-            windows.append((season_lab, df_win))
+    # Filters/windows differ for Scrimmages (single-date selection per window)
+    if segment_choice == "2025/26 Scrimmages":
+        dates_all_cmp = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
+        if not dates_all_cmp:
+            st.info("No scrimmage dates available.")
+            st.stop()
+        date_labels_all = [format_date_long(d) for d in dates_all_cmp]
+        default_idx = len(dates_all_cmp) - 1
+
+        cols_filters = st.columns(cmp_n)
+        windows = []
+        for i in range(cmp_n):
+            with cols_filters[i]:
+                lab = st.selectbox(
+                    f"Scrimmage Date (Window {'ABC'[i]})",
+                    options=date_labels_all, index=default_idx, key=f"cmp_scrim_date_{i}"
+                )
+                chosen = dates_all_cmp[date_labels_all.index(lab)]
+                df_win = df_pitcher_all[pd.to_datetime(df_pitcher_all['Date']).dt.date == chosen]
+                season_lab = f"{format_date_long(chosen)} (FB Only)"
+                windows.append((season_lab, df_win))
+    else:
+        date_ser_all = df_pitcher_all['Date'].dropna()
+        month_options = sorted(date_ser_all.dt.month.unique().tolist())
+        cols_filters = st.columns(cmp_n)
+        windows = []
+        for i in range(cmp_n):
+            with cols_filters[i]:
+                st.markdown(f"**Window {'ABC'[i]} Filters**")
+                mo_sel = st.multiselect(
+                    f"Months (Window {'ABC'[i]})",
+                    options=month_options,
+                    format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
+                    key=f"cmp_months_{i}"
+                )
+                dser = date_ser_all
+                if mo_sel:
+                    dser = dser[dser.dt.month.isin(mo_sel)]
+                day_opts = sorted(dser.dt.day.unique().tolist())
+                dy_sel = st.multiselect(f"Days (Window {'ABC'[i]})", options=day_opts, key=f"cmp_days_{i}")
+                df_win = filter_by_month_day(df_pitcher_all, months=mo_sel, days=dy_sel)
+                season_lab = build_pitcher_season_label(mo_sel, dy_sel, df_win)
+                season_lab = f"{segment_choice} — {season_lab}" if season_lab else segment_choice
+                windows.append((season_lab, df_win))
 
     st.markdown("---")
     cols_out = st.columns(cmp_n)
@@ -1280,39 +1317,58 @@ with tabs[2]:
     if is_bullpen_segment:
         st.info("Profiles are not available for **Bullpens** (no batting occurs).")
     else:
-        prof_months_all = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
-        col_pm, col_pd, col_ln, col_side = st.columns([1,1,1,1.4])
-        prof_months = col_pm.multiselect(
-            "Months (optional)",
-            options=prof_months_all,
-            format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
-            default=[],
-            key="prof_months"
-        )
-        dser_prof = df_pitcher_all['Date'].dropna()
-        if prof_months:
-            dser_prof = dser_prof[dser_prof.dt.month.isin(prof_months)]
-        prof_days_all = sorted(dser_prof.dt.day.unique().tolist())
-        prof_days = col_pd.multiselect("Days (optional)", options=prof_days_all, default=[], key="prof_days")
-        last_n_games = int(col_ln.number_input("Last N games", min_value=0, max_value=50, value=0, step=1, format="%d", key="prof_lastn"))
-        prof_hand = col_side.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
-
-        # Build filtered dataset for PROFILES
-        df_prof = filter_by_month_day(df_pitcher_all, months=prof_months, days=prof_days).copy()
-
-        # Batter-side filter for tables and heatmaps
-        side_col = find_batter_side_col(df_prof)
-        if prof_hand in ("LHH","RHH") and side_col is not None and not df_prof.empty:
-            sides = normalize_batter_side(df_prof[side_col])
-            target = "L" if prof_hand == "LHH" else "R"
-            df_prof = df_prof[sides == target].copy()
-
-        # Last N games
-        if last_n_games and not df_prof.empty:
-            uniq_dates = pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.dropna().unique()
-            uniq_dates = sorted(uniq_dates)
-            last_dates = set(uniq_dates[-last_n_games:])
-            df_prof = df_prof[pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
+        if segment_choice == "2025/26 Scrimmages":
+            # Single-date selector for profiles
+            dates_all_prof = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
+            if not dates_all_prof:
+                st.info("No scrimmage dates available.")
+                st.stop()
+            default_idx = len(dates_all_prof) - 1
+            date_labels_prof = [format_date_long(d) for d in dates_all_prof]
+            lab = st.selectbox("Scrimmage Date (Profiles)", options=date_labels_prof, index=default_idx, key="prof_scrim_date")
+            chosen = dates_all_prof[date_labels_prof.index(lab)]
+            df_prof = df_pitcher_all[pd.to_datetime(df_pitcher_all['Date']).dt.date == chosen].copy()
+            season_label_prof = f"{format_date_long(chosen)} (FB Only)"
+            prof_hand = st.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
+            # Batter-side filter for tables and heatmaps
+            side_col = find_batter_side_col(df_prof)
+            if prof_hand in ("LHH","RHH") and side_col is not None and not df_prof.empty:
+                sides = normalize_batter_side(df_prof[side_col])
+                target = "L" if prof_hand == "LHH" else "R"
+                df_prof = df_prof[sides == target].copy()
+        else:
+            prof_months_all = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
+            col_pm, col_pd, col_ln, col_side = st.columns([1,1,1,1.4])
+            prof_months = col_pm.multiselect(
+                "Months (optional)",
+                options=prof_months_all,
+                format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
+                default=[],
+                key="prof_months"
+            )
+            dser_prof = df_pitcher_all['Date'].dropna()
+            if prof_months:
+                dser_prof = dser_prof[dser_prof.dt.month.isin(prof_months)]
+            prof_days_all = sorted(dser_prof.dt.day.unique().tolist())
+            prof_days = col_pd.multiselect("Days (optional)", options=prof_days_all, default=[], key="prof_days")
+            last_n_games = int(col_ln.number_input("Last N games", min_value=0, max_value=50, value=0, step=1, format="%d", key="prof_lastn"))
+            prof_hand = col_side.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
+            # Build filtered dataset for PROFILES
+            df_prof = filter_by_month_day(df_pitcher_all, months=prof_months, days=prof_days).copy()
+            # Last N games
+            if last_n_games and not df_prof.empty:
+                uniq_dates = pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.dropna().unique()
+                uniq_dates = sorted(uniq_dates)
+                last_dates = set(uniq_dates[-last_n_games:])
+                df_prof = df_prof[pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
+            season_label_prof_base = build_pitcher_season_label(prof_months, prof_days, df_prof)
+            season_label_prof = f"{segment_choice} — {season_label_prof_base}" if season_label_prof_base else segment_choice
+            # Batter-side filter for tables and heatmaps
+            side_col = find_batter_side_col(df_prof)
+            if prof_hand in ("LHH","RHH") and side_col is not None and not df_prof.empty:
+                sides = normalize_batter_side(df_prof[side_col])
+                target = "L" if prof_hand == "LHH" else "R"
+                df_prof = df_prof[sides == target].copy()
 
         if df_prof.empty:
             st.info("No rows for the selected profile filters.")
@@ -1333,8 +1389,6 @@ with tabs[2]:
             st.table(themed_table(pd_df_typed))
 
             # 4) Top-3 Pitches Heatmap (own visual)
-            season_label_prof_base = build_pitcher_season_label(prof_months, prof_days, df_prof)
-            season_label_prof = f"{segment_choice} — {season_label_prof_base}" if season_label_prof_base else segment_choice
             st.markdown("### Top 3 Pitches — Heatmaps")
             fig_top3 = heatmaps_top3_pitch_types(
                 df_prof, player, hand_filter=prof_hand, season_label=season_label_prof

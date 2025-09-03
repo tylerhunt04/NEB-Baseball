@@ -1,8 +1,10 @@
 # pitcher_app.py (UPDATED)
-# - Heatmaps moved to Profiles tab (not shown in Standard)
-# - Extensions figure (mound + legend only by default) added under Release Points in Standard
-# - Banner rendered via components.html to avoid stray markup
-# - NEW: show_image_scaled() to render Extensions at a fixed on-screen width
+# - Profiles order: Strike % table → Batted Ball → Plate Discipline → Top-3 Heatmap → Outcomes Heatmap
+# - Heatmaps: split into two visuals for Profiles
+# - Standard tab: Metrics, Release Points, Extensions (mound + legend only)
+# - Compare tab: still uses combined heatmaps function
+# - Fixed-size rendering for Extensions via show_image_scaled()
+# - Banner via components.html (no stray </div>)
 
 import os
 import gc
@@ -448,8 +450,127 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     return fig, summary
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HEATMAPS (used in Profiles & Compare — not in Standard)
+# HEATMAPS — Split versions for Profiles (+ legacy combined for Compare)
 # ──────────────────────────────────────────────────────────────────────────────
+def _heatmap_panel(ax, sub, title, *, x_min, x_max, y_min, y_max, grid_coords, xi_mesh,
+                   z_left, z_bottom, z_w, z_h, color='deepskyblue', threshold=12):
+    n = len(sub)
+    x = sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy()
+    y = sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy()
+    if n < threshold:
+        ax.scatter(x, y, s=30, alpha=0.7, color=color, edgecolors='black')
+    else:
+        zi = compute_density(x, y, grid_coords, xi_mesh.shape)
+        ax.imshow(zi, origin='lower', extent=[x_min, x_max, y_min, y_max], aspect='equal', cmap=custom_cmap)
+    draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
+    ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
+    ax.set_title(title, fontweight='bold'); ax.set_xticks([]); ax.set_yticks([])
+
+def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season"):
+    df_p = df[df.get('Pitcher','') == pitcher_name].copy()
+    if df_p.empty:
+        st.info("No data for the selected filters.")
+        return None
+
+    type_col = pick_col(df_p, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+
+    side_col = find_batter_side_col(df_p)
+    if side_col is not None:
+        sides = normalize_batter_side(df_p[side_col])
+        want = parse_hand_filter_to_LR(hand_filter)
+        if   want == "L": df_p = df_p[sides == "L"]
+        elif want == "R": df_p = df_p[sides == "R"]
+
+    if df_p.empty:
+        st.info("No pitches for the selected batter-side filter.")
+        return None
+
+    x_min, x_max, y_min, y_max = get_view_bounds()
+    xi = np.linspace(x_min, x_max, grid_size); yi = np.linspace(y_min, y_max, grid_size)
+    xi_mesh, yi_mesh = np.meshgrid(xi, yi); grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
+    z_left, z_bottom, z_w, z_h = get_zone_bounds()
+
+    try:
+        top3 = list(df_p[type_col].value_counts().index[:3])
+    except KeyError:
+        top3 = []
+
+    fig = plt.figure(figsize=(18, 6))
+    gs = GridSpec(1, 3, figure=fig, wspace=0.3)
+
+    for i in range(3):
+        ax = fig.add_subplot(gs[0, i])
+        if i < len(top3):
+            pitch = top3[i]
+            sub = df_p[df_p[type_col] == pitch]
+            _heatmap_panel(ax, sub, f"{pitch} (n={len(sub)})",
+                           x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
+                           grid_coords=grid_coords, xi_mesh=xi_mesh,
+                           z_left=z_left, z_bottom=z_bottom, z_w=z_w, z_h=z_h)
+        else:
+            draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
+            ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
+            ax.set_xticks([]); ax.set_yticks([]); ax.set_title("—", fontweight='bold')
+
+    fig.suptitle(f"{format_name(pitcher_name)} — Top 3 Pitches Heatmaps ({season_label})", fontsize=16, y=0.98, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    return fig
+
+def heatmaps_outcomes(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season", outcome_pitch_types=None):
+    df_p = df[df.get('Pitcher','') == pitcher_name].copy()
+    if df_p.empty:
+        st.info("No data for the selected filters.")
+        return None
+
+    type_col = pick_col(df_p, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+
+    side_col = find_batter_side_col(df_p)
+    if side_col is not None:
+        sides = normalize_batter_side(df_p[side_col])
+        want = parse_hand_filter_to_LR(hand_filter)
+        if   want == "L": df_p = df_p[sides == "L"]
+        elif want == "R": df_p = df_p[sides == "R"]
+
+    if df_p.empty:
+        st.info("No pitches for the selected batter-side filter.")
+        return None
+
+    # Limit outcome panels to selected pitch types if provided
+    df_out = df_p
+    if outcome_pitch_types is not None:
+        if len(outcome_pitch_types) == 0:
+            df_out = df_p.iloc[0:0].copy()
+        else:
+            if type_col in df_p.columns:
+                df_out = df_p[df_p[type_col].astype(str).isin(list(outcome_pitch_types))].copy()
+
+    x_min, x_max, y_min, y_max = get_view_bounds()
+    xi = np.linspace(x_min, x_max, grid_size); yi = np.linspace(y_min, y_max, grid_size)
+    xi_mesh, yi_mesh = np.meshgrid(xi, yi); grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
+    z_left, z_bottom, z_w, z_h = get_zone_bounds()
+
+    sub_wh = df_out[df_out.get('PitchCall','') == 'StrikeSwinging']
+    sub_ks = df_out[df_out.get('KorBB','') == 'Strikeout']
+    sub_dg = df_out[pd.to_numeric(df_out.get('ExitSpeed', pd.Series(dtype=float)), errors='coerce') >= 95]
+
+    fig = plt.figure(figsize=(18, 6))
+    gs = GridSpec(1, 3, figure=fig, wspace=0.3)
+
+    ax = fig.add_subplot(gs[0, 0]); _heatmap_panel(ax, sub_wh, f"Whiffs (n={len(sub_wh)})",
+        x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
+        grid_coords=grid_coords, xi_mesh=xi_mesh, z_left=z_left, z_bottom=z_bottom, z_w=z_w, z_h=z_h)
+    ax = fig.add_subplot(gs[0, 1]); _heatmap_panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})",
+        x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
+        grid_coords=grid_coords, xi_mesh=xi_mesh, z_left=z_left, z_bottom=z_bottom, z_w=z_w, z_h=z_h)
+    ax = fig.add_subplot(gs[0, 2]); _heatmap_panel(ax, sub_dg, f"Damage (n={len(sub_dg)})",
+        x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
+        grid_coords=grid_coords, xi_mesh=xi_mesh, z_left=z_left, z_bottom=z_bottom, z_w=z_w, z_h=z_h, color='orange')
+
+    fig.suptitle(f"{format_name(pitcher_name)} — Outcomes Heatmaps ({season_label})", fontsize=16, y=0.98, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    return fig
+
+# Legacy combined heatmaps (used by Compare tab to keep its layout)
 def combined_pitcher_heatmap_report(
     df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season", outcome_pitch_types=None,
 ):
@@ -457,7 +578,6 @@ def combined_pitcher_heatmap_report(
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters.")
         return None
-
     type_col = pick_col(df_p, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
 
     side_col = find_batter_side_col(df_p)
@@ -465,15 +585,10 @@ def combined_pitcher_heatmap_report(
     if side_col is not None:
         sides = normalize_batter_side(df_p[side_col])
         want = parse_hand_filter_to_LR(hand_filter)
-        if want == "L":
-            df_p = df_p[sides == "L"]; hand_label = "LHH"
-        elif want == "R":
-            df_p = df_p[sides == "R"]; hand_label = "RHH"
-        else:
-            hand_label = "Both"
+        if want == "L": df_p = df_p[sides == "L"]; hand_label = "LHH"
+        elif want == "R": df_p = df_p[sides == "R"]; hand_label = "RHH"
     else:
         st.caption("Batter-side column not found; showing Both.")
-
     if df_p.empty:
         st.info("No pitches for the selected batter-side filter.")
         return None
@@ -485,17 +600,9 @@ def combined_pitcher_heatmap_report(
     threshold = 12
 
     def panel(ax, sub, title, color='deepskyblue'):
-        n = len(sub)
-        x = sub.get('PlateLocSide', pd.Series(dtype=float)).to_numpy()
-        y = sub.get('PlateLocHeight', pd.Series(dtype=float)).to_numpy()
-        if n < threshold:
-            ax.scatter(x, y, s=30, alpha=0.7, color=color, edgecolors='black')
-        else:
-            zi = compute_density(x, y, grid_coords, xi_mesh.shape)
-            ax.imshow(zi, origin='lower', extent=[x_min, x_max, y_min, y_max], aspect='equal', cmap=custom_cmap)
-        draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
-        ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
-        ax.set_title(title, fontweight='bold'); ax.set_xticks([]); ax.set_yticks([])
+        _heatmap_panel(ax, sub, title, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
+                       grid_coords=grid_coords, xi_mesh=xi_mesh, z_left=z_left, z_bottom=z_bottom, z_w=z_w, z_h=z_h,
+                       color=color, threshold=threshold)
 
     fig = plt.figure(figsize=(18, 14))
     gs = GridSpec(3, 3, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.35, wspace=0.3)
@@ -504,7 +611,6 @@ def combined_pitcher_heatmap_report(
         top3 = list(df_p[type_col].value_counts().index[:3])
     except KeyError:
         top3 = []
-
     for i in range(3):
         ax = fig.add_subplot(gs[0, i])
         if i < len(top3):
@@ -531,6 +637,7 @@ def combined_pitcher_heatmap_report(
     ax = fig.add_subplot(gs[1, 1]); panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})")
     ax = fig.add_subplot(gs[1, 2]); panel(ax, sub_dg, f"Damage (n={len(sub_dg)})", color='orange')
 
+    # Strike % table row
     axt = fig.add_subplot(gs[2, :]); axt.axis('off')
     def _safe_mask(q):
         for col in ("Balls","Strikes"):
@@ -544,17 +651,12 @@ def combined_pitcher_heatmap_report(
                                       ((df_p.get('Balls',0)==2)&(df_p.get('Strikes',0)==1)) |
                                       ((df_p.get('Balls',0)==3)&(df_p.get('Strikes',0)==1))]))
     two = strike_rate(_safe_mask(df_p[(df_p.get('Strikes',0)==2) & (df_p.get('Balls',0)<3)]))
-
     metrics = pd.DataFrame({'1st Pitch %':[fp],'Mix Count %':[mix],'Hitter+ %':[hp],'2-Strike %':[two]}).round(1)
     tbl = axt.table(cellText=metrics.values, colLabels=metrics.columns, cellLoc='center', loc='center')
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
     axt.set_title('Strike Percentage by Count', y=0.75, fontweight='bold')
 
-    logo_img = load_logo_img()
-    if logo_img is not None:
-        axl = fig.add_axes([0.88, 0.92, 0.10, 0.10], anchor='NE', zorder=10); axl.imshow(logo_img); axl.axis('off')
-
-    fig.suptitle(f"{format_name(pitcher_name)} Heatmaps\n({season_label}) ({hand_label})", fontsize=18, y=0.98, fontweight='bold')
+    fig.suptitle(f"{format_name(pitcher_name)} Heatmaps\n({season_label}) ({hand_filter})", fontsize=18, y=0.98, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
 
@@ -768,20 +870,6 @@ def extensions_topN_figure(
     ax.add_patch(Rectangle((-rubber_len/2, -rubber_wid), rubber_len, rubber_wid,
                            linewidth=1.5, edgecolor="black", facecolor="white", zorder=5))
 
-    if show_plate:
-        distance_plate = 60 + 6/12
-        plate_width = 17/12
-        point_depth = 8.5/12
-        plate_y = distance_plate
-        plate = [
-            (-plate_width/2, plate_y),
-            ( plate_width/2, plate_y),
-            ( plate_width/2, plate_y + point_depth),
-            ( 0, plate_y + 2*point_depth),
-            (-plate_width/2, plate_y + point_depth),
-        ]
-        ax.add_patch(Polygon(plate, closed=True, facecolor="white", edgecolor="black", zorder=3))
-
     throw_right = hand.upper() == "R"
     shoulder_x  = SHOULDER_X_R if throw_right else SHOULDER_X_L
     shoulder_y  = SHOULDER_Y
@@ -811,13 +899,9 @@ def extensions_topN_figure(
         labels.append(f"{canon_name} ({ext_val:.2f} ft)")
 
     # View limits
-    if show_plate:
-        distance_plate = 60 + 6/12
-        ax.set_xlim(-10, 12); ax.set_ylim(-5, distance_plate + 5)
-    else:
-        max_ext = max([v for _, v in entries]) if entries else 7.0
-        top_y   = max(mound_radius + ylim_pad, max_ext + 2.0)
-        ax.set_xlim(-xlim_pad, xlim_pad); ax.set_ylim(-3.0, top_y)
+    max_ext = max([v for _, v in entries]) if entries else 7.0
+    top_y   = max(mound_radius + ylim_pad, max_ext + 2.0)
+    ax.set_xlim(-xlim_pad, xlim_pad); ax.set_ylim(-3.0, top_y)
 
     ax.set_aspect("equal"); ax.axis("off")
 
@@ -933,6 +1017,24 @@ def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
     out['Pitches'] = out['Pitches'].astype(int)
     out['Zone Pitches'] = out['Zone Pitches'].astype(int)
     return out
+
+def make_strike_percentage_table_from_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute strike % metrics from an already-filtered pitcher dataframe."""
+    def _safe_mask(q):
+        for col in ("Balls","Strikes"):
+            if col not in df.columns:
+                return df.iloc[0:0]
+        return q
+    fp  = strike_rate(_safe_mask(df[(df.get('Balls',0)==0) & (df.get('Strikes',0)==0)]))
+    mix = strike_rate(_safe_mask(df[((df.get('Balls',0)==1)&(df.get('Strikes',0)==0)) |
+                                    ((df.get('Balls',0)==0)&(df.get('Strikes',0)==1)) |
+                                    ((df.get('Balls',0)==1)&(df.get('Strikes',0)==1))]))
+    hp  = strike_rate(_safe_mask(df[((df.get('Balls',0)==2)&(df.get('Strikes',0)==0)) |
+                                    ((df.get('Balls',0)==2)&(df.get('Strikes',0)==1)) |
+                                    ((df.get('Balls',0)==3)&(df.get('Strikes',0)==1))]))
+    two = strike_rate(_safe_mask(df[(df.get('Strikes',0)==2) & (df.get('Balls',0)<3)]))
+    metrics = pd.DataFrame({'1st Pitch %':[fp],'Mix Count %':[mix],'Hitter+ %':[hp],'2-Strike %':[two]}).round(1)
+    return metrics
 
 def themed_table(df: pd.DataFrame):
     float_cols = df.select_dtypes(include=["float", "float64"]).columns.tolist()
@@ -1175,14 +1277,17 @@ with tabs[2]:
         last_n_games = int(col_ln.number_input("Last N games", min_value=0, max_value=50, value=0, step=1, format="%d", key="prof_lastn"))
         prof_hand = col_side.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
 
+        # Build filtered dataset for PROFILES
         df_prof = filter_by_month_day(df_pitcher_all, months=prof_months, days=prof_days).copy()
 
+        # Batter-side filter for tables and heatmaps
         side_col = find_batter_side_col(df_prof)
         if prof_hand in ("LHH","RHH") and side_col is not None and not df_prof.empty:
             sides = normalize_batter_side(df_prof[side_col])
             target = "L" if prof_hand == "LHH" else "R"
             df_prof = df_prof[sides == target].copy()
 
+        # Last N games
         if last_n_games and not df_prof.empty:
             uniq_dates = pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.dropna().unique()
             uniq_dates = sorted(uniq_dates)
@@ -1192,19 +1297,33 @@ with tabs[2]:
         if df_prof.empty:
             st.info("No rows for the selected profile filters.")
         else:
+            # 1) Strike Percentage table (now first)
+            st.markdown("### Strike Percentage by Count")
+            strike_df = make_strike_percentage_table_from_df(df_prof).round(1)
+            st.table(themed_table(strike_df))
+
+            # 2) Batted Ball Profile — by Pitch Type
             bb_df_typed = make_pitcher_batted_ball_by_type(df_prof)
             st.markdown(f"### Batted Ball Profile (by Pitch Type) — {segment_choice}")
             st.table(themed_table(bb_df_typed))
 
+            # 3) Plate Discipline Profile — by Pitch Type
             pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof)
             st.markdown(f"### Plate Discipline Profile (by Pitch Type) — {segment_choice}")
             st.table(themed_table(pd_df_typed))
 
-            # Heatmaps now live HERE
+            # 4) Top-3 Pitches Heatmap (own visual)
             season_label_prof_base = build_pitcher_season_label(prof_months, prof_days, df_prof)
             season_label_prof = f"{segment_choice} — {season_label_prof_base}" if season_label_prof_base else segment_choice
+            st.markdown("### Top 3 Pitches — Heatmaps")
+            fig_top3 = heatmaps_top3_pitch_types(
+                df_prof, player, hand_filter=prof_hand, season_label=season_label_prof
+            )
+            if fig_top3:
+                show_and_close(fig_top3)
 
-            st.markdown("### Pitcher Heatmaps")
+            # 5) Outcomes Heatmap (Whiffs / Strikeouts / Damage)
+            st.markdown("### Whiffs / Strikeouts / Damage — Heatmaps")
             type_col_for_hm = pick_col(df_prof, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
             types_available_hm = (
                 df_prof.get(type_col_for_hm, pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
@@ -1217,9 +1336,9 @@ with tabs[2]:
                 default_all=True,
                 columns_per_row=6,
             )
-            fig_h_prof = combined_pitcher_heatmap_report(
+            fig_outcomes = heatmaps_outcomes(
                 df_prof, player, hand_filter=prof_hand, season_label=season_label_prof,
                 outcome_pitch_types=hm_selected,
             )
-            if fig_h_prof:
-                show_and_close(fig_h_prof)
+            if fig_outcomes:
+                show_and_close(fig_outcomes)

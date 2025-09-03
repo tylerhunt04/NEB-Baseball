@@ -5,6 +5,7 @@
 # - Compare tab: still uses combined heatmaps function
 # - Fixed-size rendering for Extensions via show_image_scaled()
 # - Banner via components.html (no stray </div>)
+# - NEW: Uses Fall_WinterScrimmages.csv when segment = "2025/26 Scrimmages"
 
 import os
 import gc
@@ -34,7 +35,11 @@ st.set_page_config(
 )
 st.set_option("client.showErrorDetails", True)
 
-DATA_PATH   = "pitcher_columns.csv"               # <-- your CSV
+# MAIN historical/season dataset
+DATA_PATH_MAIN = "pitcher_columns.csv"             # (existing)
+# SCRIMMAGES dataset (new)
+DATA_PATH_SCRIM = "Fall_WinterScrimmages.csv"      # (new; used for 2025/26 Scrimmages segment)
+
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
 HUSKER_RED  = "#E60026"
@@ -535,7 +540,6 @@ def heatmaps_outcomes(df, pitcher_name, hand_filter="Both", grid_size=100, seaso
         st.info("No pitches for the selected batter-side filter.")
         return None
 
-    # Limit outcome panels to selected pitch types if provided
     df_out = df_p
     if outcome_pitch_types is not None:
         if len(outcome_pitch_types) == 0:
@@ -1051,8 +1055,9 @@ def themed_table(df: pd.DataFrame):
           .format(fmt_map, na_rep="—")
           .set_table_styles(styles)
     )
+
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA
+# LOAD DATA (now supports separate scrimmage CSV for the 2025/26 Scrimmages segment)
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
 def load_csv_norm(path: str) -> pd.DataFrame:
@@ -1062,14 +1067,17 @@ def load_csv_norm(path: str) -> pd.DataFrame:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
     return ensure_date_column(df)
 
-if not os.path.exists(DATA_PATH):
-    st.error(f"Data not found at {DATA_PATH}")
-    st.stop()
+# Preload main data if present (error out only if needed)
+df_main = None
+if os.path.exists(DATA_PATH_MAIN):
+    df_main = load_csv_norm(DATA_PATH_MAIN)
 
-df_all = load_csv_norm(DATA_PATH)
+df_scrim = None
+if os.path.exists(DATA_PATH_SCRIM):
+    df_scrim = load_csv_norm(DATA_PATH_SCRIM)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# DATA SEGMENT PICKER
+# DATA SEGMENT PICKER (chooses correct base dataset per segment)
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("### Data Segment")
 segment_choice = st.selectbox(
@@ -1078,7 +1086,20 @@ segment_choice = st.selectbox(
     index=0,
     key="segment_choice"
 )
-df_segment = filter_by_segment(df_all, segment_choice)
+
+# Select base df by segment: scrimmage CSV for "2025/26 Scrimmages", main CSV otherwise
+if segment_choice == "2025/26 Scrimmages":
+    if df_scrim is None:
+        st.error(f"Scrimmage data file not found at '{DATA_PATH_SCRIM}'. Please add it to use this segment.")
+        st.stop()
+    base_df = df_scrim
+else:
+    if df_main is None:
+        st.error(f"Main data file not found at '{DATA_PATH_MAIN}'.")
+        st.stop()
+    base_df = df_main
+
+df_segment = filter_by_segment(base_df, segment_choice)
 if df_segment.empty:
     st.info(f"No rows found for **{segment_choice}** with the current dataset.")
     st.stop()
@@ -1167,7 +1188,6 @@ with tabs[0]:
         )
         if ext_fig:
             show_image_scaled(ext_fig, width_px=EXT_VIS_WIDTH, dpi=200, pad_inches=0.1)
-
 # ── COMPARE TAB ────────────────────────────────────────────────────────────────
 with tabs[1]:
     st.markdown("#### Compare Appearances")

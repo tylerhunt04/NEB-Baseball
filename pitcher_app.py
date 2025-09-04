@@ -1,12 +1,13 @@
 # pitcher_app.py (UPDATED)
 # - Profiles order: Strike % table → Batted Ball → Plate Discipline → Top-3 Heatmap → Outcomes Heatmap
 # - Heatmaps: split into two visuals for Profiles
-# - Standard tab: Metrics, Release Points, Extensions (mound + legend only)
-# - Compare tab: still uses combined heatmaps function
+# - Standard tab: Metrics, Release Points, Extensions (mound + legend above)
+# - Compare tab: keeps combined heatmaps function
 # - Fixed-size rendering for Extensions via show_image_scaled()
 # - Banner via components.html (no stray </div>)
-# - NEW: Uses Fall_WinterScrimmages.csv when segment = "2025/26 Scrimmages"
-# - NEW: For "2025/26 Scrimmages", choose a single date; label as "September 3rd, 2025 (FB Only)"
+# - Uses Fall_WinterScrimmages.csv when segment = "2025/26 Scrimmages"
+# - Scrimmage pickers show "(FB Only)" beside dates in FB_ONLY_DATES
+# - Extensions: zoomed out to show full mound; legend positioned above mound (all segments)
 
 import os
 import gc
@@ -25,6 +26,7 @@ from matplotlib.gridspec import GridSpec
 from scipy.stats import chi2, gaussian_kde
 from numpy.linalg import LinAlgError
 from matplotlib import colors
+from datetime import date
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG & PATHS
@@ -44,7 +46,7 @@ DATA_PATH_SCRIM = "Fall_WinterScrimmages.csv"      # (new; used for 2025/26 Scri
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
 HUSKER_RED  = "#E60026"
-EXT_VIS_WIDTH = 480  # <<< on-screen pixel width for Extensions; adjust here
+EXT_VIS_WIDTH = 480  # on-screen pixel width for Extensions; adjust here
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CACHED LOADERS & RENDER HELPERS
@@ -151,6 +153,20 @@ def format_date_long(d) -> str:
         return ""
     d = pd.to_datetime(d).date()
     return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
+
+# ---- FB Only helpers ----
+FB_ONLY_DATES = {
+    date(2025, 9, 3),   # Add more dates here as needed
+}
+def is_fb_only(d) -> bool:
+    try:
+        return pd.to_datetime(d).date() in FB_ONLY_DATES
+    except Exception:
+        return False
+
+def label_date_with_fb(d) -> str:
+    base = format_date_long(d)
+    return f"{base} (FB Only)" if is_fb_only(d) else base
 
 def summarize_dates_range(series_like) -> str:
     if series_like is None:
@@ -616,6 +632,7 @@ def combined_pitcher_heatmap_report(
         top3 = list(df_p[type_col].value_counts().index[:3])
     except KeyError:
         top3 = []
+
     for i in range(3):
         ax = fig.add_subplot(gs[0, i])
         if i < len(top3):
@@ -791,7 +808,7 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# NEW: EXTENSIONS (Top-3 usage; mound + legend only by default)
+# EXTENSIONS (Top-3 usage; mound + legend above; zoomed out across all segments)
 # ──────────────────────────────────────────────────────────────────────────────
 RELEASE_X_OFFSET_FT = 2.0
 SHOULDER_X_R = 0.7
@@ -802,8 +819,13 @@ ARM_THICK_TIP  = 0.05
 MOUND_COLOR    = "#7B4B24"
 MOUND_EDGE     = "#3D2A1A"
 MOUND_ALPHA    = 0.90
-LEGEND_ANCHOR_FRAC = (0.50, 0.22)
-LEGEND_LOC     = "lower center"
+
+# NEW: zoomed-out view + legend above
+LEGEND_LOC     = "upper center"
+LEGEND_ANCHOR_FRAC = (0.50, 0.98)   # centered near top
+XLIM_PAD_DEFAULT = 11.0             # wide enough to show entire 9ft mound radius
+YLIM_PAD_DEFAULT = 4.0              # extra headroom
+YLIM_BOTTOM     = -10.0             # show base of mound fully
 
 def _decide_pitcher_hand(sub: pd.DataFrame) -> str:
     hand_col = pick_col(sub, "PitcherThrows","Throws","PitcherHand","Pitcher_Hand","ThrowHand")
@@ -824,9 +846,9 @@ def extensions_topN_figure(
     top_n: int = 3,
     figsize=(5.2, 7.0),
     title_size=14,
-    show_plate: bool = False,   # default hides plate (mound-only)
-    xlim_pad: float = 6.0,
-    ylim_pad: float = 1.5
+    show_plate: bool = False,   # mound-only
+    xlim_pad: float = XLIM_PAD_DEFAULT,
+    ylim_pad: float = YLIM_PAD_DEFAULT
 ):
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
     type_col    = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
@@ -865,7 +887,7 @@ def extensions_topN_figure(
 
     hand = _decide_pitcher_hand(sub)
 
-    # Draw (mound-only by default)
+    # Draw
     fig, ax = plt.subplots(figsize=figsize)
     mound_radius  = 9.0
     rubber_len, rubber_wid = 2.0, 0.5
@@ -903,10 +925,11 @@ def extensions_topN_figure(
                               markerfacecolor=clr, markeredgecolor=clr))
         labels.append(f"{canon_name} ({ext_val:.2f} ft)")
 
-    # View limits
+    # View limits (zoomed out)
     max_ext = max([v for _, v in entries]) if entries else 7.0
-    top_y   = max(mound_radius + ylim_pad, max_ext + 2.0)
-    ax.set_xlim(-xlim_pad, xlim_pad); ax.set_ylim(-3.0, top_y)
+    top_y   = max(9.0 + ylim_pad, max_ext + 2.0)
+    ax.set_xlim(-xlim_pad, xlim_pad)
+    ax.set_ylim(YLIM_BOTTOM, top_y)
 
     ax.set_aspect("equal"); ax.axis("off")
 
@@ -1024,7 +1047,6 @@ def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 def make_strike_percentage_table_from_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Compute strike % metrics from an already-filtered pitcher dataframe."""
     def _safe_mask(q):
         for col in ("Balls","Strikes"):
             if col not in df.columns:
@@ -1058,7 +1080,7 @@ def themed_table(df: pd.DataFrame):
     )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA (now supports separate scrimmage CSV for the 2025/26 Scrimmages segment)
+# LOAD DATA (separate scrimmage CSV for the 2025/26 Scrimmages segment)
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
 def load_csv_norm(path: str) -> pd.DataFrame:
@@ -1068,14 +1090,8 @@ def load_csv_norm(path: str) -> pd.DataFrame:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
     return ensure_date_column(df)
 
-# Preload main data if present (error out only if needed)
-df_main = None
-if os.path.exists(DATA_PATH_MAIN):
-    df_main = load_csv_norm(DATA_PATH_MAIN)
-
-df_scrim = None
-if os.path.exists(DATA_PATH_SCRIM):
-    df_scrim = load_csv_norm(DATA_PATH_SCRIM)
+df_main = load_csv_norm(DATA_PATH_MAIN) if os.path.exists(DATA_PATH_MAIN) else None
+df_scrim = load_csv_norm(DATA_PATH_SCRIM) if os.path.exists(DATA_PATH_SCRIM) else None
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DATA SEGMENT PICKER (chooses correct base dataset per segment)
@@ -1131,18 +1147,18 @@ tabs = st.tabs(["Standard", "Compare", "Profiles"])
 # ── STANDARD TAB ───────────────────────────────────────────────────────────────
 with tabs[0]:
     if segment_choice == "2025/26 Scrimmages":
-        # Single-date selector for scrimmages
+        # Single-date selector for scrimmages (labels include FB Only when applicable)
         dates_all = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
         if not dates_all:
             st.info("No scrimmage dates available for this pitcher.")
             st.stop()
-        # default to latest date
         default_idx = len(dates_all) - 1
-        date_labels = [format_date_long(d) for d in dates_all]
+        date_labels = [label_date_with_fb(d) for d in dates_all]
         sel_label = st.selectbox("Scrimmage Date", options=date_labels, index=default_idx, key="scrim_std_date")
         sel_date = dates_all[date_labels.index(sel_label)]
         neb_df = df_pitcher_all[pd.to_datetime(df_pitcher_all['Date']).dt.date == sel_date].copy()
-        season_label = f"{format_date_long(sel_date)} (FB Only)"
+        # Season label shows FB Only only when that date is flagged
+        season_label = label_date_with_fb(sel_date)
     else:
         present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
         col_m, col_d, col_side = st.columns([1,1,1.6])
@@ -1195,11 +1211,11 @@ with tabs[0]:
         if rel_fig:
             show_and_close(rel_fig)
 
-        # 3) Extensions (Top-3), mound + legend only (fixed on-screen width)
+        # 3) Extensions (Top-3), mound + legend above (fixed on-screen width)
         st.markdown("### Extensions (Top-3 by usage, sorted by mean extension ↓)")
         ext_fig = extensions_topN_figure(
             neb_df, player, include_types=rel_selected, top_n=3,
-            figsize=(5.2, 7.0), title_size=14, show_plate=False  # plate hidden by default
+            figsize=(5.2, 7.0), title_size=14, show_plate=False
         )
         if ext_fig:
             show_image_scaled(ext_fig, width_px=EXT_VIS_WIDTH, dpi=200, pad_inches=0.1)
@@ -1248,7 +1264,7 @@ with tabs[1]:
         if not dates_all_cmp:
             st.info("No scrimmage dates available.")
             st.stop()
-        date_labels_all = [format_date_long(d) for d in dates_all_cmp]
+        date_labels_all = [label_date_with_fb(d) for d in dates_all_cmp]
         default_idx = len(dates_all_cmp) - 1
 
         cols_filters = st.columns(cmp_n)
@@ -1261,7 +1277,7 @@ with tabs[1]:
                 )
                 chosen = dates_all_cmp[date_labels_all.index(lab)]
                 df_win = df_pitcher_all[pd.to_datetime(df_pitcher_all['Date']).dt.date == chosen]
-                season_lab = f"{format_date_long(chosen)} (FB Only)"
+                season_lab = label_date_with_fb(chosen)
                 windows.append((season_lab, df_win))
     else:
         date_ser_all = df_pitcher_all['Date'].dropna()
@@ -1318,17 +1334,17 @@ with tabs[2]:
         st.info("Profiles are not available for **Bullpens** (no batting occurs).")
     else:
         if segment_choice == "2025/26 Scrimmages":
-            # Single-date selector for profiles
+            # Single-date selector for profiles (label shows FB Only when applicable)
             dates_all_prof = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
             if not dates_all_prof:
                 st.info("No scrimmage dates available.")
                 st.stop()
             default_idx = len(dates_all_prof) - 1
-            date_labels_prof = [format_date_long(d) for d in dates_all_prof]
+            date_labels_prof = [label_date_with_fb(d) for d in dates_all_prof]
             lab = st.selectbox("Scrimmage Date (Profiles)", options=date_labels_prof, index=default_idx, key="prof_scrim_date")
             chosen = dates_all_prof[date_labels_prof.index(lab)]
             df_prof = df_pitcher_all[pd.to_datetime(df_pitcher_all['Date']).dt.date == chosen].copy()
-            season_label_prof = f"{format_date_long(chosen)} (FB Only)"
+            season_label_prof = label_date_with_fb(chosen)
             prof_hand = st.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
             # Batter-side filter for tables and heatmaps
             side_col = find_batter_side_col(df_prof)

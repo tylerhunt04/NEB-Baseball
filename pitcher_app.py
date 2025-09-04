@@ -1,13 +1,9 @@
 # pitcher_app.py (UPDATED)
-# - Profiles order: Strike % table → Batted Ball → Plate Discipline → Top-3 Heatmap → Outcomes Heatmap
-# - Heatmaps: split into two visuals for Profiles
-# - Standard tab: Metrics, Release Points, Extensions (mound + legend above)
-# - Compare tab: keeps combined heatmaps function
-# - Fixed-size rendering for Extensions via show_image_scaled()
-# - Banner via components.html (no stray </div>)
-# - Uses Fall_WinterScrimmages.csv when segment = "2025/26 Scrimmages"
-# - Scrimmage pickers show "(FB Only)" beside dates in FB_ONLY_DATES
-# - Extensions: zoomed out to show full mound; legend positioned above mound (all segments)
+# - Extensions: simple title, zoomed out, legend above; now has its own pitch-type filter
+# - Compare: order = Movement → Release Points → Extensions → Heatmaps; per-visual filters above; expand toggle
+# - Profiles: Strike % table = Total first then by pitch type; centered headers; titles cleaned
+# - Heatmap headings cleaned (removed "— Heatmaps")
+# - Scrimmage date labels can show "(FB Only)" for flagged dates
 
 import os
 import gc
@@ -16,7 +12,7 @@ import base64
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use("Agg")  # non-interactive, memory-safe backend
+matplotlib.use("Agg")  # non-interactive backend
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import streamlit as st
@@ -38,15 +34,13 @@ st.set_page_config(
 )
 st.set_option("client.showErrorDetails", True)
 
-# MAIN historical/season dataset
-DATA_PATH_MAIN = "pitcher_columns.csv"             # (existing)
-# SCRIMMAGES dataset (new)
-DATA_PATH_SCRIM = "Fall_WinterScrimmages.csv"      # (new; used for 2025/26 Scrimmages segment)
+DATA_PATH_MAIN = "pitcher_columns.csv"
+DATA_PATH_SCRIM = "Fall_WinterScrimmages.csv"
 
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
 HUSKER_RED  = "#E60026"
-EXT_VIS_WIDTH = 480  # on-screen pixel width for Extensions; adjust here
+EXT_VIS_WIDTH = 480  # default on-screen width for Extensions
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CACHED LOADERS & RENDER HELPERS
@@ -65,7 +59,6 @@ def load_logo_img():
     return None
 
 def show_and_close(fig, *, use_container_width: bool = False):
-    """Display a Matplotlib figure and free its memory immediately."""
     try:
         st.pyplot(fig=fig, clear_figure=False, use_container_width=use_container_width)
     finally:
@@ -73,7 +66,6 @@ def show_and_close(fig, *, use_container_width: bool = False):
         gc.collect()
 
 def show_image_scaled(fig, *, width_px: int = EXT_VIS_WIDTH, dpi: int = 200, pad_inches: float = 0.1):
-    """Render a Matplotlib fig to PNG and show at a fixed pixel width (prevents Streamlit stretching)."""
     import io
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight", pad_inches=pad_inches)
@@ -83,7 +75,7 @@ def show_image_scaled(fig, *, width_px: int = EXT_VIS_WIDTH, dpi: int = 200, pad
     gc.collect()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HERO BANNER (isolated HTML via components.html)
+# HERO BANNER
 # ──────────────────────────────────────────────────────────────────────────────
 def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 260):
     from streamlit.components.v1 import html as _html
@@ -154,10 +146,10 @@ def format_date_long(d) -> str:
     d = pd.to_datetime(d).date()
     return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
 
-# ---- FB Only helpers ----
-FB_ONLY_DATES = {
-    date(2025, 9, 3),   # Add more dates here as needed
-}
+# Scrimmage "(FB Only)" labels
+from datetime import date as _date
+FB_ONLY_DATES = { _date(2025, 9, 3) }  # add more as needed
+
 def is_fb_only(d) -> bool:
     try:
         return pd.to_datetime(d).date() in FB_ONLY_DATES
@@ -321,9 +313,7 @@ def compute_density(x, y, grid_coords, mesh_shape):
         return np.zeros(mesh_shape)
 
 def strike_rate(df):
-    if len(df) == 0:
-        return np.nan
-    if "PitchCall" not in df.columns:
+    if len(df) == 0 or "PitchCall" not in df.columns:
         return np.nan
     strike_calls = ['StrikeCalled','StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay']
     return df['PitchCall'].isin(strike_calls).mean() * 100
@@ -351,7 +341,7 @@ def _safe_key(s: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]+", "_", str(s))
 
 def pitchtype_checkbox_grid(label: str, options: list[str], key_prefix: str, default_all=True, columns_per_row=6) -> list[str]:
-    options = list(dict.fromkeys([str(o) for o in options]))  # unique/stable
+    options = list(dict.fromkeys([str(o) for o in options]))
     if not options:
         st.caption("No pitch types available.")
         return []
@@ -374,7 +364,6 @@ def pitchtype_checkbox_grid(label: str, options: list[str], key_prefix: str, def
 # PITCHER REPORT (movement + summary)
 # ──────────────────────────────────────────────────────────────────────────────
 def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_label="Season"):
-    # Resolve columns
     type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
     pitch_col = pick_col(df, "PitchCall","Pitch Call","Call") or "PitchCall"
     speed_col = pick_col(df, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
@@ -472,7 +461,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     return fig, summary
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HEATMAPS — Split versions for Profiles (+ legacy combined for Compare)
+# HEATMAPS (split & combined) — titles cleaned
 # ──────────────────────────────────────────────────────────────────────────────
 def _heatmap_panel(ax, sub, title, *, x_min, x_max, y_min, y_max, grid_coords, xi_mesh,
                    z_left, z_bottom, z_w, z_h, color='deepskyblue', threshold=12):
@@ -534,7 +523,7 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
             ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
             ax.set_xticks([]); ax.set_yticks([]); ax.set_title("—", fontweight='bold')
 
-    fig.suptitle(f"{format_name(pitcher_name)} — Top 3 Pitches Heatmaps ({season_label})", fontsize=16, y=0.98, fontweight='bold')
+    fig.suptitle(f"{format_name(pitcher_name)} — Top 3 Pitches ({season_label})", fontsize=16, y=0.98, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
 
@@ -587,11 +576,10 @@ def heatmaps_outcomes(df, pitcher_name, hand_filter="Both", grid_size=100, seaso
         x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
         grid_coords=grid_coords, xi_mesh=xi_mesh, z_left=z_left, z_bottom=z_bottom, z_w=z_w, z_h=z_h, color='orange')
 
-    fig.suptitle(f"{format_name(pitcher_name)} — Outcomes Heatmaps ({season_label})", fontsize=16, y=0.98, fontweight='bold')
+    fig.suptitle(f"{format_name(pitcher_name)} — Outcomes ({season_label})", fontsize=16, y=0.98, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
 
-# Legacy combined heatmaps (used by Compare tab to keep its layout)
 def combined_pitcher_heatmap_report(
     df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season", outcome_pitch_types=None,
 ):
@@ -659,7 +647,7 @@ def combined_pitcher_heatmap_report(
     ax = fig.add_subplot(gs[1, 1]); panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})")
     ax = fig.add_subplot(gs[1, 2]); panel(ax, sub_dg, f"Damage (n={len(sub_dg)})", color='orange')
 
-    # Strike % table row
+    # Strike % table row (kept here for legacy combined figure)
     axt = fig.add_subplot(gs[2, :]); axt.axis('off')
     def _safe_mask(q):
         for col in ("Balls","Strikes"):
@@ -678,12 +666,12 @@ def combined_pitcher_heatmap_report(
     tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
     axt.set_title('Strike Percentage by Count', y=0.75, fontweight='bold')
 
-    fig.suptitle(f"{format_name(pitcher_name)} Heatmaps\n({season_label}) ({hand_filter})", fontsize=18, y=0.98, fontweight='bold')
+    fig.suptitle(f"{format_name(pitcher_name)}\n({season_label}) ({hand_label})", fontsize=18, y=0.98, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RELEASE POINTS (with pitch-type filter)
+# RELEASE POINTS
 # ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
@@ -808,7 +796,7 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# EXTENSIONS (Top-3 usage; mound + legend above; zoomed out across all segments)
+# EXTENSIONS (zoomed out; legend above; pitch-type filter supported)
 # ──────────────────────────────────────────────────────────────────────────────
 RELEASE_X_OFFSET_FT = 2.0
 SHOULDER_X_R = 0.7
@@ -819,13 +807,11 @@ ARM_THICK_TIP  = 0.05
 MOUND_COLOR    = "#7B4B24"
 MOUND_EDGE     = "#3D2A1A"
 MOUND_ALPHA    = 0.90
-
-# NEW: zoomed-out view + legend above
 LEGEND_LOC     = "upper center"
-LEGEND_ANCHOR_FRAC = (0.50, 0.98)   # centered near top
-XLIM_PAD_DEFAULT = 11.0             # wide enough to show entire 9ft mound radius
-YLIM_PAD_DEFAULT = 4.0              # extra headroom
-YLIM_BOTTOM     = -10.0             # show base of mound fully
+LEGEND_ANCHOR_FRAC = (0.50, 0.98)
+XLIM_PAD_DEFAULT = 11.0
+YLIM_PAD_DEFAULT = 4.0
+YLIM_BOTTOM     = -10.0
 
 def _decide_pitcher_hand(sub: pd.DataFrame) -> str:
     hand_col = pick_col(sub, "PitcherThrows","Throws","PitcherHand","Pitcher_Hand","ThrowHand")
@@ -846,7 +832,7 @@ def extensions_topN_figure(
     top_n: int = 3,
     figsize=(5.2, 7.0),
     title_size=14,
-    show_plate: bool = False,   # mound-only
+    show_plate: bool = False,
     xlim_pad: float = XLIM_PAD_DEFAULT,
     ylim_pad: float = YLIM_PAD_DEFAULT
 ):
@@ -887,7 +873,6 @@ def extensions_topN_figure(
 
     hand = _decide_pitcher_hand(sub)
 
-    # Draw
     fig, ax = plt.subplots(figsize=figsize)
     mound_radius  = 9.0
     rubber_len, rubber_wid = 2.0, 0.5
@@ -925,12 +910,10 @@ def extensions_topN_figure(
                               markerfacecolor=clr, markeredgecolor=clr))
         labels.append(f"{canon_name} ({ext_val:.2f} ft)")
 
-    # View limits (zoomed out)
     max_ext = max([v for _, v in entries]) if entries else 7.0
     top_y   = max(9.0 + ylim_pad, max_ext + 2.0)
     ax.set_xlim(-xlim_pad, xlim_pad)
     ax.set_ylim(YLIM_BOTTOM, top_y)
-
     ax.set_aspect("equal"); ax.axis("off")
 
     fig.suptitle(f"{format_name(pitcher_name)} Extension", fontsize=title_size, fontweight="bold", y=0.98)
@@ -945,7 +928,7 @@ def extensions_topN_figure(
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PROFILES TABLES
+# PROFILES TABLES (now Strike % supports Total + by pitch type)
 # ──────────────────────────────────────────────────────────────────────────────
 def _assign_spray_category_row(row):
     ang = row.get('Bearing', np.nan)
@@ -1000,6 +983,7 @@ def _plate_metrics(sub: pd.DataFrame) -> dict:
     s_call = sub.get('PitchCall', pd.Series(dtype=object))
     lside = pd.to_numeric(sub.get('PlateLocSide',   pd.Series(dtype=float)), errors="coerce")
     lht   = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors="coerce")
+    isswing   = s_call.isin(['StrikeSwinging','FoulBallNotFieldable','FoulBallNotFieldable','InPlay'])
     isswing   = s_call.isin(['StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
     iswhiff   = s_call.eq('StrikeSwinging')
     iscontact = s_call.isin(['InPlay','FoulBallNotFieldable','FoulBallFieldable'])
@@ -1046,41 +1030,55 @@ def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
     out['Zone Pitches'] = out['Zone Pitches'].astype(int)
     return out
 
-def make_strike_percentage_table_from_df(df: pd.DataFrame) -> pd.DataFrame:
+def _strike_metrics(sub_df: pd.DataFrame) -> dict:
     def _safe_mask(q):
         for col in ("Balls","Strikes"):
-            if col not in df.columns:
-                return df.iloc[0:0]
+            if col not in sub_df.columns:
+                return sub_df.iloc[0:0]
         return q
-    fp  = strike_rate(_safe_mask(df[(df.get('Balls',0)==0) & (df.get('Strikes',0)==0)]))
-    mix = strike_rate(_safe_mask(df[((df.get('Balls',0)==1)&(df.get('Strikes',0)==0)) |
-                                    ((df.get('Balls',0)==0)&(df.get('Strikes',0)==1)) |
-                                    ((df.get('Balls',0)==1)&(df.get('Strikes',0)==1))]))
-    hp  = strike_rate(_safe_mask(df[((df.get('Balls',0)==2)&(df.get('Strikes',0)==0)) |
-                                    ((df.get('Balls',0)==2)&(df.get('Strikes',0)==1)) |
-                                    ((df.get('Balls',0)==3)&(df.get('Strikes',0)==1))]))
-    two = strike_rate(_safe_mask(df[(df.get('Strikes',0)==2) & (df.get('Balls',0)<3)]))
-    metrics = pd.DataFrame({'1st Pitch %':[fp],'Mix Count %':[mix],'Hitter+ %':[hp],'2-Strike %':[two]}).round(1)
-    return metrics
+    fp  = strike_rate(_safe_mask(sub_df[(sub_df.get('Balls',0)==0) & (sub_df.get('Strikes',0)==0)]))
+    mix = strike_rate(_safe_mask(sub_df[((sub_df.get('Balls',0)==1)&(sub_df.get('Strikes',0)==0)) |
+                                        ((sub_df.get('Balls',0)==0)&(sub_df.get('Strikes',0)==1)) |
+                                        ((sub_df.get('Balls',0)==1)&(sub_df.get('Strikes',0)==1))]))
+    hp  = strike_rate(_safe_mask(sub_df[((sub_df.get('Balls',0)==2)&(sub_df.get('Strikes',0)==0)) |
+                                        ((sub_df.get('Balls',0)==2)&(sub_df.get('Strikes',0)==1)) |
+                                        ((sub_df.get('Balls',0)==3)&(sub_df.get('Strikes',0)==1))]))
+    two = strike_rate(_safe_mask(sub_df[(sub_df.get('Strikes',0)==2) & (sub_df.get('Balls',0)<3)]))
+    return {'Pitches': int(len(sub_df)),
+            '1st Pitch %': fp, 'Mix Count %': mix, 'Hitter+ %': hp, '2-Strike %': two}
+
+def make_strike_percentage_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Total first, then by pitch type (>=20 pitches), sorted by Pitches desc."""
+    type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+    rows = [{'Pitch Type': 'Total', **_strike_metrics(df)}]
+    if type_col in df.columns:
+        for ptype, sub in df.groupby(type_col, dropna=False):
+            metrics = _strike_metrics(sub)
+            if metrics['Pitches'] >= 20:
+                rows.append({'Pitch Type': str(ptype), **metrics})
+    out = pd.DataFrame(rows)
+    if len(out) > 1:
+        total_row = out.iloc[[0]]
+        others = out.iloc[1:].sort_values('Pitches', ascending=False)
+        out = pd.concat([total_row, others], ignore_index=True)
+    for c in out.columns:
+        if c.endswith('%'): out[c] = out[c].astype(float).round(1)
+    out['Pitches'] = out['Pitches'].astype(int)
+    return out
 
 def themed_table(df: pd.DataFrame):
     float_cols = df.select_dtypes(include=["float", "float64"]).columns.tolist()
     percent_cols = [c for c in df.columns if c.strip().endswith('%')]
     fmt_map = {c: "{:.1f}" for c in set(float_cols) | set(percent_cols)}
     styles = [
-        {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'},
-        {'selector': 'th',        'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'},
+        {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
+        {'selector': 'th',        'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
         {'selector': 'td',        'props': 'white-space: nowrap;'},
     ]
-    return (
-        df.style
-          .hide(axis="index")
-          .format(fmt_map, na_rep="—")
-          .set_table_styles(styles)
-    )
+    return (df.style.hide(axis="index").format(fmt_map, na_rep="—").set_table_styles(styles))
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA (separate scrimmage CSV for the 2025/26 Scrimmages segment)
+# LOAD DATA
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True)
 def load_csv_norm(path: str) -> pd.DataFrame:
@@ -1094,7 +1092,7 @@ df_main = load_csv_norm(DATA_PATH_MAIN) if os.path.exists(DATA_PATH_MAIN) else N
 df_scrim = load_csv_norm(DATA_PATH_SCRIM) if os.path.exists(DATA_PATH_SCRIM) else None
 
 # ──────────────────────────────────────────────────────────────────────────────
-# DATA SEGMENT PICKER (chooses correct base dataset per segment)
+# DATA SEGMENT PICKER
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown("### Data Segment")
 segment_choice = st.selectbox(
@@ -1104,7 +1102,7 @@ segment_choice = st.selectbox(
     key="segment_choice"
 )
 
-# Select base df by segment: scrimmage CSV for "2025/26 Scrimmages", main CSV otherwise
+# Base dataset selection by segment
 if segment_choice == "2025/26 Scrimmages":
     if df_scrim is None:
         st.error(f"Scrimmage data file not found at '{DATA_PATH_SCRIM}'. Please add it to use this segment.")
@@ -1147,7 +1145,6 @@ tabs = st.tabs(["Standard", "Compare", "Profiles"])
 # ── STANDARD TAB ───────────────────────────────────────────────────────────────
 with tabs[0]:
     if segment_choice == "2025/26 Scrimmages":
-        # Single-date selector for scrimmages (labels include FB Only when applicable)
         dates_all = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
         if not dates_all:
             st.info("No scrimmage dates available for this pitcher.")
@@ -1157,11 +1154,10 @@ with tabs[0]:
         sel_label = st.selectbox("Scrimmage Date", options=date_labels, index=default_idx, key="scrim_std_date")
         sel_date = dates_all[date_labels.index(sel_label)]
         neb_df = df_pitcher_all[pd.to_datetime(df_pitcher_all['Date']).dt.date == sel_date].copy()
-        # Season label shows FB Only only when that date is flagged
         season_label = label_date_with_fb(sel_date)
     else:
         present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
-        col_m, col_d, col_side = st.columns([1,1,1.6])
+        col_m, col_d, _col_side = st.columns([1,1,1.6])
         months_sel = col_m.multiselect(
             "Months (optional)",
             options=present_months,
@@ -1174,7 +1170,6 @@ with tabs[0]:
             dser = dser[dser.dt.month.isin(months_sel)]
         present_days = sorted(dser.dt.day.unique().tolist())
         days_sel = col_d.multiselect("Days (optional)", options=present_days, default=[], key="std_days")
-        col_side.radio("Batter Side (for heatmaps — now in Profiles)", ["Both","LHH","RHH"], index=0, horizontal=True, key="std_hand")
 
         neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
         season_label_base = build_pitcher_season_label(months_sel, days_sel, neb_df)
@@ -1191,7 +1186,7 @@ with tabs[0]:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        # 2) Release Points (+ checkbox grid)
+        # 2) Release Points (with its own filter)
         type_col_all = pick_col(neb_df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
         types_available = (
             neb_df.get(type_col_all, pd.Series(dtype=object))
@@ -1201,7 +1196,7 @@ with tabs[0]:
         types_available = sorted(types_available)
         st.markdown("### Release Points")
         rel_selected = pitchtype_checkbox_grid(
-            "Pitch Types to Show",
+            "Pitch Types (Release Points)",
             options=types_available,
             key_prefix="std_release_types",
             default_all=True,
@@ -1211,10 +1206,17 @@ with tabs[0]:
         if rel_fig:
             show_and_close(rel_fig)
 
-        # 3) Extensions (Top-3), mound + legend above (fixed on-screen width)
-        st.markdown("### Extensions (Top-3 by usage, sorted by mean extension ↓)")
+        # 3) Extensions (own pitch-type filter)
+        st.markdown("### Extensions")
+        ext_selected = pitchtype_checkbox_grid(
+            "Pitch Types (Extensions)",
+            options=types_available,
+            key_prefix="std_ext_types",
+            default_all=True,
+            columns_per_row=6,
+        )
         ext_fig = extensions_topN_figure(
-            neb_df, player, include_types=rel_selected, top_n=3,
+            neb_df, player, include_types=ext_selected, top_n=3,
             figsize=(5.2, 7.0), title_size=14, show_plate=False
         )
         if ext_fig:
@@ -1223,42 +1225,9 @@ with tabs[0]:
 with tabs[1]:
     st.markdown("#### Compare Appearances")
     cmp_n = st.selectbox("Number of windows", [2,3], index=0, key="cmp_n")
-    cmp_hand = st.radio("Batter Side (heatmaps)", ["Both","LHH","RHH"], index=0, horizontal=True, key="cmp_hand")
+    expand_view = st.checkbox("Expand compare view (full-width)", value=False, key="cmp_expand")
 
-    type_col_all = pick_col(df_pitcher_all, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
-    types_avail_all = (
-        df_pitcher_all.get(type_col_all, pd.Series(dtype=object))
-                      .dropna().map(canonicalize_type)
-                      .replace("Unknown", np.nan).dropna().unique().tolist()
-    )
-    types_avail_all = sorted(types_avail_all)
-    st.markdown("**Pitch Types (Release Plot, all windows)**")
-    cmp_types_selected = pitchtype_checkbox_grid(
-        "Select pitch types",
-        options=types_avail_all,
-        key_prefix="cmp_rel_types",
-        default_all=True,
-        columns_per_row=6,
-    )
-
-    types_avail_out = (
-        df_pitcher_all.get(type_col_all, pd.Series(dtype=object))
-                      .dropna().astype(str).unique().tolist()
-    )
-    types_avail_out = sorted(types_avail_out)
-    if not is_bullpen_segment:
-        st.markdown("**Pitch Types (Heatmaps — Whiffs / Strikeouts / Damage)**")
-        cmp_types_out_selected = pitchtype_checkbox_grid(
-            "Select outcome pitch types",
-            options=types_avail_out,
-            key_prefix="cmp_types_outcomes",
-            default_all=True,
-            columns_per_row=6,
-        )
-    else:
-        cmp_types_out_selected = []
-
-    # Filters/windows differ for Scrimmages (single-date selection per window)
+    # Define windows (date selection for scrimmages; month/day ranges otherwise)
     if segment_choice == "2025/26 Scrimmages":
         dates_all_cmp = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
         if not dates_all_cmp:
@@ -1303,29 +1272,91 @@ with tabs[1]:
                 season_lab = f"{segment_choice} — {season_lab}" if season_lab else segment_choice
                 windows.append((season_lab, df_win))
 
-    st.markdown("---")
+    # Common type options for filters
+    type_col_all = pick_col(df_pitcher_all, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+    types_avail_canon = (
+        df_pitcher_all.get(type_col_all, pd.Series(dtype=object))
+                      .dropna().map(canonicalize_type)
+                      .replace("Unknown", np.nan).dropna().unique().tolist()
+    )
+    types_avail_canon = sorted(types_avail_canon)
+
+    # 1) MOVEMENT
+    st.markdown("### Movement")
     cols_out = st.columns(cmp_n)
     logo_img = load_logo_img()
     for i, (season_lab, df_win) in enumerate(windows):
         with cols_out[i]:
             st.markdown(f"**Window {'ABC'[i]} — {season_lab}**")
             if df_win.empty:
-                st.info("No data for this window.")
-                continue
+                st.info("No data for this window."); continue
             out_win = combined_pitcher_report(df_win, player, logo_img, coverage=0.8, season_label=season_lab)
             if out_win:
                 fig_m, _ = out_win
-                show_and_close(fig_m)
-            if not is_bullpen_segment:
-                fig_h = combined_pitcher_heatmap_report(
-                    df_win, player, hand_filter=cmp_hand, season_label=season_lab,
-                    outcome_pitch_types=cmp_types_out_selected,
-                )
-                if fig_h:
-                    show_and_close(fig_h)
+                show_and_close(fig_m, use_container_width=expand_view)
+
+    # 2) RELEASE POINTS (filter above)
+    st.markdown("### Release Points")
+    cmp_types_selected = pitchtype_checkbox_grid(
+        "Pitch Types (Release Points)",
+        options=types_avail_canon,
+        key_prefix="cmp_rel_types",
+        default_all=True,
+        columns_per_row=6,
+    )
+    cols_rel = st.columns(cmp_n)
+    for i, (season_lab, df_win) in enumerate(windows):
+        with cols_rel[i]:
+            if df_win.empty:
+                st.info("No data for this window."); continue
             fig_r = release_points_figure(df_win, player, include_types=cmp_types_selected)
             if fig_r:
-                show_and_close(fig_r)
+                show_and_close(fig_r, use_container_width=expand_view)
+
+    # 3) EXTENSIONS (filter above)
+    st.markdown("### Extensions")
+    cmp_ext_types_selected = pitchtype_checkbox_grid(
+        "Pitch Types (Extensions)",
+        options=types_avail_canon,
+        key_prefix="cmp_ext_types",
+        default_all=True,
+        columns_per_row=6,
+    )
+    cols_ext = st.columns(cmp_n)
+    ext_width = 1000 if expand_view else EXT_VIS_WIDTH
+    for i, (season_lab, df_win) in enumerate(windows):
+        with cols_ext[i]:
+            if df_win.empty:
+                st.info("No data for this window."); continue
+            ext_fig = extensions_topN_figure(
+                df_win, player, include_types=cmp_ext_types_selected, top_n=3,
+                figsize=(5.2, 7.0), title_size=14, show_plate=False
+            )
+            if ext_fig:
+                show_image_scaled(ext_fig, width_px=ext_width, dpi=200, pad_inches=0.1)
+
+    # 4) HEATMAPS (filters above)
+    st.markdown("### Heatmaps")
+    cmp_hand = st.radio("Batter Side (Heatmaps)", ["Both","LHH","RHH"], index=0, horizontal=True, key="cmp_hand")
+    types_avail_outcomes = sorted(df_pitcher_all.get(type_col_all, pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
+    cmp_types_out_selected = pitchtype_checkbox_grid(
+        "Pitch Types (Whiffs/Strikeouts/Damage)",
+        options=types_avail_outcomes,
+        key_prefix="cmp_types_outcomes",
+        default_all=True,
+        columns_per_row=6,
+    )
+    cols_hm = st.columns(cmp_n)
+    for i, (season_lab, df_win) in enumerate(windows):
+        with cols_hm[i]:
+            if df_win.empty:
+                st.info("No data for this window."); continue
+            fig_h = combined_pitcher_heatmap_report(
+                df_win, player, hand_filter=cmp_hand, season_label=season_lab,
+                outcome_pitch_types=cmp_types_out_selected,
+            )
+            if fig_h:
+                show_and_close(fig_h, use_container_width=expand_view)
 
 # ── PROFILES TAB ───────────────────────────────────────────────────────────────
 with tabs[2]:
@@ -1334,11 +1365,9 @@ with tabs[2]:
         st.info("Profiles are not available for **Bullpens** (no batting occurs).")
     else:
         if segment_choice == "2025/26 Scrimmages":
-            # Single-date selector for profiles (label shows FB Only when applicable)
             dates_all_prof = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
             if not dates_all_prof:
-                st.info("No scrimmage dates available.")
-                st.stop()
+                st.info("No scrimmage dates available."); st.stop()
             default_idx = len(dates_all_prof) - 1
             date_labels_prof = [label_date_with_fb(d) for d in dates_all_prof]
             lab = st.selectbox("Scrimmage Date (Profiles)", options=date_labels_prof, index=default_idx, key="prof_scrim_date")
@@ -1346,7 +1375,6 @@ with tabs[2]:
             df_prof = df_pitcher_all[pd.to_datetime(df_pitcher_all['Date']).dt.date == chosen].copy()
             season_label_prof = label_date_with_fb(chosen)
             prof_hand = st.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
-            # Batter-side filter for tables and heatmaps
             side_col = find_batter_side_col(df_prof)
             if prof_hand in ("LHH","RHH") and side_col is not None and not df_prof.empty:
                 sides = normalize_batter_side(df_prof[side_col])
@@ -1369,9 +1397,7 @@ with tabs[2]:
             prof_days = col_pd.multiselect("Days (optional)", options=prof_days_all, default=[], key="prof_days")
             last_n_games = int(col_ln.number_input("Last N games", min_value=0, max_value=50, value=0, step=1, format="%d", key="prof_lastn"))
             prof_hand = col_side.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
-            # Build filtered dataset for PROFILES
             df_prof = filter_by_month_day(df_pitcher_all, months=prof_months, days=prof_days).copy()
-            # Last N games
             if last_n_games and not df_prof.empty:
                 uniq_dates = pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.dropna().unique()
                 uniq_dates = sorted(uniq_dates)
@@ -1379,7 +1405,6 @@ with tabs[2]:
                 df_prof = df_prof[pd.to_datetime(df_prof['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
             season_label_prof_base = build_pitcher_season_label(prof_months, prof_days, df_prof)
             season_label_prof = f"{segment_choice} — {season_label_prof_base}" if season_label_prof_base else segment_choice
-            # Batter-side filter for tables and heatmaps
             side_col = find_batter_side_col(df_prof)
             if prof_hand in ("LHH","RHH") and side_col is not None and not df_prof.empty:
                 sides = normalize_batter_side(df_prof[side_col])
@@ -1389,31 +1414,31 @@ with tabs[2]:
         if df_prof.empty:
             st.info("No rows for the selected profile filters.")
         else:
-            # 1) Strike Percentage table (now first)
+            # 1) Strike Percentage by Count — Total first, then by pitch type
             st.markdown("### Strike Percentage by Count")
-            strike_df = make_strike_percentage_table_from_df(df_prof).round(1)
+            strike_df = make_strike_percentage_table(df_prof).round(1)
             st.table(themed_table(strike_df))
 
-            # 2) Batted Ball Profile — by Pitch Type
+            # 2) Batted Ball Profile (title cleaned)
             bb_df_typed = make_pitcher_batted_ball_by_type(df_prof)
-            st.markdown(f"### Batted Ball Profile (by Pitch Type) — {segment_choice}")
+            st.markdown(f"### Batted Ball Profile — {segment_choice}")
             st.table(themed_table(bb_df_typed))
 
-            # 3) Plate Discipline Profile — by Pitch Type
+            # 3) Plate Discipline Profile (title cleaned)
             pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof)
-            st.markdown(f"### Plate Discipline Profile (by Pitch Type) — {segment_choice}")
+            st.markdown(f"### Plate Discipline Profile — {segment_choice}")
             st.table(themed_table(pd_df_typed))
 
-            # 4) Top-3 Pitches Heatmap (own visual)
-            st.markdown("### Top 3 Pitches — Heatmaps")
+            # 4) Top-3 Pitches (title cleaned)
+            st.markdown("### Top 3 Pitches")
             fig_top3 = heatmaps_top3_pitch_types(
                 df_prof, player, hand_filter=prof_hand, season_label=season_label_prof
             )
             if fig_top3:
                 show_and_close(fig_top3)
 
-            # 5) Outcomes Heatmap (Whiffs / Strikeouts / Damage)
-            st.markdown("### Whiffs / Strikeouts / Damage — Heatmaps")
+            # 5) Whiffs / Strikeouts / Damage (title cleaned)
+            st.markdown("### Whiffs / Strikeouts / Damage")
             type_col_for_hm = pick_col(df_prof, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
             types_available_hm = (
                 df_prof.get(type_col_for_hm, pd.Series(dtype=object)).dropna().astype(str).unique().tolist()

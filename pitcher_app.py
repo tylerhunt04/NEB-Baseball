@@ -42,10 +42,10 @@ DATA_PATH_MAIN = "pitcher_columns.csv"  # 2025 Season
 
 # 2025/26 Scrimmages: common upload/local variants
 SCRIM_PATHS = [
-    "/mnt/data/Fall_WinterScrimmages (2).csv",
-    "/mnt/data/Fall_WinterScrimmages(2).csv",
-    "Fall_WinterScrimmages (2).csv",
-    "Fall_WinterScrimmages(2).csv",
+    "/mnt/data/Fall_WinterScrimmages (3).csv",
+    "/mnt/data/Fall_WinterScrimmages(3).csv",
+    "Fall_WinterScrimmages (3).csv",
+    "Fall_WinterScrimmages(3).csv",
 ]
 
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"

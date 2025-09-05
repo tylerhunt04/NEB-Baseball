@@ -45,10 +45,9 @@ DATA_PATH_MAIN = "pitcher_columns.csv"
 
 # Prefer the file you attached; fall back to common local names or an env override.
 SCRIM_PATH_CANDIDATES = [
-    os.environ.get("SCRIM_CSV_PATH"),                    # optional override
-    "/mnt/data/Fall_WinterScrimmages (1).csv",           # uploaded path
-    "Fall_WinterScrimmages (1).csv",                     # same dir as app
-    "Fall_WinterScrimmages.csv",                         # legacy/default name
+    os.environ.get("SCRIM_CSV_PATH"),                    
+    "Fall_WinterScrimmages (1).csv",                     
+ 
 ]
 DATA_PATH_SCRIM = _resolve_first_existing(SCRIM_PATH_CANDIDATES)
 

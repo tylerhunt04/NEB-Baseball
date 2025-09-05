@@ -4,6 +4,7 @@
 # - Profiles: Strike % table = Total first then by pitch type; centered headers; titles cleaned
 # - Heatmap headings cleaned (removed "— Heatmaps")
 # - Scrimmage date labels can show "(FB Only)" for flagged dates
+# - NEW: 2025/26 Scrimmages reads from your attached CSV (with fallbacks & env override)
 
 import os
 import gc
@@ -34,8 +35,22 @@ st.set_page_config(
 )
 st.set_option("client.showErrorDetails", True)
 
+def _resolve_first_existing(paths: list[str]) -> str | None:
+    for p in paths:
+        if p and os.path.exists(p):
+            return p
+    return None
+
 DATA_PATH_MAIN = "pitcher_columns.csv"
-DATA_PATH_SCRIM = "Fall_WinterScrimmages(1).csv"
+
+# Prefer the file you attached; fall back to common local names or an env override.
+SCRIM_PATH_CANDIDATES = [
+    os.environ.get("SCRIM_CSV_PATH"),                    # optional override
+    "/mnt/data/Fall_WinterScrimmages (1).csv",           # uploaded path
+    "Fall_WinterScrimmages (1).csv",                     # same dir as app
+    "Fall_WinterScrimmages.csv",                         # legacy/default name
+]
+DATA_PATH_SCRIM = _resolve_first_existing(SCRIM_PATH_CANDIDATES)
 
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
@@ -526,7 +541,6 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
     fig.suptitle(f"{format_name(pitcher_name)} — Top 3 Pitches ({season_label})", fontsize=16, y=0.98, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
-
 def heatmaps_outcomes(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season", outcome_pitch_types=None):
     df_p = df[df.get('Pitcher','') == pitcher_name].copy()
     if df_p.empty:
@@ -1088,8 +1102,8 @@ def load_csv_norm(path: str) -> pd.DataFrame:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
     return ensure_date_column(df)
 
-df_main = load_csv_norm(DATA_PATH_MAIN) if os.path.exists(DATA_PATH_MAIN) else None
-df_scrim = load_csv_norm(DATA_PATH_SCRIM) if os.path.exists(DATA_PATH_SCRIM) else None
+df_main  = load_csv_norm(DATA_PATH_MAIN) if os.path.exists(DATA_PATH_MAIN) else None
+df_scrim = load_csv_norm(DATA_PATH_SCRIM) if DATA_PATH_SCRIM else None
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DATA SEGMENT PICKER
@@ -1104,10 +1118,15 @@ segment_choice = st.selectbox(
 
 # Base dataset selection by segment
 if segment_choice == "2025/26 Scrimmages":
-    if df_scrim is None:
-        st.error(f"Scrimmage data file not found at '{DATA_PATH_SCRIM}'. Please add it to use this segment.")
+    if df_scrim is None or df_scrim.empty:
+        tried = ", ".join([p for p in SCRIM_PATH_CANDIDATES if p])
+        st.error(
+            "Scrimmage data file not found or empty.\n\n"
+            f"Looked for: {tried}"
+        )
         st.stop()
     base_df = df_scrim
+    st.caption(f"Scrimmage data source: **{DATA_PATH_SCRIM}**")
 else:
     if df_main is None:
         st.error(f"Main data file not found at '{DATA_PATH_MAIN}'.")
@@ -1221,6 +1240,7 @@ with tabs[0]:
         )
         if ext_fig:
             show_image_scaled(ext_fig, width_px=EXT_VIS_WIDTH, dpi=200, pad_inches=0.1)
+
 # ── COMPARE TAB ────────────────────────────────────────────────────────────────
 with tabs[1]:
     st.markdown("#### Compare Appearances")

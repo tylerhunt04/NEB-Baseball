@@ -40,8 +40,6 @@ DATA_PATH_MAIN = "pitcher_columns.csv"  # 2025 Season
 
 # 2025/26 Scrimmages: prefer uploaded path & variants (never the old '...Scrimmages.csv')
 SCRIM_PATHS = [
-    "/mnt/data/Fall_WinterScrimmages (1).csv",  # uploaded location (with space)
-    "/mnt/data/Fall_WinterScrimmages(1).csv",   # uploaded location (no space)
     "Fall_WinterScrimmages (1).csv",            # project dir (with space)
     "Fall_WinterScrimmages(1).csv",             # project dir (no space)
 ]

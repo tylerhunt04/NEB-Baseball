@@ -1,11 +1,12 @@
 # pitcher_app.py (UPDATED)
 # - 2025 Season uses pitcher_columns.csv
 # - 2025/26 Scrimmages uses Fall_WinterScrimmages (1).csv (tries common variants)
-# - STANDARD tab Movement plot now prefers TaggedPitchType (falls back if missing)
-# - Extensions: simple title, zoomed out, legend above; own pitch-type filter
+# - STANDARD tab Movement plot prefers TaggedPitchType (fallbacks kept)
+# - Release Points + Extensions now prefer TaggedPitchType (both segments)
+# - Removed "Scrimmage data source" caption
+# - Added "(FB Only)" label for Sept 4, 2025
 # - Compare: Movement → Release Points → Extensions → Heatmaps; expand toggle
 # - Profiles: Strike % = Total first then by pitch type; centered headers; cleaned titles
-# - Heatmap headings cleaned; "(FB Only)" date labels supported
 
 import os
 import gc
@@ -157,7 +158,7 @@ def format_date_long(d) -> str:
 
 # Scrimmage "(FB Only)" labels
 from datetime import date as _date
-FB_ONLY_DATES = { _date(2025, 9, 3) }  # add more as needed
+FB_ONLY_DATES = { _date(2025, 9, 3), _date(2025, 9, 4) }  # added Sept 4, 2025
 
 def is_fb_only(d) -> bool:
     try:
@@ -695,7 +696,7 @@ def combined_pitcher_heatmap_report(
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RELEASE POINTS
+# RELEASE POINTS  (now prefers TaggedPitchType)
 # ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
@@ -734,7 +735,8 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
     x_col = pick_col(df, "Relside","RelSide","ReleaseSide","Release_Side","release_pos_x")
     y_col = pick_col(df, "Relheight","RelHeight","ReleaseHeight","Release_Height","release_pos_z")
-    type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+    # Prefer TaggedPitchType, then fall back
+    type_col = pick_col(df, "TaggedPitchType","Tagged Pitch Type","Tagged_Type","PitchType","AutoPitchType","Auto Pitch Type") or "TaggedPitchType"
     speed_col = pick_col(df, "Relspeed","RelSpeed","ReleaseSpeed","RelSpeedMPH","release_speed")
 
     missing = [lbl for lbl, col in [("Relside",x_col), ("Relheight",y_col)] if col is None]
@@ -820,7 +822,7 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# EXTENSIONS (zoomed out; legend above; pitch-type filter supported)
+# EXTENSIONS (now prefers TaggedPitchType)
 # ──────────────────────────────────────────────────────────────────────────────
 RELEASE_X_OFFSET_FT = 2.0
 SHOULDER_X_R = 0.7
@@ -861,7 +863,8 @@ def extensions_topN_figure(
     ylim_pad: float = YLIM_PAD_DEFAULT
 ):
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
-    type_col    = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+    # Prefer TaggedPitchType, then fall back
+    type_col    = pick_col(df, "TaggedPitchType","Tagged Pitch Type","Tagged_Type","PitchType","AutoPitchType","Auto Pitch Type") or "TaggedPitchType"
     ext_col     = pick_col(df, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")
     if ext_col is None:
         st.warning("No Extension column found in data; skipping extensions plot.")
@@ -952,7 +955,7 @@ def extensions_topN_figure(
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PROFILES TABLES (now Strike % supports Total + by pitch type)
+# PROFILES TABLES
 # ──────────────────────────────────────────────────────────────────────────────
 def _assign_spray_category_row(row):
     ang = row.get('Bearing', np.nan)
@@ -1142,7 +1145,6 @@ if segment_choice == "2025/26 Scrimmages":
         )
         st.stop()
     base_df = df_scrim
-    st.caption(f"Scrimmage data source: **{SCRIM_USED_PATH}**")
 else:
     if df_main is None:
         st.error(f"Main data file not found at '{DATA_PATH_MAIN}'.")
@@ -1223,8 +1225,8 @@ with tabs[0]:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        # 2) Release Points (with its own filter)
-        type_col_all = pick_col(neb_df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+        # 2) Release Points (with its own filter) — build options from TaggedPitchType
+        type_col_all = pick_col(neb_df, "TaggedPitchType","Tagged Pitch Type","Tagged_Type","PitchType","AutoPitchType","Auto Pitch Type") or "TaggedPitchType"
         types_available = (
             neb_df.get(type_col_all, pd.Series(dtype=object))
                   .dropna().map(canonicalize_type)
@@ -1243,7 +1245,7 @@ with tabs[0]:
         if rel_fig:
             show_and_close(rel_fig)
 
-        # 3) Extensions (own pitch-type filter)
+        # 3) Extensions (own pitch-type filter) — build options from TaggedPitchType
         st.markdown("### Extensions")
         ext_selected = pitchtype_checkbox_grid(
             "Pitch Types (Extensions)",
@@ -1310,8 +1312,8 @@ with tabs[1]:
                 season_lab = f"{segment_choice} — {season_lab}" if season_lab else segment_choice
                 windows.append((season_lab, df_win))
 
-    # Common type options for filters
-    type_col_all = pick_col(df_pitcher_all, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+    # Common type options for filters (prefer TaggedPitchType)
+    type_col_all = pick_col(df_pitcher_all, "TaggedPitchType","Tagged Pitch Type","Tagged_Type","PitchType","AutoPitchType","Auto Pitch Type") or "TaggedPitchType"
     types_avail_canon = (
         df_pitcher_all.get(type_col_all, pd.Series(dtype=object))
                       .dropna().map(canonicalize_type)
@@ -1319,7 +1321,7 @@ with tabs[1]:
     )
     types_avail_canon = sorted(types_avail_canon)
 
-    # 1) MOVEMENT (Compare tab keeps default behavior)
+    # 1) MOVEMENT
     st.markdown("### Movement")
     cols_out = st.columns(cmp_n)
     logo_img = load_logo_img()

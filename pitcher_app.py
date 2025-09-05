@@ -35,7 +35,7 @@ st.set_page_config(
 st.set_option("client.showErrorDetails", True)
 
 DATA_PATH_MAIN = "pitcher_columns.csv"
-DATA_PATH_SCRIM = "Fall_WinterScrimmages.csv"
+DATA_PATH_SCRIM = "Fall_WinterScrimmages(1).csv"
 
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"

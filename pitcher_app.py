@@ -1,11 +1,11 @@
 # pitcher_app.py (UPDATED)
 # - 2025 Season uses pitcher_columns.csv
-# - 2025/26 Scrimmages uses Fall_WinterScrimmages (1).csv (tries common variants with/without space)
+# - 2025/26 Scrimmages uses Fall_WinterScrimmages (1).csv (tries common variants)
+# - STANDARD tab Movement plot now prefers TaggedPitchType (falls back if missing)
 # - Extensions: simple title, zoomed out, legend above; own pitch-type filter
 # - Compare: Movement → Release Points → Extensions → Heatmaps; expand toggle
-# - Profiles: Strike % table = Total first then by pitch type; centered headers; cleaned titles
-# - Heatmap headings cleaned (removed "— Heatmaps")
-# - Scrimmage date labels can show "(FB Only)" for flagged dates
+# - Profiles: Strike % = Total first then by pitch type; centered headers; cleaned titles
+# - Heatmap headings cleaned; "(FB Only)" date labels supported
 
 import os
 import gc
@@ -38,8 +38,10 @@ st.set_option("client.showErrorDetails", True)
 
 DATA_PATH_MAIN = "pitcher_columns.csv"  # 2025 Season
 
-# 2025/26 Scrimmages: prefer uploaded path & variants (never the old '...Scrimmages.csv')
+# 2025/26 Scrimmages: prefer uploaded path & variants
 SCRIM_PATHS = [
+    "/mnt/data/Fall_WinterScrimmages (1).csv",  # uploaded location (with space)
+    "/mnt/data/Fall_WinterScrimmages(1).csv",   # uploaded location (no space)
     "Fall_WinterScrimmages (1).csv",            # project dir (with space)
     "Fall_WinterScrimmages(1).csv",             # project dir (no space)
 ]
@@ -370,8 +372,24 @@ def pitchtype_checkbox_grid(label: str, options: list[str], key_prefix: str, def
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER REPORT (movement + summary)
 # ──────────────────────────────────────────────────────────────────────────────
-def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_label="Season"):
-    type_col = pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType","TaggedPitchType") or "AutoPitchType"
+def combined_pitcher_report(
+    df, pitcher_name, logo_img, coverage=0.8, season_label="Season", *, prefer_tagged: bool = False
+):
+    """
+    prefer_tagged=True ⇒ use TaggedPitchType (fallback to others if missing).
+    """
+    if prefer_tagged:
+        type_col = (
+            pick_col(df, "TaggedPitchType", "Tagged Pitch Type", "Tagged_Type", "PitchType",
+                     "AutoPitchType", "Auto Pitch Type")
+            or "TaggedPitchType"
+        )
+    else:
+        type_col = (
+            pick_col(df, "AutoPitchType", "Auto Pitch Type", "PitchType", "TaggedPitchType")
+            or "AutoPitchType"
+        )
+
     pitch_col = pick_col(df, "PitchCall","Pitch Call","Call") or "PitchCall"
     speed_col = pick_col(df, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
     spin_col  = pick_col(df, "SpinRate","Spinrate","ReleaseSpinRate","Spin")
@@ -653,7 +671,7 @@ def combined_pitcher_heatmap_report(
     ax = fig.add_subplot(gs[1, 1]); panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})")
     ax = fig.add_subplot(gs[1, 2]); panel(ax, sub_dg, f"Damage (n={len(sub_dg)})", color='orange')
 
-    # Strike % table row (kept here for legacy combined figure)
+    # Strike % table row (legacy combined figure)
     axt = fig.add_subplot(gs[2, :]); axt.axis('off')
     def _safe_mask(q):
         for col in ("Balls","Strikes"):
@@ -1197,8 +1215,10 @@ with tabs[0]:
     else:
         logo_img = load_logo_img()
 
-        # 1) Metrics (movement + summary)
-        out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8, season_label=season_label)
+        # 1) Metrics (movement + summary) — prefer TaggedPitchType in STANDARD tab
+        out = combined_pitcher_report(
+            neb_df, player, logo_img, coverage=0.8, season_label=season_label, prefer_tagged=True
+        )
         if out:
             fig_m, _ = out
             show_and_close(fig_m)
@@ -1299,7 +1319,7 @@ with tabs[1]:
     )
     types_avail_canon = sorted(types_avail_canon)
 
-    # 1) MOVEMENT
+    # 1) MOVEMENT (Compare tab keeps default behavior)
     st.markdown("### Movement")
     cols_out = st.columns(cmp_n)
     logo_img = load_logo_img()

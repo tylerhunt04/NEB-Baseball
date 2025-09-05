@@ -1,10 +1,11 @@
 # pitcher_app.py (UPDATED)
-# - Extensions: simple title, zoomed out, legend above; now has its own pitch-type filter
-# - Compare: order = Movement → Release Points → Extensions → Heatmaps; per-visual filters above; expand toggle
-# - Profiles: Strike % table = Total first then by pitch type; centered headers; titles cleaned
+# - 2025 Season uses pitcher_columns.csv
+# - 2025/26 Scrimmages uses Fall_WinterScrimmages (1).csv (tries common variants with/without space)
+# - Extensions: simple title, zoomed out, legend above; own pitch-type filter
+# - Compare: Movement → Release Points → Extensions → Heatmaps; expand toggle
+# - Profiles: Strike % table = Total first then by pitch type; centered headers; cleaned titles
 # - Heatmap headings cleaned (removed "— Heatmaps")
 # - Scrimmage date labels can show "(FB Only)" for flagged dates
-# - NEW: 2025/26 Scrimmages reads from your attached CSV (with fallbacks & env override)
 
 import os
 import gc
@@ -35,21 +36,15 @@ st.set_page_config(
 )
 st.set_option("client.showErrorDetails", True)
 
-def _resolve_first_existing(paths: list[str]) -> str | None:
-    for p in paths:
-        if p and os.path.exists(p):
-            return p
-    return None
+DATA_PATH_MAIN = "pitcher_columns.csv"  # 2025 Season
 
-DATA_PATH_MAIN = "pitcher_columns.csv"
-
-# Prefer the file you attached; fall back to common local names or an env override.
-SCRIM_PATH_CANDIDATES = [
-    os.environ.get("SCRIM_CSV_PATH"),                    
-    "Fall_WinterScrimmages (1).csv",                     
- 
+# 2025/26 Scrimmages: prefer uploaded path & variants (never the old '...Scrimmages.csv')
+SCRIM_PATHS = [
+    "/mnt/data/Fall_WinterScrimmages (1).csv",  # uploaded location (with space)
+    "/mnt/data/Fall_WinterScrimmages(1).csv",   # uploaded location (no space)
+    "Fall_WinterScrimmages (1).csv",            # project dir (with space)
+    "Fall_WinterScrimmages(1).csv",             # project dir (no space)
 ]
-DATA_PATH_SCRIM = _resolve_first_existing(SCRIM_PATH_CANDIDATES)
 
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
@@ -1101,8 +1096,14 @@ def load_csv_norm(path: str) -> pd.DataFrame:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
     return ensure_date_column(df)
 
-df_main  = load_csv_norm(DATA_PATH_MAIN) if os.path.exists(DATA_PATH_MAIN) else None
-df_scrim = load_csv_norm(DATA_PATH_SCRIM) if DATA_PATH_SCRIM else None
+def _load_scrimmage_df():
+    for p in SCRIM_PATHS:
+        if p and os.path.exists(p):
+            return load_csv_norm(p), p
+    return None, None
+
+df_main = load_csv_norm(DATA_PATH_MAIN) if os.path.exists(DATA_PATH_MAIN) else None
+df_scrim, SCRIM_USED_PATH = _load_scrimmage_df()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DATA SEGMENT PICKER
@@ -1118,14 +1119,14 @@ segment_choice = st.selectbox(
 # Base dataset selection by segment
 if segment_choice == "2025/26 Scrimmages":
     if df_scrim is None or df_scrim.empty:
-        tried = ", ".join([p for p in SCRIM_PATH_CANDIDATES if p])
+        looked_for = ", ".join(SCRIM_PATHS)
         st.error(
             "Scrimmage data file not found or empty.\n\n"
-            f"Looked for: {tried}"
+            f"Looked for any of:\n{looked_for}"
         )
         st.stop()
     base_df = df_scrim
-    st.caption(f"Scrimmage data source: **{DATA_PATH_SCRIM}**")
+    st.caption(f"Scrimmage data source: **{SCRIM_USED_PATH}**")
 else:
     if df_main is None:
         st.error(f"Main data file not found at '{DATA_PATH_MAIN}'.")

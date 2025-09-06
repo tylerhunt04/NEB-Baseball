@@ -1,9 +1,9 @@
 # pitcher_app.py (UPDATED)
-# - DATA_PATH_SCRIM now "Fall_WinterScrimmages(3).csv" with smart fallback resolver
+# - Restores interactive strike zone for Top 3 Pitches (Plotly)
+# - Profiles tables now show Total + all pitch types (removed >=20 filter)
 # - Scrimmages prefer TaggedPitchType; 2025 Season prefers AutoPitchType
-# - Top-3 "heatmaps" now show scatter plots only (no density)
-# - De-duplication helper for scrimmage data
-# - "(FB Only)" labels include Sep 4, 2025
+# - DATA_PATH_SCRIM -> Fall_WinterScrimmages(3).csv with smart fallback
+# - De-duplication helper; "(FB Only)" includes Sep 4, 2025
 
 import os
 import gc
@@ -24,6 +24,10 @@ from numpy.linalg import LinAlgError
 from matplotlib import colors
 from datetime import date
 
+# NEW: Plotly for interactive strike zone
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
 # ──────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG & PATHS
 # ──────────────────────────────────────────────────────────────────────────────
@@ -35,7 +39,7 @@ st.set_page_config(
 st.set_option("client.showErrorDetails", True)
 
 DATA_PATH_MAIN  = "pitcher_columns.csv"
-DATA_PATH_SCRIM = "Fall_WinterScrimmages(3).csv"  # << requested name
+DATA_PATH_SCRIM = "Fall_WinterScrimmages(3).csv"  # requested name
 
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
@@ -485,66 +489,113 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     return fig, summary
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HEATMAPS (now scatter-only “plots”)
+# INTERACTIVE TOP-3 STRIKE ZONE (Plotly)
 # ──────────────────────────────────────────────────────────────────────────────
-def _heatmap_panel(ax, sub, title, *, x_min, x_max, y_min, y_max, grid_coords, xi_mesh,
-                   z_left, z_bottom, z_w, z_h, color='deepskyblue', threshold=12):
-    # Always scatter (no KDE), per user request
-    x = pd.to_numeric(sub.get('PlateLocSide',   pd.Series(dtype=float)), errors='coerce').to_numpy()
-    y = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce').to_numpy()
-    ax.scatter(x, y, s=30, alpha=0.7, color=color, edgecolors='black')
-    draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
-    ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
-    ax.set_title(title, fontweight='bold'); ax.set_xticks([]); ax.set_yticks([])
+def _zone_shapes_for_subplot():
+    l, b, w, h = get_zone_bounds()
+    x0, x1, y0, y1 = l, l+w, b, b+h
+    thirds_x = [x0 + w/3, x0 + 2*w/3]
+    thirds_y = [y0 + h/3, y0 + 2*h/3]
+    shapes = [
+        dict(type="rect", x0=x0, x1=x1, y0=y0, y1=y1, line=dict(color="black", width=2)),
+        dict(type="line", x0=thirds_x[0], x1=thirds_x[0], y0=y0, y1=y1, line=dict(color="gray", dash="dash")),
+        dict(type="line", x0=thirds_x[1], x1=thirds_x[1], y0=y0, y1=y1, line=dict(color="gray", dash="dash")),
+        dict(type="line", x0=x0, x1=x1, y0=thirds_y[0], y1=thirds_y[0], line=dict(color="gray", dash="dash")),
+        dict(type="line", x0=x0, x1=x1, y0=thirds_y[1], y1=thirds_y[1], line=dict(color="gray", dash="dash")),
+    ]
+    return shapes
 
 def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season"):
+    """Interactive scatter-only Top-3 pitches with hover details."""
     df_p = df[df.get('Pitcher','') == pitcher_name].copy()
     if df_p.empty:
-        st.info("No data for the selected filters."); return None
+        st.info("No data for the selected filters.")
+        return None
 
     type_col = type_col_in_df(df_p)
 
+    # Batter-side filter
     side_col = find_batter_side_col(df_p)
     if side_col is not None:
         sides = normalize_batter_side(df_p[side_col])
         want = parse_hand_filter_to_LR(hand_filter)
         if   want == "L": df_p = df_p[sides == "L"]
         elif want == "R": df_p = df_p[sides == "R"]
-
     if df_p.empty:
-        st.info("No pitches for the selected batter-side filter."); return None
+        st.info("No pitches for the selected batter-side filter.")
+        return None
 
+    # Bounds
     x_min, x_max, y_min, y_max = get_view_bounds()
-    xi = np.linspace(x_min, x_max, grid_size); yi = np.linspace(y_min, y_max, grid_size)
-    xi_mesh, yi_mesh = np.meshgrid(xi, yi); grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
-    z_left, z_bottom, z_w, z_h = get_zone_bounds()
 
+    # Pick Top-3
     try:
         top3 = list(df_p[type_col].value_counts().index[:3])
     except KeyError:
         top3 = []
 
-    fig = plt.figure(figsize=(18, 6))
-    gs = GridSpec(1, 3, figure=fig, wspace=0.3)
+    # Build interactive figure
+    fig = make_subplots(rows=1, cols=3, shared_yaxes=True, shared_xaxes=True,
+                        subplot_titles=[str(t) if i < len(top3) else "—" for i, t in enumerate([*top3, None, None])][:3])
+
+    # Column picks for hover data
+    speed_col = pick_col(df_p, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
+    ivb_col   = pick_col(df_p, "InducedVertBreak","IVB","Induced Vert Break","IndVertBreak")
+    hb_col    = pick_col(df_p, "HorzBreak","HorizontalBreak","HB","HorizBreak")
+    exit_col  = pick_col(df_p, "ExitSpeed","Exit Velo","ExitVelo","Exit_Velo")
+    call_col  = pick_col(df_p, "PitchCall","Pitch Call","Call") or "PitchCall"
 
     for i in range(3):
-        ax = fig.add_subplot(gs[0, i])
+        col = i + 1
+        # Add zone shapes
+        for shp in _zone_shapes_for_subplot():
+            fig.add_shape(shp, row=1, col=col)
+
         if i < len(top3):
             pitch = top3[i]
-            sub = df_p[df_p[type_col] == pitch]
-            _heatmap_panel(ax, sub, f"{pitch} (n={len(sub)})",
-                           x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
-                           grid_coords=grid_coords, xi_mesh=xi_mesh,
-                           z_left=z_left, z_bottom=z_bottom, z_w=z_w, z_h=z_h)
-        else:
-            draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
-            ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
-            ax.set_xticks([]); ax.set_yticks([]); ax.set_title("—", fontweight='bold')
+            sub = df_p[df_p[type_col] == pitch].copy()
+            xs = pd.to_numeric(sub.get('PlateLocSide',   pd.Series(dtype=float)), errors='coerce')
+            ys = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce')
 
-    fig.suptitle(f"{format_name(pitcher_name)} — Top 3 Pitches ({season_label})", fontsize=16, y=0.98, fontweight='bold')
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
+            cd = np.column_stack([
+                sub[type_col].astype(str).values,
+                pd.to_numeric(sub.get(speed_col, pd.Series(dtype=float)), errors='coerce').values if speed_col else np.full(len(sub), np.nan),
+                pd.to_numeric(sub.get(ivb_col,   pd.Series(dtype=float)), errors='coerce').values if ivb_col else np.full(len(sub), np.nan),
+                pd.to_numeric(sub.get(hb_col,    pd.Series(dtype=float)), errors='coerce').values if hb_col else np.full(len(sub), np.nan),
+                sub.get(call_col, pd.Series(dtype=object)).astype(str).values,
+                pd.to_numeric(sub.get(exit_col,  pd.Series(dtype=float)), errors='coerce').values if exit_col else np.full(len(sub), np.nan),
+            ])
+
+            fig.add_trace(
+                go.Scattergl(
+                    x=xs, y=ys,
+                    mode="markers",
+                    marker=dict(size=8, line=dict(width=0.5, color="black"),
+                                color=get_pitch_color(pitch)),
+                    customdata=cd,
+                    hovertemplate=(
+                        "Pitch Type: %{customdata[0]}<br>"
+                        "RelSpeed: %{customdata[1]:.1f} mph<br>"
+                        "IVB: %{customdata[2]:.1f}\"<br>"
+                        "HB: %{customdata[3]:.1f}\"<br>"
+                        "Result: %{customdata[4]}<br>"
+                        "Exit Velo: %{customdata[5]:.1f} mph<br>"
+                        "x: %{x:.2f}  y: %{y:.2f}<extra></extra>"
+                    ),
+                    name=str(pitch),
+                    showlegend=False
+                ),
+                row=1, col=col
+            )
+
+        fig.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col)
+        fig.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col)
+
+    fig.update_layout(height=420, title_text=f"{format_name(pitcher_name)} — Top 3 Pitches ({season_label})",
+                      title_x=0.5, margin=dict(l=10, r=10, t=60, b=10))
     return fig
 def heatmaps_outcomes(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season", outcome_pitch_types=None):
+    # (kept Matplotlib scatter panels as before)
     df_p = df[df.get('Pitcher','') == pitcher_name].copy()
     if df_p.empty:
         st.info("No data for the selected filters."); return None
@@ -578,18 +629,20 @@ def heatmaps_outcomes(df, pitcher_name, hand_filter="Both", grid_size=100, seaso
     sub_ks = df_out[df_out.get('KorBB','') == 'Strikeout']
     sub_dg = df_out[pd.to_numeric(df_out.get('ExitSpeed', pd.Series(dtype=float)), errors='coerce') >= 95]
 
+    def _panel(ax, sub, title, color='deepskyblue'):
+        x = pd.to_numeric(sub.get('PlateLocSide',   pd.Series(dtype=float)), errors='coerce').to_numpy()
+        y = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce').to_numpy()
+        ax.scatter(x, y, s=30, alpha=0.7, color=color, edgecolors='black')
+        draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
+        ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
+        ax.set_title(title, fontweight='bold'); ax.set_xticks([]); ax.set_yticks([])
+
     fig = plt.figure(figsize=(18, 6))
     gs = GridSpec(1, 3, figure=fig, wspace=0.3)
 
-    ax = fig.add_subplot(gs[0, 0]); _heatmap_panel(ax, sub_wh, f"Whiffs (n={len(sub_wh)})",
-        x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
-        grid_coords=grid_coords, xi_mesh=xi_mesh, z_left=z_left, z_bottom=z_bottom, z_w=z_w, z_h=z_h)
-    ax = fig.add_subplot(gs[0, 1]); _heatmap_panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})",
-        x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
-        grid_coords=grid_coords, xi_mesh=xi_mesh, z_left=z_left, z_bottom=z_bottom, z_w=z_w, z_h=z_h)
-    ax = fig.add_subplot(gs[0, 2]); _heatmap_panel(ax, sub_dg, f"Damage (n={len(sub_dg)})",
-        x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
-        grid_coords=grid_coords, xi_mesh=xi_mesh, z_left=z_left, z_bottom=z_bottom, z_w=z_w, z_h=z_h, color='orange')
+    ax = fig.add_subplot(gs[0, 0]); _panel(ax, sub_wh, f"Whiffs (n={len(sub_wh)})")
+    ax = fig.add_subplot(gs[0, 1]); _panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})")
+    ax = fig.add_subplot(gs[0, 2]); _panel(ax, sub_dg, f"Damage (n={len(sub_dg)})", color='orange')
 
     fig.suptitle(f"{format_name(pitcher_name)} — Outcomes ({season_label})", fontsize=16, y=0.98, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
@@ -598,6 +651,7 @@ def heatmaps_outcomes(df, pitcher_name, hand_filter="Both", grid_size=100, seaso
 def combined_pitcher_heatmap_report(
     df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season", outcome_pitch_types=None,
 ):
+    # (kept Matplotlib combined layout; top row is scatter-only, not KDE)
     df_p = df[df.get('Pitcher','') == pitcher_name].copy()
     if df_p.empty:
         st.error(f"No data for pitcher '{pitcher_name}' with the current filters."); return None
@@ -617,14 +671,15 @@ def combined_pitcher_heatmap_report(
         st.info("No pitches for the selected batter-side filter."); return None
 
     x_min, x_max, y_min, y_max = get_view_bounds()
-    xi = np.linspace(x_min, x_max, grid_size); yi = np.linspace(y_min, y_max, grid_size)
-    xi_mesh, yi_mesh = np.meshgrid(xi, yi); grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
     z_left, z_bottom, z_w, z_h = get_zone_bounds()
 
     def panel(ax, sub, title, color='deepskyblue'):
-        _heatmap_panel(ax, sub, title, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
-                       grid_coords=grid_coords, xi_mesh=xi_mesh, z_left=z_left, z_bottom=z_bottom, z_w=z_w, z_h=z_h,
-                       color=color, threshold=12)
+        x = pd.to_numeric(sub.get('PlateLocSide',   pd.Series(dtype=float)), errors='coerce').to_numpy()
+        y = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce').to_numpy()
+        ax.scatter(x, y, s=30, alpha=0.7, color=color, edgecolors='black')
+        draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
+        ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
+        ax.set_title(title, fontweight='bold'); ax.set_xticks([]); ax.set_yticks([])
 
     fig = plt.figure(figsize=(18, 14))
     gs = GridSpec(3, 3, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.35, wspace=0.3)
@@ -806,7 +861,7 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# EXTENSIONS (zoomed out; legend above; pitch-type filter supported)
+# EXTENSIONS (same as before)
 # ──────────────────────────────────────────────────────────────────────────────
 RELEASE_X_OFFSET_FT = 2.0
 SHOULDER_X_R = 0.7
@@ -931,7 +986,7 @@ def extensions_topN_figure(
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PROFILES TABLES
+# PROFILES TABLES (Total + all pitch types)
 # ──────────────────────────────────────────────────────────────────────────────
 def _assign_spray_category_row(row):
     ang = row.get('Bearing', np.nan)
@@ -970,8 +1025,7 @@ def make_pitcher_batted_ball_by_type(df: pd.DataFrame) -> pd.DataFrame:
     if type_col in df.columns:
         for ptype, sub in df.groupby(type_col, dropna=False):
             metrics = _bb_metrics_for_subset(sub)
-            if metrics['Pitches'] >= 20:
-                rows.append({'Pitch Type': str(ptype), **metrics})
+            rows.append({'Pitch Type': str(ptype), **metrics})
     out = pd.DataFrame(rows)
     if len(out) > 1:
         total_row = out.iloc[[0]]
@@ -1019,8 +1073,7 @@ def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
     if type_col in df.columns:
         for ptype, sub in df.groupby(type_col, dropna=False):
             metrics = _plate_metrics(sub)
-            if metrics['Pitches'] >= 20:
-                rows.append({'Pitch Type': str(ptype), **metrics})
+            rows.append({'Pitch Type': str(ptype), **metrics})
     out = pd.DataFrame(rows)
     if len(out) > 1:
         total_row = out.iloc[[0]]
@@ -1050,14 +1103,13 @@ def _strike_metrics(sub_df: pd.DataFrame) -> dict:
             '1st Pitch %': fp, 'Mix Count %': mix, 'Hitter+ %': hp, '2-Strike %': two}
 
 def make_strike_percentage_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Total first, then by pitch type (>=20 pitches), sorted by Pitches desc."""
+    """Total first, then by pitch type, sorted by Pitches desc (no pitch-count threshold)."""
     type_col = type_col_in_df(df)
     rows = [{'Pitch Type': 'Total', **_strike_metrics(df)}]
     if type_col in df.columns:
         for ptype, sub in df.groupby(type_col, dropna=False):
             metrics = _strike_metrics(sub)
-            if metrics['Pitches'] >= 20:
-                rows.append({'Pitch Type': str(ptype), **metrics})
+            rows.append({'Pitch Type': str(ptype), **metrics})
     out = pd.DataFrame(rows)
     if len(out) > 1:
         total_row = out.iloc[[0]]
@@ -1080,12 +1132,11 @@ def themed_table(df: pd.DataFrame):
     return (df.style.hide(axis="index").format(fmt_map, na_rep="—").set_table_styles(styles))
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA (with smart scrimmage resolver + de-dupe)
+# LOAD DATA (smart scrimmage resolver + de-dupe)
 # ──────────────────────────────────────────────────────────────────────────────
 def resolve_existing_path(candidates: list[str]) -> str | None:
     for cand in candidates:
         if os.path.exists(cand): return cand
-        # also try /mnt/data (some environments place files here)
         alt = os.path.join("/mnt/data", cand)
         if os.path.exists(alt): return alt
     return None
@@ -1103,8 +1154,6 @@ df_main = load_csv_norm(DATA_PATH_MAIN) if os.path.exists(DATA_PATH_MAIN) or os.
 _scrim_candidates = [DATA_PATH_SCRIM, "Fall_WinterScrimmages (3).csv", "Fall_WinterScrimmages.csv"]
 _scrim_resolved = resolve_existing_path(_scrim_candidates)
 df_scrim = load_csv_norm(_scrim_resolved) if _scrim_resolved else None
-
-# De-duplicate scrimmage pitches after loading
 if df_scrim is not None:
     df_scrim = dedupe_pitches(df_scrim)
 
@@ -1237,7 +1286,7 @@ with tabs[0]:
         if ext_fig:
             show_image_scaled(ext_fig, width_px=EXT_VIS_WIDTH, dpi=200, pad_inches=0.1)
 
-# ── COMPARE TAB ────────────────────────────────────────────────────────────────
+# ── COMPARE TAB (unchanged aside from type-col routing) ────────────────────────
 with tabs[1]:
     st.markdown("#### Compare Appearances")
     cmp_n = st.selectbox("Number of windows", [2,3], index=0, key="cmp_n")
@@ -1286,7 +1335,7 @@ with tabs[1]:
                 season_lab = f"{segment_choice} — {season_lab}" if season_lab else segment_choice
                 windows.append((season_lab, df_win))
 
-    # Common type options for filters
+    # Common type options
     type_col_all = type_col_in_df(df_pitcher_all)
     types_avail_canon = (
         df_pitcher_all.get(type_col_all, pd.Series(dtype=object))
@@ -1349,7 +1398,7 @@ with tabs[1]:
             if ext_fig:
                 show_image_scaled(ext_fig, width_px=ext_width, dpi=200, pad_inches=0.1)
 
-    # 4) HEATMAPS
+    # 4) HEATMAPS (combined Matplotlib scatter-only)
     st.markdown("### Heatmaps")
     cmp_hand = st.radio("Batter Side (Heatmaps)", ["Both","LHH","RHH"], index=0, horizontal=True, key="cmp_hand")
     types_avail_outcomes = sorted(df_pitcher_all.get(type_col_all, pd.Series(dtype=object)).dropna().astype(str).unique().tolist())
@@ -1428,30 +1477,30 @@ with tabs[2]:
         if df_prof.empty:
             st.info("No rows for the selected profile filters.")
         else:
-            # 1) Strike Percentage by Count
+            # 1) Strike Percentage by Count — Total + pitch types
             st.markdown("### Strike Percentage by Count")
             strike_df = make_strike_percentage_table(df_prof).round(1)
             st.table(themed_table(strike_df))
 
-            # 2) Batted Ball Profile — use chosen label (date or range)
+            # 2) Batted Ball Profile — label uses selected date/range
             bb_df_typed = make_pitcher_batted_ball_by_type(df_prof)
             st.markdown(f"### Batted Ball Profile — {season_label_prof}")
             st.table(themed_table(bb_df_typed))
 
-            # 3) Plate Discipline Profile — use chosen label
+            # 3) Plate Discipline Profile — label uses selected date/range
             pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof)
             st.markdown(f"### Plate Discipline Profile — {season_label_prof}")
             st.table(themed_table(pd_df_typed))
 
-            # 4) Top 3 Pitches (scatter-only)
+            # 4) Top 3 Pitches — INTERACTIVE strike zone (Plotly)
             st.markdown("### Top 3 Pitches")
             fig_top3 = heatmaps_top3_pitch_types(
                 df_prof, player, hand_filter=prof_hand, season_label=season_label_prof
             )
-            if fig_top3:
-                show_and_close(fig_top3)
+            if fig_top3 is not None:
+                st.plotly_chart(fig_top3, use_container_width=True)
 
-            # 5) Whiffs / Strikeouts / Damage
+            # 5) Whiffs / Strikeouts / Damage (Matplotlib scatter-only)
             st.markdown("### Whiffs / Strikeouts / Damage")
             type_col_for_hm = type_col_in_df(df_prof)
             types_available_hm = (

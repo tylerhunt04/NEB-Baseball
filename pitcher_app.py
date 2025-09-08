@@ -4,7 +4,8 @@
 # - Scrimmages prefer TaggedPitchType; 2025 Season prefers AutoPitchType
 # - DATA_PATH_SCRIM -> Fall_WinterScrimmages(3).csv with smart fallback
 # - De-duplication helper; "(FB Only)" includes Sep 4, 2025
-# - Standard tab: remove Release/Extension visuals; add Pitch-by-At-Bat Summary (no inning selector)
+# - Standard tab: Release/Extension visuals removed; Pitch-by-At-Bat Summary (no inning selector)
+# - FIX: Inning from PAofinning (increment only at first 1-block); AB grouping from PitchofPA resets
 
 import os
 import gc
@@ -351,7 +352,7 @@ def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
     return None
 
 # ──────────────────────────────────────────────────────────────────────────────
-# NEW: PITCH-BY-AB HELPERS
+# NEW: PITCH-BY-AB HELPERS (Inning from PAofinning; AB from PitchofPA)
 # ──────────────────────────────────────────────────────────────────────────────
 def find_batter_name_col(df: pd.DataFrame) -> str | None:
     return pick_col(
@@ -359,39 +360,74 @@ def find_batter_name_col(df: pd.DataFrame) -> str | None:
         "Hitter", "HitterName", "BatterLastFirst", "Batter First Last", "BatterFirstLast"
     )
 
+def find_pitch_of_pa_col(df: pd.DataFrame) -> str | None:
+    return pick_col(
+        df, "PitchofPA", "PitchOfPA", "Pitch_of_PA", "Pitch of PA", "PitchOfPa", "Pitch_of_Pa"
+    )
+
 def add_inning_and_ab(df: pd.DataFrame) -> pd.DataFrame:
-    """Add Inning #, AB # (within inning), and Pitch # in AB.
-    Inning # = cumulative count of rows where PAofinning == 1.
-    AB # = PAofinning within inning (fallbacks to batter changes if needed).
+    """
+    Adds:
+      - Inning #  : increments only at the *first* row starting a new inning.
+                    We detect a new inning when PAofinning==1 and the *previous* row did not have PAofinning==1.
+      - AB #      : per-inning cumsum of (PitchofPA==1). This reliably groups all pitches in a PA.
+      - Pitch # in AB : equals PitchofPA when available, else cumcount within (Inning #, AB #).
     """
     out = df.copy()
+
     pa_col = pick_col(out, "PAofinning","PAofInning","PAOfInning","PA_of_inning","PA_of_Inning")
+    po_col = find_pitch_of_pa_col(out)
     bat_col = find_batter_name_col(out) or "Batter"
 
-    if pa_col in out.columns:
-        out[pa_col] = pd.to_numeric(out[pa_col], errors="coerce").fillna(0).astype(int)
-        out["Inning #"] = (out[pa_col] == 1).cumsum()
-        out["AB #"] = out[pa_col]
-        # fallback if all zeros
-        if (out["AB #"] <= 0).all():
-            if bat_col in out.columns:
-                out["AB #"] = out.groupby("Inning #")[bat_col].apply(
-                    lambda s: s.astype(str).ne(s.astype(str).shift()).cumsum()
-                ).reset_index(level=0, drop=True)
-            else:
-                out["AB #"] = 1
+    # Ensure numeric
+    if pa_col:
+        out[pa_col] = pd.to_numeric(out[pa_col], errors="coerce")
+    if po_col:
+        out[po_col] = pd.to_numeric(out[po_col], errors="coerce")
+
+    # ---- Inning #: start-of-inning when PAofinning == 1 and previous row != 1
+    if pa_col and pa_col in out.columns:
+        pa = out[pa_col].fillna(np.inf)  # NaN won't create false innings
+        start_inning_mask = (pa == 1) & (pa.shift(fill_value=np.inf) != 1)
+        inn = start_inning_mask.astype(int).cumsum()
+        if len(inn) and inn.min() == 0:
+            inn = inn + 1  # baseline to 1
+        out["Inning #"] = inn.astype(int)
     else:
-        out["Inning #"] = 1
+        out["Inning #"] = 1  # fallback single-inning
+
+    # ---- AB # within inning: driven by PitchofPA resets (PitchofPA == 1)
+    if po_col and po_col in out.columns:
+        is_new_ab = out[po_col].fillna(0).eq(1).astype(int)
+        out["AB #"] = out.groupby("Inning #", sort=False)["AB_flag_tmp"] \
+                        if "AB_flag_tmp" in out.columns else \
+                        out.groupby("Inning #", sort=False)["AB_tmp"]  # (never used; placeholder)
+        # Use transform to align index:
+        out["AB #"] = out.groupby("Inning #", sort=False)[is_new_ab.name].transform(lambda s: s.cumsum())
+        # Baseline to 1 if starts mid-PA (rare):
+        if len(out) and out["AB #"].min() == 0:
+            out["AB #"] = out["AB #"] + 1
+    elif pa_col:
+        # Fallback to PAofinning as AB number
+        out["AB #"] = out[pa_col].fillna(method="ffill").fillna(1).astype(int)
+    else:
+        # Worst-case fallback: count batter changes within inning
         if bat_col in out.columns:
-            out["AB #"] = out[bat_col].astype(str).ne(out[bat_col].astype(str).shift()).cumsum()
+            out["AB #"] = out.groupby("Inning #", sort=False)[bat_col] \
+                             .transform(lambda s: s.astype(str).ne(s.astype(str).shift()).cumsum())
         else:
             out["AB #"] = 1
 
-    out["Pitch # in AB"] = out.groupby(["Inning #", "AB #"]).cumcount() + 1
+    # ---- Pitch # in AB
+    if po_col and po_col in out.columns:
+        out["Pitch # in AB"] = out[po_col].astype(pd.Int64Dtype())
+    else:
+        out["Pitch # in AB"] = out.groupby(["Inning #","AB #"]).cumcount() + 1
+
     return out
 
 def build_pitch_by_ab_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Return per-pitch rows with grouping keys, ordered: Pitch Type, Result, Velo, Spin, IVB, HB, Rel Height, Extension."""
+    """Per-pitch rows with grouping keys, ordered: Pitch # in AB, Pitch Type, Result, Velo, Spin, IVB, HB, Rel Height, Extension."""
     work = add_inning_and_ab(df)
 
     type_col   = type_col_in_df(work)
@@ -431,6 +467,7 @@ def build_pitch_by_ab_table(df: pd.DataFrame) -> pd.DataFrame:
         sides = normalize_batter_side(work[side_col])
         tbl["Batter Side"] = sides.values
 
+    # Numeric formatting
     for c in ["Velo","Spin Rate","IVB","HB","Rel Height","Extension"]:
         if c in tbl.columns:
             tbl[c] = pd.to_numeric(tbl[c], errors="coerce")
@@ -441,6 +478,7 @@ def build_pitch_by_ab_table(df: pd.DataFrame) -> pd.DataFrame:
     if "Rel Height" in tbl:  tbl["Rel Height"] = tbl["Rel Height"].round(2)
     if "Extension" in tbl:   tbl["Extension"] = tbl["Extension"].round(2)
 
+    # Sort by Inning, AB, then pitch within AB
     sort_cols = [c for c in ["Inning #","AB #","Pitch # in AB"] if c in tbl.columns]
     if sort_cols:
         tbl = tbl.sort_values(sort_cols, kind="stable").reset_index(drop=True)
@@ -827,7 +865,7 @@ def combined_pitcher_heatmap_report(
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RELEASE POINTS & EXTENSIONS (used in Compare tab)
+# RELEASE POINTS & EXTENSIONS (Compare tab only)
 # ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
@@ -1065,8 +1103,8 @@ def extensions_topN_figure(
 
     fig.suptitle(f"{format_name(pitcher_name)} Extension", fontsize=title_size, fontweight="bold", y=0.98)
     if handles:
-        ax.legend(handles=handles, labels=labels, title="Pitch Type", loc=LEGEND_LOC,
-                  bbox_to_anchor=LEGEND_ANCHOR_FRAC, borderaxespad=0.0,
+        ax.legend(handles=handles, labels=labels, title="Pitch Type", loc="upper center",
+                  bbox_to_anchor=(0.50, 0.98), borderaxespad=0.0,
                   frameon=True, fancybox=False, edgecolor="#d0d0d0")
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
@@ -1345,7 +1383,6 @@ with tabs[0]:
             if groupable:
                 cols_pitch = [c for c in ["Pitch # in AB","Pitch Type","Result","Velo","Spin Rate","IVB","HB","Rel Height","Extension"]
                               if c in pbp.columns]
-                # Show every AB across the outing, ordered by Inning then AB
                 for (inn, ab), g in pbp.groupby(["Inning #","AB #"], sort=True):
                     batter = g.get("Batter", pd.Series(["Unknown"])).iloc[0] if "Batter" in g.columns else "Unknown"
                     side = g.get("Batter Side", pd.Series([""])).iloc[0] if "Batter Side" in g.columns else ""
@@ -1357,10 +1394,8 @@ with tabs[0]:
                         else:
                             st.dataframe(g, use_container_width=True)
             else:
-                # Fallback: flat table if grouping keys missing
                 st.dataframe(pbp, use_container_width=True)
 
-            # Download all ABs shown
             csv = pbp.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "Download pitch-by-at-bat (CSV)",

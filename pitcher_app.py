@@ -4,6 +4,7 @@
 # - Scrimmages prefer TaggedPitchType; 2025 Season prefers AutoPitchType
 # - DATA_PATH_SCRIM -> Fall_WinterScrimmages(3).csv with smart fallback
 # - De-duplication helper; "(FB Only)" includes Sep 4, 2025
+# - Standard tab: remove Release Points & Extensions; add Pitch-by-Pitch Summary with inning selector
 
 import os
 import gc
@@ -349,6 +350,57 @@ def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
     if s in {"r", "rhh", "rhb", "right", "right-handed", "right handed"}: return "R"
     return None
 
+# NEW: inning index helper (PAofinning == 1 starts a new inning; cumulative across the filtered dataset)
+def add_inning_index(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    pa_col = pick_col(out, "PAofinning","PAofInning","PAOfInning","PA_of_inning","PA_of_Inning")
+    if pa_col is None or pa_col not in out.columns:
+        out["Inning #"] = 0
+        out["Seq"] = np.arange(1, len(out) + 1)
+        return out
+    out[pa_col] = pd.to_numeric(out[pa_col], errors="coerce").fillna(0).astype(int)
+    out["Inning #"] = (out[pa_col] == 1).cumsum()
+    out["Seq"] = out.groupby("Inning #").cumcount() + 1
+    return out
+
+# ──────────────────────────────────────────────────────────────────────────────
+# NEW: build Pitch-by-Pitch table (column-flexible, exact order requested)
+# ──────────────────────────────────────────────────────────────────────────────
+def build_pitch_by_pitch_table(df: pd.DataFrame) -> pd.DataFrame:
+    work = add_inning_index(df)
+    type_col = type_col_in_df(work)
+    result_col = pick_col(work, "PitchCall","Pitch Call","Call") or "PitchCall"
+    velo_col   = pick_col(work, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
+    spin_col   = pick_col(work, "SpinRate","Spinrate","ReleaseSpinRate","Spin")
+    ivb_col    = pick_col(work, "InducedVertBreak","IVB","Induced Vert Break","IndVertBreak")
+    hb_col     = pick_col(work, "HorzBreak","HorizontalBreak","HB","HorizBreak")
+    relh_col   = pick_col(work, "RelHeight","Relheight","ReleaseHeight","Release_Height","release_pos_z")
+    ext_col    = pick_col(work, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")
+    # Keep only present columns in requested order
+    ordered = [type_col, result_col, velo_col, spin_col, ivb_col, hb_col, relh_col, ext_col, "Inning #", "Seq"]
+    present = [c for c in ordered if c and c in work.columns]
+    tbl = work[present].copy()
+    # Rename headers
+    ren = {
+        type_col: "Pitch Type", result_col: "Result",
+        velo_col: "Velo", spin_col: "Spin Rate", ivb_col: "IVB", hb_col: "HB",
+        relh_col: "Rel Height", ext_col: "Extension"
+    }
+    tbl = tbl.rename(columns={k:v for k,v in ren.items() if k in tbl.columns})
+    # Numeric formatting
+    for c in ["Velo","Spin Rate","IVB","HB","Rel Height","Extension"]:
+        if c in tbl.columns: tbl[c] = pd.to_numeric(tbl[c], errors="coerce")
+    if "Velo" in tbl:        tbl["Velo"] = tbl["Velo"].round(1)
+    if "Spin Rate" in tbl:   tbl["Spin Rate"] = tbl["Spin Rate"].round(0)
+    if "IVB" in tbl:         tbl["IVB"] = tbl["IVB"].round(1)
+    if "HB" in tbl:          tbl["HB"] = tbl["HB"].round(1)
+    if "Rel Height" in tbl:  tbl["Rel Height"] = tbl["Rel Height"].round(2)
+    if "Extension" in tbl:   tbl["Extension"] = tbl["Extension"].round(2)
+    # Sort by Inning then sequence if available
+    sort_cols = [c for c in ["Inning #","Seq"] if c in tbl.columns]
+    if sort_cols: tbl = tbl.sort_values(sort_cols, kind="stable")
+    return tbl
+
 # ──────────────────────────────────────────────────────────────────────────────
 # NEW: De-duplicate helper
 # ──────────────────────────────────────────────────────────────────────────────
@@ -387,6 +439,7 @@ def pitchtype_checkbox_grid(label: str, options: list[str], key_prefix: str, def
     for i, (o, k) in enumerate(zip(options, opt_keys)):
         cols[i % columns_per_row].checkbox(o, value=st.session_state[k], key=k)
     return [o for o, k in zip(options, opt_keys) if st.session_state[k]]
+# (Part 2 continues)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER REPORT (movement + summary)
@@ -594,6 +647,7 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
     fig.update_layout(height=420, title_text=f"{format_name(pitcher_name)} — Top 3 Pitches ({season_label})",
                       title_x=0.5, margin=dict(l=10, r=10, t=60, b=10))
     return fig
+
 def heatmaps_outcomes(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season", outcome_pitch_types=None):
     # (kept Matplotlib scatter panels as before)
     df_p = df[df.get('Pitcher','') == pitcher_name].copy()
@@ -739,7 +793,7 @@ def combined_pitcher_heatmap_report(
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RELEASE POINTS
+# RELEASE POINTS (functions kept for Compare tab)
 # ──────────────────────────────────────────────────────────────────────────────
 ARM_BASE_HALF_WIDTH = 0.24
 ARM_TIP_HALF_WIDTH  = 0.08
@@ -861,7 +915,7 @@ def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=Non
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# EXTENSIONS (same as before)
+# EXTENSIONS (functions kept for Compare tab)
 # ──────────────────────────────────────────────────────────────────────────────
 RELEASE_X_OFFSET_FT = 2.0
 SHOULDER_X_R = 0.7
@@ -1250,41 +1304,19 @@ with tabs[0]:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        # 2) Release Points (with its own filter)
-        type_col_all = type_col_in_df(neb_df)
-        types_available = (
-            neb_df.get(type_col_all, pd.Series(dtype=object))
-                  .dropna().map(canonicalize_type)
-                  .replace("Unknown", np.nan).dropna().unique().tolist()
-        )
-        types_available = sorted(types_available)
-        st.markdown("### Release Points")
-        rel_selected = pitchtype_checkbox_grid(
-            "Pitch Types (Release Points)",
-            options=types_available,
-            key_prefix="std_release_types",
-            default_all=True,
-            columns_per_row=6,
-        )
-        rel_fig = release_points_figure(neb_df, player, include_types=rel_selected)
-        if rel_fig:
-            show_and_close(rel_fig)
-
-        # 3) Extensions (own pitch-type filter)
-        st.markdown("### Extensions")
-        ext_selected = pitchtype_checkbox_grid(
-            "Pitch Types (Extensions)",
-            options=types_available,
-            key_prefix="std_ext_types",
-            default_all=True,
-            columns_per_row=6,
-        )
-        ext_fig = extensions_topN_figure(
-            neb_df, player, include_types=ext_selected, top_n=3,
-            figsize=(5.2, 7.0), title_size=14, show_plate=False
-        )
-        if ext_fig:
-            show_image_scaled(ext_fig, width_px=EXT_VIS_WIDTH, dpi=200, pad_inches=0.1)
+        # 2) Pitch-by-Pitch Summary (replaces Release Points & Extensions)
+        st.markdown("### Pitch-by-Pitch Summary")
+        pbp = build_pitch_by_pitch_table(neb_df)
+        if pbp.empty:
+            st.info("Pitch-by-pitch data not available for this selection.")
+        else:
+            # inning selector
+            innings = sorted([i for i in pbp.get("Inning #", pd.Series(dtype=int)).dropna().unique().tolist() if i > 0])
+            choice = st.selectbox("Select inning of outing", options=["All"] + innings, index=0, key="std_inning_choice")
+            view = pbp if choice == "All" else pbp[pbp["Inning #"] == choice].copy()
+            st.dataframe(view, use_container_width=True)
+            csv = view.to_csv(index=False).encode("utf-8")
+            st.download_button("Download pitch-by-pitch (CSV)", data=csv, file_name="pitch_by_pitch_summary.csv", mime="text/csv")
 
 # ── COMPARE TAB (unchanged aside from type-col routing) ────────────────────────
 with tabs[1]:

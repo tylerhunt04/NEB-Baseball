@@ -5,7 +5,7 @@
 # - DATA_PATH_SCRIM -> Fall_WinterScrimmages(3).csv with smart fallback
 # - De-duplication helper; "(FB Only)" includes Sep 4, 2025
 # - Standard tab: Release/Extension visuals removed; Pitch-by-At-Bat Summary (no inning selector)
-# - FIX: Inning from PAofinning (increment only at first 1-block); AB grouping from PitchofPA resets
+# - FIX: Inning from PAofinning (increment only at first 1-block); AB grouping from PitchofPA
 
 import os
 import gc
@@ -352,7 +352,7 @@ def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
     return None
 
 # ──────────────────────────────────────────────────────────────────────────────
-# NEW: PITCH-BY-AB HELPERS (Inning from PAofinning; AB from PitchofPA)
+# PITCH-BY-AB HELPERS (Inning from PAofinning; AB from PitchofPA)
 # ──────────────────────────────────────────────────────────────────────────────
 def find_batter_name_col(df: pd.DataFrame) -> str | None:
     return pick_col(
@@ -368,10 +368,10 @@ def find_pitch_of_pa_col(df: pd.DataFrame) -> str | None:
 def add_inning_and_ab(df: pd.DataFrame) -> pd.DataFrame:
     """
     Adds:
-      - Inning #  : increments only at the *first* row starting a new inning.
-                    We detect a new inning when PAofinning==1 and the *previous* row did not have PAofinning==1.
-      - AB #      : per-inning cumsum of (PitchofPA==1). This reliably groups all pitches in a PA.
-      - Pitch # in AB : equals PitchofPA when available, else cumcount within (Inning #, AB #).
+      - Inning #      : increments only at the *first* row starting a new inning.
+                        Detected when PAofinning==1 and the previous row != 1.
+      - AB #          : per-inning cumulative sum of (PitchofPA == 1). Baseline to 1.
+      - Pitch # in AB : equals PitchofPA when present, else cumcount within (Inning #, AB #).
     """
     out = df.copy()
 
@@ -387,31 +387,28 @@ def add_inning_and_ab(df: pd.DataFrame) -> pd.DataFrame:
 
     # ---- Inning #: start-of-inning when PAofinning == 1 and previous row != 1
     if pa_col and pa_col in out.columns:
-        pa = out[pa_col].fillna(np.inf)  # NaN won't create false innings
-        start_inning_mask = (pa == 1) & (pa.shift(fill_value=np.inf) != 1)
-        inn = start_inning_mask.astype(int).cumsum()
+        pa = out[pa_col].fillna(np.inf)
+        start_inning = (pa == 1) & (pa.shift(fill_value=np.inf) != 1)
+        inn = start_inning.astype(int).cumsum()
         if len(inn) and inn.min() == 0:
-            inn = inn + 1  # baseline to 1
+            inn = inn + 1
         out["Inning #"] = inn.astype(int)
     else:
-        out["Inning #"] = 1  # fallback single-inning
+        out["Inning #"] = 1  # fallback
 
     # ---- AB # within inning: driven by PitchofPA resets (PitchofPA == 1)
     if po_col and po_col in out.columns:
-        is_new_ab = out[po_col].fillna(0).eq(1).astype(int)
-        out["AB #"] = out.groupby("Inning #", sort=False)["AB_flag_tmp"] \
-                        if "AB_flag_tmp" in out.columns else \
-                        out.groupby("Inning #", sort=False)["AB_tmp"]  # (never used; placeholder)
-        # Use transform to align index:
-        out["AB #"] = out.groupby("Inning #", sort=False)[is_new_ab.name].transform(lambda s: s.cumsum())
-        # Baseline to 1 if starts mid-PA (rare):
-        if len(out) and out["AB #"].min() == 0:
-            out["AB #"] = out["AB #"] + 1
+        def _ab_series(s: pd.Series) -> pd.Series:
+            c = (s.fillna(0).astype(float) == 1).astype(int).cumsum()
+            if len(c) and c.iloc[0] == 0:
+                c = c + 1
+            return c.astype(int)
+        out["AB #"] = out.groupby("Inning #", sort=False)[po_col].transform(_ab_series)
     elif pa_col:
-        # Fallback to PAofinning as AB number
+        # Fallback: use PAofinning as AB counter inside inning
         out["AB #"] = out[pa_col].fillna(method="ffill").fillna(1).astype(int)
     else:
-        # Worst-case fallback: count batter changes within inning
+        # Last fallback: bump AB when batter name changes
         if bat_col in out.columns:
             out["AB #"] = out.groupby("Inning #", sort=False)[bat_col] \
                              .transform(lambda s: s.astype(str).ne(s.astype(str).shift()).cumsum())

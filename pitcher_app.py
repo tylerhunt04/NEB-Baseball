@@ -1,10 +1,10 @@
 # pitcher_app.py (UPDATED)
-# - Restores interactive strike zone for Top 3 Pitches (Plotly)
+# - Interactive strike zone for Top 3 Pitches (Plotly)
 # - Profiles tables show Total + all pitch types (no >=20 filter)
 # - Scrimmages prefer TaggedPitchType; 2025 Season prefers AutoPitchType
 # - DATA_PATH_SCRIM -> Fall_WinterScrimmages(3).csv with smart fallback
 # - De-duplication helper; "(FB Only)" includes Sep 4, 2025
-# - Standard tab: remove Release Points & Extensions; add Pitch-by-At-Bat Summary with inning selector (PAofinning)
+# - Standard tab: remove Release/Extension visuals; add Pitch-by-At-Bat Summary (no inning selector)
 
 import os
 import gc
@@ -296,7 +296,7 @@ def draw_strikezone(ax, sz_left=None, sz_bottom=None, sz_width=None, sz_height=N
     ax.add_patch(Rectangle((sz_left, sz_bottom), sz_width, sz_height, fill=False, lw=2, color="black"))
     for f in (1/3, 2/3):
         ax.vlines(sz_left + sz_width*f, sz_bottom, sz_bottom+sz_height, colors="gray", ls="--", lw=1)
-        ax.hlines(sz_bottom + sz_height*f, sz_left, sz_left+szwidth, colors="gray", ls="--", lw=1)  # typo fix below
+        ax.hlines(sz_bottom + sz_height*f, sz_left, sz_left+sz_width, colors="gray", ls="--", lw=1)
 
 def get_pitch_color(ptype):
     if isinstance(ptype, str) and (ptype.lower().startswith("four-seam fastball") or ptype.lower() == "fastball"):
@@ -312,18 +312,6 @@ def format_name(name):
         last, first = [s.strip() for s in name.split(',', 1)]
         return f"{first} {last}"
     return str(name)
-
-# fix small typo in draw_strikezone
-def draw_strikezone(ax, sz_left=None, sz_bottom=None, sz_width=None, sz_height=None):
-    l, b, w, h = get_zone_bounds()
-    sz_left   = l if sz_left   is None else sz_left
-    sz_bottom = b if sz_bottom is None else sz_bottom
-    sz_width  = w if sz_width  is None else sz_width
-    sz_height = h if sz_height is None else sz_height
-    ax.add_patch(Rectangle((sz_left, sz_bottom), sz_width, sz_height, fill=False, lw=2, color="black"))
-    for f in (1/3, 2/3):
-        ax.vlines(sz_left + sz_width*f, sz_bottom, sz_bottom+sz_height, colors="gray", ls="--", lw=1)
-        ax.hlines(sz_bottom + sz_height*f, sz_left, sz_left+sz_width, colors="gray", ls="--", lw=1)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DENSITY / UTILITIES
@@ -406,7 +394,7 @@ def build_pitch_by_ab_table(df: pd.DataFrame) -> pd.DataFrame:
     """Return per-pitch rows with grouping keys, ordered: Pitch Type, Result, Velo, Spin, IVB, HB, Rel Height, Extension."""
     work = add_inning_and_ab(df)
 
-    type_col  = type_col_in_df(work)
+    type_col   = type_col_in_df(work)
     result_col = pick_col(work, "PitchCall","Pitch Call","Call") or "PitchCall"
     velo_col   = pick_col(work, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
     spin_col   = pick_col(work, "SpinRate","Spinrate","ReleaseSpinRate","Spin")
@@ -1077,7 +1065,7 @@ def extensions_topN_figure(
 
     fig.suptitle(f"{format_name(pitcher_name)} Extension", fontsize=title_size, fontweight="bold", y=0.98)
     if handles:
-        ax.legend(handles, labels, title="Pitch Type", loc=LEGEND_LOC,
+        ax.legend(handles=handles, labels=labels, title="Pitch Type", loc=LEGEND_LOC,
                   bbox_to_anchor=LEGEND_ANCHOR_FRAC, borderaxespad=0.0,
                   frameon=True, fancybox=False, edgecolor="#d0d0d0")
     fig.tight_layout(rect=[0, 0, 1, 0.96])
@@ -1341,26 +1329,24 @@ with tabs[0]:
     else:
         logo_img = load_logo_img()
 
-        # 1) Movement + summary (unchanged)
+        # 1) Movement + summary
         out = combined_pitcher_report(neb_df, player, logo_img, coverage=0.8, season_label=season_label)
         if out:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        # 2) Pitch-by-At-Bat Summary (replaces Release Points & Extensions in Standard)
+        # 2) Pitch-by-At-Bat Summary (no inning selector; show all ABs)
         st.markdown("### Pitch-by-At-Bat Summary")
         pbp = build_pitch_by_ab_table(neb_df)
         if pbp.empty:
             st.info("Pitch-by-at-bat data not available for this selection.")
         else:
-            innings = sorted([i for i in pbp.get("Inning #", pd.Series(dtype=int)).dropna().unique().tolist() if i > 0])
-            inning_choice = st.selectbox("Select inning of outing", options=["All"] + innings, index=0, key="std_inning_choice")
-            view = pbp if inning_choice == "All" else pbp[pbp["Inning #"] == inning_choice].copy()
-
-            groupable = ("Inning #" in view.columns) and ("AB #" in view.columns)
+            groupable = ("Inning #" in pbp.columns) and ("AB #" in pbp.columns)
             if groupable:
-                cols_pitch = [c for c in ["Pitch # in AB","Pitch Type","Result","Velo","Spin Rate","IVB","HB","Rel Height","Extension"] if c in view.columns]
-                for (inn, ab), g in view.groupby(["Inning #","AB #"], sort=True):
+                cols_pitch = [c for c in ["Pitch # in AB","Pitch Type","Result","Velo","Spin Rate","IVB","HB","Rel Height","Extension"]
+                              if c in pbp.columns]
+                # Show every AB across the outing, ordered by Inning then AB
+                for (inn, ab), g in pbp.groupby(["Inning #","AB #"], sort=True):
                     batter = g.get("Batter", pd.Series(["Unknown"])).iloc[0] if "Batter" in g.columns else "Unknown"
                     side = g.get("Batter Side", pd.Series([""])).iloc[0] if "Batter Side" in g.columns else ""
                     side_str = f" ({side})" if isinstance(side, str) and side else ""
@@ -1371,9 +1357,11 @@ with tabs[0]:
                         else:
                             st.dataframe(g, use_container_width=True)
             else:
-                st.dataframe(view, use_container_width=True)
+                # Fallback: flat table if grouping keys missing
+                st.dataframe(pbp, use_container_width=True)
 
-            csv = view.to_csv(index=False).encode("utf-8")
+            # Download all ABs shown
+            csv = pbp.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "Download pitch-by-at-bat (CSV)",
                 data=csv,

@@ -5,7 +5,7 @@
 # - DATA_PATH_SCRIM -> Fall_WinterScrimmages(3).csv with smart fallback
 # - De-duplication helper; "(FB Only)" includes Sep 4, 2025
 # - Standard tab: Release/Extension visuals removed; Pitch-by-At-Bat Summary only
-# - AB SEGMENTATION: Ignore innings; AB starts when PitchofPA==1 and batter != previous row's batter
+# - AB SEGMENTATION: New AB starts whenever PitchofPA == 1 (no inning logic)
 
 import os
 import gc
@@ -352,7 +352,7 @@ def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
     return None
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PITCH-BY-AB HELPERS (Ignore innings; AB starts: PitchofPA==1 & batter changed)
+# PITCH-BY-AB HELPERS (New AB whenever PitchofPA == 1)
 # ──────────────────────────────────────────────────────────────────────────────
 def find_batter_name_col(df: pd.DataFrame) -> str | None:
     return pick_col(
@@ -368,51 +368,37 @@ def find_pitch_of_pa_col(df: pd.DataFrame) -> str | None:
 def add_ab_only(df: pd.DataFrame) -> pd.DataFrame:
     """
     Adds AB grouping without innings.
-    AB starts when PitchofPA == 1 AND batter name != previous row's batter.
-    (First row with PitchofPA==1 starts an AB by definition.)
+    AB starts whenever PitchofPA == 1.
     """
     out = df.copy()
     po_col = find_pitch_of_pa_col(out)
-    bat_col = find_batter_name_col(out)
 
     if po_col is None:
-        # Fallback: treat any batter change as new AB; pitch numbers are cumcount in group
-        if bat_col is None:
-            out["AB #"] = 1
-            out["Pitch # in AB"] = out.groupby(out.index // max(1, len(out))).cumcount() + 1
-            return out
-        b = out[bat_col].astype(str).fillna("")
-        out["AB #"] = (b != b.shift(fill_value="__FIRST__")).cumsum().astype(int)
-        out["Pitch # in AB"] = out.groupby("AB #").cumcount() + 1
+        # Fallback: single AB; pitch numbers are 1..n
+        out["AB #"] = 1
+        out["Pitch # in AB"] = np.arange(1, len(out) + 1)
         return out
 
-    # Ensure numeric PitchofPA
+    # numeric PitchofPA
     out[po_col] = pd.to_numeric(out[po_col], errors="coerce")
 
-    batter_series = out[bat_col].astype(str).fillna("") if bat_col in out.columns else pd.Series([""] * len(out), index=out.index)
-    prev_batter = batter_series.shift(fill_value="__FIRST__")
+    # New AB when PitchofPA == 1
+    is_start = (out[po_col] == 1)
+    ab_id = is_start.cumsum()
 
-    # Start of AB strictly by rule:
-    start_mask = (out[po_col] == 1) & (batter_series != prev_batter)
-    ab_id = start_mask.cumsum()
-
-    # Handle rows before the first detected start (rare if filters slice mid-AB)
+    # If filtered rows start mid-AB (no leading 1), put them into AB #1
     if (ab_id == 0).any():
         ab_id = ab_id.replace(0, np.nan).ffill().fillna(1)
 
     out["AB #"] = ab_id.astype(int)
 
-    # Pitch number in AB: prefer PitchofPA value; fallback to cumcount
-    if po_col in out.columns:
-        out["Pitch # in AB"] = out[po_col].astype(pd.Int64Dtype())
-        # If PitchofPA missing for some rows, fill by position within AB
-        mask_na = out["Pitch # in AB"].isna()
-        if mask_na.any():
-            out.loc[mask_na, "Pitch # in AB"] = (
-                out[mask_na].groupby("AB #").cumcount() + 1
-            ).astype(pd.Int64Dtype())
-    else:
-        out["Pitch # in AB"] = out.groupby("AB #").cumcount() + 1
+    # Pitch # in AB: prefer PitchofPA; fill gaps by order within each AB
+    out["Pitch # in AB"] = out[po_col].astype(pd.Int64Dtype())
+    missing = out["Pitch # in AB"].isna()
+    if missing.any():
+        out.loc[missing, "Pitch # in AB"] = (
+            out[missing].groupby("AB #").cumcount() + 1
+        ).astype(pd.Int64Dtype())
 
     return out
 
@@ -468,7 +454,7 @@ def build_pitch_by_ab_table(df: pd.DataFrame) -> pd.DataFrame:
     if "Rel Height" in tbl:  tbl["Rel Height"] = tbl["Rel Height"].round(2)
     if "Extension" in tbl:   tbl["Extension"] = tbl["Extension"].round(2)
 
-    # Sort by AB, then pitch within AB (stable keeps original order across ties)
+    # Sort by AB, then pitch within AB
     sort_cols = [c for c in ["AB #","Pitch # in AB"] if c in tbl.columns]
     if sort_cols:
         tbl = tbl.sort_values(sort_cols, kind="stable").reset_index(drop=True)
@@ -1363,7 +1349,7 @@ with tabs[0]:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        # 2) Pitch-by-At-Bat Summary (AB-only, no innings)
+        # 2) Pitch-by-At-Bat Summary (AB-only)
         st.markdown("### Pitch-by-At-Bat Summary")
         pbp = build_pitch_by_ab_table(neb_df)
         if pbp.empty:

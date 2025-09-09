@@ -9,6 +9,7 @@
 # - Robust sort: Date → Inning → PAofinning → PitchofPA (fallbacks apply)
 # - NEW: Style expanders so only top-level (Inning …) are red/white, nested PA expanders stay white/black
 # - REMOVED: Tyner Horn manual pitch-type override
+# - NEW: Outcome Summary (Total + By Pitch Type) added to Profiles, above Strike % table
 
 import os
 import gc
@@ -813,7 +814,6 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
     fig.update_layout(height=420, title_text=f"{format_name(pitcher_name)} — Top 3 Pitches ({season_label})",
                       title_x=0.5, margin=dict(l=10, r=10, t=60, b=10))
     return fig
-
 # ──────────────────────────────────────────────────────────────────────────────
 # OUTCOME HEATMAPS (Matplotlib scatter-only)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1201,7 +1201,7 @@ def extensions_topN_figure(
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PROFILES TABLES (Total + all pitch types)
+# PROFILES TABLES (Total + all pitch types) + OUTCOME SUMMARY HELPERS
 # ──────────────────────────────────────────────────────────────────────────────
 def _assign_spray_category_row(row):
     ang = row.get('Bearing', np.nan)
@@ -1345,6 +1345,133 @@ def themed_table(df: pd.DataFrame):
     ]
     return (df.style.hide(axis="index").format(fmt_map, na_rep="—").set_table_styles(styles))
 
+# ── OUTCOME SUMMARY HELPERS (Total + By Pitch Type) ───────────────────────────
+def _first_present(df: pd.DataFrame, cands: list[str]) -> str | None:
+    lower = {c.lower(): c for c in df.columns}
+    for c in cands:
+        if c in df.columns: return c
+        if c.lower() in lower: return lower[c.lower()]
+    return None
+
+def _is_terminal_row(row, col_result, col_korbb, col_call) -> bool:
+    pr = str(row.get(col_result, "")) if col_result else ""
+    kc = str(row.get(col_korbb, "")) if col_korbb else ""
+    pc = str(row.get(col_call, ""))  if col_call  else ""
+    return (
+        (pr.strip() != "") or
+        (kc.lower() in {"k","so","strikeout","strikeout swinging","strikeout looking","bb","walk"}) or
+        (pc.lower() in {"hitbypitch","hit by pitch","hbp"})
+    )
+
+def _pct(x):
+    return f"{x*100:.1f}%" if pd.notna(x) else ""
+
+def _rate3(x):
+    return f"{x:.3f}" if pd.notna(x) else ""
+
+def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
+    """1-row: Average EV, Max EV, Hits, SO, AVG, OBP, SLG, OPS, HardHit%, K%, Walk%."""
+    if df_in is None or df_in.empty:
+        return pd.DataFrame([{
+            "Average exit velo":"", "Max exit velo":"", "Hits":0, "Strikeouts":0,
+            "AVG":"", "OBP":"", "SLG":"", "OPS":"", "HardHit%":"", "K%":"", "Walk%":""
+        }])
+
+    col_exitv  = _first_present(df_in, ["ExitSpeed","Exit Velo","ExitVelocity","Exit_Velocity","ExitVel","EV","LaunchSpeed","Launch_Speed"])
+    col_result = _first_present(df_in, ["PlayResult","Result","Event","PAResult","Outcome"])
+    col_call   = _first_present(df_in, ["PitchCall","Pitch Call","PitchResult","Call"])
+    col_korbb  = _first_present(df_in, ["KorBB","K_BB","KBB","K_or_BB","PA_KBB"])
+
+    for c in [col_result, col_call, col_korbb]:
+        if c and df_in[c].dtype != "O":
+            df_in[c] = df_in[c].astype("string")
+        if c:
+            df_in[c] = df_in[c].fillna("").astype(str)
+
+    if (col_result or col_korbb or col_call):
+        term_mask = df_in.apply(lambda r: _is_terminal_row(r, col_result, col_korbb, col_call), axis=1)
+        df_term = df_in.loc[term_mask].copy()
+    else:
+        df_term = df_in.copy()
+
+    PR = df_term[col_result].astype(str) if col_result else pd.Series([""]*len(df_term), index=df_term.index)
+    KC = df_term[col_korbb].astype(str)  if col_korbb else pd.Series([""]*len(df_term), index=df_term.index)
+    PC = df_term[col_call].astype(str)   if col_call  else pd.Series([""]*len(df_term), index=df_term.index)
+
+    is_single = PR.str.contains(r"\bsingle\b", case=False, regex=True)
+    is_double = PR.str.contains(r"\bdouble\b", case=False, regex=True)
+    is_triple = PR.str.contains(r"\btriple\b", case=False, regex=True)
+    is_hr     = PR.str.contains(r"\bhome\s*run\b", case=False, regex=True) | PR.str.lower().eq("hr")
+    hits_mask = is_single | is_double | is_triple | is_hr
+    TB = (is_single.astype(int)*1 + is_double.astype(int)*2 + is_triple.astype(int)*3 + is_hr.astype(int)*4).sum()
+
+    is_bb  = PR.str.contains(r"\bwalk\b", case=False, regex=True) | KC.str.lower().isin({"bb","walk"}) | KC.str.contains(r"\bwalk\b", case=False, regex=True)
+    is_so  = PR.str.contains(r"strikeout", case=False, regex=True) | KC.str.lower().isin({"k","so","strikeout","strikeout swinging","strikeout looking"})
+    is_hbp = PR.str.contains(r"hit\s*by\s*pitch", case=False, regex=True) | PC.str.lower().isin({"hitbypitch","hit by pitch","hbp"})
+    is_sf  = PR.str.contains(r"sac(rifice)?\s*fly", case=False, regex=True)
+    is_sh  = PR.str.contains(r"sac(rifice)?\s*(bunt|hit)", case=False, regex=True)
+    is_ci  = PR.str.contains("interference", case=False, regex=True)
+
+    PA  = int(len(df_term))
+    H   = int(hits_mask.sum())
+    BB  = int(is_bb.sum())
+    SO  = int(is_so.sum())
+    HBP = int(is_hbp.sum())
+    SF  = int(is_sf.sum())
+    SH  = int(is_sh.sum())
+    CI  = int(is_ci.sum())
+    AB  = max(PA - (BB + HBP + SF + SH + CI), 0)
+
+    AVG = (H / AB) if AB > 0 else np.nan
+    OBP = ((H + BB + HBP) / (AB + BB + HBP + SF)) if (AB + BB + HBP + SF) > 0 else np.nan
+    SLG = (TB / AB) if AB > 0 else np.nan
+    OPS = (OBP + SLG) if (pd.notna(OBP) and pd.notna(SLG)) else np.nan
+
+    K_rate  = (SO / PA) if PA > 0 else np.nan
+    BB_rate = (BB / PA) if PA > 0 else np.nan
+
+    if col_exitv:
+        ev = pd.to_numeric(df_in[col_exitv], errors="coerce").dropna()
+        avg_ev = float(ev.mean()) if len(ev) else np.nan
+        max_ev = float(ev.max())  if len(ev) else np.nan
+        hard_hit_pct = float((ev >= 95.0).mean()) if len(ev) else np.nan
+    else:
+        avg_ev = max_ev = hard_hit_pct = np.nan
+
+    row = {
+        "Average exit velo": round(avg_ev, 1) if pd.notna(avg_ev) else "",
+        "Max exit velo":     round(max_ev, 1) if pd.notna(max_ev) else "",
+        "Hits":              H,
+        "Strikeouts":        SO,
+        "AVG":               _rate3(AVG),
+        "OBP":               _rate3(OBP),
+        "SLG":               _rate3(SLG),
+        "OPS":               _rate3(OPS),
+        "HardHit%":          _pct(hard_hit_pct),
+        "K%":                _pct(K_rate),
+        "Walk%":             _pct(BB_rate),
+    }
+    return pd.DataFrame([row])
+
+def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
+    """Multi-row: Total + each pitch type (usage order)."""
+    type_col = type_col_in_df(df)
+    out_frames = []
+
+    total = make_pitcher_outcome_summary_table(df)
+    total.insert(0, "Pitch Type", "Total")
+    out_frames.append(total)
+
+    if type_col and type_col in df.columns:
+        usage_order = df[type_col].astype(str).value_counts().index.tolist()
+        for p in usage_order:
+            sub = df[df[type_col].astype(str) == p]
+            t = make_pitcher_outcome_summary_table(sub)
+            t.insert(0, "Pitch Type", p)
+            out_frames.append(t)
+
+    return pd.concat(out_frames, ignore_index=True)
+
 # ──────────────────────────────────────────────────────────────────────────────
 # LOAD DATA (smart scrimmage resolver + de-dupe)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1370,7 +1497,6 @@ _scrim_resolved = resolve_existing_path(_scrim_candidates)
 df_scrim = load_csv_norm(_scrim_resolved) if _scrim_resolved else None
 if df_scrim is not None:
     df_scrim = dedupe_pitches(df_scrim)
-
 # ──────────────────────────────────────────────────────────────────────────────
 # DATA SEGMENT PICKER
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1694,6 +1820,16 @@ with tabs[2]:
         if df_prof.empty:
             st.info("No rows for the selected profile filters.")
         else:
+            # ── NEW: Outcome Summary (Total + By Pitch Type) ABOVE Strike % ─────
+            st.markdown(f"### Outcome Summary — {season_label_prof}")
+            outcome_total = make_pitcher_outcome_summary_table(df_prof)
+            st.table(themed_table(outcome_total))
+
+            st.markdown("#### Outcomes by Pitch Type")
+            outcome_by_type = make_pitcher_outcome_summary_by_type(df_prof)
+            st.table(themed_table(outcome_by_type))
+
+            # Existing tables follow
             st.markdown("### Strike Percentage by Count")
             strike_df = make_strike_percentage_table(df_prof).round(1)
             st.table(themed_table(strike_df))

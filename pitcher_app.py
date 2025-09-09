@@ -9,8 +9,9 @@
 # - Robust sort: Date → Inning → PAofinning → PitchofPA (fallbacks apply)
 # - NEW: Style expanders so only top-level (Inning …) are red/white, nested PA expanders stay white/black
 # - REMOVED: Tyner Horn manual pitch-type override
-# - NEW: Outcome Summary (Total + By Pitch Type) added to Profiles, above Strike % table
-# - FIX: themed_table() only formats numeric columns to avoid "Unknown format code 'f' for object of type 'str'"
+# - UPDATED: Removed single-row Outcome Summary; kept Outcomes by Pitch Type (with Total)
+# - UPDATED: Average/Max exit velo rounded to one decimal in Outcomes by Pitch Type
+# - FIX: themed_table only formats numeric columns; avoids formatting percent strings
 
 import os
 import gc
@@ -578,7 +579,9 @@ def pitchtype_checkbox_grid(label: str, options: list[str], key_prefix: str, def
         cols[i % columns_per_row].checkbox(o, value=st.session_state[k], key=k)
     return [o for o, k in zip(options, opt_keys) if st.session_state[k]]
 
-# Style ONLY the Play-by-Play expanders
+# Style ONLY the Play-by-Play expanders:
+# - default inside .pbp-scope: white bg, black text (applies to PA expanders)
+# - override FIRST-LEVEL expanders under .inning-block to red bg, white text/icons
 def style_pbp_expanders():
     st.markdown(
         f"""
@@ -613,7 +616,6 @@ def style_pbp_expanders():
         """,
         unsafe_allow_html=True,
     )
-
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER REPORT (movement + summary)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -990,7 +992,6 @@ def color_for_release(canon_label: str) -> str:
         "sweeper": "#B5651D","screwball": "#CC0066","eephus": "#666666",
     }
     return palette.get(key, "#7F7F7F")
-
 def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=None):
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
     x_col = pick_col(df, "Relside","RelSide","ReleaseSide","Release_Side","release_pos_x")
@@ -1335,24 +1336,18 @@ def make_strike_percentage_table(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 def themed_table(df: pd.DataFrame):
-    """
-    Safe table formatter:
-    - Only apply numeric formats to numeric dtypes (avoids ValueError on strings like '0.345' or '59.0%').
-    - Leave object/string columns untouched.
-    """
-    # numeric columns only
+    # Only format numeric columns (and numeric percent columns).
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    fmt_map = {}
-    for c in numeric_cols:
-        if pd.api.types.is_float_dtype(df[c].dtype):
-            fmt_map[c] = "{:.1f}"  # keep ints unformatted; floats to one decimal
+    percent_cols_numeric = [c for c in df.columns if c.strip().endswith('%') and c in numeric_cols]
+    fmt_map = {c: "{:.1f}" for c in set(numeric_cols) | set(percent_cols_numeric)}
     styles = [
         {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
         {'selector': 'th',        'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
         {'selector': 'td',        'props': 'white-space: nowrap; color: black;'},
     ]
     return (df.style.hide(axis="index").format(fmt_map, na_rep="—").set_table_styles(styles))
-# ── OUTCOME SUMMARY HELPERS (Total + By Pitch Type) ───────────────────────────
+
+# ── OUTCOME SUMMARY BY TYPE (Total + each pitch type) ─────────────────────────
 def _first_present(df: pd.DataFrame, cands: list[str]) -> str | None:
     lower = {c.lower(): c for c in df.columns}
     for c in cands:
@@ -1377,10 +1372,10 @@ def _rate3(x):
     return f"{x:.3f}" if pd.notna(x) else ""
 
 def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
-    """1-row: Average EV, Max EV, Hits, SO, AVG, OBP, SLG, OPS, HardHit%, K%, Walk%."""
+    """Return a single-row dict of outcome metrics. EVs are numeric (NaN if missing)."""
     if df_in is None or df_in.empty:
         return pd.DataFrame([{
-            "Average exit velo":"", "Max exit velo":"", "Hits":0, "Strikeouts":0,
+            "Average exit velo": np.nan, "Max exit velo": np.nan, "Hits": 0, "Strikeouts": 0,
             "AVG":"", "OBP":"", "SLG":"", "OPS":"", "HardHit%":"", "K%":"", "Walk%":""
         }])
 
@@ -1446,8 +1441,8 @@ def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
         avg_ev = max_ev = hard_hit_pct = np.nan
 
     row = {
-        "Average exit velo": round(avg_ev, 1) if pd.notna(avg_ev) else "",
-        "Max exit velo":     round(max_ev, 1) if pd.notna(max_ev) else "",
+        "Average exit velo": round(avg_ev, 1) if pd.notna(avg_ev) else np.nan,
+        "Max exit velo":     round(max_ev, 1) if pd.notna(max_ev) else np.nan,
         "Hits":              H,
         "Strikeouts":        SO,
         "AVG":               _rate3(AVG),
@@ -1461,7 +1456,7 @@ def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame([row])
 
 def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
-    """Multi-row: Total + each pitch type (usage order)."""
+    """Multi-row: Total + each pitch type (usage order). EV columns are numeric (rounded later in Styler)."""
     type_col = type_col_in_df(df)
     out_frames = []
 
@@ -1477,7 +1472,17 @@ def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
             t.insert(0, "Pitch Type", p)
             out_frames.append(t)
 
-    return pd.concat(out_frames, ignore_index=True)
+    out = pd.concat(out_frames, ignore_index=True)
+
+    # Ensure EV columns are numeric with one-decimal rounding for display consistency.
+    for c in ["Average exit velo", "Max exit velo"]:
+        if c in out.columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce").round(1)
+    # Keep Hits/Strikeouts as int if possible.
+    for c in ["Hits", "Strikeouts"]:
+        if c in out.columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce").astype("Int64")
+    return out
 
 # ──────────────────────────────────────────────────────────────────────────────
 # LOAD DATA (smart scrimmage resolver + de-dupe)
@@ -1504,7 +1509,6 @@ _scrim_resolved = resolve_existing_path(_scrim_candidates)
 df_scrim = load_csv_norm(_scrim_resolved) if _scrim_resolved else None
 if df_scrim is not None:
     df_scrim = dedupe_pitches(df_scrim)
-
 # ──────────────────────────────────────────────────────────────────────────────
 # DATA SEGMENT PICKER
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1828,16 +1832,12 @@ with tabs[2]:
         if df_prof.empty:
             st.info("No rows for the selected profile filters.")
         else:
-            # ── NEW: Outcome Summary (Total + By Pitch Type) ABOVE Strike % ─────
-            st.markdown(f"### Outcome Summary — {season_label_prof}")
-            outcome_total = make_pitcher_outcome_summary_table(df_prof)
-            st.table(themed_table(outcome_total))
+            # REMOVED the single-row Outcome Summary table per request
 
             st.markdown("#### Outcomes by Pitch Type")
             outcome_by_type = make_pitcher_outcome_summary_by_type(df_prof)
             st.table(themed_table(outcome_by_type))
 
-            # Existing tables follow
             st.markdown("### Strike Percentage by Count")
             strike_df = make_strike_percentage_table(df_prof).round(1)
             st.table(themed_table(strike_df))

@@ -7,8 +7,8 @@
 # - Standard tab: Release/Extension visuals removed; Play-by-Play (Inning ➜ PA ➜ pitch)
 # - AB logic: AB starts when PitchofPA == 1; PA/inning labels stamped per-AB (mode/first)
 # - Robust sort: Date → Inning → PAofinning → PitchofPA (fallbacks apply)
-# - Manual correction: Tyner Horn mis-tags → Changeup (overrides ALL pitch-type columns)
-# - NEW: Style the existing expander headers (Inning/PA) in red with white text/icons
+# - NEW: Style expanders so only top-level (Inning …) are red/white, nested PA expanders stay white/black
+# - REMOVED: Tyner Horn manual pitch-type override
 
 import os
 import gc
@@ -255,7 +255,7 @@ def filter_by_segment(df: pd.DataFrame, segment_name: str) -> pd.DataFrame:
     st_col = find_session_type_col(out)
     if st_col and len(spec.get("types", [])) > 0:
         st_norm = out[st_col].apply(_norm_session_type)
-        out = out[st_norm.isin(spec["types"])]
+        out = out[st_norm.isin(spec.get("types", []))]
     return out
 
 def get_type_col_for_segment(df: pd.DataFrame, segment_name: str) -> str:
@@ -577,28 +577,38 @@ def pitchtype_checkbox_grid(label: str, options: list[str], key_prefix: str, def
         cols[i % columns_per_row].checkbox(o, value=st.session_state[k], key=k)
     return [o for o, k in zip(options, opt_keys) if st.session_state[k]]
 
-# Style the EXISTING expander labels (Inning / PA) — red fill, white text/icons
+# Style ONLY the Play-by-Play expanders:
+# - default inside .pbp-scope: white bg, black text (applies to PA expanders)
+# - override FIRST-LEVEL expanders under .inning-block to red bg, white text/icons
 def style_pbp_expanders():
     st.markdown(
         f"""
         <style>
-        /* Play-by-Play expander headers */
-        div[data-testid="stExpander"] > details > summary {{
-            background-color: {HUSKER_RED} !important;
-            color: white !important;
+        /* Default within the PBP scope: white headers, black text/icons */
+        .pbp-scope div[data-testid="stExpander"] > details > summary {{
+            background-color: #ffffff !important;
+            color: #111111 !important;
             border-radius: 6px !important;
             padding: 6px 10px !important;
             font-weight: 800 !important;
         }}
-        /* Ensure header text stays white */
-        div[data-testid="stExpander"] > details > summary p,
-        div[data-testid="stExpander"] > details > summary span {{
-            color: white !important;
+        .pbp-scope div[data-testid="stExpander"] > details > summary p,
+        .pbp-scope div[data-testid="stExpander"] > details > summary span,
+        .pbp-scope div[data-testid="stExpander"] > details > summary svg {{
+            color: #111111 !important;
+            stroke: #111111 !important;
         }}
-        /* Caret/icon should be white too */
-        div[data-testid="stExpander"] > details > summary svg {{
-            color: white !important;
-            stroke: white !important;
+
+        /* First-level (Inning …) expanders: direct children of .inning-block */
+        .pbp-scope .inning-block > div[data-testid="stExpander"] > details > summary {{
+            background-color: {HUSKER_RED} !important;
+            color: #ffffff !important;
+        }}
+        .pbp-scope .inning-block > div[data-testid="stExpander"] > details > summary p,
+        .pbp-scope .inning-block > div[data-testid="stExpander"] > details > summary span,
+        .pbp-scope .inning-block > div[data-testid="stExpander"] > details > summary svg {{
+            color: #ffffff !important;
+            stroke: #ffffff !important;
         }}
         </style>
         """,
@@ -1187,7 +1197,7 @@ def extensions_topN_figure(
         ax.legend(handles, labels, title="Pitch Type", loc=LEGEND_LOC,
                   bbox_to_anchor=LEGEND_ANCHOR_FRAC, borderaxespad=0.0,
                   frameon=True, fancybox=False, edgecolor="#d0d0d0")
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.tight_layout()
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1386,47 +1396,6 @@ else:
 
 df_segment = filter_by_segment(base_df, segment_choice)
 
-# ── Manual corrections (Tyner Horn: mis-tagged fastballs -> changeups)
-def apply_manual_type_corrections(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    pitcher_c = pick_col(out, "Pitcher","PitcherName","Name","PitcherLastFirst") or "Pitcher"
-    batter_c  = find_batter_name_col(out)
-    po_c      = find_pitch_of_pa_col(out)
-    if batter_c is None or po_c is None or pitcher_c not in out.columns:
-        return out
-
-    # Determine all present pitch-type columns we should override
-    lower_map = {c.lower(): c for c in out.columns}
-    candidate_aliases = [
-        "TaggedPitchType","Tagged Pitch Type","AutoPitchType","Auto Pitch Type",
-        "PitchType","Pitch Type"
-    ]
-    present_type_cols = []
-    for alias in candidate_aliases:
-        c = lower_map.get(alias.lower())
-        if c and c not in present_type_cols:
-            present_type_cols.append(c)
-    if not present_type_cols:
-        return out
-
-    # Normalized names & mask
-    pnorm = out[pitcher_c].astype(str).str.strip().str.casefold()
-    bnorm = out[batter_c].apply(format_name).astype(str).str.strip().str.casefold()
-    po    = pd.to_numeric(out[po_c], errors="coerce")
-
-    mask_tyner = pnorm.eq("tyner horn")
-    mask_jett  = bnorm.eq("jett buck") & po.isin([4,5])
-    mask_carter= bnorm.eq("carter kelley") & po.eq(3)
-    fix_mask = mask_tyner & (mask_jett | mask_carter)
-
-    if fix_mask.any():
-        for col in present_type_cols:
-            out.loc[fix_mask, col] = "Changeup"
-
-    return out
-
-df_segment = apply_manual_type_corrections(df_segment)
-
 if df_segment.empty:
     st.info(f"No rows found for **{segment_choice}** with the current dataset.")
     st.stop()
@@ -1496,9 +1465,12 @@ with tabs[0]:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        # 2) Play-by-Play (Inning ➜ PA ➜ pitch) with styled expander headers
+        # 2) Play-by-Play (styled: Inning red/white; PA white/black)
         st.markdown("### Play-by-Play")
-        style_pbp_expanders()  # ← style the existing expander headers (red/white)
+        style_pbp_expanders()  # inject CSS rules
+        st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
+        st.markdown('<div class="inning-block">', unsafe_allow_html=True)
+
         pbp = build_pitch_by_inning_pa_table(neb_df)
         if pbp.empty:
             st.info("Play-by-Play not available for this selection.")
@@ -1527,6 +1499,9 @@ with tabs[0]:
                 file_name="play_by_play_summary.csv",
                 mime="text/csv"
             )
+
+        st.markdown('</div>', unsafe_allow_html=True)   # close .inning-block
+        st.markdown('</div>', unsafe_allow_html=True)   # close .pbp-scope
 
 # ── COMPARE TAB (unchanged visuals) ───────────────────────────────────────────
 with tabs[1]:

@@ -10,6 +10,7 @@
 # - NEW: Style expanders so only top-level (Inning …) are red/white, nested PA expanders stay white/black
 # - REMOVED: Tyner Horn manual pitch-type override
 # - NEW: Outcome Summary (Total + By Pitch Type) added to Profiles, above Strike % table
+# - FIX: themed_table() only formats numeric columns to avoid "Unknown format code 'f' for object of type 'str'"
 
 import os
 import gc
@@ -314,7 +315,6 @@ def format_name(name):
         last, first = [s.strip() for s in name.split(',', 1)]
         return f"{first} {last}"
     return str(name)
-
 # ──────────────────────────────────────────────────────────────────────────────
 # UTILITIES
 # ──────────────────────────────────────────────────────────────────────────────
@@ -578,9 +578,7 @@ def pitchtype_checkbox_grid(label: str, options: list[str], key_prefix: str, def
         cols[i % columns_per_row].checkbox(o, value=st.session_state[k], key=k)
     return [o for o, k in zip(options, opt_keys) if st.session_state[k]]
 
-# Style ONLY the Play-by-Play expanders:
-# - default inside .pbp-scope: white bg, black text (applies to PA expanders)
-# - override FIRST-LEVEL expanders under .inning-block to red bg, white text/icons
+# Style ONLY the Play-by-Play expanders
 def style_pbp_expanders():
     st.markdown(
         f"""
@@ -615,6 +613,7 @@ def style_pbp_expanders():
         """,
         unsafe_allow_html=True,
     )
+
 # ──────────────────────────────────────────────────────────────────────────────
 # PITCHER REPORT (movement + summary)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -814,6 +813,7 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
     fig.update_layout(height=420, title_text=f"{format_name(pitcher_name)} — Top 3 Pitches ({season_label})",
                       title_x=0.5, margin=dict(l=10, r=10, t=60, b=10))
     return fig
+
 # ──────────────────────────────────────────────────────────────────────────────
 # OUTCOME HEATMAPS (Matplotlib scatter-only)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1335,16 +1335,23 @@ def make_strike_percentage_table(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 def themed_table(df: pd.DataFrame):
-    float_cols = df.select_dtypes(include=["float", "float64"]).columns.tolist()
-    percent_cols = [c for c in df.columns if c.strip().endswith('%')]
-    fmt_map = {c: "{:.1f}" for c in set(float_cols) | set(percent_cols)}
+    """
+    Safe table formatter:
+    - Only apply numeric formats to numeric dtypes (avoids ValueError on strings like '0.345' or '59.0%').
+    - Leave object/string columns untouched.
+    """
+    # numeric columns only
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    fmt_map = {}
+    for c in numeric_cols:
+        if pd.api.types.is_float_dtype(df[c].dtype):
+            fmt_map[c] = "{:.1f}"  # keep ints unformatted; floats to one decimal
     styles = [
         {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
         {'selector': 'th',        'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
         {'selector': 'td',        'props': 'white-space: nowrap; color: black;'},
     ]
     return (df.style.hide(axis="index").format(fmt_map, na_rep="—").set_table_styles(styles))
-
 # ── OUTCOME SUMMARY HELPERS (Total + By Pitch Type) ───────────────────────────
 def _first_present(df: pd.DataFrame, cands: list[str]) -> str | None:
     lower = {c.lower(): c for c in df.columns}
@@ -1497,6 +1504,7 @@ _scrim_resolved = resolve_existing_path(_scrim_candidates)
 df_scrim = load_csv_norm(_scrim_resolved) if _scrim_resolved else None
 if df_scrim is not None:
     df_scrim = dedupe_pitches(df_scrim)
+
 # ──────────────────────────────────────────────────────────────────────────────
 # DATA SEGMENT PICKER
 # ──────────────────────────────────────────────────────────────────────────────

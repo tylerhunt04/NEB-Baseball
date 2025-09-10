@@ -2,6 +2,7 @@
 
 import os
 import math
+import glob
 import base64
 import numpy as np
 import pandas as pd
@@ -18,7 +19,11 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # wide OFF
 
-DATA_PATH = "B10C25_hitter_app_columns.csv"  # update if needed
+# Default data paths per period (you can change these anytime)
+DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
+DATA_PATH_SCRIM  = "Fall_WinterScrimmages(3).csv"  # can be a CSV file, directory, or glob pattern
+DATA_PATH_2026   = "B10C26_hitter_app_columns.csv"            # placeholder; point to your 2026 file when ready
+
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
     "/mnt/data/NebraskaChampions.jpg",
@@ -495,33 +500,108 @@ def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LOAD DATA
+# LOADERS (single CSV or multi-CSV via directory/glob)
 # ──────────────────────────────────────────────────────────────────────────────
+def _expand_paths(path_like: str):
+    """
+    Accepts:
+      - a direct CSV file path
+      - a directory path (reads all *.csv inside)
+      - a glob pattern (e.g., '/mnt/data/scrims/*.csv')
+    Returns a list of CSV filepaths (may be empty).
+    """
+    if not path_like:
+        return []
+    if os.path.isdir(path_like):
+        files = sorted(glob.glob(os.path.join(path_like, "*.csv")))
+        return files
+    # if it's a file and exists, return it; else try glob
+    if os.path.isfile(path_like):
+        return [path_like]
+    files = sorted(glob.glob(path_like))
+    return files
+
 @st.cache_data(show_spinner=True)
-def load_csv(path: str) -> pd.DataFrame:
+def load_many_csv(paths: list) -> pd.DataFrame:
+    dfs = []
+    for p in paths:
+        try:
+            df = pd.read_csv(p, low_memory=False)
+        except UnicodeDecodeError:
+            df = pd.read_csv(p, low_memory=False, encoding="latin-1")
+        dfs.append(df)
+    if not dfs:
+        return pd.DataFrame()
+    out = pd.concat(dfs, ignore_index=True)
+    return ensure_date_column(out)
+
+@st.cache_data(show_spinner=True)
+def load_single_csv(path: str) -> pd.DataFrame:
     try:
         df = pd.read_csv(path, low_memory=False)
     except UnicodeDecodeError:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
     return ensure_date_column(df)
 
-df_all = load_csv(DATA_PATH)
+def load_for_period(period_label: str) -> pd.DataFrame:
+    """
+    period_label ∈ {"2025 season","2025/26 Scrimmages","2026 season"}
+    Uses the configured path(s) and returns a DataFrame with a normalized Date column.
+    """
+    if period_label == "2025 season":
+        return load_single_csv(DATA_PATH_2025)
+    elif period_label == "2025/26 Scrimmages":
+        paths = _expand_paths(DATA_PATH_SCRIM)
+        if not paths:
+            return pd.DataFrame()
+        return load_many_csv(paths)
+    elif period_label == "2026 season":
+        paths = _expand_paths(DATA_PATH_2026)
+        if not paths:
+            # still try single file to allow an exact file path
+            try:
+                return load_single_csv(DATA_PATH_2026)
+            except Exception:
+                return pd.DataFrame()
+        return load_many_csv(paths)
+    else:
+        return pd.DataFrame()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# UI: BANNER + PERIOD SELECTOR
+# ──────────────────────────────────────────────────────────────────────────────
+render_nb_banner(title="Nebraska Baseball")
+
+# Time period selector (like the pitcher app)
+period = st.selectbox(
+    "Time Period",
+    options=["2025 season", "2025/26 Scrimmages", "2026 season"],
+    index=0
+)
+
+# Optional: show and allow quick inline tweak of paths (handy mid-season)
+with st.expander("Data paths (optional quick edit)"):
+    st.caption("You can paste a CSV path, a directory path, or a glob pattern (e.g., `/mnt/data/scrims/*.csv`).")
+    global DATA_PATH_2025, DATA_PATH_SCRIM, DATA_PATH_2026
+    DATA_PATH_2025  = st.text_input("2025 season path", value=DATA_PATH_2025)
+    DATA_PATH_SCRIM = st.text_input("2025/26 Scrimmages path/pattern", value=DATA_PATH_SCRIM)
+    DATA_PATH_2026  = st.text_input("2026 season path/pattern", value=DATA_PATH_2026)
+
+# Load the chosen period
+df_all = load_for_period(period)
 if df_all.empty:
-    st.error("No data loaded.")
+    st.error(f"No data loaded for '{period}'. Check the path(s) above.")
     st.stop()
 
 # Nebraska hitters only
 df_neb_bat = df_all[df_all.get('BatterTeam') == 'NEB'].copy()
 if df_neb_bat.empty:
-    st.error("No Nebraska hitter rows found in the dataset.")
+    st.error(f"No Nebraska hitter rows found for '{period}'.")
     st.stop()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BANNER
-# ──────────────────────────────────────────────────────────────────────────────
-render_nb_banner(title="Nebraska Baseball")
-
 # Top section selector: Standard vs Profiles & Heatmaps
+# ──────────────────────────────────────────────────────────────────────────────
 view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps"], horizontal=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -593,10 +673,10 @@ else:
 
     st.markdown("#### Filters")
 
-    # Give the hand radio more room so options fit in one line
+    # Batter hand/lastN/months/days filters
     colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
-    # Months / Days (built from this batter's season)
+    # Months / Days (built from this batter's rows in the selected period)
     if batter:
         df_b_all = df_neb_bat[df_neb_bat['Batter'] == batter].copy()
         dates_all = pd.to_datetime(df_b_all['Date'], errors="coerce").dropna().dt.date
@@ -664,15 +744,12 @@ else:
     if batter and df_profiles.empty:
         st.info("No rows for the selected filters.")
     elif batter:
-        # Season column (year). If mixed, "Multiple".
-        year_vals = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.year.dropna().unique()
-        if len(year_vals) == 1:
-            season_year = int(year_vals[0])
-        elif len(year_vals) > 1:
-            season_year = "Multiple"
-        else:
-            # fallback if no dates but batter chosen
-            season_year = "—"
+        # Season label shows the chosen period for clarity
+        season_label = {
+            "2025 season": "2025",
+            "2025/26 Scrimmages": "2025/26 Scrimmages",
+            "2026 season": "2026",
+        }.get(period, "—")
 
         # Month column (if any months chosen)
         month_label = ", ".join(MONTH_NAME_BY_NUM.get(m, str(m)) for m in sorted(sel_months)) if sel_months else None
@@ -686,7 +763,7 @@ else:
         bb_df = create_batted_ball_profile(df_profiles).copy()
         for c in bb_df.columns:
             bb_df[c] = bb_df[c].apply(lambda v: fmt_pct(v, decimals=1))
-        bb_df.insert(0, "Season", season_year)
+        bb_df.insert(0, "Season", season_label)
         if month_label:
             bb_df.insert(1, "Month", month_label)
             if opp_label:
@@ -703,7 +780,7 @@ else:
         for c in ["Zone Swing %","Chase %","Swing %","Whiff %"]:
             if c in pd_df.columns:
                 pd_df[c] = pd_df[c].apply(fmt_pct2)
-        pd_df.insert(0, "Season", season_year)
+        pd_df.insert(0, "Season", season_label)
         if month_label:
             pd_df.insert(1, "Month", month_label)
             if opp_label:
@@ -742,7 +819,7 @@ else:
             "BB %":         "BB%",
         }
         st_df.rename(columns={k:v for k,v in rename_map.items() if k in st_df.columns}, inplace=True)
-        st_df.insert(0, "Season", season_year)
+        st_df.insert(0, "Season", season_label)
         if month_label:
             st_df.insert(1, "Month", month_label)
             if opp_label:

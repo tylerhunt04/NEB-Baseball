@@ -21,7 +21,7 @@ st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # w
 
 # Default data paths per period (you can change these anytime)
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
-DATA_PATH_SCRIM  = "Fall_WinterScrimmages(3).csv"  # can be a CSV file, directory, or glob pattern
+DATA_PATH_SCRIM  = "Fall_WinterScrimmages(3).csv"  # file, directory, or glob pattern
 DATA_PATH_2026   = "B10C26_hitter_app_columns.csv"            # placeholder; point to your 2026 file when ready
 
 BANNER_CANDIDATES = [
@@ -161,7 +161,7 @@ def themed_styler(df: pd.DataFrame, nowrap=True):
             .set_table_styles(styles))
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BANNER (darker background like pitcher app)
+# BANNER
 # ──────────────────────────────────────────────────────────────────────────────
 def _img_to_b64(path: str):
     try:
@@ -170,38 +170,21 @@ def _img_to_b64(path: str):
     except Exception:
         return None
 
-def render_nb_banner(
-    image_candidates=BANNER_CANDIDATES,
-    title="Nebraska Baseball",
-    height_px=180
-):
+def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Baseball", height_px=180):
     b64 = None
     for p in image_candidates:
         b64 = _img_to_b64(p)
         if b64:
             break
     if not b64:
-        return  # silently skip if not found
-
-    # Add dark overlay + slight image darkening so title stands out
+        return
     st.markdown(
         f"""
-        <div style="
-            position: relative;
-            width: 100%;
-            height: {height_px}px;
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 10px;">
-          <img src="data:image/jpeg;base64,{b64}"
-               style="width:100%; height:100%; object-fit:cover; filter: brightness(0.6);" />
+        <div style="position: relative; width: 100%; height: {height_px}px; border-radius: 12px; overflow: hidden; margin-bottom: 10px;">
+          <img src="data:image/jpeg;base64,{b64}" style="width:100%; height:100%; object-fit:cover; filter: brightness(0.6);" />
           <div style="position:absolute; inset:0; background: rgba(0,0,0,0.35);"></div>
-          <div style="
-              position:absolute; inset:0;
-              display:flex; align-items:center; justify-content:center;">
-            <div style="
-                font-size:40px; font-weight:800; color:white;
-                text-shadow: 0 2px 12px rgba(0,0,0,.9);">
+          <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
+            <div style="font-size:40px; font-weight:800; color:white; text-shadow: 0 2px 12px rgba(0,0,0,.9);">
               {title}
             </div>
           </div>
@@ -215,7 +198,7 @@ def render_nb_banner(
 # ──────────────────────────────────────────────────────────────────────────────
 def assign_spray_category(row):
     ang  = row.get('Bearing', np.nan)
-    side = str(row.get('BatterSide', "")).upper()[:1]  # 'L' or 'R'
+    side = str(row.get('BatterSide', "")).upper()[:1]
     if not np.isfinite(ang):
         return np.nan
     if -15 <= ang <= 15:
@@ -232,7 +215,6 @@ def create_batted_ball_profile(df: pd.DataFrame):
         inplay['Bearing'] = np.nan
     if 'BatterSide' not in inplay.columns:
         inplay['BatterSide'] = ""
-
     inplay['spray_cat'] = inplay.apply(assign_spray_category, axis=1)
 
     def pct(mask):
@@ -460,7 +442,7 @@ def create_hitter_report(df, batter, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HITTER HEATMAPS — 3 panels (Contact, Whiffs, Damage) using filtered data
+# HEATMAPS (Contact / Whiffs / Damage)
 # ──────────────────────────────────────────────────────────────────────────────
 def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter: str):
     sub = df_filtered_for_profiles[df_filtered_for_profiles.get('Batter') == batter].copy()
@@ -515,7 +497,6 @@ def _expand_paths(path_like: str):
     if os.path.isdir(path_like):
         files = sorted(glob.glob(os.path.join(path_like, "*.csv")))
         return files
-    # if it's a file and exists, return it; else try glob
     if os.path.isfile(path_like):
         return [path_like]
     files = sorted(glob.glob(path_like))
@@ -543,24 +524,23 @@ def load_single_csv(path: str) -> pd.DataFrame:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1")
     return ensure_date_column(df)
 
-def load_for_period(period_label: str) -> pd.DataFrame:
+def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_2026: str) -> pd.DataFrame:
     """
     period_label ∈ {"2025 season","2025/26 Scrimmages","2026 season"}
-    Uses the configured path(s) and returns a DataFrame with a normalized Date column.
+    Uses the provided paths and returns a DataFrame with a normalized Date column.
     """
     if period_label == "2025 season":
-        return load_single_csv(DATA_PATH_2025)
+        return load_single_csv(path_2025)
     elif period_label == "2025/26 Scrimmages":
-        paths = _expand_paths(DATA_PATH_SCRIM)
+        paths = _expand_paths(path_scrim)
         if not paths:
             return pd.DataFrame()
         return load_many_csv(paths)
     elif period_label == "2026 season":
-        paths = _expand_paths(DATA_PATH_2026)
+        paths = _expand_paths(path_2026)
         if not paths:
-            # still try single file to allow an exact file path
             try:
-                return load_single_csv(DATA_PATH_2026)
+                return load_single_csv(path_2026)
             except Exception:
                 return pd.DataFrame()
         return load_many_csv(paths)
@@ -579,16 +559,20 @@ period = st.selectbox(
     index=0
 )
 
-# Optional: show and allow quick inline tweak of paths (handy mid-season)
+# Optional: show and allow quick inline tweak of paths (no globals needed)
 with st.expander("Data paths (optional quick edit)"):
-    st.caption("You can paste a CSV path, a directory path, or a glob pattern (e.g., `/mnt/data/scrims/*.csv`).")
-    global DATA_PATH_2025, DATA_PATH_SCRIM, DATA_PATH_2026
-    DATA_PATH_2025  = st.text_input("2025 season path", value=DATA_PATH_2025)
-    DATA_PATH_SCRIM = st.text_input("2025/26 Scrimmages path/pattern", value=DATA_PATH_SCRIM)
-    DATA_PATH_2026  = st.text_input("2026 season path/pattern", value=DATA_PATH_2026)
+    st.caption("Paste a CSV path, a directory path, or a glob pattern (e.g., `/mnt/data/scrims/*.csv`).")
+    path_2025  = st.text_input("2025 season path", value=DATA_PATH_2025,  key="path_2025")
+    path_scrim = st.text_input("2025/26 Scrimmages path/pattern", value=DATA_PATH_SCRIM, key="path_scrim")
+    path_2026  = st.text_input("2026 season path/pattern", value=DATA_PATH_2026,  key="path_2026")
 
-# Load the chosen period
-df_all = load_for_period(period)
+# If user didn't open the expander, fall back to defaults
+path_2025  = st.session_state.get("path_2025", DATA_PATH_2025)
+path_scrim = st.session_state.get("path_scrim", DATA_PATH_SCRIM)
+path_2026  = st.session_state.get("path_2026", DATA_PATH_2026)
+
+# Load the chosen period with current paths
+df_all = load_for_period(period, path_2025, path_scrim, path_2026)
 if df_all.empty:
     st.error(f"No data loaded for '{period}'. Check the path(s) above.")
     st.stop()
@@ -600,32 +584,28 @@ if df_neb_bat.empty:
     st.stop()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Top section selector: Standard vs Profiles & Heatmaps
+# Top section selector: Standard Hitter Report vs Profiles & Heatmaps
 # ──────────────────────────────────────────────────────────────────────────────
 view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps"], horizontal=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: STANDARD HITTER REPORT (batter → date with opponent names)
+# MODE: STANDARD HITTER REPORT
 # ──────────────────────────────────────────────────────────────────────────────
 if view_mode == "Standard Hitter Report":
     st.markdown("### Nebraska Hitter Reports")
 
     colB, colD = st.columns([1, 1])
 
-    # Batter select (from all NEB hitters)
     batters_global = sorted(df_neb_bat.get('Batter').dropna().unique().tolist())
     batter_std = colB.selectbox("Player", options=batters_global, index=0 if batters_global else None)
 
-    # Date options for the selected batter, with opponent label (mapped to names)
     if batter_std:
         df_b_all = df_neb_bat[df_neb_bat['Batter'] == batter_std].copy()
         df_b_all['DateOnly'] = pd.to_datetime(df_b_all['Date'], errors="coerce").dt.date
-        # Opponents by date
         date_groups = df_b_all.groupby('DateOnly')['PitcherTeam'].agg(
             lambda s: sorted(set([TEAM_NAME_MAP.get(str(x), str(x)) for x in s if pd.notna(x)]))
         )
-        date_opts = []
-        date_labels = {}
+        date_opts, date_labels = [], {}
         for d, teams in date_groups.items():
             if pd.isna(d):
                 continue
@@ -646,13 +626,11 @@ if view_mode == "Standard Hitter Report":
         index=len(date_opts)-1 if date_opts else 0
     ) if date_opts else None
 
-    # Data for that single game
     if batter_std and selected_date:
         df_date = df_b_all[df_b_all['DateOnly'] == selected_date].copy()
     else:
         df_date = df_b_all.iloc[0:0].copy()
 
-    # Standard Hitter Report
     if not batter_std or df_date.empty:
         st.info("Select a player and game date to see the Standard Hitter Report.")
     else:
@@ -662,21 +640,17 @@ if view_mode == "Standard Hitter Report":
             st.pyplot(fig_std)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: PROFILES & HEATMAPS (separate section with its own filters)
+# MODE: PROFILES & HEATMAPS
 # ──────────────────────────────────────────────────────────────────────────────
 else:
     st.markdown("### Profiles & Heatmaps")
 
-    # Batter select for profiles section
     batters_global = sorted(df_neb_bat.get('Batter').dropna().unique().tolist())
     batter = st.selectbox("Player", options=batters_global, index=0 if batters_global else None)
 
     st.markdown("#### Filters")
-
-    # Batter hand/lastN/months/days filters
     colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
-    # Months / Days (built from this batter's rows in the selected period)
     if batter:
         df_b_all = df_neb_bat[df_neb_bat['Batter'] == batter].copy()
         dates_all = pd.to_datetime(df_b_all['Date'], errors="coerce").dropna().dt.date
@@ -694,7 +668,6 @@ else:
         key="prof_months",
     )
 
-    # Days derive from selected months
     if batter:
         dser = pd.Series(dates_all)
         if sel_months:
@@ -704,19 +677,14 @@ else:
         present_days = []
     sel_days = colD2.multiselect("Days", options=present_days, default=[], key="prof_days")
 
-    # Last N games
     lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
-
-    # Pitcher Hand
     hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
 
-    # Build filtered dataset for profiles/heatmaps
     if batter:
         df_player_all = df_neb_bat[df_neb_bat['Batter'] == batter].copy()
     else:
         df_player_all = df_neb_bat.iloc[0:0].copy()
 
-    # Month/Day filter
     if sel_months:
         mask_m = pd.to_datetime(df_player_all['Date'], errors="coerce").dt.month.isin(sel_months)
     else:
@@ -727,39 +695,31 @@ else:
         mask_d = pd.Series(True, index=df_player_all.index)
     df_profiles = df_player_all[mask_m & mask_d].copy()
 
-    # Last N games (after month/day filter)
     if lastN and not df_profiles.empty:
         uniq_dates = pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.dropna().unique()
         uniq_dates = sorted(uniq_dates)
         last_dates = set(uniq_dates[-lastN:])
         df_profiles = df_profiles[pd.to_datetime(df_profiles['Date'], errors="coerce").dt.date.isin(last_dates)].copy()
 
-    # Pitcher hand filter
     if hand_choice == "LHP":
         df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
     elif hand_choice == "RHP":
         df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
-    # Render profiles & heatmaps
     if batter and df_profiles.empty:
         st.info("No rows for the selected filters.")
     elif batter:
-        # Season label shows the chosen period for clarity
         season_label = {
             "2025 season": "2025",
             "2025/26 Scrimmages": "2025/26 Scrimmages",
             "2026 season": "2026",
         }.get(period, "—")
 
-        # Month column (if any months chosen)
         month_label = ", ".join(MONTH_NAME_BY_NUM.get(m, str(m)) for m in sorted(sel_months)) if sel_months else None
-
-        # Opponents (mapped to names) within the filtered set
         opp_codes = df_profiles.get('PitcherTeam', pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
         opp_fullnames = [TEAM_NAME_MAP.get(code, code) for code in sorted(opp_codes)]
         opp_label = "/".join(opp_fullnames) if opp_fullnames else None
 
-        # Batted Ball Profile
         bb_df = create_batted_ball_profile(df_profiles).copy()
         for c in bb_df.columns:
             bb_df[c] = bb_df[c].apply(lambda v: fmt_pct(v, decimals=1))
@@ -771,7 +731,6 @@ else:
         st.markdown("#### Batted Ball Profile")
         st.table(themed_styler(bb_df))
 
-        # Plate Discipline Profile
         pd_df = create_plate_discipline_profile(df_profiles).copy()
         if "Zone %" in pd_df.columns:
             pd_df["Zone %"] = pd_df["Zone %"].apply(lambda v: fmt_pct(v, decimals=1))
@@ -788,28 +747,23 @@ else:
         st.markdown("#### Plate Discipline Profile")
         st.table(themed_styler(pd_df))
 
-        # Batting Statistics
         st_df, pa_cnt, ab_cnt = create_batting_stats_profile(df_profiles)
         st_df = st_df.copy()
-        # Format: AVG/OBP/SLG/OPS as .xxx
         for c in ["AVG", "OBP", "SLG", "OPS"]:
             if c in st_df.columns:
                 st_df[c] = st_df[c].apply(fmt_avg3)
-        # EV & LA fixed to two decimals
         if "Avg Exit Vel" in st_df.columns:
             st_df["Avg Exit Vel"] = st_df["Avg Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
         if "Max Exit Vel" in st_df.columns:
             st_df["Max Exit Vel"] = st_df["Max Exit Vel"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
         if "Avg Angle" in st_df.columns:
             st_df["Avg Angle"] = st_df["Avg Angle"].apply(lambda v: f"{float(v):.2f}" if pd.notna(v) else "—")
-        # Percentages
         if "HardHit %" in st_df.columns:
             st_df["HardHit %"] = st_df["HardHit %"].apply(lambda v: fmt_pct(v, decimals=1))
         if "K %" in st_df.columns:
             st_df["K %"] = st_df["K %"].apply(fmt_pct2)
         if "BB %" in st_df.columns:
             st_df["BB %"] = st_df["BB %"].apply(fmt_pct2)
-        # Short headers to keep on one line
         rename_map = {
             "Avg Exit Vel": "Avg EV",
             "Max Exit Vel": "Max EV",
@@ -828,7 +782,6 @@ else:
         st.markdown("#### Batting Statistics")
         st.table(themed_styler(st_df, nowrap=True))
 
-        # Heatmaps (use the same filtered dataset as profiles)
         st.markdown("#### Hitter Heatmaps")
         fig_hm = hitter_heatmaps(df_profiles, batter)
         if fig_hm:

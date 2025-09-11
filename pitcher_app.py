@@ -1392,48 +1392,93 @@ def _rate3(x):
     return f"{x:.3f}" if pd.notna(x) else ""
 
 def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute outcome metrics at the plate-appearance level (one row per AB).
+    This prevents double-counting hits/AB when result fields appear on multiple pitch rows.
+    EV columns remain pitch-level aggregates (avg/max over all pitches in the filtered set).
+    """
     if df_in is None or df_in.empty:
         return pd.DataFrame([{
             "Average exit velo": np.nan, "Max exit velo": np.nan, "Hits": 0, "Strikeouts": 0,
             "AVG":"", "OBP":"", "SLG":"", "OPS":"", "HardHit%":"", "K%":"", "Walk%":""
         }])
 
+    # Identify relevant columns once
     col_exitv  = _first_present(df_in, ["ExitSpeed","Exit Velo","ExitVelocity","Exit_Velocity","ExitVel","EV","LaunchSpeed","Launch_Speed"])
     col_result = _first_present(df_in, ["PlayResult","Result","Event","PAResult","Outcome"])
     col_call   = _first_present(df_in, ["PitchCall","Pitch Call","PitchResult","Call"])
     col_korbb  = _first_present(df_in, ["KorBB","K_BB","KBB","K_or_BB","PA_KBB"])
 
+    # Work at plate-appearance granularity
+    work = add_inning_and_ab(df_in.copy())
+    po_c = find_pitch_of_pa_col(work)
+
+    # Normalize text columns for detection
     for c in [col_result, col_call, col_korbb]:
-        if c and df_in[c].dtype != "O":
-            df_in[c] = df_in[c].astype("string")
-        if c:
-            df_in[c] = df_in[c].fillna("").astype(str)
+        if c and c in work.columns:
+            if work[c].dtype != "O":
+                work[c] = work[c].astype("string")
+            work[c] = work[c].fillna("").astype(str)
 
-    if (col_result or col_korbb or col_call):
-        term_mask = df_in.apply(lambda r: _is_terminal_row(r, col_result, col_korbb, col_call), axis=1)
-        df_term = df_in.loc[term_mask].copy()
+    # Terminal flag per pitch (vectorized via Series ops, with a small apply fallback for _is_terminal_row)
+    if any(c for c in [col_result, col_korbb, col_call]):
+        is_term = work.apply(lambda r: _is_terminal_row(r, col_result, col_korbb, col_call), axis=1)
     else:
-        df_term = df_in.copy()
+        # If no columns exist to identify terminal rows, use last pitch in each AB
+        is_term = pd.Series(False, index=work.index)
 
-    PR = df_term[col_result].astype(str) if col_result else pd.Series([""]*len(df_term), index=df_term.index)
-    KC = df_term[col_korbb].astype(str)  if col_korbb else pd.Series([""]*len(df_term), index=df_term.index)
-    PC = df_term[col_call].astype(str)   if col_call  else pd.Series([""]*len(df_term), index=df_term.index)
+    # Pick exactly one row per AB: prefer the last terminal row; else the last pitch of that AB
+    def _pick_row_idx(g: pd.DataFrame) -> int:
+        gm = is_term.loc[g.index]
+        if gm.any():
+            # pick the LAST terminal pitch in this AB
+            return gm[gm].index[-1]
+        # fallback: last pitch number if available, else last row
+        if po_c and po_c in g.columns:
+            # idx of max Pitch # in AB (already present as "Pitch # in AB" from add_inning_and_ab)
+            if "Pitch # in AB" in g.columns and g["Pitch # in AB"].notna().any():
+                return g["Pitch # in AB"].astype("Int64").idxmax()
+        return g.index[-1]
 
-    is_single = PR.str.contains(r"\bsingle\b", case=False, regex=True)
-    is_double = PR.str.contains(r"\bdouble\b", case=False, regex=True)
-    is_triple = PR.str.contains(r"\btriple\b", case=False, regex=True)
-    is_hr     = PR.str.contains(r"\bhome\s*run\b", case=False, regex=True) | PR.str.lower().eq("hr")
+    ab_rows_idx = work.groupby("AB #", sort=True, dropna=False).apply(_pick_row_idx).values
+    df_pa = work.loc[ab_rows_idx].copy()
+
+    # Strings for detection
+    PR = df_pa[col_result].astype(str) if col_result else pd.Series([""]*len(df_pa), index=df_pa.index)
+    KC = df_pa[col_korbb].astype(str)  if col_korbb else pd.Series([""]*len(df_pa), index=df_pa.index)
+    PC = df_pa[col_call].astype(str)   if col_call  else pd.Series([""]*len(df_pa), index=df_pa.index)
+
+    # --- Hit & TB detection
+    pr_low = PR.str.lower()
+    is_single = pr_low.str.contains(r"\bsingle\b", regex=True)
+    is_double = pr_low.str.contains(r"\bdouble\b", regex=True)
+    is_triple = pr_low.str.contains(r"\btriple\b", regex=True)
+    is_hr     = pr_low.str.contains(r"\bhome\s*run\b", regex=True) | pr_low.eq("hr")
     hits_mask = is_single | is_double | is_triple | is_hr
     TB = (is_single.astype(int)*1 + is_double.astype(int)*2 + is_triple.astype(int)*3 + is_hr.astype(int)*4).sum()
 
-    is_bb  = PR.str.contains(r"\bwalk\b", case=False, regex=True) | KC.str.lower().isin({"bb","walk"}) | KC.str.contains(r"\bwalk\b", case=False, regex=True)
-    is_so  = PR.str.contains(r"strikeout", case=False, regex=True) | KC.str.lower().isin({"k","so","strikeout","strikeout swinging","strikeout looking"})
-    is_hbp = PR.str.contains(r"hit\s*by\s*pitch", case=False, regex=True) | PC.str.lower().isin({"hitbypitch","hit by pitch","hbp"})
-    is_sf  = PR.str.contains(r"sac(rifice)?\s*fly", case=False, regex=True)
-    is_sh  = PR.str.contains(r"sac(rifice)?\s*(bunt|hit)", case=False, regex=True)
-    is_ci  = PR.str.contains("interference", case=False, regex=True)
+    # --- Walk / K / HBP / SF / SH / CI detection (robust)
+    is_bb = (
+        pr_low.str.contains(r"\bwalk\b|intentional\s*walk|int\.?\s*bb|ib[bB]\b", regex=True)
+        | KC.str.lower().isin({"bb","walk","ibb","intentional walk"})
+        | KC.str.contains(r"\bwalk\b", case=False, regex=True)
+    )
+    is_so  = (
+        pr_low.str.contains(r"strikeout", case=False, regex=True)
+        | KC.str.lower().isin({"k","so","strikeout","strikeout swinging","strikeout looking"})
+    )
+    is_hbp = (
+        pr_low.str.contains(r"hit\s*by\s*pitch", case=False, regex=True)
+        | PC.str.lower().isin({"hitbypitch","hit by pitch","hbp"})
+    )
+    # Sacrifice fly / bunt keywords
+    is_sf = pr_low.str.contains(r"sac(rifice)?\s*fly|\bsf\b", regex=True)
+    is_sh = pr_low.str.contains(r"sac(rifice)?\s*(bunt|hit)|\bsh\b", regex=True)
+    # Catcher's interference
+    is_ci = pr_low.str.contains(r"interference", regex=True)
 
-    PA  = int(len(df_term))
+    # Plate appearances and at-bats
+    PA  = int(len(df_pa))
     H   = int(hits_mask.sum())
     BB  = int(is_bb.sum())
     SO  = int(is_so.sum())
@@ -1441,6 +1486,7 @@ def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
     SF  = int(is_sf.sum())
     SH  = int(is_sh.sum())
     CI  = int(is_ci.sum())
+
     AB  = max(PA - (BB + HBP + SF + SH + CI), 0)
 
     AVG = (H / AB) if AB > 0 else np.nan
@@ -1451,11 +1497,12 @@ def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
     K_rate  = (SO / PA) if PA > 0 else np.nan
     BB_rate = (BB / PA) if PA > 0 else np.nan
 
+    # EV over all pitches in the filtered set (not only terminal rows)
     if col_exitv:
-        ev = pd.to_numeric(df_in[col_exitv], errors="coerce").dropna()
-        avg_ev = float(ev.mean()) if len(ev) else np.nan
-        max_ev = float(ev.max())  if len(ev) else np.nan
-        hard_hit_pct = float((ev >= 95.0).mean()) if len(ev) else np.nan
+        ev_all = pd.to_numeric(df_in[col_exitv], errors="coerce").dropna()
+        avg_ev = float(ev_all.mean()) if len(ev_all) else np.nan
+        max_ev = float(ev_all.max())  if len(ev_all) else np.nan
+        hard_hit_pct = float((ev_all >= 95.0).mean()) if len(ev_all) else np.nan
     else:
         avg_ev = max_ev = hard_hit_pct = np.nan
 
@@ -1473,6 +1520,7 @@ def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
         "Walk%":             _pct(BB_rate),
     }
     return pd.DataFrame([row])
+
 
 def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
     type_col = type_col_in_df(df)

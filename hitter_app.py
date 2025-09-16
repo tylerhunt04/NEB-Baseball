@@ -507,7 +507,7 @@ def _catcher_frame_tables(data: pd.DataFrame, pitcher_team_filter=None):
     d["ZoneCheck"] = lht.between(1.59, 3.41) & lsd.between(-1.0, 1.0)
     d["PitchCall"] = d.get("PitchCall", pd.Series(dtype=object)).astype(str)
 
-    # Optional filter (mirrors PitcherTeam == 'ORL_FIR' from your Firebirds R snippet)
+    # Optional team filter
     if pitcher_team_filter:
         d = d[d.get("PitcherTeam", "").astype(str) == pitcher_team_filter].copy()
 
@@ -526,15 +526,26 @@ def _catcher_frame_tables(data: pd.DataFrame, pitcher_team_filter=None):
                .reset_index()
         )[["Catcher","ZoneK%","KsLost","KsWon"]]
 
-    # ThrowingStats (SB/CS attempts with timing/velo)
+    # ThrowingStats (SB/CS attempts with timing/velo) — SAFE np.select usage
     bx = pd.to_numeric(data.get("BasePositionX"), errors="coerce")
     d2 = data.copy()
+
+    # boolean numpy arrays to keep np.select happy
+    bx_np = bx.to_numpy()
+    cond_second = np.isfinite(bx_np) & (bx_np > 120)
+    cond_third  = np.isfinite(bx_np) & (bx_np < 90)
+
     d2["BaseThrown"] = np.select(
-        [bx > 120, bx < 90],
+        [cond_second, cond_third],
         ["Second", "Third"],
-        default=np.nan
+        default=""   # string default to avoid dtype clash
     )
-    mask_throw = d2.get("PlayResult", "").isin(["CaughtStealing","StolenBase"]) & d2["BaseThrown"].notna()
+
+    play = d2.get("PlayResult")
+    play = play.astype(str) if isinstance(play, pd.Series) else pd.Series("", index=d2.index)
+    # require a labeled base and a SB/CS result
+    mask_throw = play.isin(["CaughtStealing","StolenBase"]) & (d2["BaseThrown"].astype(str) != "")
+
     tdf = d2.loc[mask_throw].copy()
     if tdf.empty:
         throwing_stats = pd.DataFrame(columns=["Catcher","BaseThrown","Throws","SB","CS","CS%","AvgPop","PeakPop","Velo","PeakVelo","Exchange","Throw"])
@@ -603,7 +614,7 @@ def create_catcher_report_figure(df_game: pd.DataFrame, catcher_name: str):
     data["CatcherResult"] = np.select(
         [ts, tb, ss, sl],
         ["TrueStrike", "TrueBall", "StrikeStolen", "StrikeLost"],
-        default=""  # <- changed from np.nan to empty string to keep dtype consistent
+        default=""  # string default
     )
 
     frame_results = data[data["CatcherResult"].isin(["StrikeStolen","StrikeLost"])].copy()

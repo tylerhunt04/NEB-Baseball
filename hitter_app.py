@@ -593,11 +593,19 @@ def create_catcher_report_figure(df_game: pd.DataFrame, catcher_name: str):
     data["TrueBall"]     = data["BallCheck"] & (~data["ZoneCheck"])
     data["StrikeStolen"] = data["CalledStrikeCheck"] & (~data["ZoneCheck"])
     data["StrikeLost"]   = data["BallCheck"] & (data["ZoneCheck"])
+
+    # --- FIX: ensure pure boolean numpy arrays (no pandas NA) for np.select ---
+    ts = data["TrueStrike"].fillna(False).to_numpy(dtype=bool)
+    tb = data["TrueBall"].fillna(False).to_numpy(dtype=bool)
+    ss = data["StrikeStolen"].fillna(False).to_numpy(dtype=bool)
+    sl = data["StrikeLost"].fillna(False).to_numpy(dtype=bool)
+
     data["CatcherResult"] = np.select(
-        [data["TrueStrike"], data["TrueBall"], data["StrikeStolen"], data["StrikeLost"]],
-        ["TrueStrike","TrueBall","StrikeStolen","StrikeLost"],
+        [ts, tb, ss, sl],
+        ["TrueStrike", "TrueBall", "StrikeStolen", "StrikeLost"],
         default=np.nan
     )
+
     frame_results = data[data["CatcherResult"].isin(["StrikeStolen","StrikeLost"])].copy()
 
     # Tables using the full game rows (grouped by catcher)

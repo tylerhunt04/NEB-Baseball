@@ -424,7 +424,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         date_str = format_date_long(d0)
     if batter_display_name or date_str:
         fig.text(0.985, 0.985, f"{batter_display_name} — {date_str}".strip(" —"),
-                 ha='right', va='top', fontsize=9, fontweight='normal')
+            ha='right', va='top', fontsize=9, fontweight='normal')
 
     # summary line (kept)
     gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
@@ -437,7 +437,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         is_swing = gd.get('PitchCall').eq('StrikeSwinging')
         chases = (is_swing & ((pls<-0.83)|(pls>0.83)|(plh<1.5)|(plh>3.5))).sum()
     fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
-             ha='center', va='top', fontsize=12)
+            ha='center', va='top', fontsize=12)
 
     # panels
     for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
@@ -452,7 +452,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         for _, p in pa_df.iterrows():
             mk = {'Fastball':'o', 'Curveball':'s', 'Slider':'^', 'Changeup':'D'}.get(str(p.get('AutoPitchType')), 'o')
             clr = {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
-                   'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
+                'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
             sz = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
             x = p.get('PlateLocSide')
             y = p.get('PlateLocHeight')
@@ -489,15 +489,13 @@ def create_hitter_report(df, batter_display_name, ncols=3):
                              markerfacecolor='gray', markersize=10, markeredgecolor='k')
                      for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
 
-    # Use figure coordinates to place two boxed legends on the bottom line
-    # Left legend centered at x=0.30; Right legend centered at x=0.72
-    # (adjust numbers if you ever change ncol or add/remove entries)
+    # Move the Result legend further RIGHT to avoid covering left descriptions
     fig.legend(
         res_handles,
         [h.get_label() for h in res_handles],
         title='Result',
         loc='upper center',
-        bbox_to_anchor=(0.30, 0.035),
+        bbox_to_anchor=(0.42, 0.035),   # ← shifted right from 0.30 to 0.42
         bbox_transform=fig.transFigure,
         ncol=3,
         frameon=True,

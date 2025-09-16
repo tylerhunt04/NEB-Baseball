@@ -594,7 +594,7 @@ def create_catcher_report_figure(df_game: pd.DataFrame, catcher_name: str):
     data["StrikeStolen"] = data["CalledStrikeCheck"] & (~data["ZoneCheck"])
     data["StrikeLost"]   = data["BallCheck"] & (data["ZoneCheck"])
 
-    # --- FIX: ensure pure boolean numpy arrays (no pandas NA) for np.select ---
+    # Ensure pure boolean numpy arrays; keep choices strings; default as empty string to avoid dtype clash
     ts = data["TrueStrike"].fillna(False).to_numpy(dtype=bool)
     tb = data["TrueBall"].fillna(False).to_numpy(dtype=bool)
     ss = data["StrikeStolen"].fillna(False).to_numpy(dtype=bool)
@@ -603,7 +603,7 @@ def create_catcher_report_figure(df_game: pd.DataFrame, catcher_name: str):
     data["CatcherResult"] = np.select(
         [ts, tb, ss, sl],
         ["TrueStrike", "TrueBall", "StrikeStolen", "StrikeLost"],
-        default=np.nan
+        default=""  # <- changed from np.nan to empty string to keep dtype consistent
     )
 
     frame_results = data[data["CatcherResult"].isin(["StrikeStolen","StrikeLost"])].copy()

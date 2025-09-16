@@ -76,11 +76,7 @@ MONTH_NAME_BY_NUM = {n: name for n, name in MONTH_CHOICES}
 
 def normalize_name(name: str) -> str:
     """
-    Turn variants like 'Buettenback,  Max\\u200b' into a single stable 'Buettenback, Max'.
-    - Unicode normalize (NFKC)
-    - remove zero-width chars (200B–200D, FEFF)
-    - collapse whitespace; normalize comma spacing
-    - title-case tokens
+    Normalize names like 'Buettenback,  Max\\u200b' -> 'Buettenback, Max'
     """
     if name is None or (isinstance(name, float) and pd.isna(name)):
         return ""
@@ -388,6 +384,15 @@ def create_hitter_report(df, batter_display_name, ncols=3):
     n_pa = len(pa_groups)
     nrows = max(1, math.ceil(n_pa / ncols))
 
+    # helper to pretty-print TaggedHitType like "GroundBall" -> "Ground Ball"
+    def _pretty_hit_type(s):
+        if pd.isna(s) or s is None:
+            return None
+        t = str(s)
+        t = t.replace("_", " ")
+        t = re.sub(r"([a-z])([A-Z])", r"\1 \2", t)
+        return t.strip().title()
+
     # textual descriptions per PA
     descriptions = []
     for _, pa_df in pa_groups:
@@ -401,9 +406,14 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             last = inplay.iloc[-1]
             res = last.get('PlayResult', 'InPlay') or 'InPlay'
             es  = last.get('ExitSpeed', np.nan)
+            tag = _pretty_hit_type(last.get('TaggedHitType'))
+            # Compose result line: include EV and TaggedHitType if present
+            result_bits = [res]
             if pd.notna(es):
-                res += f" ({float(es):.1f} MPH)"
-            lines.append(f"  ▶ PA Result: {res}")
+                result_bits[-1] = f"{result_bits[-1]} ({float(es):.1f} MPH)"
+            if tag:
+                result_bits.append(f"— {tag}")
+            lines.append(f"  ▶ PA Result: {' '.join(result_bits)}")
         else:
             balls = (pa_df.get('PitchCall')=='BallCalled').sum()
             strikes = pa_df.get('PitchCall').isin(['StrikeCalled','StrikeSwinging']).sum()
@@ -424,7 +434,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         date_str = format_date_long(d0)
     if batter_display_name or date_str:
         fig.text(0.985, 0.985, f"{batter_display_name} — {date_str}".strip(" —"),
-            ha='right', va='top', fontsize=9, fontweight='normal')
+                 ha='right', va='top', fontsize=9, fontweight='normal')
 
     # summary line (kept)
     gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
@@ -437,7 +447,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         is_swing = gd.get('PitchCall').eq('StrikeSwinging')
         chases = (is_swing & ((pls<-0.83)|(pls>0.83)|(plh<1.5)|(plh>3.5))).sum()
     fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
-            ha='center', va='top', fontsize=12)
+             ha='center', va='top', fontsize=12)
 
     # panels
     for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
@@ -452,7 +462,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         for _, p in pa_df.iterrows():
             mk = {'Fastball':'o', 'Curveball':'s', 'Slider':'^', 'Changeup':'D'}.get(str(p.get('AutoPitchType')), 'o')
             clr = {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
-                'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
+                   'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
             sz = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
             x = p.get('PlateLocSide')
             y = p.get('PlateLocHeight')
@@ -489,13 +499,13 @@ def create_hitter_report(df, batter_display_name, ncols=3):
                              markerfacecolor='gray', markersize=10, markeredgecolor='k')
                      for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
 
-    # Move the Result legend further RIGHT to avoid covering left descriptions
+    # Nudge the Result box further right so it never covers the left PA notes
     fig.legend(
         res_handles,
         [h.get_label() for h in res_handles],
         title='Result',
         loc='upper center',
-        bbox_to_anchor=(0.42, 0.035),   # ← shifted right from 0.30 to 0.42
+        bbox_to_anchor=(0.42, 0.035),   # shifted right from 0.30 → 0.42
         bbox_transform=fig.transFigure,
         ncol=3,
         frameon=True,

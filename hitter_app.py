@@ -413,17 +413,20 @@ def create_hitter_report(df, batter_display_name, ncols=3):
                 lines.append("  ▶ PA Result: Strikeout 💥")
         descriptions.append(lines)
 
+    # Figure + grid (leave extra space at bottom for legends)
     fig = plt.figure(figsize=(3 + 4*ncols + 1, 4*nrows))
     gs = GridSpec(nrows, ncols+1, width_ratios=[0.8] + [1]*ncols, wspace=0.15, hspace=0.55)
 
-    # Optional date title (take first group date)
+    # Small top-right label: Name — Date   (no suptitle)
+    date_str = ""
     if pa_groups:
-        date = pa_groups[0][1].get('Date').iloc[0]
-        date_str = format_date_long(date)
-        fig.suptitle(f"{batter_display_name} Hitter Report for {date_str}",
-                     fontsize=16, x=0.55, y=1.0, fontweight='bold')
+        d0 = pa_groups[0][1].get('Date').iloc[0]
+        date_str = format_date_long(d0)
+    if batter_display_name or date_str:
+        fig.text(0.985, 0.985, f"{batter_display_name} — {date_str}".strip(" —"),
+                 ha='right', va='top', fontsize=9, fontweight='normal')
 
-    # summary line
+    # summary line (kept)
     gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
     whiffs = (gd.get('PitchCall')=='StrikeSwinging').sum() if not gd.empty else 0
     hardhits = (pd.to_numeric(gd.get('ExitSpeed'), errors="coerce") > 95).sum() if not gd.empty else 0
@@ -477,21 +480,25 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             yln -= dy
         y0 = yln - dy*0.05
 
-    # legends (nudged lower)
+    # ── Legends: move BELOW panels (centered), stacked (Results over Pitches)
     res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
                           markerfacecolor=v, markersize=10, markeredgecolor='k')
                    for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
                                'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.items()]
-    fig.legend(res_handles, [h.get_label() for h in res_handles],
-               title='Result', loc='lower right', bbox_to_anchor=(0.90, 0.015))
-
     pitch_handles = [Line2D([0],[0], marker=m, color='w', label=k,
                              markerfacecolor='gray', markersize=10, markeredgecolor='k')
                      for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
-    fig.legend(pitch_handles, [h.get_label() for h in pitch_handles],
-               title='Pitches', loc='lower right', bbox_to_anchor=(0.98, 0.015))
 
-    plt.tight_layout(rect=[0.12, 0.06, 1, 0.92])
+    # Place both legends centered at the very bottom; make room using tighter rect bottom
+    fig.legend(res_handles, [h.get_label() for h in res_handles],
+               title='Result', loc='upper center', bbox_to_anchor=(0.5, 0.04),
+               ncol=3, frameon=False)
+    fig.legend(pitch_handles, [h.get_label() for h in pitch_handles],
+               title='Pitches', loc='upper center', bbox_to_anchor=(0.5, 0.00),
+               ncol=4, frameon=False)
+
+    # Leave a little extra room at the bottom so legends don't overlap panels
+    plt.tight_layout(rect=[0.12, 0.08, 1, 0.94])
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────

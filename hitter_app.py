@@ -480,7 +480,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             yln -= dy
         y0 = yln - dy*0.05
 
-    # ── Legends: move BELOW panels (centered), stacked (Results over Pitches)
+    # ── Legends: boxed, ordered, centered below panels (no bunching)
     res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
                           markerfacecolor=v, markersize=10, markeredgecolor='k')
                    for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
@@ -489,16 +489,45 @@ def create_hitter_report(df, batter_display_name, ncols=3):
                              markerfacecolor='gray', markersize=10, markeredgecolor='k')
                      for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
 
-    # Place both legends centered at the very bottom; make room using tighter rect bottom
-    fig.legend(res_handles, [h.get_label() for h in res_handles],
-               title='Result', loc='upper center', bbox_to_anchor=(0.5, 0.04),
-               ncol=3, frameon=False)
-    fig.legend(pitch_handles, [h.get_label() for h in pitch_handles],
-               title='Pitches', loc='upper center', bbox_to_anchor=(0.5, 0.00),
-               ncol=4, frameon=False)
+    # First legend (Results)
+    fig.legend(
+        res_handles,
+        [h.get_label() for h in res_handles],
+        title='Result',
+        loc='upper center',
+        bbox_to_anchor=(0.5, 0.065),
+        ncol=3,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.95,
+        edgecolor='black',
+        borderpad=0.8,
+        columnspacing=1.6,
+        handlelength=1.6,
+        handletextpad=0.6,
+        labelspacing=0.7
+    )
+    # Second legend (Pitches)
+    fig.legend(
+        pitch_handles,
+        [h.get_label() for h in pitch_handles],
+        title='Pitches',
+        loc='upper center',
+        bbox_to_anchor=(0.5, 0.015),
+        ncol=4,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.95,
+        edgecolor='black',
+        borderpad=0.8,
+        columnspacing=1.6,
+        handlelength=1.6,
+        handletextpad=0.6,
+        labelspacing=0.7
+    )
 
-    # Leave a little extra room at the bottom so legends don't overlap panels
-    plt.tight_layout(rect=[0.12, 0.08, 1, 0.94])
+    # Leave extra room at bottom so legends never overlap panels
+    plt.tight_layout(rect=[0.12, 0.10, 1, 0.94])
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────

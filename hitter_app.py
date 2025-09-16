@@ -480,7 +480,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             yln -= dy
         y0 = yln - dy*0.05
 
-    # ── Legends: boxed, ordered, centered below panels (no bunching)
+    # ── Legends: boxed, side-by-side at the bottom (Result LEFT, Pitches RIGHT)
     res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
                           markerfacecolor=v, markersize=10, markeredgecolor='k')
                    for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
@@ -489,13 +489,16 @@ def create_hitter_report(df, batter_display_name, ncols=3):
                              markerfacecolor='gray', markersize=10, markeredgecolor='k')
                      for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
 
-    # First legend (Results)
+    # Use figure coordinates to place two boxed legends on the bottom line
+    # Left legend centered at x=0.30; Right legend centered at x=0.72
+    # (adjust numbers if you ever change ncol or add/remove entries)
     fig.legend(
         res_handles,
         [h.get_label() for h in res_handles],
         title='Result',
         loc='upper center',
-        bbox_to_anchor=(0.5, 0.065),
+        bbox_to_anchor=(0.30, 0.035),
+        bbox_transform=fig.transFigure,
         ncol=3,
         frameon=True,
         fancybox=True,
@@ -507,13 +510,13 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         handletextpad=0.6,
         labelspacing=0.7
     )
-    # Second legend (Pitches)
     fig.legend(
         pitch_handles,
         [h.get_label() for h in pitch_handles],
         title='Pitches',
         loc='upper center',
-        bbox_to_anchor=(0.5, 0.015),
+        bbox_to_anchor=(0.72, 0.035),
+        bbox_transform=fig.transFigure,
         ncol=4,
         frameon=True,
         fancybox=True,
@@ -527,7 +530,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
     )
 
     # Leave extra room at bottom so legends never overlap panels
-    plt.tight_layout(rect=[0.12, 0.10, 1, 0.94])
+    plt.tight_layout(rect=[0.12, 0.08, 1, 0.94])
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────

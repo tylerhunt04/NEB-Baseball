@@ -513,7 +513,7 @@ def build_profile_tables(df_profiles: pd.DataFrame):
     t1 = pd.DataFrame(t1_rows, columns=["Split","PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"])
     t2 = pd.DataFrame(t2_rows, columns=["Split","Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"])
 
-    # Format t1 batting rates as .xxx (for tables; numeric needed elsewhere so don't reuse here)
+    # Format t1 batting rates as .xxx (for tables)
     for c in ["AVG","OBP","SLG","OPS"]:
         t1[c] = t1[c].apply(lambda v: "—" if pd.isna(v) else (f"{float(v):.3f}"[1:] if float(v) < 1.0 else f"{float(v):.3f}"))
 
@@ -550,10 +550,54 @@ def build_rankings_numeric(df_player_scope: pd.DataFrame, display_name_by_key: d
             **{k: core[k] for k in RANKABLE_COLS}
         })
     out = pd.DataFrame(rows, columns=["Player"] + RANKABLE_COLS)
-    # ensure numeric dtypes for sorting
     for c in RANKABLE_COLS:
         out[c] = pd.to_numeric(out[c], errors="coerce")
     return out
+
+def style_rankings(df: pd.DataFrame) -> pd.io.formats.style.Styler:
+    """
+    Apply Husker red header + conditional fill for leaders (green) and last (red).
+    Works with st.dataframe for click-to-sort.
+    """
+    numeric_cols = [c for c in RANKABLE_COLS if c in df.columns]
+
+    def color_leader_last(col: pd.Series):
+        if col.name not in numeric_cols:
+            return [''] * len(col)
+        s = pd.to_numeric(col, errors="coerce")
+        if s.dropna().empty:
+            return [''] * len(col)
+        max_val = s.max()
+        min_val = s.min()
+        styles = []
+        for v in s:
+            if pd.isna(v):
+                styles.append('')
+            elif v == max_val and max_val != min_val:
+                styles.append('background-color: #b6f2b0;')  # green
+            elif v == min_val and max_val != min_val:
+                styles.append('background-color: #f9b0b0;')  # red
+            else:
+                styles.append('')
+        return styles
+
+    header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
+    sty = (
+        df.style
+          .hide(axis="index")
+          .set_table_styles([
+              {'selector': 'thead th', 'props': header_props},
+              {'selector': 'th.col_heading', 'props': header_props},
+              {'selector': 'th', 'props': header_props},
+          ])
+          .apply(color_leader_last, axis=0)
+          .format({
+              "PA":"{:.0f}", "AB":"{:.0f}", "SO":"{:.0f}", "BB":"{:.0f}",
+              "Hits":"{:.0f}", "2B":"{:.0f}", "3B":"{:.0f}", "HR":"{:.0f}",
+              "AVG":"{:.3f}", "OBP":"{:.3f}", "SLG":"{:.3f}", "OPS":"{:.3f}",
+          }, na_rep="—")
+    )
+    return sty
 
 # ──────────────────────────────────────────────────────────────────────────────
 # STANDARD HITTER REPORT (single game) — with boxed legends bottom
@@ -843,7 +887,7 @@ display_name_by_key = (
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Top section selector (added "Rankings")
+# Top section selector (includes "Rankings")
 # ──────────────────────────────────────────────────────────────────────────────
 view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings"], horizontal=True)
 
@@ -998,7 +1042,7 @@ elif view_mode == "Profiles & Heatmaps":
             st.pyplot(fig_hm)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: RANKINGS (team-wide table with click-to-sort)
+# MODE: RANKINGS (team-wide, click-to-sort, red headers, leader/last coloring)
 # ──────────────────────────────────────────────────────────────────────────────
 else:
     st.markdown("### Rankings")
@@ -1055,32 +1099,18 @@ else:
         st.info("No rows for the selected filters.")
         st.stop()
 
-    # Build numeric rankings table
+    # Build numeric rankings table and optional Min PA filter
     rankings_df = build_rankings_numeric(df_scope, display_name_by_key)
-
-    # Optional min PA filter to clean small samples
     min_pa = int(st.number_input("Min PA", min_value=0, value=0, step=1, key="rk_min_pa"))
     if min_pa > 0:
         rankings_df = rankings_df[rankings_df["PA"] >= min_pa]
 
-    st.caption("Tip: Click any column header to sort. Use Shift+Click for multi-column sorts.")
+    # Styled (headers red + conditional leader/last cell coloring). Still sortable by clicking headers.
+    styled = style_rankings(rankings_df)
+
     st.dataframe(
-        rankings_df,
+        styled,
         use_container_width=True,
         hide_index=True,
-        column_config={
-            "PA": st.column_config.NumberColumn(format="%d"),
-            "AB": st.column_config.NumberColumn(format="%d"),
-            "SO": st.column_config.NumberColumn(format="%d"),
-            "BB": st.column_config.NumberColumn(format="%d"),
-            "Hits": st.column_config.NumberColumn(format="%d"),
-            "2B": st.column_config.NumberColumn(format="%d"),
-            "3B": st.column_config.NumberColumn(format="%d"),
-            "HR": st.column_config.NumberColumn(format="%d"),
-            "AVG": st.column_config.NumberColumn(format="%.3f"),
-            "OBP": st.column_config.NumberColumn(format="%.3f"),
-            "SLG": st.column_config.NumberColumn(format="%.3f"),
-            "OPS": st.column_config.NumberColumn(format="%.3f"),
-        },
         height=520
     )

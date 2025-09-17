@@ -571,7 +571,7 @@ def build_profile_tables(df_profiles: pd.DataFrame):
 
     # DataFrames
     t1 = pd.DataFrame(t1_rows, columns=["Split","PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"])
-    t2 = pd.DataFrame(t2_rows, columns=["Split","Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"])
+    t2 = pd.DataFrame(t2_rows, columns=["Split","Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Chase%","ZSwing%","ZContact%","ZWhiff%"])
 
     # Format t1 batting rates as .xxx (for tables)
     for c in ["AVG","OBP","SLG","OPS"]:
@@ -619,7 +619,7 @@ def build_rankings_numeric(df_player_scope: pd.DataFrame, display_name_by_key: d
         out[c] = pd.to_numeric(out[c], errors="coerce")
     return out
 
-def style_rankings(df: pd.DataFrame) -> pd.io.formats.style.Styler:
+def style_rankings(df: pd.DataFrame):
     """
     Husker red header + conditional fill:
       • For most columns: leader (max) = green, last (min) = red
@@ -1176,7 +1176,7 @@ else:
     if hand_choice == "LHP":
         df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
     elif hand_choice == "RHP":
-        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
+        df_scope = df_scope[df_scope.get('PitcherThrows').astype str().str.upper().str.startswith('R')].copy()
 
     if df_scope.empty:
         st.info("No rows for the selected filters.")

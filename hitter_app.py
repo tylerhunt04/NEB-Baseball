@@ -476,7 +476,6 @@ def _sorted_unique_pitches(series: pd.Series) -> list:
                     return (preferred.index(pref), name)
         except ValueError:
             pass
-    # push unknowns to end
         return (len(preferred)+1, name)
     return sorted(uniq, key=key)
 
@@ -514,7 +513,7 @@ def build_profile_tables(df_profiles: pd.DataFrame):
     t1 = pd.DataFrame(t1_rows, columns=["Split","PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"])
     t2 = pd.DataFrame(t2_rows, columns=["Split","Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"])
 
-    # Format t1 batting rates as .xxx
+    # Format t1 batting rates as .xxx (for tables; numeric needed elsewhere so don't reuse here)
     for c in ["AVG","OBP","SLG","OPS"]:
         t1[c] = t1[c].apply(lambda v: "—" if pd.isna(v) else (f"{float(v):.3f}"[1:] if float(v) < 1.0 else f"{float(v):.3f}"))
 
@@ -536,9 +535,10 @@ def build_profile_tables(df_profiles: pd.DataFrame):
 # ──────────────────────────────────────────────────────────────────────────────
 RANKABLE_COLS = ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]
 
-def build_rankings_table(df_player_scope: pd.DataFrame, display_name_by_key: dict) -> pd.DataFrame:
+def build_rankings_numeric(df_player_scope: pd.DataFrame, display_name_by_key: dict) -> pd.DataFrame:
     """
-    Build one row per BatterKey with stats used in the PA/AB/AVG/OBP table.
+    Build one NUMERIC row per BatterKey for rankings (click-column sorting).
+    Slash stats remain numeric (0.xxx) to enable correct sorting.
     """
     rows = []
     for key, g in df_player_scope.groupby("BatterKey"):
@@ -550,16 +550,10 @@ def build_rankings_table(df_player_scope: pd.DataFrame, display_name_by_key: dic
             **{k: core[k] for k in RANKABLE_COLS}
         })
     out = pd.DataFrame(rows, columns=["Player"] + RANKABLE_COLS)
-
-    # Keep numeric copies for sorting, then create formatted display for slash stats
-    for c in ["AVG","OBP","SLG","OPS"]:
-        out[c] = out[c].astype(float)
-
-    # Format a display copy for slash stats (shown), but keep numeric for sort via separate df if needed
-    disp = out.copy()
-    for c in ["AVG","OBP","SLG","OPS"]:
-        disp[c] = disp[c].apply(lambda v: "—" if pd.isna(v) else (f"{float(v):.3f}"[1:] if float(v) < 1.0 else f"{float(v):.3f}"))
-    return out, disp
+    # ensure numeric dtypes for sorting
+    for c in RANKABLE_COLS:
+        out[c] = pd.to_numeric(out[c], errors="coerce")
+    return out
 
 # ──────────────────────────────────────────────────────────────────────────────
 # STANDARD HITTER REPORT (single game) — with boxed legends bottom
@@ -973,9 +967,9 @@ elif view_mode == "Profiles & Heatmaps":
         df_profiles = df_profiles[pd.to_datetime(df_profiles["Date"], errors="coerce").dt.date.isin(last_dates)].copy()
 
     if hand_choice == "LHP":
-        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).upper().str.startswith('L')].copy()
+        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
     elif hand_choice == "RHP":
-        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).upper().str.startswith('R')].copy()
+        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
     if batter_key and df_profiles.empty:
         st.info("No rows for the selected filters.")
@@ -1004,7 +998,7 @@ elif view_mode == "Profiles & Heatmaps":
             st.pyplot(fig_hm)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: RANKINGS (team-wide table with selectable metric)
+# MODE: RANKINGS (team-wide table with click-to-sort)
 # ──────────────────────────────────────────────────────────────────────────────
 else:
     st.markdown("### Rankings")
@@ -1053,34 +1047,40 @@ else:
         df_scope = df_scope[pd.to_datetime(df_scope["Date"], errors="coerce").dt.date.isin(last_dates)].copy()
 
     if hand_choice == "LHP":
-        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).upper().str.startswith('L')].copy()
+        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
     elif hand_choice == "RHP":
-        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).upper().str.startswith('R')].copy()
+        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
     if df_scope.empty:
         st.info("No rows for the selected filters.")
         st.stop()
 
-    # Build rankings across all hitters in scope
-    base_numeric, base_display = build_rankings_table(df_scope, display_name_by_key)
+    # Build numeric rankings table
+    rankings_df = build_rankings_numeric(df_scope, display_name_by_key)
 
-    # Controls for ranking
-    colR1, colR2, colR3 = st.columns([1.4, 1.0, 1.2])
-    rank_by = colR1.selectbox("Rank by", options=RANKABLE_COLS, index=0)
-    ascending = colR2.checkbox("Ascending (lower is better)", value=False)
-    min_pa = int(colR3.number_input("Min PA", min_value=0, value=0, step=1))
-
-    # Apply min PA filter on numeric base, then sort
-    to_rank = base_numeric.copy()
+    # Optional min PA filter to clean small samples
+    min_pa = int(st.number_input("Min PA", min_value=0, value=0, step=1, key="rk_min_pa"))
     if min_pa > 0:
-        to_rank = to_rank[to_rank["PA"] >= min_pa]
-    to_rank = to_rank.sort_values(by=rank_by, ascending=ascending, kind="mergesort").reset_index(drop=True)
-    to_rank["Rank"] = np.arange(1, len(to_rank) + 1)
+        rankings_df = rankings_df[rankings_df["PA"] >= min_pa]
 
-    # Merge with formatted display for slash stats
-    disp_sorted = to_rank.merge(base_display, on=["Player"] + RANKABLE_COLS, how="left", suffixes=("",""))
-    # Reorder columns: Rank, Player, then all metrics
-    disp_sorted = disp_sorted[["Rank", "Player"] + RANKABLE_COLS]
-
-    st.markdown("#### Team Rankings")
-    st.table(themed_styler(disp_sorted, nowrap=True))
+    st.caption("Tip: Click any column header to sort. Use Shift+Click for multi-column sorts.")
+    st.dataframe(
+        rankings_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "PA": st.column_config.NumberColumn(format="%d"),
+            "AB": st.column_config.NumberColumn(format="%d"),
+            "SO": st.column_config.NumberColumn(format="%d"),
+            "BB": st.column_config.NumberColumn(format="%d"),
+            "Hits": st.column_config.NumberColumn(format="%d"),
+            "2B": st.column_config.NumberColumn(format="%d"),
+            "3B": st.column_config.NumberColumn(format="%d"),
+            "HR": st.column_config.NumberColumn(format="%d"),
+            "AVG": st.column_config.NumberColumn(format="%.3f"),
+            "OBP": st.column_config.NumberColumn(format="%.3f"),
+            "SLG": st.column_config.NumberColumn(format="%.3f"),
+            "OPS": st.column_config.NumberColumn(format="%.3f"),
+        },
+        height=520
+    )

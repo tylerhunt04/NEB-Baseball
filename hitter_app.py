@@ -373,10 +373,10 @@ def create_batting_stats_profile(df: pd.DataFrame):
     return stats, pa, ab
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SPLIT METRICS (Totals & by pitch)
+# SPLIT METRICS (Totals & by pitch) + RANKINGS BASE
 # ──────────────────────────────────────────────────────────────────────────────
 def _compute_split_core(df: pd.DataFrame) -> dict:
-    """Return a dict containing all fields we need for both split tables."""
+    """Return a dict containing all fields we need for splits & rankings."""
     s_call = df.get('PitchCall', pd.Series(dtype=object))
     play   = df.get('PlayResult', pd.Series(dtype=object))
     korbb  = df.get('KorBB', pd.Series(dtype=object))
@@ -470,13 +470,13 @@ def _sorted_unique_pitches(series: pd.Series) -> list:
     def key(p):
         name = _pretty_pitch_name(p)
         try:
-            # try to match canonical name to preferred
             base = name.replace(" ", "")
             for pref in preferred:
                 if pref.lower() in [name.lower(), base.lower()]:
                     return (preferred.index(pref), name)
         except ValueError:
             pass
+    # push unknowns to end
         return (len(preferred)+1, name)
     return sorted(uniq, key=key)
 
@@ -526,11 +526,40 @@ def build_profile_tables(df_profiles: pd.DataFrame):
 
     # T3 batted ball totals only
     t3 = create_batted_ball_profile(df_profiles).copy()
-    # Already returned with correct column names (LD%, GB%, FB%, Pull%, Middle%, Oppo%)
     for c in t3.columns:
         t3[c] = t3[c].apply(lambda v: "—" if pd.isna(v) else f"{float(v):.1f}%")
 
     return t1, t2, t3
+
+# ──────────────────────────────────────────────────────────────────────────────
+# RANKINGS HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+RANKABLE_COLS = ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]
+
+def build_rankings_table(df_player_scope: pd.DataFrame, display_name_by_key: dict) -> pd.DataFrame:
+    """
+    Build one row per BatterKey with stats used in the PA/AB/AVG/OBP table.
+    """
+    rows = []
+    for key, g in df_player_scope.groupby("BatterKey"):
+        if not key:
+            continue
+        core = _compute_split_core(g)
+        rows.append({
+            "Player": display_name_by_key.get(key, key),
+            **{k: core[k] for k in RANKABLE_COLS}
+        })
+    out = pd.DataFrame(rows, columns=["Player"] + RANKABLE_COLS)
+
+    # Keep numeric copies for sorting, then create formatted display for slash stats
+    for c in ["AVG","OBP","SLG","OPS"]:
+        out[c] = out[c].astype(float)
+
+    # Format a display copy for slash stats (shown), but keep numeric for sort via separate df if needed
+    disp = out.copy()
+    for c in ["AVG","OBP","SLG","OPS"]:
+        disp[c] = disp[c].apply(lambda v: "—" if pd.isna(v) else (f"{float(v):.3f}"[1:] if float(v) < 1.0 else f"{float(v):.3f}"))
+    return out, disp
 
 # ──────────────────────────────────────────────────────────────────────────────
 # STANDARD HITTER REPORT (single game) — with boxed legends bottom
@@ -820,9 +849,9 @@ display_name_by_key = (
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Top section selector
+# Top section selector (added "Rankings")
 # ──────────────────────────────────────────────────────────────────────────────
-view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps"], horizontal=True)
+view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings"], horizontal=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # MODE: STANDARD HITTER REPORT
@@ -881,9 +910,9 @@ if view_mode == "Standard Hitter Report":
             st.pyplot(fig_std)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: PROFILES & HEATMAPS (now: 3 tables — total & by pitch, then totals only)
+# MODE: PROFILES & HEATMAPS (3 tables + heatmaps)
 # ──────────────────────────────────────────────────────────────────────────────
-else:
+elif view_mode == "Profiles & Heatmaps":
     st.markdown("### Profiles & Heatmaps")
 
     batter_key = st.selectbox(
@@ -944,9 +973,9 @@ else:
         df_profiles = df_profiles[pd.to_datetime(df_profiles["Date"], errors="coerce").dt.date.isin(last_dates)].copy()
 
     if hand_choice == "LHP":
-        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
+        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).upper().str.startswith('L')].copy()
     elif hand_choice == "RHP":
-        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
+        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).upper().str.startswith('R')].copy()
 
     if batter_key and df_profiles.empty:
         st.info("No rows for the selected filters.")
@@ -958,23 +987,100 @@ else:
         }.get(period, "—")
         st.markdown(f"#### Split Profiles — {display_name_by_key.get(batter_key,batter_key)} ({season_label})")
 
-        # Build the three tables
         t1_counts, t2_rates, t3_batted = build_profile_tables(df_profiles)
 
-        # Table 1 — Counts & rate slash (Total + by pitch)
         st.markdown("**Totals & By Pitch — PA/AB/SO/BB/Hits/2B/3B/HR & AVG/OBP/SLG/OPS**")
         st.table(themed_styler(t1_counts, nowrap=True))
 
-        # Table 2 — EV/LA & discipline (Total + by pitch)
         st.markdown("**Totals & By Pitch — EV/LA & Discipline**")
         st.table(themed_styler(t2_rates, nowrap=True))
 
-        # Table 3 — Batted Ball Distribution (Totals only)
         st.markdown("**Batted Ball Distribution (Totals only)**")
         st.table(themed_styler(t3_batted, nowrap=True))
 
-        # Heatmaps
         st.markdown("#### Hitter Heatmaps")
         fig_hm = hitter_heatmaps(df_profiles, batter_key)
         if fig_hm:
             st.pyplot(fig_hm)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MODE: RANKINGS (team-wide table with selectable metric)
+# ──────────────────────────────────────────────────────────────────────────────
+else:
+    st.markdown("### Rankings")
+
+    # Filters apply team-wide
+    st.markdown("#### Filters")
+    colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
+
+    df_scope = df_neb_bat.copy()
+
+    # months / days present in NEB batting set
+    dates_all = pd.to_datetime(df_scope["Date"], errors="coerce").dropna().dt.date
+    present_months = sorted(pd.Series(dates_all).map(lambda d: d.month).unique().tolist())
+    sel_months = colM.multiselect(
+        "Months",
+        options=present_months,
+        format_func=lambda n: MONTH_NAME_BY_NUM.get(n, str(n)),
+        default=[],
+        key="rk_months",
+    )
+
+    dser = pd.to_datetime(df_scope["Date"], errors="coerce").dt.date
+    if sel_months:
+        dser = dser[pd.Series(dser).map(lambda d: d.month if pd.notna(d) else None).isin(sel_months)]
+    present_days = sorted(pd.Series(dser).dropna().map(lambda d: d.day).unique().tolist())
+    sel_days = colD2.multiselect("Days", options=present_days, default=[], key="rk_days")
+
+    lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="rk_lastn"))
+    hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="rk_hand")
+
+    # Apply filters
+    if sel_months:
+        mask_m = pd.to_datetime(df_scope["Date"], errors="coerce").dt.month.isin(sel_months)
+    else:
+        mask_m = pd.Series(True, index=df_scope.index)
+    if sel_days:
+        mask_d = pd.to_datetime(df_scope["Date"], errors="coerce").dt.day.isin(sel_days)
+    else:
+        mask_d = pd.Series(True, index=df_scope.index)
+    df_scope = df_scope[mask_m & mask_d].copy()
+
+    if lastN and not df_scope.empty:
+        uniq_dates = pd.to_datetime(df_scope["Date"], errors="coerce").dt.date.dropna().unique()
+        uniq_dates = sorted(uniq_dates)
+        last_dates = set(uniq_dates[-lastN:])
+        df_scope = df_scope[pd.to_datetime(df_scope["Date"], errors="coerce").dt.date.isin(last_dates)].copy()
+
+    if hand_choice == "LHP":
+        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).upper().str.startswith('L')].copy()
+    elif hand_choice == "RHP":
+        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).upper().str.startswith('R')].copy()
+
+    if df_scope.empty:
+        st.info("No rows for the selected filters.")
+        st.stop()
+
+    # Build rankings across all hitters in scope
+    base_numeric, base_display = build_rankings_table(df_scope, display_name_by_key)
+
+    # Controls for ranking
+    colR1, colR2, colR3 = st.columns([1.4, 1.0, 1.2])
+    rank_by = colR1.selectbox("Rank by", options=RANKABLE_COLS, index=0)
+    ascending = colR2.checkbox("Ascending (lower is better)", value=False)
+    min_pa = int(colR3.number_input("Min PA", min_value=0, value=0, step=1))
+
+    # Apply min PA filter on numeric base, then sort
+    to_rank = base_numeric.copy()
+    if min_pa > 0:
+        to_rank = to_rank[to_rank["PA"] >= min_pa]
+    to_rank = to_rank.sort_values(by=rank_by, ascending=ascending, kind="mergesort").reset_index(drop=True)
+    to_rank["Rank"] = np.arange(1, len(to_rank) + 1)
+
+    # Merge with formatted display for slash stats
+    disp_sorted = to_rank.merge(base_display, on=["Player"] + RANKABLE_COLS, how="left", suffixes=("",""))
+    # Reorder columns: Rank, Player, then all metrics
+    disp_sorted = disp_sorted[["Rank", "Player"] + RANKABLE_COLS]
+
+    st.markdown("#### Team Rankings")
+    st.table(themed_styler(disp_sorted, nowrap=True))

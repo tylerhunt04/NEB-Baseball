@@ -593,7 +593,12 @@ def build_profile_tables(df_profiles: pd.DataFrame):
 # ──────────────────────────────────────────────────────────────────────────────
 # RANKINGS HELPERS
 # ──────────────────────────────────────────────────────────────────────────────
-RANKABLE_COLS = ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]
+# Added EV/quality metrics right after OPS as requested
+RANKABLE_COLS = [
+    "PA","AB","SO","BB","Hits","2B","3B","HR",
+    "AVG","OBP","SLG","OPS",
+    "Avg EV","Max EV","HardHit%","Barrel%"
+]
 
 def build_rankings_numeric(df_player_scope: pd.DataFrame, display_name_by_key: dict) -> pd.DataFrame:
     """
@@ -616,10 +621,12 @@ def build_rankings_numeric(df_player_scope: pd.DataFrame, display_name_by_key: d
 
 def style_rankings(df: pd.DataFrame) -> pd.io.formats.style.Styler:
     """
-    Apply Husker red header + conditional fill for leaders (green) and last (red).
-    Works with st.dataframe for click-to-sort.
+    Husker red header + conditional fill:
+      • For most columns: leader (max) = green, last (min) = red
+      • Special-case SO:   max (most Ks) = red, min (fewest Ks) = green
     """
     numeric_cols = [c for c in RANKABLE_COLS if c in df.columns]
+    inverted_cols = {"SO"}  # higher is worse
 
     def color_leader_last(col: pd.Series):
         if col.name not in numeric_cols:
@@ -627,18 +634,32 @@ def style_rankings(df: pd.DataFrame) -> pd.io.formats.style.Styler:
         s = pd.to_numeric(col, errors="coerce")
         if s.dropna().empty:
             return [''] * len(col)
+
         max_val = s.max()
         min_val = s.min()
         styles = []
+        invert = col.name in inverted_cols
+
         for v in s:
-            if pd.isna(v):
+            if pd.isna(v) or max_val == min_val:
                 styles.append('')
-            elif v == max_val and max_val != min_val:
-                styles.append('background-color: #b6f2b0;')  # green
-            elif v == min_val and max_val != min_val:
-                styles.append('background-color: #f9b0b0;')  # red
             else:
-                styles.append('')
+                if not invert:
+                    # normal: green = max, red = min
+                    if v == max_val:
+                        styles.append('background-color: #b6f2b0;')  # green
+                    elif v == min_val:
+                        styles.append('background-color: #f9b0b0;')  # red
+                    else:
+                        styles.append('')
+                else:
+                    # inverted (SO): green = min, red = max
+                    if v == min_val:
+                        styles.append('background-color: #b6f2b0;')  # green
+                    elif v == max_val:
+                        styles.append('background-color: #f9b0b0;')  # red
+                    else:
+                        styles.append('')
         return styles
 
     header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
@@ -655,6 +676,8 @@ def style_rankings(df: pd.DataFrame) -> pd.io.formats.style.Styler:
               "PA":"{:.0f}", "AB":"{:.0f}", "SO":"{:.0f}", "BB":"{:.0f}",
               "Hits":"{:.0f}", "2B":"{:.0f}", "3B":"{:.0f}", "HR":"{:.0f}",
               "AVG":"{:.3f}", "OBP":"{:.3f}", "SLG":"{:.3f}", "OPS":"{:.3f}",
+              "Avg EV":"{:.2f}", "Max EV":"{:.2f}",
+              "HardHit%":"{:.1f}%", "Barrel%":"{:.1f}%"
           }, na_rep="—")
     )
     return sty

@@ -1176,7 +1176,8 @@ else:
     if hand_choice == "LHP":
         df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
     elif hand_choice == "RHP":
-        df_scope = df_scope[df_scope.get('PitcherThrows').astype str().str.upper().str.startswith('R')].copy()
+        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
+
 
     if df_scope.empty:
         st.info("No rows for the selected filters.")

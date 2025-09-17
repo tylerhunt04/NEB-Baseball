@@ -106,7 +106,6 @@ def parse_date_robust(df: pd.DataFrame) -> pd.Series:
 
     def _try_parse(s: pd.Series):
         out = pd.to_datetime(s, errors="coerce", utc=False, infer_datetime_format=True)
-        # try dayfirst=True if mostly NA
         if out.isna().mean() > 0.8:
             out2 = pd.to_datetime(s, errors="coerce", utc=False, dayfirst=True)
             if out2.isna().mean() < out.isna().mean():
@@ -125,7 +124,6 @@ def parse_date_robust(df: pd.DataFrame) -> pd.Series:
             parsed_gid = pd.to_datetime(ymd, format="%Y%m%d", errors="coerce")
             series = series.fillna(parsed_gid)
 
-    # Final: cast to date (drop time)
     series = pd.to_datetime(series.dt.date, errors="coerce")
     return series
 
@@ -263,6 +261,7 @@ def create_batted_ball_profile(df: pd.DataFrame):
         inplay['Bearing'] = np.nan
     if 'BatterSide' not in inplay.columns:
         inplay['BatterSide'] = ""
+
     inplay['spray_cat'] = inplay.apply(assign_spray_category, axis=1)
 
     def pct(mask):
@@ -273,13 +272,12 @@ def create_batted_ball_profile(df: pd.DataFrame):
             return 0.0
 
     bb = pd.DataFrame([{
-        "Ground ball %": pct(inplay["TaggedHitType"].astype(str).str.contains("GroundBall", case=False, na=False)),
-        "Fly ball %":    pct(inplay["TaggedHitType"].astype(str).str.contains("FlyBall",   case=False, na=False)),
-        "Line drive %":  pct(inplay["TaggedHitType"].astype(str).str.contains("LineDrive", case=False, na=False)),
-        "Popup %":       pct(inplay["TaggedHitType"].astype(str).str.contains("Popup",     case=False, na=False)),
-        "Pull %":        pct(inplay["spray_cat"].astype(str).eq("Pull")),
-        "Straight %":    pct(inplay["spray_cat"].astype(str).eq("Straight")),
-        "Opposite %":    pct(inplay["spray_cat"].astype(str).eq("Opposite")),
+        "LD%": pct(inplay["TaggedHitType"].astype(str).str.contains("LineDrive", case=False, na=False)),
+        "GB%": pct(inplay["TaggedHitType"].astype(str).str.contains("GroundBall", case=False, na=False)),
+        "FB%": pct(inplay["TaggedHitType"].astype(str).str.contains("FlyBall",   case=False, na=False)),
+        "Pull%":    pct(inplay["spray_cat"].astype(str).eq("Pull")),
+        "Middle%":  pct(inplay["spray_cat"].astype(str).eq("Straight")),
+        "Oppo%":    pct(inplay["spray_cat"].astype(str).eq("Opposite")),
     }])
     return bb
 
@@ -375,7 +373,167 @@ def create_batting_stats_profile(df: pd.DataFrame):
     return stats, pa, ab
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STANDARD HITTER REPORT (single game)
+# SPLIT METRICS (Totals & by pitch)
+# ──────────────────────────────────────────────────────────────────────────────
+def _compute_split_core(df: pd.DataFrame) -> dict:
+    """Return a dict containing all fields we need for both split tables."""
+    s_call = df.get('PitchCall', pd.Series(dtype=object))
+    play   = df.get('PlayResult', pd.Series(dtype=object))
+    korbb  = df.get('KorBB', pd.Series(dtype=object))
+    exitv  = pd.to_numeric(df.get('ExitSpeed', pd.Series(dtype=float)), errors="coerce")
+    angle  = pd.to_numeric(df.get('Angle', pd.Series(dtype=float)), errors="coerce")
+    pitchofpa = pd.to_numeric(df.get('PitchofPA', pd.Series(dtype=float)), errors="coerce")
+    lside  = pd.to_numeric(df.get('PlateLocSide', pd.Series(dtype=float)), errors='coerce')
+    lht    = pd.to_numeric(df.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce')
+
+    pa = int((pitchofpa == 1).sum())
+
+    isswing   = s_call.isin(['StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
+    iswhiff   = s_call.eq('StrikeSwinging')
+    iscontact = s_call.isin(['InPlay','FoulBallNotFieldable','FoulBallFieldable'])
+    isinzone  = lside.between(-0.83,0.83) & lht.between(1.5,3.5)
+
+    # Counts
+    so_mask   = korbb.eq('Strikeout')
+    walk_mask = korbb.eq('Walk')
+    hbp_mask  = s_call.eq('HitByPitch')
+    inplay    = s_call.eq('InPlay')
+
+    hits_mask = inplay & play.isin(['Single','Double','Triple','HomeRun'])
+    hits = int(hits_mask.sum())
+    so   = int(so_mask.sum())
+    bb   = int(walk_mask.sum())
+
+    doubles = int(play.eq('Double').sum())
+    triples = int(play.eq('Triple').sum())
+    hrs     = int(play.eq('HomeRun').sum())
+
+    bbout   = inplay & play.eq('Out')
+    fc_mask = play.eq('FieldersChoice')
+    err_mask= play.eq('Error')
+    ab      = int(hits + so + bbout.sum() + fc_mask.sum() + err_mask.sum())
+
+    # Bases for SLG
+    bases = (play.eq('Single').sum()
+             + 2*play.eq('Double').sum()
+             + 3*play.eq('Triple').sum()
+             + 4*play.eq('HomeRun').sum())
+
+    # Batting rates
+    ba  = hits/ab if ab else 0.0
+    obp = (hits + bb + hbp_mask.sum())/pa if pa else 0.0
+    slg = bases/ab if ab else 0.0
+    ops = obp + slg
+
+    # EV/LA and batted-ball qualities
+    avg_ev = exitv[inplay].mean()
+    max_ev = exitv[inplay].max()
+    avg_la = angle[inplay].mean()
+    hard   = (exitv[inplay] >= 95).mean()*100 if inplay.any() else 0.0
+    barrel = ((angle[inplay].between(10,30, inclusive="both")) & (exitv[inplay] >= 95)).mean()*100 if inplay.any() else 0.0
+
+    # Discipline
+    swing = isswing.mean()*100 if len(isswing) else 0.0
+    whiff = (iswhiff.sum() / max(isswing.sum(),1) * 100) if len(isswing) else 0.0
+    chase = (isswing[~isinzone].mean()*100) if (~isinzone).sum() else 0.0
+    z_swing = (isswing[isinzone].mean()*100) if isinzone.sum() else 0.0
+    z_contact = ((iscontact & isinzone).sum() / max(isswing[isinzone].sum(),1) * 100) if isinzone.sum() else 0.0
+    z_whiff = ((iswhiff & isinzone).sum() / max(isswing[isinzone].sum(),1) * 100) if isinzone.sum() else 0.0
+
+    return {
+        "PA": pa, "AB": ab, "SO": so, "BB": bb, "Hits": hits,
+        "2B": doubles, "3B": triples, "HR": hrs,
+        "AVG": ba, "OBP": obp, "SLG": slg, "OPS": ops,
+        "Avg EV": avg_ev, "Max EV": max_ev, "Avg LA": avg_la,
+        "HardHit%": hard, "Barrel%": barrel,
+        "Swing%": swing, "Whiff%": whiff, "Chase%": chase,
+        "ZSwing%": z_swing, "ZContact%": z_contact, "ZWhiff%": z_whiff,
+    }
+
+def _pretty_pitch_name(p: str) -> str:
+    alias_map = {
+        "FourSeamFastBall":"Fastball",
+        "FourSeam":"Fastball",
+        "FS":"Fastball",
+        "SL":"Slider",
+        "CH":"Changeup",
+        "CU":"Curveball",
+    }
+    name = alias_map.get(p, p)
+    name = re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
+    return name
+
+def _sorted_unique_pitches(series: pd.Series) -> list:
+    preferred = ["Fastball","FourSeam","TwoSeam","Sinker","Cutter","Slider","Curveball","Changeup","Splitter","Sweeper","Knuckleball","Other"]
+    vals = series.astype(str).dropna().tolist()
+    uniq = [v for v in sorted(set(vals)) if v and v.lower() != "nan"]
+    def key(p):
+        name = _pretty_pitch_name(p)
+        try:
+            # try to match canonical name to preferred
+            base = name.replace(" ", "")
+            for pref in preferred:
+                if pref.lower() in [name.lower(), base.lower()]:
+                    return (preferred.index(pref), name)
+        except ValueError:
+            pass
+        return (len(preferred)+1, name)
+    return sorted(uniq, key=key)
+
+def build_profile_tables(df_profiles: pd.DataFrame):
+    """
+    Returns three DataFrames:
+      t1_counts  -> Total + by pitch: PA AB SO BB Hits 2B 3B HR AVG OBP SLG OPS
+      t2_rates   -> Total + by pitch: Avg EV Max EV Avg LA HardHit% Barrel% Swing% Whiff% Chase% ZSwing% ZContact% ZWhiff%
+      t3_batted  -> Totals only: LD% GB% FB% Pull% Middle% Oppo%
+    """
+    if df_profiles.empty:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    # Total rows
+    core_total = _compute_split_core(df_profiles)
+    row_total_counts = {"Split": "Total", **{k: core_total[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]}}
+    row_total_rates  = {"Split": "Total", **{k: core_total[k] for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}}
+
+    t1_rows = [row_total_counts]
+    t2_rows = [row_total_rates]
+
+    # By pitch
+    if "AutoPitchType" in df_profiles.columns:
+        order = _sorted_unique_pitches(df_profiles["AutoPitchType"])
+        for raw_pitch in order:
+            sub = df_profiles[df_profiles["AutoPitchType"].astype(str) == raw_pitch]
+            if sub.empty:
+                continue
+            core = _compute_split_core(sub)
+            nice = _pretty_pitch_name(raw_pitch)
+            t1_rows.append({"Split": nice, **{k: core[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]}})
+            t2_rows.append({"Split": nice, **{k: core[k] for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}})
+
+    # DataFrames
+    t1 = pd.DataFrame(t1_rows, columns=["Split","PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"])
+    t2 = pd.DataFrame(t2_rows, columns=["Split","Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"])
+
+    # Format t1 batting rates as .xxx
+    for c in ["AVG","OBP","SLG","OPS"]:
+        t1[c] = t1[c].apply(lambda v: "—" if pd.isna(v) else (f"{float(v):.3f}"[1:] if float(v) < 1.0 else f"{float(v):.3f}"))
+
+    # Format t2: EV/LA with 2 decimals, percents 1 decimal
+    for c in ["Avg EV","Max EV","Avg LA"]:
+        t2[c] = t2[c].apply(lambda v: "—" if pd.isna(v) else f"{float(v):.2f}")
+    for c in ["HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]:
+        t2[c] = t2[c].apply(lambda v: "—" if pd.isna(v) else f"{round(float(v),1)}%")
+
+    # T3 batted ball totals only
+    t3 = create_batted_ball_profile(df_profiles).copy()
+    # Already returned with correct column names (LD%, GB%, FB%, Pull%, Middle%, Oppo%)
+    for c in t3.columns:
+        t3[c] = t3[c].apply(lambda v: "—" if pd.isna(v) else f"{float(v):.1f}%")
+
+    return t1, t2, t3
+
+# ──────────────────────────────────────────────────────────────────────────────
+# STANDARD HITTER REPORT (single game) — with boxed legends bottom
 # ──────────────────────────────────────────────────────────────────────────────
 def create_hitter_report(df, batter_display_name, ncols=3):
     bdf = df  # already filtered to this batter upstream
@@ -406,7 +564,6 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             res = last.get('PlayResult', 'InPlay') or 'InPlay'
             es  = last.get('ExitSpeed', np.nan)
             tag = _pretty_hit_type(last.get('TaggedHitType'))
-            # Compose result line: include EV and TaggedHitType if present
             result_bits = [res]
             if pd.notna(es):
                 result_bits[-1] = f"{result_bits[-1]} ({float(es):.1f} MPH)"
@@ -433,9 +590,9 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         date_str = format_date_long(d0)
     if batter_display_name or date_str:
         fig.text(0.985, 0.985, f"{batter_display_name} — {date_str}".strip(" —"),
-                 ha='right', va='top', fontsize=9, fontweight='normal')
+            ha='right', va='top', fontsize=9, fontweight='normal')
 
-    # summary line (kept)
+    # summary line
     gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
     whiffs = (gd.get('PitchCall')=='StrikeSwinging').sum() if not gd.empty else 0
     hardhits = (pd.to_numeric(gd.get('ExitSpeed'), errors="coerce") > 95).sum() if not gd.empty else 0
@@ -446,13 +603,13 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         is_swing = gd.get('PitchCall').eq('StrikeSwinging')
         chases = (is_swing & ((pls<-0.83)|(pls>0.83)|(plh<1.5)|(plh>3.5))).sum()
     fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
-             ha='center', va='top', fontsize=12)
+            ha='center', va='top', fontsize=12)
 
     # panels
     for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
         row, col = divmod(idx, ncols)
         ax = fig.add_subplot(gs[row, col+1])
-        draw_strikezone(ax)  # fixed size
+        draw_strikezone(ax)
         hand_lbl = "RHP"
         thr = str(pa_df.get('PitcherThrows').iloc[0]) if not pa_df.empty else ""
         if thr.upper().startswith('L'): hand_lbl = "LHP"
@@ -463,8 +620,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             clr = {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
                    'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
             sz = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
-            x = p.get('PlateLocSide')
-            y = p.get('PlateLocHeight')
+            x = p.get('PlateLocSide'); y = p.get('PlateLocHeight')
             if pd.notna(x) and pd.notna(y):
                 ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', linewidth=1, zorder=2)
                 yoff = -0.05 if str(p.get('AutoPitchType'))=='Slider' else 0
@@ -489,7 +645,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             yln -= dy
         y0 = yln - dy*0.05
 
-    # ── Legends: boxed, side-by-side at the bottom (Result LEFT, Pitches RIGHT)
+    # Legends: boxed, side-by-side at the bottom (Result LEFT, Pitches RIGHT)
     res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
                           markerfacecolor=v, markersize=10, markeredgecolor='k')
                    for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
@@ -498,45 +654,19 @@ def create_hitter_report(df, batter_display_name, ncols=3):
                              markerfacecolor='gray', markersize=10, markeredgecolor='k')
                      for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
 
-    # Nudge the Result box further right so it never covers the left PA notes
     fig.legend(
-        res_handles,
-        [h.get_label() for h in res_handles],
-        title='Result',
-        loc='upper center',
-        bbox_to_anchor=(0.42, 0.035),   # shifted right from 0.30 → 0.42
-        bbox_transform=fig.transFigure,
-        ncol=3,
-        frameon=True,
-        fancybox=True,
-        framealpha=0.95,
-        edgecolor='black',
-        borderpad=0.8,
-        columnspacing=1.6,
-        handlelength=1.6,
-        handletextpad=0.6,
-        labelspacing=0.7
+        res_handles, [h.get_label() for h in res_handles], title='Result',
+        loc='upper center', bbox_to_anchor=(0.42, 0.035), bbox_transform=fig.transFigure,
+        ncol=3, frameon=True, fancybox=True, framealpha=0.95, edgecolor='black',
+        borderpad=0.8, columnspacing=1.6, handlelength=1.6, handletextpad=0.6, labelspacing=0.7
     )
     fig.legend(
-        pitch_handles,
-        [h.get_label() for h in pitch_handles],
-        title='Pitches',
-        loc='upper center',
-        bbox_to_anchor=(0.72, 0.035),
-        bbox_transform=fig.transFigure,
-        ncol=4,
-        frameon=True,
-        fancybox=True,
-        framealpha=0.95,
-        edgecolor='black',
-        borderpad=0.8,
-        columnspacing=1.6,
-        handlelength=1.6,
-        handletextpad=0.6,
-        labelspacing=0.7
+        pitch_handles, [h.get_label() for h in pitch_handles], title='Pitches',
+        loc='upper center', bbox_to_anchor=(0.72, 0.035), bbox_transform=fig.transFigure,
+        ncol=4, frameon=True, fancybox=True, framealpha=0.95, edgecolor='black',
+        borderpad=0.8, columnspacing=1.6, handlelength=1.6, handletextpad=0.6, labelspacing=0.7
     )
 
-    # Leave extra room at bottom so legends never overlap panels
     plt.tight_layout(rect=[0.12, 0.08, 1, 0.94])
     return fig
 
@@ -581,152 +711,9 @@ def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter_key: str):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SPLIT METRICS (Total vs Each Pitch)
-# ──────────────────────────────────────────────────────────────────────────────
-def _compute_split_row(df: pd.DataFrame, split_name: str) -> dict:
-    """Compute key plate discipline + production metrics for a split."""
-    s_call = df.get('PitchCall', pd.Series(dtype=object))
-    play   = df.get('PlayResult', pd.Series(dtype=object))
-    exitv  = pd.to_numeric(df.get('ExitSpeed', pd.Series(dtype=float)), errors="coerce")
-    angle  = pd.to_numeric(df.get('Angle', pd.Series(dtype=float)), errors="coerce")
-    pitchofpa = pd.to_numeric(df.get('PitchofPA', pd.Series(dtype=float)), errors="coerce")
-    lside  = pd.to_numeric(df.get('PlateLocSide', pd.Series(dtype=float)), errors='coerce')
-    lht    = pd.to_numeric(df.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce')
-
-    pa = int((pitchofpa == 1).sum())
-    isswing   = s_call.isin(['StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
-    iswhiff   = s_call.eq('StrikeSwinging')
-    iscontact = s_call.isin(['InPlay','FoulBallNotFieldable','FoulBallFieldable'])
-    isinzone  = lside.between(-0.83,0.83) & lht.between(1.5,3.5)
-
-    # AB / hits / bases
-    so_mask  = df.get('KorBB', pd.Series(dtype=object)).eq('Strikeout')
-    walk_mask = df.get('KorBB', pd.Series(dtype=object)).eq('Walk')
-    hbp_mask  = s_call.eq('HitByPitch')
-    bbout     = s_call.eq('InPlay') & play.eq('Out')
-    fc_mask   = play.eq('FieldersChoice')
-    err_mask  = play.eq('Error')
-    hit_mask  = s_call.eq('InPlay') & play.isin(['Single','Double','Triple','HomeRun'])
-
-    hits   = int(hit_mask.sum())
-    so     = int(so_mask.sum())
-    bbouts = int(bbout.sum())
-    fc     = int(fc_mask.sum())
-    err    = int(err_mask.sum())
-    ab     = hits + so + bbouts + fc + err
-    walks  = int(walk_mask.sum())
-    hbp    = int(hbp_mask.sum())
-    bases  = (play.eq('Single').sum()
-              + 2*play.eq('Double').sum()
-              + 3*play.eq('Triple').sum()
-              + 4*play.eq('HomeRun').sum())
-
-    # Rate stats
-    ba  = hits/ab if ab else 0.0
-    obp = (hits + walks + hbp)/pa if pa else 0.0
-    slg = bases/ab if ab else 0.0
-    ops = obp + slg
-
-    hard = (exitv[s_call.eq('InPlay')] >= 95).mean()*100 if (s_call.eq('InPlay')).any() else 0.0
-    swing = isswing.mean()*100 if len(isswing) else 0.0
-    whiff = (iswhiff.sum() / max(isswing.sum(),1) * 100) if len(isswing) else 0.0
-    chase = (isswing[~isinzone].mean()*100) if (~isinzone).sum() else 0.0
-    zone_pct = isinzone.mean()*100 if len(isinzone) else 0.0
-    zone_sw  = (isswing[isinzone].mean()*100) if isinzone.sum() else 0.0
-    zone_ct  = ((iscontact & isinzone).sum() / max(isswing[isinzone].sum(),1) * 100) if isinzone.sum() else 0.0
-
-    avg_ev = pd.to_numeric(exitv[s_call.eq('InPlay')], errors='coerce').mean()
-    max_ev = pd.to_numeric(exitv[s_call.eq('InPlay')], errors='coerce').max()
-    avg_la = pd.to_numeric(angle[s_call.eq('InPlay')], errors='coerce').mean()
-
-    return {
-        "Split": split_name,
-        "PA": pa,
-        "AB": ab,
-        "AVG": ba,
-        "OBP": obp,
-        "SLG": slg,
-        "OPS": ops,
-        "Avg EV": round(avg_ev,2) if pd.notna(avg_ev) else np.nan,
-        "Max EV": round(max_ev,2) if pd.notna(max_ev) else np.nan,
-        "Avg LA": round(avg_la,2) if pd.notna(avg_la) else np.nan,
-        "HardHit%": hard,
-        "Swing%": swing,
-        "Whiff%": whiff,
-        "Chase%": chase,
-        "Zone%": zone_pct,
-        "Zone Swing%": zone_sw,
-        "Zone Contact%": zone_ct,
-    }
-
-def build_vs_total_and_pitch_table(df_profiles: pd.DataFrame) -> pd.DataFrame:
-    """Return a table with a Total row and one row per AutoPitchType."""
-    if df_profiles.empty:
-        return pd.DataFrame()
-
-    # known pitch ordering first
-    preferred = ["Fastball","FourSeam","TwoSeam","Sinker","Cutter","Slider","Curveball","Changeup","Splitter","Sweeper","Knuckleball","Other"]
-    pitch_col = "AutoPitchType" if "AutoPitchType" in df_profiles.columns else None
-
-    rows = []
-    rows.append(_compute_split_row(df_profiles, "Total"))
-
-    if pitch_col:
-        # normalize values to strings
-        pc = df_profiles[pitch_col].astype(str)
-        uniq = [p for p in pc.dropna().unique().tolist() if p and p.lower() != "nan"]
-        # map aliases
-        alias_map = {
-            "FourSeamFastBall":"Fastball",
-            "FourSeam":"Fastball",
-            "FS":"Fastball",
-            "SL":"Slider",
-            "CH":"Changeup",
-            "CU":"Curveball",
-        }
-        # stable order
-        # replace with alias names for ordering, but filter split with original values
-        def pretty_pitch(p):
-            pp = alias_map.get(p, p)
-            # add spacing between camel case for readability
-            pp = re.sub(r"([a-z])([A-Z])", r"\1 \2", pp)
-            return pp
-        # sort by preferred order then alpha
-        def sort_key(p):
-            name = alias_map.get(p, p)
-            try:
-                return (preferred.index(name), name)
-            except ValueError:
-                return (len(preferred)+1, name)
-        uniq_sorted = sorted(uniq, key=sort_key)
-
-        for p in uniq_sorted:
-            sub = df_profiles[df_profiles[pitch_col].astype(str) == p]
-            if sub.empty:
-                continue
-            rows.append(_compute_split_row(sub, pretty_pitch(p)))
-
-    out = pd.DataFrame(rows)
-    # Format batting rate stats, percents
-    for c in ["AVG","OBP","SLG","OPS"]:
-        out[c] = out[c].apply(lambda v: f"{float(v):.3f}"[1:] if not pd.isna(v) else "—")
-    for c in ["HardHit%","Swing%","Whiff%","Chase%","Zone%","Zone Swing%","Zone Contact%"]:
-        out[c] = out[c].apply(lambda v: "—" if pd.isna(v) else f"{round(float(v),1)}%")
-    for c in ["Avg EV","Max EV","Avg LA"]:
-        out[c] = out[c].apply(lambda v: "—" if pd.isna(v) else f"{float(v):.2f}")
-    return out
-
-# ──────────────────────────────────────────────────────────────────────────────
 # LOADERS (single CSV or multi-CSV via directory/glob)
 # ──────────────────────────────────────────────────────────────────────────────
 def _expand_paths(path_like: str):
-    """
-    Accepts:
-      - a direct CSV file path
-      - a directory path (reads all *.csv inside)
-      - a glob pattern (e.g., '/mnt/data/scrims/*.csv')
-    Returns a list of CSV filepaths (may be empty).
-    """
     if not path_like:
         return []
     if os.path.isdir(path_like):
@@ -760,10 +747,6 @@ def load_single_csv(path: str) -> pd.DataFrame:
     return ensure_date_column(df)
 
 def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_2026: str) -> pd.DataFrame:
-    """
-    period_label ∈ {"2025 season","2025/26 Scrimmages","2026 season"}
-    Uses the provided paths and returns a DataFrame with a normalized Date column.
-    """
     if period_label == "2025 season":
         return load_single_csv(path_2025)
     elif period_label == "2025/26 Scrimmages":
@@ -787,26 +770,22 @@ def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_202
 # ──────────────────────────────────────────────────────────────────────────────
 render_nb_banner(title="Nebraska Baseball")
 
-# Time period selector
 period = st.selectbox(
     "Time Period",
     options=["2025 season", "2025/26 Scrimmages", "2026 season"],
     index=0
 )
 
-# Optional: inline tweak of paths (no globals needed)
 with st.expander("Data paths (optional quick edit)"):
     st.caption("Paste a CSV path, a directory path, or a glob pattern (e.g., `/mnt/data/scrims/*.csv`).")
     path_2025  = st.text_input("2025 season path", value=DATA_PATH_2025,  key="path_2025")
     path_scrim = st.text_input("2025/26 Scrimmages path/pattern", value=DATA_PATH_SCRIM, key="path_scrim")
     path_2026  = st.text_input("2026 season path/pattern", value=DATA_PATH_2026,  key="path_2026")
 
-# If user didn't open the expander, fall back to defaults
 path_2025  = st.session_state.get("path_2025", DATA_PATH_2025)
 path_scrim = st.session_state.get("path_scrim", DATA_PATH_SCRIM)
 path_2026  = st.session_state.get("path_2026", DATA_PATH_2026)
 
-# Load chosen period
 df_all = load_for_period(period, path_2025, path_scrim, path_2026)
 if df_all.empty:
     st.error(f"No data loaded for '{period}'. Check the path(s) above.")
@@ -815,35 +794,25 @@ if df_all.empty:
 # ──────────────────────────────────────────────────────────────────────────────
 # BUILD HITTER KEYSPACE (NEB hitters with real PAs; dedup names)
 # ──────────────────────────────────────────────────────────────────────────────
-# Normalize presence of key columns
 for col in ["Batter", "BatterTeam", "PitchofPA", "PitcherThrows", "PitcherTeam",
             "PlayResult", "KorBB", "PitchCall", "AutoPitchType", "ExitSpeed", "Angle",
-            "PlateLocSide", "PlateLocHeight"]:
+            "PlateLocSide", "PlateLocHeight", "TaggedHitType", "Bearing", "BatterSide"]:
     if col not in df_all.columns:
         df_all[col] = pd.NA
 
 df_all = ensure_date_column(df_all)
 
-# Keep only Nebraska-as-batting rows
 df_neb_bat = df_all[df_all["BatterTeam"].astype(str).str.upper().eq("NEB")].copy()
-
-# Plate appearance flag (PitchofPA == 1)
 df_neb_bat["PitchofPA"] = pd.to_numeric(df_neb_bat["PitchofPA"], errors="coerce")
-
-# Canonical name key + display
 df_neb_bat["BatterKey"]  = df_neb_bat["Batter"].map(normalize_name)
-df_neb_bat["BatterDisp"] = df_neb_bat["BatterKey"]  # consistent “Last, First”
+df_neb_bat["BatterDisp"] = df_neb_bat["BatterKey"]
 
-# Only list players who actually had a PA
 has_pa = df_neb_bat[(df_neb_bat["PitchofPA"] == 1) & df_neb_bat["BatterKey"].ne("")]
 if has_pa.empty:
     st.error(f"No Nebraska hitters with plate appearances found for '{period}'.")
     st.stop()
 
-# Unique option list by key
 batters_keys = sorted(has_pa["BatterKey"].dropna().unique().tolist())
-
-# Pick a nice display per key (mode of BatterDisp)
 display_name_by_key = (
     df_neb_bat.groupby("BatterKey")["BatterDisp"]
     .agg(lambda s: s.dropna().value_counts().index[0] if not s.dropna().empty else "")
@@ -851,19 +820,17 @@ display_name_by_key = (
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Top section selector: Standard Hitter Report vs Profiles & Heatmaps
+# Top section selector
 # ──────────────────────────────────────────────────────────────────────────────
 view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps"], horizontal=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: STANDARD HITTER REPORT (batter → date with opponent names)
+# MODE: STANDARD HITTER REPORT
 # ──────────────────────────────────────────────────────────────────────────────
 if view_mode == "Standard Hitter Report":
     st.markdown("### Nebraska Hitter Reports")
-
     colB, colD = st.columns([1, 1])
 
-    # Player select (shows nice display, returns the key)
     batter_key_std = colB.selectbox(
         "Player",
         options=batters_keys,
@@ -874,7 +841,6 @@ if view_mode == "Standard Hitter Report":
     if batter_key_std:
         df_b_all = df_neb_bat[df_neb_bat["BatterKey"] == batter_key_std].copy()
         df_b_all["DateOnly"] = pd.to_datetime(df_b_all["Date"], errors="coerce").dt.date
-        # Opponents by date
         date_groups = df_b_all.groupby("DateOnly")["PitcherTeam"].agg(
             lambda s: sorted(set([TEAM_NAME_MAP.get(str(x), str(x)) for x in s if pd.notna(x)]))
         )
@@ -915,7 +881,7 @@ if view_mode == "Standard Hitter Report":
             st.pyplot(fig_std)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MODE: PROFILES & HEATMAPS
+# MODE: PROFILES & HEATMAPS (now: 3 tables — total & by pitch, then totals only)
 # ──────────────────────────────────────────────────────────────────────────────
 else:
     st.markdown("### Profiles & Heatmaps")
@@ -961,7 +927,6 @@ else:
     lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
     hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
 
-    # Month/Day filter
     if sel_months:
         mask_m = pd.to_datetime(df_player_all["Date"], errors="coerce").dt.month.isin(sel_months)
     else:
@@ -972,34 +937,43 @@ else:
         mask_d = pd.Series(True, index=df_player_all.index)
     df_profiles = df_player_all[mask_m & mask_d].copy()
 
-    # Last N games (after month/day filter)
     if lastN and not df_profiles.empty:
         uniq_dates = pd.to_datetime(df_profiles["Date"], errors="coerce").dt.date.dropna().unique()
         uniq_dates = sorted(uniq_dates)
         last_dates = set(uniq_dates[-lastN:])
         df_profiles = df_profiles[pd.to_datetime(df_profiles["Date"], errors="coerce").dt.date.isin(last_dates)].copy()
 
-    # Pitcher hand filter
     if hand_choice == "LHP":
-        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).upper().str.startswith('L')].copy()
+        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
     elif hand_choice == "RHP":
-        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).upper().str.startswith('R')].copy()
+        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
-    # Render profiles: VS Total and then VS each pitch
     if batter_key and df_profiles.empty:
         st.info("No rows for the selected filters.")
     elif batter_key:
-        # Season/Month/Opp labels (for context above the table)
         season_label = {
             "2025 season": "2025",
             "2025/26 Scrimmages": "2025/26 Scrimmages",
             "2026 season": "2026",
         }.get(period, "—")
         st.markdown(f"#### Split Profiles — {display_name_by_key.get(batter_key,batter_key)} ({season_label})")
-        pitch_table = build_vs_total_and_pitch_table(df_profiles)
-        st.table(themed_styler(pitch_table))
 
-        # Optional Heatmaps (unchanged)
+        # Build the three tables
+        t1_counts, t2_rates, t3_batted = build_profile_tables(df_profiles)
+
+        # Table 1 — Counts & rate slash (Total + by pitch)
+        st.markdown("**Totals & By Pitch — PA/AB/SO/BB/Hits/2B/3B/HR & AVG/OBP/SLG/OPS**")
+        st.table(themed_styler(t1_counts, nowrap=True))
+
+        # Table 2 — EV/LA & discipline (Total + by pitch)
+        st.markdown("**Totals & By Pitch — EV/LA & Discipline**")
+        st.table(themed_styler(t2_rates, nowrap=True))
+
+        # Table 3 — Batted Ball Distribution (Totals only)
+        st.markdown("**Batted Ball Distribution (Totals only)**")
+        st.table(themed_styler(t3_batted, nowrap=True))
+
+        # Heatmaps
         st.markdown("#### Hitter Heatmaps")
         fig_hm = hitter_heatmaps(df_profiles, batter_key)
         if fig_hm:

@@ -517,6 +517,7 @@ def add_inning_and_ab(df: pd.DataFrame) -> pd.DataFrame:
 def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     work = add_inning_and_ab(df)
 
+    # Columns we’ll use
     type_col   = type_col_in_df(work)
     result_col = pick_col(work, "PitchCall","Pitch Call","Call") or "PitchCall"
     velo_col   = pick_col(work, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
@@ -529,9 +530,61 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     batter_col = "Batter_AB" if "Batter_AB" in work.columns else find_batter_name_col(work)
     side_col   = "BatterSide_AB" if "BatterSide_AB" in work.columns else find_batter_side_col(work)
 
+    # Detect PA terminal-row columns
+    col_play_result = pick_col(work, "PlayResult","Result","Event","PAResult","Outcome")
+    col_korbb       = pick_col(work, "KorBB","K_BB","KBB","K_or_BB","PA_KBB")
+    col_pitch_call  = result_col  # already resolved
+
+    # Normalize to strings (for safe checks)
+    for c in [col_play_result, col_korbb, col_pitch_call]:
+        if c and c in work.columns:
+            work[c] = work[c].fillna("").astype(str)
+
+    # Choose the terminal row per AB and derive a PA label
+    def _terminal_row_idx(g: pd.DataFrame) -> int:
+        # prefer explicit PlayResult/KorBB/HBP rows if present
+        if col_play_result and g[col_play_result].str.strip().ne("").any():
+            return g[g[col_play_result].str.strip().ne("")].index[-1]
+        if col_korbb and g[col_korbb].str.strip().ne("").any():
+            return g[g[col_korbb].str.strip().ne("")].index[-1]
+        if col_pitch_call and g[col_pitch_call].str.lower().isin({"hitbypitch","hit by pitch","hbp"}).any():
+            return g[g[col_pitch_call].str.lower().isin({"hitbypitch","hit by pitch","hbp"})].index[-1]
+        # otherwise, last pitch of the AB
+        if "Pitch # in AB" in g.columns and g["Pitch # in AB"].notna().any():
+            return g["Pitch # in AB"].astype("Int64").idxmax()
+        return g.index[-1]
+
+    def _pa_label(row) -> str:
+        pr = row.get(col_play_result, "")
+        if isinstance(pr, str) and pr.strip():
+            return pr.strip()
+
+        kb = row.get(col_korbb, "")
+        if isinstance(kb, str):
+            low = kb.strip().lower()
+            if low in {"k","so","strikeout","strikeout swinging","strikeout looking"}:
+                return "Strikeout"
+            if "walk" in low or low in {"bb","ibb"}:
+                return "Walk"
+
+        pc = row.get(col_pitch_call, "")
+        if isinstance(pc, str) and pc.strip().lower() in {"hitbypitch","hit by pitch","hbp"}:
+            return "Hit By Pitch"
+
+        return "—"
+
+    # Map AB -> terminal row -> label
+    idx_by_ab = work.groupby("AB #", sort=True, dropna=False).apply(_terminal_row_idx)
+    pa_row = work.loc[idx_by_ab.values].copy()
+    pa_row["PA Result"] = pa_row.apply(_pa_label, axis=1)
+
+    # Attach PA Result back to all rows via AB #
+    work = work.merge(pa_row[["AB #","PA Result"]], on="AB #", how="left")
+
+    # Build visible table
     ordered = [
         "Inning #", "PA # in Inning", "AB #", "Pitch # in AB",
-        batter_col, type_col, result_col, velo_col, spin_col, ivb_col, hb_col, relh_col, ext_col
+        batter_col, "PA Result", type_col, result_col, velo_col, spin_col, ivb_col, hb_col, relh_col, ext_col
     ]
     present = [c for c in ordered if c and c in work.columns]
     tbl = work[present].copy()
@@ -550,9 +603,9 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     }
     if side_col and side_col not in present and side_col in work.columns:
         tbl[side_col] = work[side_col]
-
     tbl = tbl.rename(columns={k: v for k, v in rename_map.items() if k in tbl.columns})
 
+    # Numeric rounding (pitch-level)
     for c in ["Velo","Spin Rate","IVB","HB","Rel Height","Extension"]:
         if c in tbl.columns:
             tbl[c] = pd.to_numeric(tbl[c], errors="coerce")
@@ -566,7 +619,6 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     sort_cols = [c for c in ["Inning #","PA # in Inning","AB #","Pitch # in AB"] if c in tbl.columns]
     if sort_cols:
         tbl = tbl.sort_values(sort_cols, kind="stable").reset_index(drop=True)
-
     return tbl
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1360,15 +1412,40 @@ def make_strike_percentage_table(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 def themed_table(df: pd.DataFrame):
+    # Identify numeric columns
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    percent_cols_numeric = [c for c in df.columns if c.strip().endswith('%') and c in numeric_cols]
-    fmt_map = {c: "{:.1f}" for c in set(numeric_cols) | set(percent_cols_numeric)}
+
+    # Columns that should be whole numbers if present
+    integer_like_names = {
+        "Pitches","Zone Pitches","Hits","Strikeouts","Walks","Zone Pitches",
+        "AB","PA","Plate Appearances","Zone Swings","Zone Contacts"
+    }
+    # Heuristics: anything ending with " Pitches" or " Count(s)"
+    integer_like = set(c for c in numeric_cols if (c in integer_like_names) or c.lower().endswith(" pitches") or c.lower().endswith(" counts") or c.lower().endswith(" count"))
+    # Also, preserve true integer dtypes as integers
+    for c in numeric_cols:
+        if pd.api.types.is_integer_dtype(df[c]):
+            integer_like.add(c)
+
+    # Percent columns that are numeric (e.g., 45.3 not "45.3%")
+    percent_cols_numeric = [c for c in numeric_cols if c.strip().endswith('%')]
+
+    fmt_map = {}
+    for c in numeric_cols:
+        if c in integer_like:
+            fmt_map[c] = "{:.0f}"
+        elif c in percent_cols_numeric:
+            fmt_map[c] = "{:.1f}"
+        else:
+            fmt_map[c] = "{:.1f}"
+
     styles = [
         {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
         {'selector': 'th',        'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
         {'selector': 'td',        'props': 'white-space: nowrap; color: black;'},
     ]
     return (df.style.hide(axis="index").format(fmt_map, na_rep="—").set_table_styles(styles))
+
 
 # Outcome summary by type
 def _first_present(df: pd.DataFrame, cands: list[str]) -> str | None:

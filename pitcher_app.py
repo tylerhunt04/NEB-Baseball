@@ -885,14 +885,10 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
 # PER-PA INTERACTIVE STRIKE ZONE (Plotly)
 # ──────────────────────────────────────────────────────────────────────────────
 def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
-    """
-    Plot a single-PA interactive strike zone using Plotly, with hover details.
-    Returns a figure or None if required columns are missing.
-    """
     if pa_df is None or pa_df.empty:
         return None
 
-    # Resolve columns consistently with the rest of the app
+    # Resolve columns (more flexible; supports px/pz fallbacks)
     type_col = type_col_in_df(pa_df)
     speed_col = pick_col(pa_df, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
     ivb_col   = pick_col(pa_df, "InducedVertBreak","IVB","Induced Vert Break","IndVertBreak")
@@ -901,19 +897,23 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
     call_col  = pick_col(pa_df, "PitchCall","Pitch Call","Call") or "PitchCall"
     pno_col   = pick_col(pa_df, "Pitch # in AB","PitchofPA","PitchOfPA","Pitch_of_PA","Pitch #")
 
-    # Plate location (required)
-    xs = pd.to_numeric(pa_df.get("PlateLocSide", pd.Series(dtype=float)), errors="coerce")
-    ys = pd.to_numeric(pa_df.get("PlateLocHeight", pd.Series(dtype=float)), errors="coerce")
+    # 🔑 Plate location discovery
+    side_col   = pick_col(pa_df, "PlateLocSide","PlateLoc_Side","PlateSide","px","PlateX")
+    height_col = pick_col(pa_df, "PlateLocHeight","PlateLoc_Height","PlateHeight","pz","PlateY")
+
+    if side_col is None or height_col is None:
+        return None
+
+    xs = pd.to_numeric(pa_df[side_col], errors="coerce")
+    ys = pd.to_numeric(pa_df[height_col], errors="coerce")
     if xs.isna().all() or ys.isna().all():
         return None
 
-    # Axis ranges + zone shapes
     x_min, x_max, y_min, y_max = get_view_bounds()
     fig = make_subplots(rows=1, cols=1, shared_xaxes=True, shared_yaxes=True)
     for shp in _zone_shapes_for_subplot():
         fig.add_shape(shp, row=1, col=1)
 
-    # Build hoverdata
     cd = np.column_stack([
         pa_df.get(type_col, pd.Series(dtype=object)).astype(str).values if type_col else np.array([""]*len(pa_df)),
         pd.to_numeric(pa_df.get(speed_col, pd.Series(dtype=float)), errors="coerce").values if speed_col else np.full(len(pa_df), np.nan),
@@ -924,7 +924,6 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
         pd.to_numeric(pa_df.get(pno_col,   pd.Series(dtype=float)), errors="coerce").values if pno_col   else np.full(len(pa_df), np.nan),
     ])
 
-    # Color per pitch type (fallback single color if missing)
     if type_col and type_col in pa_df.columns:
         colors_pts = [get_pitch_color(t) for t in pa_df[type_col].astype(str).tolist()]
     else:
@@ -934,7 +933,7 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
         go.Scattergl(
             x=xs, y=ys,
             mode="markers+text",
-            text=[str(int(n)) if pd.notna(n) else "" for n in cd[:,6]],  # pitch # in AB labels
+            text=[str(int(n)) if pd.notna(n) else "" for n in cd[:,6]],
             textposition="top center",
             marker=dict(size=10, line=dict(width=0.5, color="black"), color=colors_pts),
             customdata=cd,
@@ -946,7 +945,7 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
                 "Result: %{customdata[4]}<br>"
                 "Exit Velo: %{customdata[5]:.1f} mph<br>"
                 "Pitch # in AB: %{customdata[6]:.0f}<br>"
-                "x: %{x:.2f}  y: %{y:.2f}<extra></extra>"
+                f"x ({side_col}): "+"%{x:.2f}  "+f"y ({height_col}): "+"%{y:.2f}<extra></extra>"
             ),
             showlegend=False,
             name=""
@@ -956,9 +955,9 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
 
     fig.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
     fig.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
-
     fig.update_layout(height=360, title_text=(title or "PA Strike Zone"), title_x=0.5, margin=dict(l=10, r=10, t=48, b=10))
     return fig
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # OUTCOME HEATMAPS (Matplotlib scatter-only)

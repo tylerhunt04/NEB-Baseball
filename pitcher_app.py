@@ -1999,6 +1999,7 @@ with tabs[0]:
                                 st.table(themed_table(g[cols_pitch]))
                             else:
                                 st.table(themed_table(g))
+                                
                 # ── NEW: interactive strikezone for THIS PA ─────────────────────
                 _pa_id = f"{'' if pd.isna(pa) else int(pa)}"
                 _title = f"PA {_pa_id} – Strike Zone"

@@ -1582,18 +1582,25 @@ def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
 
 def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Attribute outcomes by the TERMINAL pitch's type.
-    Handles cases where the KorBB/terminal row has no type by backfilling with the last
-    non-null type in that AB.
+    Attribute PA-level outcomes by the TERMINAL pitch's type (the last pitch of each AB).
+    If the terminal row has no pitch type, backfill with the last non-null pitch type within that AB.
+    Also computes Avg EV, Max EV, and HardHit% (>=95 mph) from batted-ball rows within each AB,
+    attributed to that AB's terminal pitch type.
     """
-    if df is None or df.empty:
-        return make_pitcher_outcome_summary_table(df).assign(**{"Pitch Type": "Total"})[["Pitch Type", *make_pitcher_outcome_summary_table(df).columns]]
+    # ---------- guard ----------
+    def _empty_like():
+        t = make_pitcher_outcome_summary_table(df)
+        t.insert(0, "Pitch Type", "Total")
+        # keep column order consistent with the single-table helper
+        return t[["Pitch Type", *[c for c in t.columns if c != "Pitch Type"]]]
 
+    if df is None or df.empty:
+        return _empty_like()
+
+    # ---------- helpers & base tables ----------
     type_col = type_col_in_df(df)
-    # Build full AB/terminal rows once
     work = add_inning_and_ab(df.copy())
 
-    # Identify columns
     col_result = _first_present(work, ["PlayResult","Result","Event","PAResult","Outcome"])
     col_call   = _first_present(work, ["PitchCall","Pitch Call","PitchResult","Call"])
     col_korbb  = _first_present(work, ["KorBB","K_BB","KBB","K_or_BB","PA_KBB"])
@@ -1606,8 +1613,9 @@ def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
 
     po_c = find_pitch_of_pa_col(work)
 
-    # terminal-row detection (same logic as table fn)
-    term_mask = work.apply(lambda r: _is_terminal_row(r, col_result, col_korbb, col_call), axis=1) if any([col_result, col_korbb, col_call]) else pd.Series(False, index=work.index)
+    # terminal-row detection (same as in the single-table helper)
+    term_mask = work.apply(lambda r: _is_terminal_row(r, col_result, col_korbb, col_call), axis=1) \
+                if any([col_result, col_korbb, col_call]) else pd.Series(False, index=work.index)
 
     def _pick_row_idx(g: pd.DataFrame) -> int:
         gm = term_mask.loc[g.index]
@@ -1620,9 +1628,9 @@ def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
     ab_term_idx = work.groupby("AB #", sort=True, dropna=False).apply(_pick_row_idx).values
     df_pa = work.loc[ab_term_idx].copy()
 
-    # Terminal pitch type (with backfill if missing on terminal row)
+    # ---------- terminal pitch type with backfill ----------
     if type_col and type_col in work.columns:
-        # last non-null type in each AB, based on pitch order
+        # last non-null type within each AB (by pitch order)
         last_typed_idx = (
             work[work[type_col].notna()]
             .sort_values(["AB #","Pitch # in AB"], kind="stable")
@@ -1636,14 +1644,14 @@ def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df_pa["_TermPitchType"] = np.nan
 
-    # Canonicalize and fill
+    # canonicalize + fill empties
     df_pa["_TermPitchType"] = df_pa["_TermPitchType"].astype(str).replace({"": np.nan})
     df_pa["_TermPitchType"] = df_pa["_TermPitchType"].where(df_pa["_TermPitchType"].notna(), "Unknown")
 
-    # Build TOTAL row from existing helper (keeps your formatting)
+    # ---------- build TOTAL row from existing helper (keeps formatting) ----------
     total_row = make_pitcher_outcome_summary_table(df).assign(**{"Pitch Type": "Total"})
 
-    # Build per-type rows by reusing the same parsing on PA-level dataframe
+    # ---------- per-type PA parsing (K, BB, H, AVG/OBP/SLG/OPS) ----------
     PR = df_pa[col_result].astype(str) if col_result else pd.Series([""]*len(df_pa), index=df_pa.index)
     KC = df_pa[col_korbb].astype(str)  if col_korbb else pd.Series([""]*len(df_pa), index=df_pa.index)
     PC = df_pa[col_call].astype(str)   if col_call  else pd.Series([""]*len(df_pa), index=df_pa.index)
@@ -1664,12 +1672,12 @@ def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
     is_sh     = pr_low.str.contains(r"sac(rifice)?\s*(bunt|hit)|\bsh\b", regex=True)
     is_ci     = pr_low.str.contains(r"interference", regex=True)
 
-    # Totals needed for AVG/OBP/SLG by type at PA level
+    # total bases per PA
     TB = (is_single.astype(int)*1 + is_double.astype(int)*2 + is_triple.astype(int)*3 + is_hr.astype(int)*4)
 
     grp = df_pa.groupby("_TermPitchType", dropna=False)
 
-    def _summarize(g):
+    def _summarize_pa(g):
         PA = int(len(g))
         H  = int((is_single | is_double | is_triple | is_hr).loc[g.index].sum())
         BB = int(is_bb.loc[g.index].sum())
@@ -1686,38 +1694,79 @@ def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
         SLG = (tb / AB) if AB > 0 else np.nan
         OPS = (OBP + SLG) if (pd.notna(OBP) and pd.notna(SLG)) else np.nan
 
-        # EV metrics (use original df_in matching these PAs)
-        # safest is to recompute from df rows of these ABs; here, approximate from all rows in those ABs
         return pd.Series({
-            "Average exit velo": np.nan,   # keep blank unless you wire EV rollup here
-            "Max exit velo":     np.nan,
-            "Hits":              H,
-            "Strikeouts":        SO,
-            "AVG":               _rate3(AVG),
-            "OBP":               _rate3(OBP),
-            "SLG":               _rate3(SLG),
-            "OPS":               _rate3(OPS),
-            "HardHit%":          "",       # optional: can be added by mapping EV at PA-level
-            "K%":                _pct(SO/PA) if PA>0 else "",
-            "Walk%":             _pct(BB/PA) if PA>0 else "",
+            "Hits":        H,
+            "Strikeouts":  SO,
+            "AVG":         _rate3(AVG),
+            "OBP":         _rate3(OBP),
+            "SLG":         _rate3(SLG),
+            "OPS":         _rate3(OPS),
+            "K%":          _pct(SO/PA) if PA > 0 else "",
+            "Walk%":       _pct(BB/PA) if PA > 0 else "",
         })
 
-    by_type = grp.apply(_summarize).reset_index().rename(columns={"_TermPitchType": "Pitch Type"})
+    by_type = grp.apply(_summarize_pa).reset_index().rename(columns={"_TermPitchType": "Pitch Type"})
 
-    # Optional: order types by usage (descending PA count)
+    # ---------- EV / HardHit% from batted-ball rows, attributed to terminal type ----------
+    ev_col = _first_present(work, ["ExitSpeed","Exit Velo","ExitVelocity","Exit_Velocity","ExitVel","EV","LaunchSpeed","Launch_Speed"])
+    ab_to_type = df_pa.set_index("AB #")["_TermPitchType"]
+
+    avg_map: dict = {}
+    max_map: dict = {}
+    hh_map: dict  = {}
+
+    if ev_col and ev_col in work.columns and col_call and col_call in work.columns:
+        ev_all = pd.to_numeric(work[ev_col], errors="coerce")
+        inplay_mask = work[col_call].astype(str).eq("InPlay")
+        valid = inplay_mask & ev_all.notna()
+        if valid.any():
+            term_types = work.loc[valid, "AB #"].map(ab_to_type)
+            good = term_types.notna()
+            if good.any():
+                ev_cut = ev_all.loc[valid & good]
+                t_cut  = term_types.loc[valid & good]
+                grp_ev = ev_cut.groupby(t_cut)
+                avg_map = grp_ev.mean().round(1).to_dict()
+                max_map = grp_ev.max().round(1).to_dict()
+                hh_map  = grp_ev.apply(lambda s: float((s >= 95).mean())).to_dict()  # 0..1
+
+        # apply per-type
+        if not by_type.empty:
+            by_type["Average exit velo"] = by_type["Pitch Type"].map(avg_map)
+            by_type["Max exit velo"]     = by_type["Pitch Type"].map(max_map)
+            by_type["HardHit%"]          = by_type["Pitch Type"].map(
+                lambda k: (f"{hh_map[k]*100:.1f}%" if k in hh_map else "")
+            )
+
+        # total row from same pool
+        valid_total = valid
+        if valid_total.any():
+            total_row.loc[:, "Average exit velo"] = round(ev_all[valid_total].mean(), 1)
+            total_row.loc[:, "Max exit velo"]     = round(ev_all[valid_total].max(), 1)
+            total_row.loc[:, "HardHit%"]          = f"{(ev_all[valid_total] >= 95).mean()*100:.1f}%"
+
+    # ---------- order rows (Total first, then by usage descending) ----------
     usage_order = df_pa["_TermPitchType"].value_counts().index.tolist()
-    cat = pd.Categorical(by_type["Pitch Type"], categories=usage_order, ordered=True)
-    by_type = by_type.sort_values("Pitch Type", key=lambda s: cat).reset_index(drop=True)
+    if not by_type.empty:
+        cat = pd.Categorical(by_type["Pitch Type"], categories=usage_order, ordered=True)
+        by_type = by_type.sort_values("Pitch Type", key=lambda s: cat).reset_index(drop=True)
 
-    # Combine with TOTAL, round numeric display columns
-    out = pd.concat([total_row[["Pitch Type", *[c for c in total_row.columns if c != "Pitch Type"]]], by_type], ignore_index=True)
+    # ---------- combine & tidy ----------
+    out = pd.concat(
+        [total_row[["Pitch Type", *[c for c in total_row.columns if c != "Pitch Type"]]], by_type],
+        ignore_index=True
+    )
+
+    # numeric rounding/coercion for consistency
     for c in ["Average exit velo", "Max exit velo"]:
         if c in out.columns:
             out[c] = pd.to_numeric(out[c], errors="coerce").round(1)
     for c in ["Hits", "Strikeouts"]:
         if c in out.columns:
             out[c] = pd.to_numeric(out[c], errors="coerce").astype("Int64")
+
     return out
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────

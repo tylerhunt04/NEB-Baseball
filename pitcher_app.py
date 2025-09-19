@@ -1231,15 +1231,22 @@ def canonicalize_type(raw: str) -> str:
         "curveball":"Curveball","knuckle curve":"Knuckle Curve","slider":"Slider",
         "sweeper":"Sweeper","screwball":"Screwball","eephus":"Eephus",
     }.get(n, "Unknown")
-
 def color_for_release(canon_label: str) -> str:
     key = str(canon_label).lower()
     palette = {
-        "fastball": "#E60026","two-seam fastball": "#FF9300","cutter": "#800080","changeup": "#008000",
-        "splitter": "#00CCCC","curveball": "#0033CC","knuckle curve": "#000000","slider": "#CCCC00",
-        "sweeper": "#B5651D","screwball": "#CC0066","eephus": "#666666",
+        "fastball": "#E60026",
+        "two-seam fastball": "#FF9300",
+        "cutter": "#800080",
+        "changeup": "#008000",
+        "splitter": "#00CCCC",
+        "curveball": "#0033CC",
+        "knuckle curve": "#000000",
+        "slider": "#CCCC00",
+        "sweeper": "#B5651D",
+        "screwball": "#CC0066",
+        "eephus": "#666666",
     }
-    return palette.get(key, "#7F7F7F"])
+    return palette.get(key, "#7F7F7F")
 
 def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=None):
     sub_all = subset_by_pitcher_if_possible(df, pitcher_name)

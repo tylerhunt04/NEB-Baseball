@@ -1974,49 +1974,54 @@ with tabs[0]:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        st.markdown("### Play-by-Play")
-        style_pbp_expanders()
-        st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
-        st.markdown('<div class="inning-block">', unsafe_allow_html=True)
+     st.markdown("### Play-by-Play")
+style_pbp_expanders()
+st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
+st.markdown('<div class="inning-block">', unsafe_allow_html=True)
 
-        pbp = build_pitch_by_inning_pa_table(neb_df)
-        if pbp.empty:
-            st.info("Play-by-Play not available for this selection.")
-        else:
-            cols_pitch = [c for c in ["Pitch # in AB","Pitch Type","Result","Velo","Spin Rate","IVB","HB","Rel Height","Extension"]
-                          if c in pbp.columns]
+pbp = build_pitch_by_inning_pa_table(neb_df)
+if pbp.empty:
+    st.info("Play-by-Play not available for this selection.")
+else:
+    cols_pitch = [c for c in ["Pitch # in AB","Pitch Type","Result","Velo","Spin Rate","IVB","HB","Rel Height","Extension"]
+                  if c in pbp.columns]
 
-            for inn, df_inn in pbp.groupby("Inning #", sort=True, dropna=False):
-                inn_disp = f"Inning {int(inn)}" if pd.notna(inn) else "Inning —"
-                with st.expander(inn_disp, expanded=False):
-                    for pa, g in df_inn.groupby("PA # in Inning", sort=True, dropna=False):
-                        batter = g.get("Batter", pd.Series(["Unknown"])).iloc[0] if "Batter" in g.columns else "Unknown"
-                        side = g.get("Batter Side", pd.Series([""])).iloc[0] if "Batter Side" in g.columns else ""
-                        side_str = f" ({side})" if isinstance(side, str) and side else ""
-                        pa_text = f"PA {'' if pd.isna(pa) else int(pa)} — vs {batter}{side_str}"
-                        with st.expander(pa_text, expanded=False):
-                            if cols_pitch:
-                                st.table(themed_table(g[cols_pitch]))
-                            else:
-                                st.table(themed_table(g))
-                                
-                # ── NEW: interactive strikezone for THIS PA ─────────────────────
-                _pa_id = f"{'' if pd.isna(pa) else int(pa)}"
-                _title = f"PA {_pa_id} – Strike Zone"
-                fig_pa = pa_interactive_strikezone(g, title=_title)
-                if fig_pa:
-                    st.plotly_chart(fig_pa, use_container_width=True)
+    for inn, df_inn in pbp.groupby("Inning #", sort=True, dropna=False):
+        inn_disp = f"Inning {int(inn)}" if pd.notna(inn) else "Inning —"
+        with st.expander(inn_disp, expanded=False):
+            for pa, g in df_inn.groupby("PA # in Inning", sort=True, dropna=False):
+                batter = g.get("Batter", pd.Series(["Unknown"])).iloc[0] if "Batter" in g.columns else "Unknown"
+                side = g.get("Batter Side", pd.Series([""])).iloc[0] if "Batter Side" in g.columns else ""
+                side_str = f" ({side})" if isinstance(side, str) and side else ""
+                pa_text = f"PA {'' if pd.isna(pa) else int(pa)} — vs {batter}{side_str}"
 
-            csv = pbp.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "Download play-by-play (CSV)",
-                data=csv,
-                file_name="play_by_play_summary.csv",
-                mime="text/csv"
-            )
+                with st.expander(pa_text, expanded=False):
+                    # Table first
+                    if cols_pitch:
+                        st.table(themed_table(g[cols_pitch]))
+                    else:
+                        st.table(themed_table(g))
 
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+                    # 👇 NEW: interactive strikezone for THIS PA (keep at this indent)
+                    _pa_id = "" if pd.isna(pa) else int(pa)
+                    _title = f"PA {_pa_id} – Strike Zone"
+                    fig_pa = pa_interactive_strikezone(g, title=_title)
+                    if fig_pa:
+                        st.plotly_chart(fig_pa, use_container_width=True)
+                    else:
+                        st.caption("No plate location data for this PA.")
+
+    csv = pbp.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Download play-by-play (CSV)",
+        data=csv,
+        file_name="play_by_play_summary.csv",
+        mime="text/csv"
+    )
+
+st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
 
 # ── COMPARE TAB (as before)
 with tabs[1]:

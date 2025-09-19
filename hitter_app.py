@@ -625,10 +625,10 @@ def style_rankings(df: pd.DataFrame):
     """
     Husker red header + conditional fill:
       • For most columns: leader (max) = green, last (min) = red
-      • Special-case SO:   max (most Ks) = red, min (fewest Ks) = green
+      • Special-case SO, ZWhiff%, Chase%: higher = red, lower = green
     """
     numeric_cols = [c for c in RANKABLE_COLS if c in df.columns]
-    inverted_cols = {"SO"}  # higher is worse
+    inverted_cols = {"SO", "ZWhiff%", "Chase%"}  # ← higher is worse for these
 
     def color_leader_last(col: pd.Series):
         if col.name not in numeric_cols:
@@ -655,7 +655,7 @@ def style_rankings(df: pd.DataFrame):
                     else:
                         styles.append('')
                 else:
-                    # inverted (SO): green = min, red = max
+                    # inverted: green = min (better), red = max (worse)
                     if v == min_val:
                         styles.append('background-color: #b6f2b0;')  # green
                     elif v == max_val:

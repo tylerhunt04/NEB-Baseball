@@ -511,7 +511,6 @@ def add_inning_and_ab(df: pd.DataFrame) -> pd.DataFrame:
         out["PA # in Inning"] = out["AB #"].map(pa_by_ab).astype(pd.Int64Dtype())
 
     return out
-
 def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     work = add_inning_and_ab(df)
 
@@ -525,29 +524,29 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     relh_col   = pick_col(work, "RelHeight","Relheight","ReleaseHeight","Release_Height","release_pos_z")
     ext_col    = pick_col(work, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")
 
-    batter_col = "Batter_AB" if "Batter_AB" in work.columns else find_batter_name_col(work)
-    side_col   = "BatterSide_AB" if "BatterSide_AB" in work.columns else find_batter_side_col(work)
+    # 🔑 Plate location columns (keep original names; no renaming)
+    plate_x_col = pick_col(work, "PlateLocSide","PlateLoc_Side","PlateSide","px","PlateX")
+    plate_y_col = pick_col(work, "PlateLocHeight","PlateLoc_Height","PlateHeight","pz","PlateY")
 
-    # Detect PA terminal-row columns
+    batter_col = find_batter_name_col(work) or "Batter"
+    side_col   = find_batter_side_col(work)
+
+    # Detect PA terminal-row columns (same as before)
     col_play_result = pick_col(work, "PlayResult","Result","Event","PAResult","Outcome")
     col_korbb       = pick_col(work, "KorBB","K_BB","KBB","K_or_BB","PA_KBB")
-    col_pitch_call  = result_col  # already resolved
+    col_pitch_call  = result_col
 
-    # Normalize to strings (for safe checks)
     for c in [col_play_result, col_korbb, col_pitch_call]:
         if c and c in work.columns:
             work[c] = work[c].fillna("").astype(str)
 
-    # Choose the terminal row per AB and derive a PA label
     def _terminal_row_idx(g: pd.DataFrame) -> int:
-        # prefer explicit PlayResult/KorBB/HBP rows if present
         if col_play_result and g[col_play_result].str.strip().ne("").any():
             return g[g[col_play_result].str.strip().ne("")].index[-1]
         if col_korbb and g[col_korbb].str.strip().ne("").any():
             return g[g[col_korbb].str.strip().ne("")].index[-1]
         if col_pitch_call and g[col_pitch_call].str.lower().isin({"hitbypitch","hit by pitch","hbp"}).any():
             return g[g[col_pitch_call].str.lower().isin({"hitbypitch","hit by pitch","hbp"})].index[-1]
-        # otherwise, last pitch of the AB
         if "Pitch # in AB" in g.columns and g["Pitch # in AB"].notna().any():
             return g["Pitch # in AB"].astype("Int64").idxmax()
         return g.index[-1]
@@ -556,40 +555,34 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
         pr = row.get(col_play_result, "")
         if isinstance(pr, str) and pr.strip():
             return pr.strip()
-
         kb = row.get(col_korbb, "")
         if isinstance(kb, str):
             low = kb.strip().lower()
-            if low in {"k","so","strikeout","strikeout swinging","strikeout looking"}:
-                return "Strikeout"
-            if "walk" in low or low in {"bb","ibb"}:
-                return "Walk"
-
+            if low in {"k","so","strikeout","strikeout swinging","strikeout looking"}: return "Strikeout"
+            if "walk" in low or low in {"bb","ibb"}:                                    return "Walk"
         pc = row.get(col_pitch_call, "")
         if isinstance(pc, str) and pc.strip().lower() in {"hitbypitch","hit by pitch","hbp"}:
             return "Hit By Pitch"
-
         return "—"
 
-    # Map AB -> terminal row -> label
     idx_by_ab = work.groupby("AB #", sort=True, dropna=False).apply(_terminal_row_idx)
     pa_row = work.loc[idx_by_ab.values].copy()
     pa_row["PA Result"] = pa_row.apply(_pa_label, axis=1)
-
-    # Attach PA Result back to all rows via AB #
     work = work.merge(pa_row[["AB #","PA Result"]], on="AB #", how="left")
 
-    # Build visible table
+    # Build visible table (now includes plate location columns so the PA plotter can use them)
     ordered = [
         "Inning #", "PA # in Inning", "AB #", "Pitch # in AB",
-        batter_col, "PA Result", type_col, result_col, velo_col, spin_col, ivb_col, hb_col, relh_col, ext_col
+        batter_col, "PA Result", type_col, result_col, velo_col, spin_col, ivb_col, hb_col, relh_col, ext_col,
+        plate_x_col, plate_y_col  # 👈 add these at the end; keep original names
     ]
     present = [c for c in ordered if c and c in work.columns]
     tbl = work[present].copy()
 
+    # Friendly renames (do NOT rename plate loc columns)
     rename_map = {
         batter_col: "Batter",
-        side_col: "Batter Side",
+        side_col: "Batter Side" if side_col in work.columns else None,
         type_col: "Pitch Type",
         result_col: "Result",
         velo_col: "Velo",
@@ -599,11 +592,9 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
         relh_col: "Rel Height",
         ext_col: "Extension",
     }
-    if side_col and side_col not in present and side_col in work.columns:
-        tbl[side_col] = work[side_col]
-    tbl = tbl.rename(columns={k: v for k, v in rename_map.items() if k in tbl.columns})
+    tbl = tbl.rename(columns={k: v for k, v in rename_map.items() if k and v and k in tbl.columns})
 
-    # Numeric rounding (pitch-level)
+    # Numeric rounding
     for c in ["Velo","Spin Rate","IVB","HB","Rel Height","Extension"]:
         if c in tbl.columns:
             tbl[c] = pd.to_numeric(tbl[c], errors="coerce")
@@ -617,7 +608,9 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     sort_cols = [c for c in ["Inning #","PA # in Inning","AB #","Pitch # in AB"] if c in tbl.columns]
     if sort_cols:
         tbl = tbl.sort_values(sort_cols, kind="stable").reset_index(drop=True)
+
     return tbl
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # De-duplicate helper

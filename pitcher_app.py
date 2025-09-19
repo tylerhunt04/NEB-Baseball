@@ -1874,6 +1874,13 @@ with tabs[2]:
             st.markdown(f"### Plate Discipline Profile — {season_label_prof}")
             st.table(themed_table(pd_df_typed))
 
+    
             st.markdown("### Top 3 Pitches")
-            fig_top3 = heatmaps_top3_pitch_types(
-                df_prof, player_disp, hand_filter=prof
+fig_top3 = heatmaps_top3_pitch_types(
+    df_prof,
+    player_disp,
+    hand_filter=prof_hand,            # use the radio selection
+    season_label=season_label_prof    # show context in the title
+)
+if fig_top3:
+    st.plotly_chart(fig_top3, use_container_width=True)

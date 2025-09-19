@@ -594,10 +594,12 @@ def build_profile_tables(df_profiles: pd.DataFrame):
 # RANKINGS HELPERS
 # ──────────────────────────────────────────────────────────────────────────────
 # Added EV/quality metrics right after OPS as requested
+# (Updated: append Zone Whiff% and Chase % at the end)
 RANKABLE_COLS = [
     "PA","AB","SO","BB","Hits","2B","3B","HR",
     "AVG","OBP","SLG","OPS",
-    "Avg EV","Max EV","HardHit%","Barrel%"
+    "Avg EV","Max EV","HardHit%","Barrel%",
+    "ZWhiff%","Chase%"
 ]
 
 def build_rankings_numeric(df_player_scope: pd.DataFrame, display_name_by_key: dict) -> pd.DataFrame:
@@ -677,7 +679,8 @@ def style_rankings(df: pd.DataFrame):
               "Hits":"{:.0f}", "2B":"{:.0f}", "3B":"{:.0f}", "HR":"{:.0f}",
               "AVG":"{:.3f}", "OBP":"{:.3f}", "SLG":"{:.3f}", "OPS":"{:.3f}",
               "Avg EV":"{:.2f}", "Max EV":"{:.2f}",
-              "HardHit%":"{:.1f}%", "Barrel%":"{:.1f}%"
+              "HardHit%":"{:.1f}%", "Barrel%":"{:.1f}%",
+              "ZWhiff%":"{:.1f}%", "Chase%":"{:.1f}%"
           }, na_rep="—")
     )
     return sty
@@ -1177,7 +1180,6 @@ else:
         df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
     elif hand_choice == "RHP":
         df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
-
 
     if df_scope.empty:
         st.info("No rows for the selected filters.")

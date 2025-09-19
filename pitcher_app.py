@@ -21,7 +21,7 @@ from matplotlib.gridspec import GridSpec
 from scipy.stats import chi2, gaussian_kde
 from numpy.linalg import LinAlgError
 from matplotlib import colors
-from datetime import date
+from datetime import date as _date
 
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
@@ -146,7 +146,6 @@ def format_date_long(d) -> str:
     d = pd.to_datetime(d).date()
     return f"{d.strftime('%B')} {_ordinal(d.day)}, {d.year}"
 
-from datetime import date as _date
 FB_ONLY_DATES = { _date(2025, 9, 3), _date(2025, 9, 4) }
 
 def is_fb_only(d) -> bool:
@@ -392,7 +391,6 @@ def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
     if s in {"r", "rhh", "rhb", "right", "right-handed", "right handed"}: return "R"
     return None
 
-# (The rest of the code continues in Part 2)
 # ──────────────────────────────────────────────────────────────────────────────
 # PBP HELPERS (Inning / PA / AB)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -889,8 +887,9 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
     fig.update_layout(height=420, title_text=f"{canonicalize_person_name(pitcher_name)} — Top 3 Pitches ({season_label})",
                       title_x=0.5, margin=dict(l=10, r=10, t=60, b=10))
     return fig
+
 # ──────────────────────────────────────────────────────────────────────────────
-# PER-PA INTERACTIVE STRIKE ZONE (Plotly) — NEW
+# PER-PA INTERACTIVE STRIKE ZONE (Plotly)
 # ──────────────────────────────────────────────────────────────────────────────
 def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
     """
@@ -934,9 +933,9 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
 
     # Color per pitch type (fallback single color if missing)
     if type_col and type_col in pa_df.columns:
-        colors = [get_pitch_color(t) for t in pa_df[type_col].astype(str).tolist()]
+        colors_pts = [get_pitch_color(t) for t in pa_df[type_col].astype(str).tolist()]
     else:
-        colors = [HUSKER_RED] * len(pa_df)
+        colors_pts = [HUSKER_RED] * len(pa_df)
 
     fig.add_trace(
         go.Scattergl(
@@ -944,7 +943,7 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
             mode="markers+text",
             text=[str(int(n)) if pd.notna(n) else "" for n in cd[:,6]],  # pitch # in AB labels
             textposition="top center",
-            marker=dict(size=10, line=dict(width=0.5, color="black"), color=colors),
+            marker=dict(size=10, line=dict(width=0.5, color="black"), color=colors_pts),
             customdata=cd,
             hovertemplate=(
                 "Pitch Type: %{customdata[0]}<br>"
@@ -1553,8 +1552,8 @@ def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
     if df_in is None or df_in.empty:
         return pd.DataFrame([{
             "Average exit velo": np.nan, "Max exit velo": np.nan, "Hits": 0, "Strikeouts": 0,
-            "AVG":"", "OBP":"", "SLG":"", "OPS":"", "HardHit%":"", "K%":"", "Walk%":""
-        }])
+            "AVG":"", "OBP":"", "SLG":"", "OPS":"", "HardHit%":"", "K%":"", "Walk%"
+        :""}])
 
     col_exitv  = _first_present(df_in, ["ExitSpeed","Exit Velo","ExitVelocity","Exit_Velocity","ExitVel","EV","LaunchSpeed","Launch_Speed"])
     col_result = _first_present(df_in, ["PlayResult","Result","Event","PAResult","Outcome"])
@@ -1845,8 +1844,6 @@ def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
 
     return out
 
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 # LOAD DATA (smart scrimmage resolver + de-dupe)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1932,7 +1929,7 @@ st.subheader(f"{canonicalize_person_name(player_disp)} ({appearances} Appearance
 
 tabs = st.tabs(["Standard", "Compare", "Profiles"])
 
-# ── STANDARD TAB (kept as in your flow: date picker for Scrimmages; Month/Day for Season)
+# ── STANDARD TAB
 with tabs[0]:
     if segment_choice == "2025/26 Scrimmages":
         dates_all = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
@@ -1974,56 +1971,56 @@ with tabs[0]:
             fig_m, _ = out
             show_and_close(fig_m)
 
-     st.markdown("### Play-by-Play")
-style_pbp_expanders()
-st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
-st.markdown('<div class="inning-block">', unsafe_allow_html=True)
+        st.markdown("### Play-by-Play")
+        style_pbp_expanders()
+        st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
+        st.markdown('<div class="inning-block">', unsafe_allow_html=True)
 
-pbp = build_pitch_by_inning_pa_table(neb_df)
-if pbp.empty:
-    st.info("Play-by-Play not available for this selection.")
-else:
-    cols_pitch = [c for c in ["Pitch # in AB","Pitch Type","Result","Velo","Spin Rate","IVB","HB","Rel Height","Extension"]
-                  if c in pbp.columns]
+        pbp = build_pitch_by_inning_pa_table(neb_df)
+        if pbp.empty:
+            st.info("Play-by-Play not available for this selection.")
+        else:
+            cols_pitch = [c for c in ["Pitch # in AB","Pitch Type","Result","Velo","Spin Rate","IVB","HB","Rel Height","Extension"]
+                          if c in pbp.columns]
 
-    for inn, df_inn in pbp.groupby("Inning #", sort=True, dropna=False):
-        inn_disp = f"Inning {int(inn)}" if pd.notna(inn) else "Inning —"
-        with st.expander(inn_disp, expanded=False):
-            for pa, g in df_inn.groupby("PA # in Inning", sort=True, dropna=False):
-                batter = g.get("Batter", pd.Series(["Unknown"])).iloc[0] if "Batter" in g.columns else "Unknown"
-                side = g.get("Batter Side", pd.Series([""])).iloc[0] if "Batter Side" in g.columns else ""
-                side_str = f" ({side})" if isinstance(side, str) and side else ""
-                pa_text = f"PA {'' if pd.isna(pa) else int(pa)} — vs {batter}{side_str}"
+            # Inning expanders
+            for inn, df_inn in pbp.groupby("Inning #", sort=True, dropna=False):
+                inn_disp = f"Inning {int(inn)}" if pd.notna(inn) else "Inning —"
+                with st.expander(inn_disp, expanded=False):
 
-                with st.expander(pa_text, expanded=False):
-                    # Table first
-                    if cols_pitch:
-                        st.table(themed_table(g[cols_pitch]))
-                    else:
-                        st.table(themed_table(g))
+                    # PA expanders
+                    for pa, g in df_inn.groupby("PA # in Inning", sort=True, dropna=False):
+                        batter = g.get("Batter", pd.Series(["Unknown"])).iloc[0] if "Batter" in g.columns else "Unknown"
+                        side = g.get("Batter Side", pd.Series([""])).iloc[0] if "Batter Side" in g.columns else ""
+                        side_str = f" ({side})" if isinstance(side, str) and side else ""
+                        pa_text = f"PA {'' if pd.isna(pa) else int(pa)} — vs {batter}{side_str}"
+                        with st.expander(pa_text, expanded=False):
+                            if cols_pitch:
+                                st.table(themed_table(g[cols_pitch]))
+                            else:
+                                st.table(themed_table(g))
 
-                    # 👇 NEW: interactive strikezone for THIS PA (keep at this indent)
-                    _pa_id = "" if pd.isna(pa) else int(pa)
-                    _title = f"PA {_pa_id} – Strike Zone"
-                    fig_pa = pa_interactive_strikezone(g, title=_title)
-                    if fig_pa:
-                        st.plotly_chart(fig_pa, use_container_width=True)
-                    else:
-                        st.caption("No plate location data for this PA.")
+                            # ── NEW: interactive strikezone for THIS PA (inside the PA expander)
+                            _pa_id = "" if pd.isna(pa) else int(pa)
+                            _title = f"PA {_pa_id} – Strike Zone"
+                            fig_pa = pa_interactive_strikezone(g, title=_title)
+                            if fig_pa:
+                                st.plotly_chart(fig_pa, use_container_width=True)
+                            else:
+                                st.caption("No plate-location data for this PA.")
 
-    csv = pbp.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download play-by-play (CSV)",
-        data=csv,
-        file_name="play_by_play_summary.csv",
-        mime="text/csv"
-    )
+            csv = pbp.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Download play-by-play (CSV)",
+                data=csv,
+                file_name="play_by_play_summary.csv",
+                mime="text/csv"
+            )
 
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-
-# ── COMPARE TAB (as before)
+# ── COMPARE TAB
 with tabs[1]:
     st.markdown("#### Compare Appearances")
     cmp_n = st.selectbox("Number of windows", [2,3], index=0, key="cmp_n")
@@ -2205,13 +2202,13 @@ with tabs[2]:
             st.markdown(f"### Plate Discipline Profile — {season_label_prof}")
             st.table(themed_table(pd_df_typed))
 
-    
+            # Keep Top 3 Pitches *inside* the Profiles tab
             st.markdown("### Top 3 Pitches")
-fig_top3 = heatmaps_top3_pitch_types(
-    df_prof,
-    player_disp,
-    hand_filter=prof_hand,            # use the radio selection
-    season_label=season_label_prof    # show context in the title
-)
-if fig_top3:
-    st.plotly_chart(fig_top3, use_container_width=True)
+            fig_top3 = heatmaps_top3_pitch_types(
+                df_prof,
+                player_disp,
+                hand_filter=prof_hand,            # use the radio selection
+                season_label=season_label_prof    # show context in the title
+            )
+            if fig_top3:
+                st.plotly_chart(fig_top3, use_container_width=True)

@@ -1,8 +1,8 @@
-# pitcher_app.py (Profiles: Month / Day-of-month / Last N games; defaults to Total)
-# - Pitcher dropdown shows each Husker once (uses PitcherKey + PitcherDisplay)
-# - Profiles tab now supports Month, Day-of-month, and Last N games (same UI for Scrimmages & Season)
-# - If no month/day/lastN selected, it shows TOTAL (Season) by default
-# - All visual functions accept the unified selection (PitcherDisplay) safely
+# pitcher_app.py — Profiles: Month / Day-of-month / Last N games (defaults to Season/Total)
+# - Pitcher dropdown shows each Husker once (PitcherKey + PitcherDisplay)
+# - Profiles tab supports Month, Day-of-month, and Last N games across ALL segments
+# - If none are selected, totals over the segment are shown
+# - Self-contained: includes themed_table and all helpers before use
 
 import os
 import gc
@@ -200,27 +200,23 @@ def build_pitcher_season_label(months_sel, days_sel, selected_df: pd.DataFrame) 
     rng = summarize_dates_range(selected_df["Date"])
     return rng if rng else "Season"
 
-# NEW: apply month/day/last N games in one place (for both scrimmages & season)
+# NEW: unified Month/Day/Last-N logic used by Profiles (works on any segment)
 def apply_month_day_lastN(df_in: pd.DataFrame, months: list[int], days: list[int], last_n_games: int):
     df = df_in.copy()
     if df.empty or "Date" not in df.columns:
         return df, "Season"
 
-    # Month/Day filtering (optional)
     if months or days:
         df = filter_by_month_day(df, months=months or None, days=days or None).copy()
 
-    # Last N games (optional): unique appearance dates for the pitcher
     if last_n_games and last_n_games > 0 and not df.empty:
         ud = pd.to_datetime(df["Date"], errors="coerce").dt.date.dropna().unique()
         ud = sorted(ud)
         keep = set(ud[-last_n_games:])
         df = df[pd.to_datetime(df["Date"], errors="coerce").dt.date.isin(keep)].copy()
 
-    # Label
     base = build_pitcher_season_label(months, days, df)
     if last_n_games and last_n_games > 0:
-        # If month/day empty & lastN only, still show a helpful label
         rng = summarize_dates_range(df["Date"]) if not (months or days) else base
         if rng and rng != "Season":
             return df, f"Last {last_n_games} games — {rng}"
@@ -336,13 +332,12 @@ def format_name(name):
     return str(name)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# NAME NORMALIZATION + SAFE SUBSETTER (NEW)
+# NAME NORMALIZATION + SAFE SUBSETTER
 # ──────────────────────────────────────────────────────────────────────────────
 def _collapse_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 def canonicalize_person_name(raw) -> str:
-    """Convert 'Last, First' -> 'First Last', collapse spaces; keep original case."""
     if pd.isna(raw):
         return ""
     s = str(raw).strip()
@@ -352,10 +347,6 @@ def canonicalize_person_name(raw) -> str:
     return _collapse_ws(s)
 
 def subset_by_pitcher_if_possible(df: pd.DataFrame, pitcher_display: str) -> pd.DataFrame:
-    """
-    If the dataframe has PitcherDisplay, subset on it.
-    Else, try the raw 'Pitcher' column. If neither matches, return df unchanged.
-    """
     if "PitcherDisplay" in df.columns:
         sub = df[df["PitcherDisplay"] == pitcher_display]
         if not sub.empty:
@@ -400,6 +391,8 @@ def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
     if s in {"l", "lhh", "lhb", "left", "left-handed", "left handed"}:  return "L"
     if s in {"r", "rhh", "rhb", "right", "right-handed", "right handed"}: return "R"
     return None
+
+# (The rest of the code continues in Part 2)
 # ──────────────────────────────────────────────────────────────────────────────
 # PBP HELPERS (Inning / PA / AB)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -745,15 +738,795 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, summary
 
-# (… Release points, Extensions, Outcome Heatmaps, Tables … remain unchanged from your last version)
-# — for brevity, keep your existing implementations below this comment block —
+# ──────────────────────────────────────────────────────────────────────────────
+# INTERACTIVE TOP-3 STRIKE ZONE (Plotly)
+# ──────────────────────────────────────────────────────────────────────────────
+def _zone_shapes_for_subplot():
+    l, b, w, h = get_zone_bounds()
+    x0, x1, y0, y1 = l, l+w, b, b+h
+    thirds_x = [x0 + w/3, x0 + 2*w/3]
+    thirds_y = [y0 + h/3, y0 + 2*h/3]
+    shapes = [
+        dict(type="rect", x0=x0, x1=x1, y0=y0, y1=y1, line=dict(color="black", width=2)),
+        dict(type="line", x0=thirds_x[0], x1=thirds_x[0], y0=y0, y1=y1, line=dict(color="gray", dash="dash")),
+        dict(type="line", x0=thirds_x[1], x1=thirds_x[1], y0=y0, y1=y1, line=dict(color="gray", dash="dash")),
+        dict(type="line", x0=x0, x1=x1, y0=thirds_y[0], y1=thirds_y[0], line=dict(color="gray", dash="dash")),
+        dict(type="line", x0=x0, x1=x1, y0=thirds_y[1], y1=thirds_y[1], line=dict(color="gray", dash="dash")),
+    ]
+    return shapes
+
+def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season"):
+    df_p = subset_by_pitcher_if_possible(df, pitcher_name)
+    if df_p.empty:
+        st.info("No data for the selected filters.")
+        return None
+
+    type_col = type_col_in_df(df_p)
+
+    side_col = find_batter_side_col(df_p)
+    if side_col is not None:
+        sides = normalize_batter_side(df_p[side_col])
+        want = parse_hand_filter_to_LR(hand_filter)
+        if   want == "L": df_p = df_p[sides == "L"]
+        elif want == "R": df_p = df_p[sides == "R"]
+    if df_p.empty:
+        st.info("No pitches for the selected batter-side filter.")
+        return None
+
+    x_min, x_max, y_min, y_max = get_view_bounds()
+
+    try:
+        top3 = list(df_p[type_col].value_counts().index[:3])
+    except KeyError:
+        top3 = []
+
+    fig = make_subplots(rows=1, cols=3, shared_yaxes=True, shared_xaxes=True,
+                        subplot_titles=[str(t) if i < len(top3) else "—" for i, t in enumerate([*top3, None, None])][:3])
+
+    speed_col = pick_col(df_p, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
+    ivb_col   = pick_col(df_p, "InducedVertBreak","IVB","Induced Vert Break","IndVertBreak")
+    hb_col    = pick_col(df_p, "HorzBreak","HorizontalBreak","HB","HorizBreak")
+    exit_col  = pick_col(df_p, "ExitSpeed","Exit Velo","ExitVelo","Exit_Velo")
+    call_col  = pick_col(df_p, "PitchCall","Pitch Call","Call") or "PitchCall"
+
+    for i in range(3):
+        col = i + 1
+        for shp in _zone_shapes_for_subplot():
+            fig.add_shape(shp, row=1, col=col)
+
+        if i < len(top3):
+            pitch = top3[i]
+            sub = df_p[df_p[type_col] == pitch].copy()
+            xs = pd.to_numeric(sub.get('PlateLocSide',   pd.Series(dtype=float)), errors='coerce')
+            ys = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce')
+
+            cd = np.column_stack([
+                sub[type_col].astype(str).values,
+                pd.to_numeric(sub.get(speed_col, pd.Series(dtype=float)), errors='coerce').values if speed_col else np.full(len(sub), np.nan),
+                pd.to_numeric(sub.get(ivb_col,   pd.Series(dtype=float)), errors='coerce').values if ivb_col else np.full(len(sub), np.nan),
+                pd.to_numeric(sub.get(hb_col,    pd.Series(dtype=float)), errors='coerce').values if hb_col else np.full(len(sub), np.nan),
+                sub.get(call_col, pd.Series(dtype=object)).astype(str).values,
+                pd.to_numeric(sub.get(exit_col,  pd.Series(dtype=float)), errors='coerce').values if exit_col else np.full(len(sub), np.nan),
+            ])
+
+            fig.add_trace(
+                go.Scattergl(
+                    x=xs, y=ys,
+                    mode="markers",
+                    marker=dict(size=8, line=dict(width=0.5, color="black"),
+                                color=get_pitch_color(pitch)),
+                    customdata=cd,
+                    hovertemplate=(
+                        "Pitch Type: %{customdata[0]}<br>"
+                        "RelSpeed: %{customdata[1]:.1f} mph<br>"
+                        "IVB: %{customdata[2]:.1f}\"<br>"
+                        "HB: %{customdata[3]:.1f}\"<br>"
+                        "Result: %{customdata[4]}<br>"
+                        "Exit Velo: %{customdata[5]:.1f} mph<br>"
+                        "x: %{x:.2f}  y: %{y:.2f}<extra></extra>"
+                    ),
+                    showlegend=False,
+                    name=str(pitch),
+                ),
+                row=1, col=col
+            )
+
+        fig.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col)
+        fig.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col)
+
+    fig.update_layout(height=420, title_text=f"{canonicalize_person_name(pitcher_name)} — Top 3 Pitches ({season_label})",
+                      title_x=0.5, margin=dict(l=10, r=10, t=60, b=10))
+    return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# (KEEP) Release points / Extensions / Outcome helpers from your current file
+# OUTCOME HEATMAPS (Matplotlib scatter-only)
 # ──────────────────────────────────────────────────────────────────────────────
-# — paste your existing implementations here unchanged (release_points_figure,
-#    extensions_topN_figure, make_pitcher_batted_ball_by_type, etc.) —
-# (NOTE: If you used exactly the versions from your last message, leave them.)
+def heatmaps_outcomes(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season", outcome_pitch_types=None):
+    df_p = subset_by_pitcher_if_possible(df, pitcher_name)
+    if df_p.empty:
+        st.info("No data for the selected filters."); return None
+
+    type_col = type_col_in_df(df_p)
+
+    side_col = find_batter_side_col(df_p)
+    if side_col is not None:
+        sides = normalize_batter_side(df_p[side_col])
+        want = parse_hand_filter_to_LR(hand_filter)
+        if   want == "L": df_p = df_p[sides == "L"]
+        elif want == "R": df_p = df_p[sides == "R"]
+
+    if df_p.empty:
+        st.info("No pitches for the selected batter-side filter."); return None
+
+    df_out = df_p
+    if outcome_pitch_types is not None:
+        if len(outcome_pitch_types) == 0:
+            df_out = df_p.iloc[0:0].copy()
+        else:
+            if type_col in df_p.columns:
+                df_out = df_p[df_p[type_col].astype(str).isin(list(outcome_pitch_types))].copy()
+
+    x_min, x_max, y_min, y_max = get_view_bounds()
+    z_left, z_bottom, z_w, z_h = get_zone_bounds()
+
+    sub_wh = df_out[df_out.get('PitchCall','') == 'StrikeSwinging']
+    sub_ks = df_out[df_out.get('KorBB','') == 'Strikeout']
+    sub_dg = df_out[pd.to_numeric(df_out.get('ExitSpeed', pd.Series(dtype=float)), errors='coerce') >= 95]
+
+    def _panel(ax, sub, title, color='deepskyblue'):
+        x = pd.to_numeric(sub.get('PlateLocSide',   pd.Series(dtype=float)), errors='coerce').to_numpy()
+        y = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce').to_numpy()
+        ax.scatter(x, y, s=30, alpha=0.7, color=color, edgecolors='black')
+        draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
+        ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
+        ax.set_title(title, fontweight='bold'); ax.set_xticks([]); ax.set_yticks([])
+
+    fig = plt.figure(figsize=(18, 6))
+    gs = GridSpec(1, 3, figure=fig, wspace=0.3)
+    ax = fig.add_subplot(gs[0, 0]); _panel(ax, sub_wh, f"Whiffs (n={len(sub_wh)})")
+    ax = fig.add_subplot(gs[0, 1]); _panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})")
+    ax = fig.add_subplot(gs[0, 2]); _panel(ax, sub_dg, f"Damage (n={len(sub_dg)})", color='orange')
+
+    fig.suptitle(f"{canonicalize_person_name(pitcher_name)} — Outcomes ({season_label})", fontsize=16, y=0.98, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    return fig
+
+def combined_pitcher_heatmap_report(
+    df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season", outcome_pitch_types=None,
+):
+    df_p = subset_by_pitcher_if_possible(df, pitcher_name)
+    if df_p.empty:
+        st.error(f"No data for pitcher '{pitcher_name}' with the current filters."); return None
+
+    type_col = type_col_in_df(df_p)
+
+    side_col = find_batter_side_col(df_p)
+    hand_label = "Both"
+    if side_col is not None:
+        sides = normalize_batter_side(df_p[side_col])
+        want = parse_hand_filter_to_LR(hand_filter)
+        if want == "L": df_p = df_p[sides == "L"]; hand_label = "LHH"
+        elif want == "R": df_p = df_p[sides == "R"]; hand_label = "RHH"
+    else:
+        st.caption("Batter-side column not found; showing Both.")
+    if df_p.empty:
+        st.info("No pitches for the selected batter-side filter."); return None
+
+    x_min, x_max, y_min, y_max = get_view_bounds()
+    z_left, z_bottom, z_w, z_h = get_zone_bounds()
+
+    def panel(ax, sub, title, color='deepskyblue'):
+        x = pd.to_numeric(sub.get('PlateLocSide',   pd.Series(dtype=float)), errors='coerce').to_numpy()
+        y = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce').to_numpy()
+        ax.scatter(x, y, s=30, alpha=0.7, color=color, edgecolors='black')
+        draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
+        ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
+        ax.set_title(title, fontweight='bold'); ax.set_xticks([]); ax.set_yticks([])
+
+    fig = plt.figure(figsize=(18, 14))
+    gs = GridSpec(3, 3, figure=fig, height_ratios=[1, 1, 0.6], hspace=0.35, wspace=0.3)
+
+    try:
+        top3 = list(df_p[type_col].value_counts().index[:3])
+    except KeyError:
+        top3 = []
+
+    for i in range(3):
+        ax = fig.add_subplot(gs[0, i])
+        if i < len(top3):
+            pitch = top3[i]
+            sub = df_p[df_p[type_col] == pitch]
+            panel(ax, sub, f"{pitch} (n={len(sub)})")
+        else:
+            draw_strikezone(ax, z_left, z_bottom, z_w, z_h)
+            ax.set_xlim(x_min, x_max); ax.set_ylim(y_min, y_max); ax.set_aspect('equal','box')
+            ax.set_xticks([]); ax.set_yticks([]); ax.set_title("—", fontweight='bold')
+
+    df_out = df_p
+    if outcome_pitch_types is not None:
+        if len(outcome_pitch_types) == 0:
+            df_out = df_p.iloc[0:0].copy()
+        else:
+            if type_col in df_p.columns:
+                df_out = df_p[df_p[type_col].astype(str).isin(list(outcome_pitch_types))].copy()
+
+    sub_wh = df_out[df_out.get('PitchCall','') == 'StrikeSwinging']
+    sub_ks = df_out[df_out.get('KorBB','') == 'Strikeout']
+    sub_dg = df_out[pd.to_numeric(df_out.get('ExitSpeed', pd.Series(dtype=float)), errors='coerce') >= 95]
+    ax = fig.add_subplot(gs[1, 0]); panel(ax, sub_wh, f"Whiffs (n={len(sub_wh)})")
+    ax = fig.add_subplot(gs[1, 1]); panel(ax, sub_ks, f"Strikeouts (n={len(sub_ks)})")
+    ax = fig.add_subplot(gs[1, 2]); panel(ax, sub_dg, f"Damage (n={len(sub_dg)})", color='orange')
+
+    axt = fig.add_subplot(gs[2, :]); axt.axis('off')
+    def _safe_mask(q):
+        for col in ("Balls","Strikes"):
+            if col not in df_p.columns: return df_p.iloc[0:0]
+        return q
+    fp  = strike_rate(_safe_mask(df_p[(df_p.get('Balls',0)==0) & (df_p.get('Strikes',0)==0)]))
+    mix = strike_rate(_safe_mask(df_p[((df_p.get('Balls',0)==1)&(df_p.get('Strikes',0)==0)) |
+                                      ((df_p.get('Balls',0)==0)&(df_p.get('Strikes',0)==1)) |
+                                      ((df_p.get('Balls',0)==1)&(df_p.get('Strikes',0)==1))]))
+    hp  = strike_rate(_safe_mask(df_p[((df_p.get('Balls',0)==2)&(df_p.get('Strikes',0)==0)) |
+                                      ((df_p.get('Balls',0)==2)&(df_p.get('Strikes',0)==1)) |
+                                      ((df_p.get('Balls',0)==3)&(df_p.get('Strikes',0)==1))]))
+    two = strike_rate(_safe_mask(df_p[(df_p.get('Strikes',0)==2) & (df_p.get('Balls',0)<3)]))
+    metrics = pd.DataFrame({'1st Pitch %':[fp],'Mix Count %':[mix],'Hitter+ %':[hp],'2-Strike %':[two]}).round(1)
+    tbl = axt.table(cellText=metrics.values, colLabels=metrics.columns, cellLoc='center', loc='center')
+    tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
+    axt.set_title('Strike Percentage by Count', y=0.75, fontweight='bold')
+
+    fig.suptitle(f"{canonicalize_person_name(pitcher_name)}\n({season_label}) ({hand_label})", fontsize=18, y=0.98, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    return fig
+
+# ──────────────────────────────────────────────────────────────────────────────
+# RELEASE POINTS & EXTENSIONS
+# ──────────────────────────────────────────────────────────────────────────────
+ARM_BASE_HALF_WIDTH = 0.24
+ARM_TIP_HALF_WIDTH  = 0.08
+SHOULDER_RADIUS_OUT = 0.20
+HAND_RING_OUTER_R   = 0.26
+HAND_RING_INNER_R   = 0.15
+ARM_FILL_COLOR      = "#111111"
+
+def norm_text(x: str) -> str: return str(x).strip().lower()
+def norm_type(x: str) -> str:
+    s = norm_text(x)
+    return {"four seam":"four-seam","4 seam":"4-seam","two seam":"two-seam","2 seam":"2-seam"}.get(s, s)
+
+def canonicalize_type(raw: str) -> str:
+    s = norm_text(raw)
+    if "sinker" in s or s in {"si","snk"}: return "Fastball"
+    n = norm_type(raw)
+    return {
+        "four-seam":"Fastball","4-seam":"Fastball","fastball":"Fastball",
+        "two-seam":"Two-Seam Fastball","2-seam":"Two-Seam Fastball",
+        "cutter":"Cutter","changeup":"Changeup","splitter":"Splitter",
+        "curveball":"Curveball","knuckle curve":"Knuckle Curve","slider":"Slider",
+        "sweeper":"Sweeper","screwball":"Screwball","eephus":"Eephus",
+    }.get(n, "Unknown")
+
+def color_for_release(canon_label: str) -> str:
+    key = str(canon_label).lower()
+    palette = {
+        "fastball": "#E60026","two-seam fastball": "#FF9300","cutter": "#800080","changeup": "#008000",
+        "splitter": "#00CCCC","curveball": "#0033CC","knuckle curve": "#000000","slider": "#CCCC00",
+        "sweeper": "#B5651D","screwball": "#CC0066","eephus": "#666666",
+    }
+    return palette.get(key, "#7F7F7F")
+
+def release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=None):
+    sub_all = subset_by_pitcher_if_possible(df, pitcher_name)
+    pitcher_col = pick_col(sub_all, "Pitcher","PitcherName","Pitcher Full Name","Name","PitcherLastFirst") or "Pitcher"
+    x_col = pick_col(sub_all, "Relside","RelSide","ReleaseSide","Release_Side","release_pos_x")
+    y_col = pick_col(sub_all, "Relheight","RelHeight","ReleaseHeight","Release_Height","release_pos_z")
+    type_col = type_col_in_df(sub_all)
+    speed_col = pick_col(sub_all, "Relspeed","RelSpeed","ReleaseSpeed","RelSpeedMPH","release_speed")
+
+    missing = [lbl for lbl, col in [("Relside",x_col), ("Relheight",y_col)] if col is None]
+    if missing:
+        st.error(f"Missing required column(s) for release plot: {', '.join(missing)}")
+        return None
+
+    sub = sub_all.copy()
+    if sub.empty:
+        st.error(f"No rows found for pitcher '{pitcher_name}'."); return None
+
+    sub[x_col] = pd.to_numeric(sub[x_col], errors="coerce")
+    sub[y_col] = pd.to_numeric(sub[y_col], errors="coerce")
+    if speed_col: sub[speed_col] = pd.to_numeric(sub[speed_col], errors="coerce")
+    sub = sub.dropna(subset=[x_col, y_col])
+
+    sub["_type_canon"] = sub[type_col].apply(canonicalize_type)
+    sub = sub[sub["_type_canon"] != "Unknown"].copy()
+
+    if include_types is not None and len(include_types) > 0:
+        sub = sub[sub["_type_canon"].isin(include_types)]
+    if sub.empty:
+        st.warning("No pitches after applying the selected pitch-type filter.")
+        return None
+
+    sub["_color"] = sub["_type_canon"].apply(color_for_release)
+
+    agg = {"mean_x": (x_col, "mean"), "mean_y": (y_col, "mean")}
+    if speed_col: agg["mean_speed"] = (speed_col, "mean")
+    means = sub.groupby("_type_canon", as_index=False).agg(**agg)
+    means["color"] = means["_type_canon"].apply(color_for_release)
+    if "mean_speed" in means.columns:
+        means = (means.sort_values("mean_speed", ascending=False, na_position="last").reset_index(drop=True))
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13.5, 7.0), sharey=True)
+
+    ax1.scatter(sub[x_col], sub[y_col], s=12, alpha=0.75, c=sub["_color"], edgecolors="none")
+    ax1.set_xlim(-5, 5); ax1.set_ylim(0, 8); ax1.set_aspect("equal")
+    ax1.axhline(0, color="black", linewidth=1); ax1.axvline(0, color="black", linewidth=1)
+    ax1.set_xlabel(x_col); ax1.set_ylabel(y_col)
+    ax1.set_title(f"All Releases (n={len(sub)})", fontweight="bold")
+
+    for _, row in means.iterrows():
+        x0, y0 = 0.0, 0.0
+        x1, y1 = float(row["mean_x"]), float(row["mean_y"])
+        dx, dy = x1 - x0, y1 - y0
+        L = float(np.hypot(dx, dy))
+        if L <= 1e-6: continue
+        ux, uy = dx / L, dy / L
+        px, py = -uy, ux
+        sLx, sLy = x0 + px*ARM_BASE_HALF_WIDTH, y0 + py*ARM_BASE_HALF_WIDTH
+        sRx, sRy = x0 - px*ARM_BASE_HALF_WIDTH, y0 - py*ARM_BASE_HALF_WIDTH
+        eLx, eLy = x1 + px*ARM_TIP_HALF_WIDTH, y1 + py*ARM_TIP_HALF_WIDTH
+        eRx, eRy = x1 - px*ARM_TIP_HALF_WIDTH, y1 - py*ARM_TIP_HALF_WIDTH
+        arm_poly = Polygon([(sLx, sLy), (eLx, eLy), (eRx, eRy), (sRx, sRy)], closed=True,
+                           facecolor=ARM_FILL_COLOR, edgecolor=ARM_FILL_COLOR, zorder=1)
+        ax2.add_patch(arm_poly)
+        ax2.add_patch(Circle((x0, y0), radius=0.20, facecolor="#0d0d0d", edgecolor="#0d0d0d", zorder=2))
+        outer = Circle((x1, y1), radius=0.26, facecolor=row["color"], edgecolor=row["color"], zorder=4)
+        ax2.add_patch(outer)
+        inner_face = ax2.get_facecolor()
+        inner = Circle((x1, y1), radius=0.15, facecolor=inner_face, edgecolor=inner_face, zorder=5)
+        ax2.add_patch(inner)
+
+    ax2.set_xlim(-5, 5); ax2.set_ylim(0, 8); ax2.set_aspect("equal")
+    ax2.axhline(0, color="black", linewidth=1); ax2.axvline(0, color="black", linewidth=1)
+    ax2.set_xlabel(x_col); ax2.set_title("Average Releases", fontweight="bold")
+
+    handles = []
+    for _, row in means.iterrows():
+        label = row["_type_canon"]
+        if "mean_speed" in means.columns and not pd.isna(row.get("mean_speed", None)):
+            label = f"{label} ({row['mean_speed']:.1f})"
+        handles.append(Line2D([0],[0], marker="o", linestyle="none", markersize=6, label=label, color=row["color"]))
+    if handles:
+        ax2.legend(handles=handles, title="Pitch Type", loc="upper right")
+
+    fig.suptitle(f"{canonicalize_person_name(pitcher_name)} Release Points", fontsize=14, fontweight="bold")
+    fig.tight_layout()
+    return fig
+
+# Extensions (Compare tab)
+RELEASE_X_OFFSET_FT = 2.0
+SHOULDER_X_R = 0.7
+SHOULDER_X_L = -0.7
+SHOULDER_Y = 1.6
+ARM_THICK_BASE = 0.28
+ARM_THICK_TIP  = 0.05
+MOUND_COLOR    = "#7B4B24"
+MOUND_EDGE     = "#3D2A1A"
+MOUND_ALPHA    = 0.90
+LEGEND_LOC     = "upper center"
+LEGEND_ANCHOR_FRAC = (0.50, 0.98)
+XLIM_PAD_DEFAULT = 11.0
+YLIM_PAD_DEFAULT = 4.0
+YLIM_BOTTOM     = -10.0
+
+def _decide_pitcher_hand(sub: pd.DataFrame) -> str:
+    hand_col = pick_col(sub, "PitcherThrows","Throws","PitcherHand","Pitcher_Hand","ThrowHand")
+    relside_col = pick_col(sub, "Relside","RelSide","ReleaseSide","Release_Side","release_pos_x")
+    if hand_col and hand_col in sub.columns:
+        v = sub[hand_col].dropna().astype(str).str[0].str.upper()
+        if not v.empty:
+            return "R" if v.mode().iloc[0] == "R" else "L"
+    if relside_col and relside_col in sub.columns:
+        med = pd.to_numeric(sub[relside_col], errors="coerce").dropna().median()
+        if pd.notna(med): return "R" if med >= 0 else "L"
+    return "R"
+
+def extensions_topN_figure(
+    df: pd.DataFrame,
+    pitcher_name: str,
+    include_types=None,
+    top_n: int = 3,
+    figsize=(5.2, 7.0),
+    title_size=14,
+    show_plate: bool = False,
+    xlim_pad: float = XLIM_PAD_DEFAULT,
+    ylim_pad: float = YLIM_PAD_DEFAULT
+):
+    sub_all = subset_by_pitcher_if_possible(df, pitcher_name)
+    ext_col     = pick_col(sub_all, "Extension","Ext","ReleaseExtension","ExtensionInFt","Extension(ft)")
+    type_col    = type_col_in_df(sub_all)
+    if ext_col is None:
+        st.warning("No Extension column found in data; skipping extensions plot.")
+        return None
+
+    sub = sub_all.copy()
+    if sub.empty:
+        st.warning("No data for selected pitcher."); return None
+
+    sub[ext_col] = pd.to_numeric(sub[ext_col], errors="coerce")
+    sub = sub.dropna(subset=[ext_col])
+    if sub.empty:
+        st.warning("No valid extension values for selected filters."); return None
+
+    sub["_type_canon"] = sub[type_col].apply(canonicalize_type)
+    sub = sub[sub["_type_canon"] != "Unknown"].copy()
+
+    if include_types is not None and len(include_types) > 0:
+        sub = sub[sub["_type_canon"].isin(include_types)]
+    if sub.empty:
+        st.warning("No pitches after applying pitch-type filter (extensions)."); return None
+
+    usage_top = sub["_type_canon"].value_counts().head(max(1, top_n)).index.tolist()
+    mean_ext  = sub.groupby("_type_canon")[ext_col].mean().dropna()
+    mean_sel  = mean_ext[mean_ext.index.isin(usage_top)].sort_values(ascending=False)
+    entries   = list(mean_sel.items())
+    if not entries:
+        st.warning("Not enough data to compute top extensions."); return None
+
+    hand = _decide_pitcher_hand(sub)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    mound_radius  = 9.0
+    rubber_len, rubber_wid = 2.0, 0.5
+
+    ax.add_patch(Circle((0, 0), mound_radius, facecolor=MOUND_COLOR, edgecolor=MOUND_EDGE,
+                        linewidth=1.0, alpha=MOUND_ALPHA, zorder=1))
+    ax.add_patch(Rectangle((-rubber_len/2, -rubber_wid), rubber_len, rubber_wid,
+                           linewidth=1.5, edgecolor="black", facecolor="white", zorder=5))
+
+    throw_right = hand.upper() == "R"
+    shoulder_x  = SHOULDER_X_R if throw_right else SHOULDER_X_L
+    shoulder_y  = SHOULDER_Y
+
+    handles, labels = [], []
+    for i, (canon_name, ext_val) in enumerate(entries[:top_n]):
+        clr   = color_for_release(canon_name)
+        x_end = RELEASE_X_OFFSET_FT if throw_right else -RELEASE_X_OFFSET_FT
+        y_end = float(ext_val)
+
+        v     = np.array([x_end - shoulder_x, y_end - shoulder_y], dtype=float)
+        v_len = np.hypot(v[0], v[1]) + 1e-9
+        n     = v / v_len
+        p     = np.array([-n[1], n[0]])
+        sL    = (shoulder_x + p[0]*ARM_THICK_BASE, shoulder_y + p[1]*ARM_THICK_BASE)
+        sR    = (shoulder_x - p[0]*ARM_THICK_BASE, shoulder_y - p[1]*ARM_THICK_BASE)
+        tL    = (x_end + p[0]*ARM_THICK_TIP, y_end + p[1]*ARM_THICK_TIP)
+        tR    = (x_end - p[0]*ARM_THICK_TIP, y_end - p[1]*ARM_THICK_TIP)
+        ax.add_patch(Polygon([sL, sR, tR, tL], closed=True,
+                             facecolor="#111111", edgecolor="#111111", alpha=0.9, zorder=6+i))
+
+        ax.add_patch(Circle((x_end, y_end), radius=0.30, facecolor=clr, edgecolor=clr, zorder=7+i))
+        ax.add_patch(Circle((x_end, y_end), radius=0.165, facecolor="#2b2b2b", edgecolor="#2b2b2b", zorder=8+i))
+
+        handles.append(Line2D([0],[0], marker='o', linestyle='none', markersize=8,
+                              markerfacecolor=clr, markeredgecolor=clr))
+        labels.append(f"{canon_name} ({ext_val:.2f} ft)")
+
+    max_ext = max([v for _, v in entries]) if entries else 7.0
+    top_y   = max(9.0 + YLIM_PAD_DEFAULT, max_ext + 2.0)
+    ax.set_xlim(-XLIM_PAD_DEFAULT, XLIM_PAD_DEFAULT)
+    ax.set_ylim(YLIM_BOTTOM, top_y)
+    ax.set_aspect("equal"); ax.axis("off")
+
+    fig.suptitle(f"{canonicalize_person_name(pitcher_name)} Extension", fontsize=title_size, fontweight="bold", y=0.98)
+    if handles:
+        ax.legend(handles, labels, title="Pitch Type", loc=LEGEND_LOC,
+                  bbox_to_anchor=LEGEND_ANCHOR_FRAC, borderaxespad=0.0,
+                  frameon=True, fancybox=False, edgecolor="#d0d0d0")
+    fig.tight_layout()
+    return fig
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PROFILES TABLES + OUTCOME SUMMARY HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+def _assign_spray_category_row(row):
+    ang = row.get('Bearing', np.nan)
+    side = str(row.get('BatterSide', "")).upper()[:1]
+    if not pd.notna(ang): return np.nan
+    ang = float(ang)
+    if -15 <= ang <= 15: return "Straight"
+    if ang < -15:        return "Pull" if side == "R" else "Opposite"
+    return "Opposite" if side == "R" else "Pull"
+
+def _bb_metrics_for_subset(sub_all: pd.DataFrame) -> dict:
+    s_call = sub_all.get('PitchCall', pd.Series(dtype=object))
+    inplay = sub_all[s_call == 'InPlay'].copy()
+    if 'TaggedHitType' not in inplay.columns: inplay['TaggedHitType'] = pd.NA
+    if 'Bearing' not in inplay.columns:       inplay['Bearing'] = np.nan
+    if 'BatterSide' not in inplay.columns:    inplay['BatterSide'] = ""
+    inplay['spray_cat'] = inplay.apply(_assign_spray_category_row, axis=1)
+    tt = inplay['TaggedHitType'].astype(str).str.lower()
+    def pct(mask):
+        try:    return round(100 * float(np.nanmean(mask.astype(float))), 1) if len(mask) else 0.0
+        except: return 0.0
+    return {
+        'Pitches': int(len(sub_all)),
+        'Ground ball %': pct(tt.str.contains('groundball',   na=False)),
+        'Fly ball %':    pct(tt.str.contains('flyball',      na=False)),
+        'Line drive %':  pct(tt.str.contains('linedrive',    na=False)),
+        'Popup %':       pct(tt.str.contains('popup',        na=False)),
+        'Pull %':        pct(inplay['spray_cat'].astype(str).eq('Pull')),
+        'Straight %':    pct(inplay['spray_cat'].astype(str).eq('Straight')),
+        'Opposite %':    pct(inplay['spray_cat'].astype(str).eq('Opposite')),
+    }
+
+def make_pitcher_batted_ball_by_type(df: pd.DataFrame) -> pd.DataFrame:
+    type_col = type_col_in_df(df)
+    rows = [{'Pitch Type': 'Total', **_bb_metrics_for_subset(df)}]
+    if type_col in df.columns:
+        for ptype, sub in df.groupby(type_col, dropna=False):
+            metrics = _bb_metrics_for_subset(sub)
+            rows.append({'Pitch Type': str(ptype), **metrics})
+    out = pd.DataFrame(rows)
+    if len(out) > 1:
+        total_row = out.iloc[[0]]
+        others = out.iloc[1:].sort_values('Pitches', ascending=False)
+        out = pd.concat([total_row, others], ignore_index=True)
+    for c in out.columns:
+        if c.endswith('%'): out[c] = out[c].astype(float).round(1)
+    out['Pitches'] = out['Pitches'].astype(int)
+    return out
+
+def _plate_metrics(sub: pd.DataFrame) -> dict:
+    s_call = sub.get('PitchCall', pd.Series(dtype=object))
+    lside = pd.to_numeric(sub.get('PlateLocSide',   pd.Series(dtype=float)), errors="coerce")
+    lht   = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors="coerce")
+    isswing   = s_call.isin(['StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
+    iswhiff   = s_call.eq('StrikeSwinging')
+    iscontact = s_call.isin(['InPlay','FoulBallNotFieldable','FoulBallFieldable'])
+    isinzone  = lside.between(-0.83, 0.83) & lht.between(1.5, 3.5)
+    total_pitches = int(len(sub))
+    total_swings  = int(isswing.sum())
+    z_count       = int(isinzone.sum())
+    def pct(val):
+        try:    return round(float(val) * 100, 1)
+        except: return 0.0
+    zone_pct  = pct(isinzone.mean()) if total_pitches else 0.0
+    zone_sw   = pct(isswing[isinzone].mean()) if z_count else 0.0
+    zone_ct   = pct((iscontact & isinzone).sum() / max(isswing[isinzone].sum(), 1)) if z_count else 0.0
+    chase     = pct(isswing[~isinzone].mean()) if (~isinzone).sum() else 0.0
+    swing_all = pct(total_swings / max(total_pitches, 1)) if total_pitches else 0.0
+    whiff_pct = pct(iswhiff.sum() / max(total_swings, 1)) if total_swings else 0.0
+    return {
+        'Pitches': total_pitches,
+        'Zone Pitches': z_count,
+        'Zone %': zone_pct,
+        'Zone Swing %': zone_sw,
+        'Zone Contact %': zone_ct,
+        'Chase %': chase,
+        'Swing %': swing_all,
+        'Whiff %': whiff_pct,
+    }
+
+def make_pitcher_plate_discipline_by_type(df: pd.DataFrame) -> pd.DataFrame:
+    type_col = type_col_in_df(df)
+    rows = [{'Pitch Type': 'Total', **_plate_metrics(df)}]
+    if type_col in df.columns:
+        for ptype, sub in df.groupby(type_col, dropna=False):
+            metrics = _plate_metrics(sub)
+            rows.append({'Pitch Type': str(ptype), **metrics})
+    out = pd.DataFrame(rows)
+    if len(out) > 1:
+        total_row = out.iloc[[0]]
+        others = out.iloc[1:].sort_values('Pitches', ascending=False)
+        out = pd.concat([total_row, others], ignore_index=True)
+    for c in out.columns:
+        if c.endswith('%'): out[c] = out[c].astype(float).round(1)
+    out['Pitches'] = out['Pitches'].astype(int)
+    out['Zone Pitches'] = out['Zone Pitches'].astype(int)
+    return out
+
+def _strike_metrics(sub_df: pd.DataFrame) -> dict:
+    def _safe_mask(q):
+        for col in ("Balls","Strikes"):
+            if col not in sub_df.columns:
+                return sub_df.iloc[0:0]
+        return q
+    fp  = strike_rate(_safe_mask(sub_df[(sub_df.get('Balls',0)==0) & (sub_df.get('Strikes',0)==0)]))
+    mix = strike_rate(_safe_mask(sub_df[((sub_df.get('Balls',0)==1)&(sub_df.get('Strikes',0)==0)) |
+                                        ((sub_df.get('Balls',0)==0)&(sub_df.get('Strikes',0)==1)) |
+                                        ((sub_df.get('Balls',0)==1)&(sub_df.get('Strikes',0)==1))]))
+    hp  = strike_rate(_safe_mask(sub_df[((sub_df.get('Balls',0)==2)&(sub_df.get('Strikes',0)==0)) |
+                                        ((sub_df.get('Balls',0)==2)&(sub_df.get('Strikes',0)==1)) |
+                                        ((sub_df.get('Balls',0)==3)&(sub_df.get('Strikes',0)==1))]))
+    two = strike_rate(_safe_mask(sub_df[(sub_df.get('Strikes',0)==2) & (sub_df.get('Balls',0)<3)]))
+    return {'Pitches': int(len(sub_df)),
+            '1st Pitch %': fp, 'Mix Count %': mix, 'Hitter+ %': hp, '2-Strike %': two}
+
+def make_strike_percentage_table(df: pd.DataFrame) -> pd.DataFrame:
+    type_col = type_col_in_df(df)
+    rows = [{'Pitch Type': 'Total', **_strike_metrics(df)}]
+    if type_col in df.columns:
+        for ptype, sub in df.groupby(type_col, dropna=False):
+            metrics = _strike_metrics(sub)
+            rows.append({'Pitch Type': str(ptype), **metrics})
+    out = pd.DataFrame(rows)
+    if len(out) > 1:
+        total_row = out.iloc[[0]]
+        others = out.iloc[1:].sort_values('Pitches', ascending=False)
+        out = pd.concat([total_row, others], ignore_index=True)
+    for c in out.columns:
+        if c.endswith('%'): out[c] = out[c].astype(float).round(1)
+    out['Pitches'] = out['Pitches'].astype(int)
+    return out
+
+def themed_table(df: pd.DataFrame):
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    percent_cols_numeric = [c for c in df.columns if c.strip().endswith('%') and c in numeric_cols]
+    fmt_map = {c: "{:.1f}" for c in set(numeric_cols) | set(percent_cols_numeric)}
+    styles = [
+        {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
+        {'selector': 'th',        'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
+        {'selector': 'td',        'props': 'white-space: nowrap; color: black;'},
+    ]
+    return (df.style.hide(axis="index").format(fmt_map, na_rep="—").set_table_styles(styles))
+
+# Outcome summary by type
+def _first_present(df: pd.DataFrame, cands: list[str]) -> str | None:
+    lower = {c.lower(): c for c in df.columns}
+    for c in cands:
+        if c in df.columns: return c
+        if c.lower() in lower: return lower[c.lower()]
+    return None
+
+def _is_terminal_row(row, col_result, col_korbb, col_call) -> bool:
+    pr = str(row.get(col_result, "")) if col_result else ""
+    kc = str(row.get(col_korbb, "")) if col_korbb else ""
+    pc = str(row.get(col_call, ""))  if col_call  else ""
+    return (
+        (pr.strip() != "") or
+        (kc.lower() in {"k","so","strikeout","strikeout swinging","strikeout looking","bb","walk"}) or
+        (pc.lower() in {"hitbypitch","hit by pitch","hbp"})
+    )
+
+def _pct(x):
+    return f"{x*100:.1f}%" if pd.notna(x) else ""
+
+def _rate3(x):
+    return f"{x:.3f}" if pd.notna(x) else ""
+
+def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
+    if df_in is None or df_in.empty:
+        return pd.DataFrame([{
+            "Average exit velo": np.nan, "Max exit velo": np.nan, "Hits": 0, "Strikeouts": 0,
+            "AVG":"", "OBP":"", "SLG":"", "OPS":"", "HardHit%":"", "K%":"", "Walk%":""
+        }])
+
+    col_exitv  = _first_present(df_in, ["ExitSpeed","Exit Velo","ExitVelocity","Exit_Velocity","ExitVel","EV","LaunchSpeed","Launch_Speed"])
+    col_result = _first_present(df_in, ["PlayResult","Result","Event","PAResult","Outcome"])
+    col_call   = _first_present(df_in, ["PitchCall","Pitch Call","PitchResult","Call"])
+    col_korbb  = _first_present(df_in, ["KorBB","K_BB","KBB","K_or_BB","PA_KBB"])
+
+    work = add_inning_and_ab(df_in.copy())
+    po_c = find_pitch_of_pa_col(work)
+
+    for c in [col_result, col_call, col_korbb]:
+        if c and c in work.columns:
+            if work[c].dtype != "O":
+                work[c] = work[c].astype("string")
+            work[c] = work[c].fillna("").astype(str)
+
+    if any(c for c in [col_result, col_korbb, col_call]):
+        is_term = work.apply(lambda r: _is_terminal_row(r, col_result, col_korbb, col_call), axis=1)
+    else:
+        is_term = pd.Series(False, index=work.index)
+
+    def _pick_row_idx(g: pd.DataFrame) -> int:
+        gm = is_term.loc[g.index]
+        if gm.any():
+            return gm[gm].index[-1]
+        if po_c and po_c in g.columns:
+            if "Pitch # in AB" in g.columns and g["Pitch # in AB"].notna().any():
+                return g["Pitch # in AB"].astype("Int64").idxmax()
+        return g.index[-1]
+
+    ab_rows_idx = work.groupby("AB #", sort=True, dropna=False).apply(_pick_row_idx).values
+    df_pa = work.loc[ab_rows_idx].copy()
+
+    PR = df_pa[col_result].astype(str) if col_result else pd.Series([""]*len(df_pa), index=df_pa.index)
+    KC = df_pa[col_korbb].astype(str)  if col_korbb else pd.Series([""]*len(df_pa), index=df_pa.index)
+    PC = df_pa[col_call].astype(str)   if col_call  else pd.Series([""]*len(df_pa), index=df_pa.index)
+
+    pr_low = PR.str.lower()
+    is_single = pr_low.str.contains(r"\bsingle\b", regex=True)
+    is_double = pr_low.str.contains(r"\bdouble\b", regex=True)
+    is_triple = pr_low.str.contains(r"\btriple\b", regex=True)
+    is_hr     = pr_low.str.contains(r"\bhome\s*run\b", regex=True) | pr_low.eq("hr")
+    hits_mask = is_single | is_double | is_triple | is_hr
+    TB = (is_single.astype(int)*1 + is_double.astype(int)*2 + is_triple.astype(int)*3 + is_hr.astype(int)*4).sum()
+
+    is_bb = (
+        pr_low.str.contains(r"\bwalk\b|intentional\s*walk|int\.?\s*bb|ib[bB]\b", regex=True)
+        | KC.str.lower().isin({"bb","walk","ibb","intentional walk"})
+        | KC.str.contains(r"\bwalk\b", case=False, regex=True)
+    )
+    is_so  = (
+        pr_low.str.contains(r"strikeout", case=False, regex=True)
+        | KC.str.lower().isin({"k","so","strikeout","strikeout swinging","strikeout looking"})
+    )
+    is_hbp = (
+        pr_low.str.contains(r"hit\s*by\s*pitch", case=False, regex=True)
+        | PC.str.lower().isin({"hitbypitch","hit by pitch","hbp"})
+    )
+    is_sf = pr_low.str.contains(r"sac(rifice)?\s*fly|\bsf\b", regex=True)
+    is_sh = pr_low.str.contains(r"sac(rifice)?\s*(bunt|hit)|\bsh\b", regex=True)
+    is_ci = pr_low.str.contains(r"interference", regex=True)
+
+    PA  = int(len(df_pa))
+    H   = int(hits_mask.sum())
+    BB  = int(is_bb.sum())
+    SO  = int(is_so.sum())
+    HBP = int(is_hbp.sum())
+    SF  = int(is_sf.sum())
+    SH  = int(is_sh.sum())
+    CI  = int(is_ci.sum())
+
+    AB  = max(PA - (BB + HBP + SF + SH + CI), 0)
+
+    AVG = (H / AB) if AB > 0 else np.nan
+    OBP = ((H + BB + HBP) / (AB + BB + HBP + SF)) if (AB + BB + HBP + SF) > 0 else np.nan
+    SLG = (TB / AB) if AB > 0 else np.nan
+    OPS = (OBP + SLG) if (pd.notna(OBP) and pd.notna(SLG)) else np.nan
+
+    K_rate  = (SO / PA) if PA > 0 else np.nan
+    BB_rate = (BB / PA) if PA > 0 else np.nan
+
+    if col_exitv:
+        ev_all = pd.to_numeric(df_in[col_exitv], errors="coerce").dropna()
+        avg_ev = float(ev_all.mean()) if len(ev_all) else np.nan
+        max_ev = float(ev_all.max())  if len(ev_all) else np.nan
+        hard_hit_pct = float((ev_all >= 95.0).mean()) if len(ev_all) else np.nan
+    else:
+        avg_ev = max_ev = hard_hit_pct = np.nan
+
+    row = {
+        "Average exit velo": round(avg_ev, 1) if pd.notna(avg_ev) else np.nan,
+        "Max exit velo":     round(max_ev, 1) if pd.notna(max_ev) else np.nan,
+        "Hits":              H,
+        "Strikeouts":        SO,
+        "AVG":               _rate3(AVG),
+        "OBP":               _rate3(OBP),
+        "SLG":               _rate3(SLG),
+        "OPS":               _rate3(OPS),
+        "HardHit%":          _pct(hard_hit_pct),
+        "K%":                _pct(K_rate),
+        "Walk%":             _pct(BB_rate),
+    }
+    return pd.DataFrame([row])
+
+def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
+    type_col = type_col_in_df(df)
+    out_frames = []
+
+    total = make_pitcher_outcome_summary_table(df)
+    total.insert(0, "Pitch Type", "Total")
+    out_frames.append(total)
+
+    if type_col and type_col in df.columns:
+        usage_order = df[type_col].astype(str).value_counts().index.tolist()
+        for p in usage_order:
+            sub = df[df[type_col].astype(str) == p]
+            t = make_pitcher_outcome_summary_table(sub)
+            t.insert(0, "Pitch Type", p)
+            out_frames.append(t)
+
+    out = pd.concat(out_frames, ignore_index=True)
+    for c in ["Average exit velo", "Max exit velo"]:
+        if c in out.columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce").round(1)
+    for c in ["Hits", "Strikeouts"]:
+        if c in out.columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce").astype("Int64")
+    return out
 
 # ──────────────────────────────────────────────────────────────────────────────
 # LOAD DATA (smart scrimmage resolver + de-dupe)
@@ -813,7 +1586,7 @@ SEG_TYPES = SEGMENT_DEFS.get(segment_choice, {}).get("types", [])
 is_bullpen_segment = "bullpen" in SEG_TYPES
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MAIN UI — UNIQUE PITCHER NAMES
+# MAIN UI — UNIQUE PITCHER NAMES + DATE INDEX
 # ──────────────────────────────────────────────────────────────────────────────
 neb_df_all = df_segment[df_segment.get('PitcherTeam','') == 'NEB'].copy()
 neb_df_all["PitcherDisplay"] = neb_df_all.get("Pitcher", pd.Series(dtype=object)).map(canonicalize_person_name)
@@ -840,7 +1613,7 @@ st.subheader(f"{canonicalize_person_name(player_disp)} ({appearances} Appearance
 
 tabs = st.tabs(["Standard", "Compare", "Profiles"])
 
-# ── STANDARD TAB (unchanged) ──────────────────────────────────────────────────
+# ── STANDARD TAB (kept as in your flow: date picker for Scrimmages; Month/Day for Season)
 with tabs[0]:
     if segment_choice == "2025/26 Scrimmages":
         dates_all = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
@@ -919,7 +1692,7 @@ with tabs[0]:
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-# ── COMPARE TAB (unchanged UI) ────────────────────────────────────────────────
+# ── COMPARE TAB (as before)
 with tabs[1]:
     st.markdown("#### Compare Appearances")
     cmp_n = st.selectbox("Number of windows", [2,3], index=0, key="cmp_n")
@@ -1049,14 +1822,12 @@ with tabs[1]:
             if fig_h:
                 show_and_close(fig_h, use_container_width=expand_view)
 
-# ── PROFILES TAB — UPDATED FILTERS ────────────────────────────────────────────
+# ── PROFILES TAB — UPDATED FILTERS
 with tabs[2]:
     st.markdown("#### Pitcher Profiles")
     if is_bullpen_segment:
         st.info("Profiles are not available for **Bullpens** (no batting occurs).")
     else:
-        # Unified UI for both Scrimmages and Seasons
-        # Month / Day-of-month / Last N games (0 = off)
         present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
         col_pm, col_pd, col_ln, col_side = st.columns([1,1,1,1.4])
         prof_months = col_pm.multiselect(
@@ -1066,7 +1837,6 @@ with tabs[2]:
             default=[],
             key="prof_months"
         )
-
         dser_prof = df_pitcher_all['Date'].dropna()
         if prof_months:
             dser_prof = dser_prof[dser_prof.dt.month.isin(prof_months)]
@@ -1076,12 +1846,9 @@ with tabs[2]:
         last_n_games = int(col_ln.number_input("Last N games (0 = All)", min_value=0, max_value=100, value=0, step=1, format="%d", key="prof_lastn"))
         prof_hand = col_side.radio("Batter Side", ["Both","LHH","RHH"], index=0, horizontal=True, key="prof_hand")
 
-        # Apply filters (works for Scrimmages & Season)
-        df_prof_base = df_pitcher_all.copy()
-        df_prof, season_label_prof_base = apply_month_day_lastN(df_prof_base, prof_months, prof_days, last_n_games)
+        df_prof, season_label_prof_base = apply_month_day_lastN(df_pitcher_all, prof_months, prof_days, last_n_games)
         season_label_prof = f"{segment_choice} — {season_label_prof_base}" if season_label_prof_base else segment_choice
 
-        # Batter side filter
         side_col = find_batter_side_col(df_prof)
         if prof_hand in ("LHH","RHH") and side_col is not None and not df_prof.empty:
             sides = normalize_batter_side(df_prof[side_col])
@@ -1109,27 +1876,4 @@ with tabs[2]:
 
             st.markdown("### Top 3 Pitches")
             fig_top3 = heatmaps_top3_pitch_types(
-                df_prof, player_disp, hand_filter=prof_hand, season_label=season_label_prof
-            )
-            if fig_top3 is not None:
-                st.plotly_chart(fig_top3, use_container_width=True)
-
-            st.markdown("### Whiffs / Strikeouts / Damage")
-            type_col_for_hm = type_col_in_df(df_prof)
-            types_available_hm = (
-                df_prof.get(type_col_for_hm, pd.Series(dtype=object)).dropna().astype(str).unique().tolist()
-            )
-            types_available_hm = sorted(types_available_hm)
-            hm_selected = pitchtype_checkbox_grid(
-                "Filter Whiffs / Strikeouts / Damage by Pitch Type",
-                options=types_available_hm,
-                key_prefix="prof_hm_types",
-                default_all=True,
-                columns_per_row=6,
-            )
-            fig_outcomes = heatmaps_outcomes(
-                df_prof, player_disp, hand_filter=prof_hand, season_label=season_label_prof,
-                outcome_pitch_types=hm_selected,
-            )
-            if fig_outcomes:
-                show_and_close(fig_outcomes)
+                df_prof, player_disp, hand_filter=prof

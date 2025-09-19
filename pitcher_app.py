@@ -889,6 +889,84 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
     fig.update_layout(height=420, title_text=f"{canonicalize_person_name(pitcher_name)} — Top 3 Pitches ({season_label})",
                       title_x=0.5, margin=dict(l=10, r=10, t=60, b=10))
     return fig
+# ──────────────────────────────────────────────────────────────────────────────
+# PER-PA INTERACTIVE STRIKE ZONE (Plotly) — NEW
+# ──────────────────────────────────────────────────────────────────────────────
+def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
+    """
+    Plot a single-PA interactive strike zone using Plotly, with hover details.
+    Returns a figure or None if required columns are missing.
+    """
+    if pa_df is None or pa_df.empty:
+        return None
+
+    # Resolve columns consistently with the rest of the app
+    type_col = type_col_in_df(pa_df)
+    speed_col = pick_col(pa_df, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
+    ivb_col   = pick_col(pa_df, "InducedVertBreak","IVB","Induced Vert Break","IndVertBreak")
+    hb_col    = pick_col(pa_df, "HorzBreak","HorizontalBreak","HB","HorizBreak")
+    exit_col  = pick_col(pa_df, "ExitSpeed","Exit Velo","ExitVelocity","Exit_Velocity","ExitVel","EV","LaunchSpeed","Launch_Speed")
+    call_col  = pick_col(pa_df, "PitchCall","Pitch Call","Call") or "PitchCall"
+    pno_col   = pick_col(pa_df, "Pitch # in AB","PitchofPA","PitchOfPA","Pitch_of_PA","Pitch #")
+
+    # Plate location (required)
+    xs = pd.to_numeric(pa_df.get("PlateLocSide", pd.Series(dtype=float)), errors="coerce")
+    ys = pd.to_numeric(pa_df.get("PlateLocHeight", pd.Series(dtype=float)), errors="coerce")
+    if xs.isna().all() or ys.isna().all():
+        return None
+
+    # Axis ranges + zone shapes
+    x_min, x_max, y_min, y_max = get_view_bounds()
+    fig = make_subplots(rows=1, cols=1, shared_xaxes=True, shared_yaxes=True)
+    for shp in _zone_shapes_for_subplot():
+        fig.add_shape(shp, row=1, col=1)
+
+    # Build hoverdata
+    cd = np.column_stack([
+        pa_df.get(type_col, pd.Series(dtype=object)).astype(str).values if type_col else np.array([""]*len(pa_df)),
+        pd.to_numeric(pa_df.get(speed_col, pd.Series(dtype=float)), errors="coerce").values if speed_col else np.full(len(pa_df), np.nan),
+        pd.to_numeric(pa_df.get(ivb_col,   pd.Series(dtype=float)), errors="coerce").values if ivb_col   else np.full(len(pa_df), np.nan),
+        pd.to_numeric(pa_df.get(hb_col,    pd.Series(dtype=float)), errors="coerce").values if hb_col    else np.full(len(pa_df), np.nan),
+        pa_df.get(call_col, pd.Series(dtype=object)).astype(str).values if call_col else np.array([""]*len(pa_df)),
+        pd.to_numeric(pa_df.get(exit_col,  pd.Series(dtype=float)), errors="coerce").values if exit_col  else np.full(len(pa_df), np.nan),
+        pd.to_numeric(pa_df.get(pno_col,   pd.Series(dtype=float)), errors="coerce").values if pno_col   else np.full(len(pa_df), np.nan),
+    ])
+
+    # Color per pitch type (fallback single color if missing)
+    if type_col and type_col in pa_df.columns:
+        colors = [get_pitch_color(t) for t in pa_df[type_col].astype(str).tolist()]
+    else:
+        colors = [HUSKER_RED] * len(pa_df)
+
+    fig.add_trace(
+        go.Scattergl(
+            x=xs, y=ys,
+            mode="markers+text",
+            text=[str(int(n)) if pd.notna(n) else "" for n in cd[:,6]],  # pitch # in AB labels
+            textposition="top center",
+            marker=dict(size=10, line=dict(width=0.5, color="black"), color=colors),
+            customdata=cd,
+            hovertemplate=(
+                "Pitch Type: %{customdata[0]}<br>"
+                "RelSpeed: %{customdata[1]:.1f} mph<br>"
+                "IVB: %{customdata[2]:.1f}\"<br>"
+                "HB: %{customdata[3]:.1f}\"<br>"
+                "Result: %{customdata[4]}<br>"
+                "Exit Velo: %{customdata[5]:.1f} mph<br>"
+                "Pitch # in AB: %{customdata[6]:.0f}<br>"
+                "x: %{x:.2f}  y: %{y:.2f}<extra></extra>"
+            ),
+            showlegend=False,
+            name=""
+        ),
+        row=1, col=1
+    )
+
+    fig.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
+    fig.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
+
+    fig.update_layout(height=360, title_text=(title or "PA Strike Zone"), title_x=0.5, margin=dict(l=10, r=10, t=48, b=10))
+    return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
 # OUTCOME HEATMAPS (Matplotlib scatter-only)

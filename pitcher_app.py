@@ -1999,6 +1999,12 @@ with tabs[0]:
                                 st.table(themed_table(g[cols_pitch]))
                             else:
                                 st.table(themed_table(g))
+                # ── NEW: interactive strikezone for THIS PA ─────────────────────
+                _pa_id = f"{'' if pd.isna(pa) else int(pa)}"
+                _title = f"PA {_pa_id} – Strike Zone"
+                fig_pa = pa_interactive_strikezone(g, title=_title)
+                if fig_pa:
+                    st.plotly_chart(fig_pa, use_container_width=True)
 
             csv = pbp.to_csv(index=False).encode("utf-8")
             st.download_button(

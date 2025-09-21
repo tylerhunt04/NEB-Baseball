@@ -551,8 +551,14 @@ def build_profile_tables(df_profiles: pd.DataFrame):
 
     # Total rows
     core_total = _compute_split_core(df_profiles)
-    row_total_counts = {"Split": "Total", **{k: core_total[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]}}
-    row_total_rates  = {"Split": "Total", **{k: core_total[k] for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}}
+    row_total_counts = {
+        "Split": "Total",
+        **{k: core_total[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]}
+    }
+    row_total_rates  = {
+        "Split": "Total",
+        **{k: core_total[k] for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
+    }
 
     t1_rows = [row_total_counts]
     t2_rows = [row_total_rates]
@@ -566,22 +572,37 @@ def build_profile_tables(df_profiles: pd.DataFrame):
                 continue
             core = _compute_split_core(sub)
             nice = _pretty_pitch_name(raw_pitch)
-            t1_rows.append({"Split": nice, **{k: core[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]}})
-            t2_rows.append({"Split": nice, **{k: core[k] for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}})
+            t1_rows.append({
+                "Split": nice,
+                **{k: core[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]}
+            })
+            t2_rows.append({
+                "Split": nice,
+                **{k: core[k] for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
+            })
 
-    # DataFrames
-    t1 = pd.DataFrame(t1_rows, columns=["Split","PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"])
-    t2 = pd.DataFrame(t2_rows, columns=["Split","Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Chase%","ZSwing%","ZContact%","ZWhiff%"])
+    # DataFrames (NOTE: include "Whiff%" here to match the rows & later formatting)
+    t1 = pd.DataFrame(
+        t1_rows,
+        columns=["Split","PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]
+    )
+    t2 = pd.DataFrame(
+        t2_rows,
+        columns=["Split","Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]
+    )
 
     # Format t1 batting rates as .xxx (for tables)
     for c in ["AVG","OBP","SLG","OPS"]:
-        t1[c] = t1[c].apply(lambda v: "—" if pd.isna(v) else (f"{float(v):.3f}"[1:] if float(v) < 1.0 else f"{float(v):.3f}"))
+        if c in t1.columns:
+            t1[c] = t1[c].apply(lambda v: "—" if pd.isna(v) else (f"{float(v):.3f}"[1:] if float(v) < 1.0 else f"{float(v):.3f}"))
 
-    # Format t2: EV/LA with 2 decimals, percents 1 decimal
+    # Format t2: EV/LA with 2 decimals, percents 1 decimal (guard against missing cols)
     for c in ["Avg EV","Max EV","Avg LA"]:
-        t2[c] = t2[c].apply(lambda v: "—" if pd.isna(v) else f"{float(v):.2f}")
+        if c in t2.columns:
+            t2[c] = t2[c].apply(lambda v: "—" if pd.isna(v) else f"{float(v):.2f}")
     for c in ["HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]:
-        t2[c] = t2[c].apply(lambda v: "—" if pd.isna(v) else f"{round(float(v),1)}%")
+        if c in t2.columns:
+            t2[c] = t2[c].apply(lambda v: "—" if pd.isna(v) else f"{round(float(v),1)}%")
 
     # T3 batted ball totals only
     t3 = create_batted_ball_profile(df_profiles).copy()
@@ -589,6 +610,7 @@ def build_profile_tables(df_profiles: pd.DataFrame):
         t3[c] = t3[c].apply(lambda v: "—" if pd.isna(v) else f"{float(v):.1f}%")
 
     return t1, t2, t3
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # RANKINGS HELPERS

@@ -2191,51 +2191,92 @@ with tabs[2]:
             if fig_top3:
                 st.plotly_chart(fig_top3, use_container_width=True)
 # ──────────────────────────────────────────────────────────────────────────────
-# UI — Rankings tab
+# UI — Rankings tab  (click headers to sort; no sort dropdown)
+#   NOTE: make sure your tabs list includes "Rankings" and this is the correct index.
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[3]:
     st.markdown("#### Pitcher Rankings")
 
-    # Base population for rankings is the same segment you already selected (df_segment),
-    # but we restrict to NEB pitchers inside make_pitcher_rankings().
+    # Pitch-type filter (optional)
     type_col_all = type_col_in_df(df_segment)
     type_options = []
     if type_col_all in df_segment.columns:
         type_options = (df_segment[type_col_all]
                         .dropna().astype(str).sort_values().unique().tolist())
 
-    col_left, col_right = st.columns([2, 1])
-    with col_left:
-        types_selected = st.multiselect(
-            "Filter by Pitch Type (optional)",
-            options=type_options,
-            default=[],
-            help="Leave empty for all pitch types."
-        )
-    with col_right:
-        sort_metric = st.selectbox(
-            "Sort by",
-            options=["WHIP","SO","H9","Strike%","Whiff%","BB%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","App","H","HR","BB","HBP","IP"],
-            index=0
-        )
-        sort_asc = st.checkbox("Ascending", value=(sort_metric in {"BB%","H","HR","H9","WHIP"}))
+    types_selected = st.multiselect(
+        "Filter by Pitch Type (optional)",
+        options=type_options,
+        default=[],
+        help="Leave empty for all pitch types."
+    )
 
     ranks_df = make_pitcher_rankings(df_segment, pitch_types_filter=types_selected)
+
     if ranks_df.empty:
         st.info("No data available for rankings with the current filters.")
     else:
-        # Sorting (special-case IP to use numeric)
-        if sort_metric == "IP":
-            ranks_df = ranks_df.sort_values(["_IP_num"], ascending=sort_asc, na_position="last")
-        else:
-            ranks_df = ranks_df.sort_values([sort_metric, "SO"], ascending=[sort_asc, False], na_position="last")
+        # Default sort (users can click headers to re-sort)
+        ranks_df = ranks_df.sort_values(["WHIP","SO"], ascending=[True, False], na_position="last")
 
-        # Drop helper column
-        if "_IP_num" in ranks_df.columns:
-            ranks_df = ranks_df.drop(columns=["_IP_num"])
+        # Keep a copy for CSV before display-only tweaks
+        csv_rank = ranks_df.drop(columns=[c for c in ranks_df.columns if c.startswith("_")], errors="ignore")
 
-        # Nice formatting
-        st.table(themed_table(ranks_df))
-        csv_rank = ranks_df.to_csv(index=False).encode("utf-8")
-        st.download_button("Download rankings (CSV)", data=csv_rank,
-                           file_name="pitcher_rankings.csv", mime="text/csv")
+        # Drop helper col(s) from display
+        display_df = ranks_df.drop(columns=[c for c in ranks_df.columns if c.startswith("_")], errors="ignore").copy()
+
+        # Using st.dataframe gives clickable header sorting (ascending/descending toggles).
+        # Format numeric columns nicely.
+        percent_cols = ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%"]
+        two_dec_cols = ["WHIP","H9"]
+        int_cols     = ["App","H","HR","BB","HBP","SO"]
+
+        # Ensure dtypes for nicer rendering
+        for c in int_cols:
+            if c in display_df.columns:
+                display_df[c] = pd.to_numeric(display_df[c], errors="coerce").fillna(0).astype(int)
+        for c in two_dec_cols:
+            if c in display_df.columns:
+                display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(2)
+        for c in percent_cols:
+            if c in display_df.columns:
+                display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(1)
+
+        # Note: "IP" is shown in baseball notation (e.g., 5.2 for 5⅔). Header-click sorting
+        # will sort it lexicographically, not by true innings. If you want numeric sorting too,
+        # you can also display an extra column like "IP (outs)" or "IP (numeric)".
+
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Pitcher": st.column_config.TextColumn("Pitcher"),
+                "App":     st.column_config.NumberColumn("App", format="%d"),
+                "IP":      st.column_config.TextColumn("IP"),
+                "H":       st.column_config.NumberColumn("H", format="%d"),
+                "HR":      st.column_config.NumberColumn("HR", format="%d"),
+                "BB":      st.column_config.NumberColumn("BB", format="%d"),
+                "HBP":     st.column_config.NumberColumn("HBP", format="%d"),
+                "SO":      st.column_config.NumberColumn("SO", format="%d"),
+                "WHIP":    st.column_config.NumberColumn("WHIP", format="%.2f"),
+                "H9":      st.column_config.NumberColumn("H9", format="%.2f"),
+                "BB%":     st.column_config.NumberColumn("BB%", format="%.1f"),
+                "SO%":     st.column_config.NumberColumn("SO%", format="%.1f"),
+                "Strike%": st.column_config.NumberColumn("Strike%", format="%.1f"),
+                "HH%":     st.column_config.NumberColumn("HH%", format="%.1f"),
+                "Barrel%": st.column_config.NumberColumn("Barrel%", format="%.1f"),
+                "Zone%":   st.column_config.NumberColumn("Zone%", format="%.1f"),
+                "Zwhiff%": st.column_config.NumberColumn("Zwhiff%", format="%.1f"),
+                "Chase%":  st.column_config.NumberColumn("Chase%", format="%.1f"),
+                "Whiff%":  st.column_config.NumberColumn("Whiff%", format="%.1f"),
+            }
+        )
+
+        st.download_button(
+            "Download rankings (CSV)",
+            data=csv_rank.to_csv(index=False).encode("utf-8"),
+            file_name="pitcher_rankings.csv",
+            mime="text/csv"
+        )
+

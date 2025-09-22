@@ -781,6 +781,240 @@ def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame([row])
 
 # (You can paste your make_pitcher_outcome_summary_by_type and other profile helpers here if you use them)
+# ─── Rankings helpers ─────────────────────────────────────────────────────────
+def _first_present_strict(df: pd.DataFrame, names: list[str]) -> str | None:
+    for n in names:
+        if n in df.columns: return n
+    lower = {c.lower(): c for c in df.columns}
+    for n in names:
+        if n.lower() in lower: return lower[n.lower()]
+    return None
+
+def _to_float(s): return pd.to_numeric(s, errors="coerce")
+
+def _terminal_pa_table(df_in: pd.DataFrame) -> pd.DataFrame:
+    """Return one row per AB (terminal row), robust to your various column names."""
+    if df_in is None or df_in.empty: return df_in.iloc[0:0].copy()
+    work = add_inning_and_ab(df_in.copy())
+    col_result = _first_present_strict(work, ["PlayResult","Result","Event","PAResult","Outcome"])
+    col_call   = _first_present_strict(work, ["PitchCall","Pitch Call","PitchResult","Call"])
+    col_korbb  = _first_present_strict(work, ["KorBB","K_BB","KBB","K_or_BB","PA_KBB"])
+    for c in [col_result, col_call, col_korbb]:
+        if c and c in work.columns:
+            work[c] = work[c].fillna("").astype(str)
+
+    po_c = find_pitch_of_pa_col(work)
+    term_mask = work.apply(lambda r: _is_terminal_row(r, col_result, col_korbb, col_call), axis=1) \
+                if any([col_result, col_korbb, col_call]) else pd.Series(False, index=work.index)
+
+    def _pick_row_idx(g: pd.DataFrame) -> int:
+        gm = term_mask.loc[g.index]
+        if gm.any(): return gm[gm].index[-1]
+        if po_c and po_c in g.columns and g["Pitch # in AB"].notna().any():
+            return g["Pitch # in AB"].astype("Int64").idxmax()
+        return g.index[-1]
+
+    ab_rows_idx = work.groupby("AB #", sort=True, dropna=False).apply(_pick_row_idx).values
+    out = work.loc[ab_rows_idx].copy()
+    out["_PlayResult"] = out[col_result] if col_result else ""
+    out["_PitchCall"]  = out[col_call]   if col_call   else ""
+    out["_KorBB"]      = out[col_korbb]  if col_korbb  else ""
+    return out
+
+def _compute_IP_from_outs(total_outs: int) -> tuple[float, str]:
+    """Returns (IP_float_for_rates, IP_display_baseball) where display shows .1/.2 for 1/2 outs."""
+    ip_float = total_outs / 3.0
+    whole = total_outs // 3
+    rem   = total_outs % 3
+    ip_disp = f"{whole}.{rem}"  # baseball notation
+    return ip_float, ip_disp
+
+def _box_counts_from_PA(pa_df: pd.DataFrame) -> dict:
+    """Count H, HR, BB, SO, HBP, OUTS from PA-level terminal rows."""
+    if pa_df is None or pa_df.empty:
+        return dict(H=0, HR=0, BB=0, SO=0, HBP=0, OUTS=0)
+
+    PR = pa_df["_PlayResult"].astype(str).str.lower()
+    KC = pa_df["_KorBB"].astype(str).str.lower() if "_KorBB" in pa_df.columns else pd.Series([""]*len(pa_df), index=pa_df.index)
+    PC = pa_df["_PitchCall"].astype(str).str.lower() if "_PitchCall" in pa_df.columns else pd.Series([""]*len(pa_df), index=pa_df.index)
+
+    # Hits
+    is_single = PR.str.contains(r"\bsingle\b")
+    is_double = PR.str.contains(r"\bdouble\b")
+    is_triple = PR.str.contains(r"\btriple\b")
+    is_hr     = PR.str.contains(r"\bhome\s*run\b") | PR.eq("hr")
+
+    # BB / SO / HBP (with KorBB and PitchCall backups)
+    is_bb  = (PR.str.contains(r"\bwalk\b|intentional\s*walk|ib[bB]\b")
+              | KC.isin({"bb","walk","ibb","intentional walk"})
+              | KC.str.contains(r"\bwalk\b"))
+    is_so  = (PR.str.contains(r"strikeout")
+              | KC.isin({"k","so","strikeout","strikeout swinging","strikeout looking"}))
+    is_hbp = (PR.str.contains(r"hit\s*by\s*pitch")
+              | PC.isin({"hitbypitch","hit by pitch","hbp"}))
+
+    # Outs (heuristic from PlayResult text)
+    is_dp  = PR.str.contains("double play")
+    is_tp  = PR.str.contains("triple play")
+    is_outword = PR.str.contains("out") | PR.str.contains("groundout") | PR.str.contains("flyout") \
+                 | PR.str.contains("lineout") | PR.str.contains("popout") | PR.str.contains("forceout") \
+                 | PR.str.contains("fielder'?s choice") | PR.str.contains("reached on error and out")
+
+    outs = (is_so.astype(int)*1 + is_dp.astype(int)*2 + is_tp.astype(int)*3)
+    # Count 1 out for generic “out” rows that aren’t K/DP/TP and not hits/BB/HBP
+    base_hit_like = is_single | is_double | is_triple | is_hr | is_bb | is_hbp
+    outs += ((~base_hit_like) & is_outword & (~is_so) & (~is_dp) & (~is_tp)).astype(int)*1
+
+    return dict(
+        H = int((is_single | is_double | is_triple | is_hr).sum()),
+        HR= int(is_hr.sum()),
+        BB= int(is_bb.sum()),
+        SO= int(is_so.sum()),
+        HBP=int(is_hbp.sum()),
+        OUTS=int(outs.sum()),
+    )
+
+def _plate_metrics_detailed(sub: pd.DataFrame) -> dict:
+    """Return Zone%, Zwhiff%, Chase%, Whiff%, Strike% (all as 0..100 floats)."""
+    s_call = sub.get('PitchCall', pd.Series(dtype=object))
+    xs = _to_float(sub.get('PlateLocSide',   pd.Series(dtype=float)))
+    ys = _to_float(sub.get('PlateLocHeight', pd.Series(dtype=float)))
+
+    isswing   = s_call.isin(['StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
+    iswhiff   = s_call.eq('StrikeSwinging')
+    iscontact = s_call.isin(['InPlay','FoulBallNotFieldable','FoulBallFieldable'])
+
+    # Zone bounds consistent with your draw
+    z_left, z_bot, z_w, z_h = get_zone_bounds()
+    isinzone = xs.between(z_left, z_left+z_w) & ys.between(z_bot, z_bot+z_h)
+
+    total   = max(len(sub), 1)
+    swingsZ = max(int(isswing[isinzone].sum()), 0)
+
+    zone_pct   = 100.0 * float(isinzone.mean()) if len(sub) else np.nan
+    zwhiff_pct = 100.0 * (iswhiff[isinzone].sum() / swingsZ) if swingsZ > 0 else np.nan
+    chase_pct  = 100.0 * float(isswing[~isinzone].mean()) if (~isinzone).any() else np.nan
+    whiff_pct  = 100.0 * float(iswhiff.sum() / max(int(isswing.sum()),1)) if int(isswing.sum())>0 else np.nan
+    strike_pct = strike_rate(sub)  # uses your helper
+
+    return dict(ZonePct=zone_pct, ZwhiffPct=zwhiff_pct, ChasePct=chase_pct, WhiffPct=whiff_pct, StrikePct=strike_pct)
+
+def _hardhit_barrel_metrics(sub: pd.DataFrame) -> dict:
+    ev_col = _first_present_strict(sub, ["ExitSpeed","Exit Velo","ExitVelocity","Exit_Velocity","ExitVel","EV","LaunchSpeed","Launch_Speed"])
+    la_col = _first_present_strict(sub, ["LaunchAngle","Launch_Angle","LA","Angle","LaunchAngleDeg"])
+    call   = _first_present_strict(sub, ["PitchCall","Pitch Call","PitchResult","Call"])
+    if call is None: return dict(HardHitPct=np.nan, BarrelPct=np.nan)
+
+    inplay = sub[sub[call].astype(str).eq("InPlay")]
+    if ev_col:
+        ev = _to_float(inplay[ev_col]).dropna()
+        hh = float((ev >= 95).mean())*100 if len(ev) else np.nan
+    else:
+        hh = np.nan
+
+    # Simple barrel proxy: EV >= 98 & 26° <= LA <= 30°
+    if ev_col and la_col:
+        ev_all = _to_float(inplay[ev_col])
+        la_all = _to_float(inplay[la_col])
+        mask = ev_all.notna() & la_all.notna()
+        if mask.any():
+            barrel = (ev_all[mask] >= 98) & (la_all[mask].between(26, 30))
+            br = float(barrel.mean())*100 if len(barrel) else np.nan
+        else:
+            br = np.nan
+    else:
+        br = np.nan
+
+    return dict(HardHitPct=hh, BarrelPct=br)
+
+def make_pitcher_rankings(df_segment: pd.DataFrame, pitch_types_filter: list[str] | None = None) -> pd.DataFrame:
+    """
+    Build rankings across NEB pitchers with requested columns:
+    App, IP, H, HR, BB, HBP, SO, WHIP, H9, BB%, SO%, Strike%, HH%, Barrel%, Zone%, Zwhiff%, Chase%, Whiff%
+    """
+    if df_segment is None or df_segment.empty:
+        return pd.DataFrame()
+
+    # Restrict to NEB pitchers
+    base = df_segment[df_segment.get('PitcherTeam','') == 'NEB'].copy()
+    if base.empty: return pd.DataFrame()
+
+    type_col = type_col_in_df(base)
+    if pitch_types_filter is not None and len(pitch_types_filter) > 0 and type_col in base.columns:
+        base = base[base[type_col].astype(str).isin(pitch_types_filter)].copy()
+        if base.empty: return pd.DataFrame()
+
+    # Build Date column (already normalized earlier), and per-pitcher key/display
+    base['Date'] = pd.to_datetime(base['Date'], errors='coerce')
+    base["PitcherDisplay"] = base.get("Pitcher", pd.Series(dtype=object)).map(canonicalize_person_name)
+    base["PitcherKey"]     = base["PitcherDisplay"].str.lower()
+
+    rows = []
+    for pkey, sub in base.groupby("PitcherKey", dropna=False):
+        name = sub["PitcherDisplay"].iloc[0] if "PitcherDisplay" in sub.columns else str(pkey)
+
+        # Appearances
+        app = int(sub['Date'].dropna().dt.date.nunique())
+
+        # PA-level table for counting H/BB/SO/etc + outs → IP
+        pa = _terminal_pa_table(sub)
+        box = _box_counts_from_PA(pa)
+        outs = box["OUTS"]
+        ip_float, ip_disp = _compute_IP_from_outs(outs)
+
+        # Plate discipline + Strike%
+        pdm = _plate_metrics_detailed(sub)
+
+        # HardHit / Barrel
+        hhbm = _hardhit_barrel_metrics(sub)
+
+        # Derived
+        H, HR, BB, HBP, SO = box["H"], box["HR"], box["BB"], box["HBP"], box["SO"]
+        WHIP = (BB + H) / ip_float if ip_float > 0 else np.nan
+        H9   = (H * 9.0) / ip_float if ip_float > 0 else np.nan
+
+        rows.append({
+            "Pitcher": name,
+            "App": app,
+            "IP": ip_disp,                    # baseball display (e.g., 5.2)
+            "_IP_num": ip_float,              # keep numeric for sorting/ratios
+            "H": H, "HR": HR, "BB": BB, "HBP": HBP, "SO": SO,
+            "WHIP": WHIP, "H9": H9,
+            "BB%": (BB / max(len(pa),1))*100 if len(pa) else np.nan,
+            "SO%": (SO / max(len(pa),1))*100 if len(pa) else np.nan,
+            "Strike%": pdm["StrikePct"],
+            "HH%": hhbm["HardHitPct"],
+            "Barrel%": hhbm["BarrelPct"],
+            "Zone%": pdm["ZonePct"],
+            "Zwhiff%": pdm["ZwhiffPct"],
+            "Chase%": pdm["ChasePct"],
+            "Whiff%": pdm["WhiffPct"],
+        })
+
+    out = pd.DataFrame(rows)
+    if out.empty: return out
+
+    # Order & formatting
+    desired_order = ["Pitcher","App","IP","H","HR","BB","HBP","SO","WHIP","H9",
+                     "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%"]
+    for c in desired_order:
+        if c not in out.columns:
+            out[c] = np.nan
+    out = out[desired_order + ["_IP_num"]]
+
+    # Round numeric columns
+    for c in ["WHIP","H9"]:
+        out[c] = pd.to_numeric(out[c], errors="coerce").round(2)
+    for c in ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%"]:
+        out[c] = pd.to_numeric(out[c], errors="coerce").round(1)
+
+    # Integers
+    for c in ["App","H","HR","BB","HBP","SO"]:
+        out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0).astype(int)
+
+    # Default sort by WHIP asc, then SO desc
+    out = out.sort_values(["WHIP","SO"], ascending=[True, False], na_position="last").reset_index(drop=True)
+    return out
 
 # ─── Load data ────────────────────────────────────────────────────────────────
 def resolve_existing_path(candidates: list[str]) -> str | None:
@@ -1956,3 +2190,52 @@ with tabs[2]:
             )
             if fig_top3:
                 st.plotly_chart(fig_top3, use_container_width=True)
+# ──────────────────────────────────────────────────────────────────────────────
+# UI — Rankings tab
+# ──────────────────────────────────────────────────────────────────────────────
+with tabs[3]:
+    st.markdown("#### Pitcher Rankings")
+
+    # Base population for rankings is the same segment you already selected (df_segment),
+    # but we restrict to NEB pitchers inside make_pitcher_rankings().
+    type_col_all = type_col_in_df(df_segment)
+    type_options = []
+    if type_col_all in df_segment.columns:
+        type_options = (df_segment[type_col_all]
+                        .dropna().astype(str).sort_values().unique().tolist())
+
+    col_left, col_right = st.columns([2, 1])
+    with col_left:
+        types_selected = st.multiselect(
+            "Filter by Pitch Type (optional)",
+            options=type_options,
+            default=[],
+            help="Leave empty for all pitch types."
+        )
+    with col_right:
+        sort_metric = st.selectbox(
+            "Sort by",
+            options=["WHIP","SO","H9","Strike%","Whiff%","BB%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","App","H","HR","BB","HBP","IP"],
+            index=0
+        )
+        sort_asc = st.checkbox("Ascending", value=(sort_metric in {"BB%","H","HR","H9","WHIP"}))
+
+    ranks_df = make_pitcher_rankings(df_segment, pitch_types_filter=types_selected)
+    if ranks_df.empty:
+        st.info("No data available for rankings with the current filters.")
+    else:
+        # Sorting (special-case IP to use numeric)
+        if sort_metric == "IP":
+            ranks_df = ranks_df.sort_values(["_IP_num"], ascending=sort_asc, na_position="last")
+        else:
+            ranks_df = ranks_df.sort_values([sort_metric, "SO"], ascending=[sort_asc, False], na_position="last")
+
+        # Drop helper column
+        if "_IP_num" in ranks_df.columns:
+            ranks_df = ranks_df.drop(columns=["_IP_num"])
+
+        # Nice formatting
+        st.table(themed_table(ranks_df))
+        csv_rank = ranks_df.to_csv(index=False).encode("utf-8")
+        st.download_button("Download rankings (CSV)", data=csv_rank,
+                           file_name="pitcher_rankings.csv", mime="text/csv")

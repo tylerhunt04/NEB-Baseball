@@ -1084,7 +1084,7 @@ df_pitcher_all['Date'] = pd.to_datetime(df_pitcher_all['Date'], errors="coerce")
 appearances = int(df_pitcher_all['Date'].dropna().dt.date.nunique())
 st.subheader(f"{canonicalize_person_name(player_disp)} ({appearances} Appearances)")
 
-tabs = st.tabs(["Standard", "Compare", "Profiles, Rankings"])
+tabs = st.tabs(["Standard", "Compare", "Profiles", "Rankings"])
 
 # ─── STANDARD TAB ─────────────────────────────────────────────────────────────
 with tabs[0]:

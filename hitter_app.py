@@ -445,10 +445,10 @@ def _compute_split_core(df: pd.DataFrame) -> dict:
     max_ev = exitv[inplay].max()
     avg_la = angle[inplay].mean()
     hard   = (exitv[inplay] >= 95).mean()*100 if inplay.any() else 0.0
-
-    # Statcast Barrel% (BIP denominator)
+    
+    # College Barrel% (BIP denominator): EV ≥ 95 and 10°–35°
     if inplay.any():
-        barrel_mask = statcast_barrel_mask(exitv[inplay], angle[inplay])
+        barrel_mask = college_barrel_mask(exitv[inplay], angle[inplay])
         barrel = float(barrel_mask.mean()) * 100.0
     else:
         barrel = 0.0

@@ -900,26 +900,38 @@ def _plate_metrics_detailed(sub: pd.DataFrame) -> dict:
     return dict(ZonePct=zone_pct, ZwhiffPct=zwhiff_pct, ChasePct=chase_pct, WhiffPct=whiff_pct, StrikePct=strike_pct)
 
 def _hardhit_barrel_metrics(sub: pd.DataFrame) -> dict:
+    """
+    Returns HardHitPct and BarrelPct for a subset of pitches/batted balls.
+
+    Definitions:
+      • HardHitPct: share of balls in play with EV ≥ 95 mph
+      • BarrelPct (college): share of balls in play with EV ≥ 95 mph AND 10° ≤ LA ≤ 35°
+    Denominator for both = balls in play only.
+    """
     ev_col = _first_present_strict(sub, ["ExitSpeed","Exit Velo","ExitVelocity","Exit_Velocity","ExitVel","EV","LaunchSpeed","Launch_Speed"])
     la_col = _first_present_strict(sub, ["LaunchAngle","Launch_Angle","LA","Angle","LaunchAngleDeg"])
     call   = _first_present_strict(sub, ["PitchCall","Pitch Call","PitchResult","Call"])
-    if call is None: return dict(HardHitPct=np.nan, BarrelPct=np.nan)
+    if call is None:
+        return dict(HardHitPct=np.nan, BarrelPct=np.nan)
 
+    # Balls in play only
     inplay = sub[sub[call].astype(str).eq("InPlay")]
+
+    # Hard-hit %
     if ev_col:
-        ev = _to_float(inplay[ev_col]).dropna()
-        hh = float((ev >= 95).mean())*100 if len(ev) else np.nan
+        ev_bip = _to_float(inplay[ev_col]).dropna()
+        hh = float((ev_bip >= 95).mean()) * 100 if len(ev_bip) else np.nan
     else:
         hh = np.nan
 
-    # Simple barrel proxy: EV >= 98 & 26° <= LA <= 30°
+    # College barrel %: EV ≥ 95 and 10°–35° (inclusive), BIP denominator
     if ev_col and la_col:
         ev_all = _to_float(inplay[ev_col])
         la_all = _to_float(inplay[la_col])
         mask = ev_all.notna() & la_all.notna()
         if mask.any():
-            barrel = (ev_all[mask] >= 98) & (la_all[mask].between(26, 30))
-            br = float(barrel.mean())*100 if len(barrel) else np.nan
+            barrel_mask = (ev_all[mask] >= 95.0) & la_all[mask].between(10.0, 35.0, inclusive="both")
+            br = float(barrel_mask.mean()) * 100 if barrel_mask.size else np.nan
         else:
             br = np.nan
     else:

@@ -373,58 +373,19 @@ def create_batting_stats_profile(df: pd.DataFrame):
     return stats, pa, ab
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STATCAST BARREL MASK (EV-dependent LA windows, 98+ mph)
+# COLLEGE BARREL MASK (BIP denominator): EV ≥ 95 mph AND 10° ≤ LA ≤ 35°
 # ──────────────────────────────────────────────────────────────────────────────
-# Inclusive LA bounds for integer EV (mph). 116+ uses (8, 50).
-_STATCAST_BARREL_TABLE = {
-    98: (26, 30),
-    99: (25, 31),
-    100: (24, 33),
-    101: (23, 35),
-    102: (22, 36),
-    103: (21, 37),
-    104: (20, 38),
-    105: (19, 39),
-    106: (18, 40),
-    107: (17, 41),
-    108: (16, 42),
-    109: (15, 43),
-    110: (14, 44),
-    111: (13, 45),
-    112: (12, 46),
-    113: (11, 47),
-    114: (10, 48),
-    115: (9, 49),
-    # 116+ => (8, 50)
-}
-
-def statcast_barrel_mask(ev_series: pd.Series, la_series: pd.Series) -> pd.Series:
+def college_barrel_mask(ev_series: pd.Series, la_series: pd.Series) -> pd.Series:
     """
-    Vectorized Statcast barrel mask: EV ≥ 98 and LA within EV-dependent window.
-    ev_series, la_series: numeric (mph, degrees). Returns boolean Series.
+    Vectorized college barrel mask:
+    - Exit velocity ≥ 95 mph
+    - Launch angle between 10° and 35° (inclusive)
+    Returns a boolean Series aligned to the input index.
     """
-    ev = pd.to_numeric(ev_series, errors="coerce").to_numpy()
-    la = pd.to_numeric(la_series, errors="coerce").to_numpy()
-    n = len(ev)
+    ev = pd.to_numeric(ev_series, errors="coerce")
+    la = pd.to_numeric(la_series, errors="coerce")
+    return (ev >= 95.0) & la.between(10.0, 35.0, inclusive="both")
 
-    lo = np.full(n, np.nan, dtype=float)
-    hi = np.full(n, np.nan, dtype=float)
-
-    fin = np.isfinite(ev)
-    ev_int = np.full(n, -1, dtype=int)
-    ev_int[fin] = np.floor(ev[fin]).astype(int)
-
-    for mph, (l, h) in _STATCAST_BARREL_TABLE.items():
-        sel = fin & (ev_int == mph)
-        lo[sel] = float(l)
-        hi[sel] = float(h)
-
-    sel116 = fin & (ev >= 116.0)
-    lo[sel116] = 8.0
-    hi[sel116] = 50.0
-
-    ok = (ev >= 98.0) & np.isfinite(lo) & np.isfinite(hi) & np.isfinite(la)
-    return pd.Series(ok & (la >= lo) & (la <= hi), index=ev_series.index)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SPLIT METRICS (Totals & by pitch) + RANKINGS BASE

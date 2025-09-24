@@ -2239,6 +2239,9 @@ with tabs[3]:
         help="Leave empty for all pitch types."
     )
 
+    # Apply colors ONLY when no pitch type is selected (league avgs are "all pitches")
+    apply_colors = (len(types_selected) == 0)
+
     ranks_df = make_pitcher_rankings(df_segment, pitch_types_filter=types_selected)
 
     if ranks_df.empty:
@@ -2268,34 +2271,36 @@ with tabs[3]:
         for c in color_cols:
             display_df_num[c] = pd.to_numeric(display_df_num[c], errors="coerce")
 
-        # per-column std to scale intensity; clamp
-        col_scales = {}
-        for c in color_cols:
-            s = np.nanstd(display_df_num[c].to_numpy(dtype=float))
-            col_scales[c] = s if s and np.isfinite(s) and s > 0 else 1.0
-
-        greens = cm.get_cmap("Greens")  # 0→light, 1→dark
-        reds   = cm.get_cmap("Reds")
-        def _to_hex(rgba): return matplotlib.colors.to_hex((rgba[0], rgba[1], rgba[2]))
-
         styles = pd.DataFrame("", index=display_df_num.index, columns=display_df_num.columns)
-        for c in color_cols:
-            avg = LEAGUE_AVG.get(c, np.nan)
-            scale = float(col_scales[c])
-            lower_is_better = c in LOWER_BETTER
 
-            def cell_css(val):
-                if pd.isna(val) or pd.isna(avg) or scale <= 0:
-                    return "background-color: transparent;"
-                delta_better = (avg - val) if lower_is_better else (val - avg)  # >0 = better
-                if abs(delta_better) < 1e-12:
-                    return "background-color: transparent;"
-                t = np.clip(abs(delta_better) / (2.0 * scale), 0.0, 1.0)
-                t_scaled = 0.15 + 0.75 * t  # light near avg → dark far
-                rgba = greens(t_scaled) if delta_better > 0 else reds(t_scaled)
-                return f"background-color: {_to_hex(rgba)};"
+        if apply_colors:
+            # per-column std to scale intensity; clamp
+            col_scales = {}
+            for c in color_cols:
+                s = np.nanstd(display_df_num[c].to_numpy(dtype=float))
+                col_scales[c] = s if s and np.isfinite(s) and s > 0 else 1.0
 
-            styles[c] = display_df_num[c].apply(cell_css)
+            greens = cm.get_cmap("Greens")  # 0→light, 1→dark
+            reds   = cm.get_cmap("Reds")
+            def _to_hex(rgba): return matplotlib.colors.to_hex((rgba[0], rgba[1], rgba[2]))
+
+            for c in color_cols:
+                avg = LEAGUE_AVG.get(c, np.nan)
+                scale = float(col_scales[c])
+                lower_is_better = c in LOWER_BETTER
+
+                def cell_css(val):
+                    if pd.isna(val) or pd.isna(avg) or scale <= 0:
+                        return "background-color: transparent;"
+                    delta_better = (avg - val) if lower_is_better else (val - avg)  # >0 = better
+                    if abs(delta_better) < 1e-12:
+                        return "background-color: transparent;"
+                    t = np.clip(abs(delta_better) / (2.0 * scale), 0.0, 1.0)
+                    t_scaled = 0.15 + 0.75 * t  # light near avg → dark far
+                    rgba = greens(t_scaled) if delta_better > 0 else reds(t_scaled)
+                    return f"background-color: {_to_hex(rgba)};"
+
+                styles[c] = display_df_num[c].apply(cell_css)
         # ----------------------------------------------------------------
 
         # ------- Format the display values to your exact spec -------
@@ -2327,17 +2332,19 @@ with tabs[3]:
         right_subset = [c for c in numeric_right_cols if c in display_df_fmt.columns]
         # ------------------------------------------
 
-        # Build Styler with background colors + alignment; (styles aligns by index/columns)
+        # Build Styler, optionally applying backgrounds; index hidden for a clean look
+        styled = display_df_fmt.style.hide(axis="index")
+        if apply_colors:
+            styled = styled.apply(lambda _: styles, axis=None)
         styled = (
-            display_df_fmt.style
-            .hide(axis="index")
-            .apply(lambda _: styles, axis=None)
-            .set_properties(subset=pd.IndexSlice[:, right_subset], **{"text-align": "right"})
-            .set_properties(subset=pd.IndexSlice[:, ["Pitcher"]] if "Pitcher" in display_df_fmt.columns else pd.IndexSlice[:, []],
-                            **{"text-align": "left"})
+            styled.set_properties(subset=pd.IndexSlice[:, right_subset], **{"text-align": "right"})
+                  .set_properties(
+                      subset=pd.IndexSlice[:, ["Pitcher"]] if "Pitcher" in display_df_fmt.columns else pd.IndexSlice[:, []],
+                      **{"text-align": "left"}
+                  )
         )
 
-        # Show the colored, formatted, right-aligned table
+        # Show the table (colored when no pitch type selected; plain when filtered)
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
         st.download_button(
@@ -2346,3 +2353,4 @@ with tabs[3]:
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
+

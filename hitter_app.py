@@ -586,23 +586,21 @@ RANKABLE_COLS = [
 ]
 
 def build_rankings_numeric(df_player_scope: pd.DataFrame, display_name_by_key: dict) -> pd.DataFrame:
-    """
-    Build one NUMERIC row per BatterKey for rankings (click-column sorting).
-    Slash stats remain numeric (0.xxx) to enable correct sorting.
-    """
     rows = []
     for key, g in df_player_scope.groupby("BatterKey"):
         if not key:
             continue
         core = _compute_split_core(g)
-        rows.append({
-            "Player": display_name_by_key.get(key, key),
-            **{k: core[k] for k in RANKABLE_COLS}
-        })
+        #  ⬇️ use .get(...) to avoid KeyError if any column is missing
+        row = {"Player": display_name_by_key.get(key, key)}
+        row.update({k: core.get(k, np.nan) for k in RANKABLE_COLS})
+        rows.append(row)
+
     out = pd.DataFrame(rows, columns=["Player"] + RANKABLE_COLS)
     for c in RANKABLE_COLS:
         out[c] = pd.to_numeric(out[c], errors="coerce")
     return out
+
 
 def style_rankings(df: pd.DataFrame):
     """

@@ -2202,91 +2202,28 @@ with tabs[2]:
             )
             if fig_top3:
                 st.plotly_chart(fig_top3, use_container_width=True)
-# ─── League averages & styling helper for Rankings ────────────────────────────
-LEAGUE_AVG = {
-    "Whiff%": 23.0,
-    "Chase%": 24.3,
-    "Zwhiff%": 15.7,
-    "Zone%": 45.5,
-    "Barrel%": 17.3,
-    "HH%": 36.0,
-    "Strike%": 60.7,
-    "SO%": 19.3,
-    "BB%": 11.3,
-    "WHIP": 1.64,
-    "H9": 9.90,
-}
-LOWER_BETTER = {"Barrel%", "HH%", "BB%", "WHIP", "H9"}
-
-def style_rankings_by_league_avg(display_df: pd.DataFrame) -> pd.io.formats.style.Styler:
-    """
-    Color cells by deviation from league average.
-      • Green as performance improves relative to the average.
-      • Red as performance worsens relative to the average.
-      • White at the average.
-    Scaling is data-driven (per-column std); clamped to ±2σ so outliers don’t saturate everything.
-    """
-    import matplotlib
-    import numpy as np
-
-    # Ensure numeric types for the columns we’ll color
-    cols_target = [c for c in [
-        "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%","WHIP","H9"
-    ] if c in display_df.columns]
-
-    for c in cols_target:
-        display_df[c] = pd.to_numeric(display_df[c], errors="coerce")
-
-    # Build a per-cell color map
-    cmap = matplotlib.cm.get_cmap("RdYlGn")  # red→yellow→green
-    def color_cell(val, avg, lower_is_better, scale):
-        if pd.isna(val) or pd.isna(avg) or scale <= 0:
-            return "background-color: transparent;"
-        # delta is "how much better than avg" (positive=better)
-        delta = (avg - val) if lower_is_better else (val - avg)
-        # normalize to [0,1] with 0.5=avg (white), clamp ±2σ
-        x = 0.5 + 0.5 * np.clip(delta / (2.0*scale), -1, 1)
-        r, g, b, _ = cmap(x)
-        hex_color = matplotlib.colors.to_hex((r, g, b))
-        return f"background-color: {hex_color};"
-
-    # Precompute column scales (std dev)
-    col_scales = {}
-    for c in cols_target:
-        s = np.nanstd(display_df[c].to_numpy(dtype=float))
-        col_scales[c] = s if s and np.isfinite(s) and s > 0 else 1.0  # avoid zero/NaN
-
-    # Create style DataFrame of same shape with CSS strings
-    styles = pd.DataFrame("", index=display_df.index, columns=display_df.columns)
-    for c in cols_target:
-        avg = LEAGUE_AVG.get(c)
-        lower_is_better = c in LOWER_BETTER
-        scale = col_scales[c]
-        styles[c] = display_df[c].apply(lambda v: color_cell(v, avg, lower_is_better, scale))
-
-    # Keep your numeric formatting
-    styler = display_df.style.hide(axis="index")
-    # Two-decimal metrics
-    for c in ["WHIP","H9"]:
-        if c in display_df.columns:
-            styler = styler.format({c: "{:.2f}"})
-    # One-decimal percentage metrics
-    for c in ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%"]:
-        if c in display_df.columns:
-            styler = styler.format({c: "{:.1f}"})
-
-    # Apply background colors
-    styler = styler.apply(lambda _: styles, axis=None)
-
-    # Bold the league average row if you add one later; for now, just return
-    return styler
-
 # ──────────────────────────────────────────────────────────────────────────────
 # UI — Rankings tab  (click headers to sort; no sort dropdown)
 #   NOTE: make sure your tabs list includes "Rankings" and this is the correct index.
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[3]:
     st.markdown("#### Pitcher Rankings")
+
+    # League averages & which metrics are "lower is better"
+    LEAGUE_AVG = {
+        "Whiff%": 23.0,
+        "Chase%": 24.3,
+        "Zwhiff%": 15.7,
+        "Zone%": 45.5,
+        "Barrel%": 17.3,
+        "HH%": 36.0,
+        "Strike%": 60.7,
+        "SO%": 19.3,
+        "BB%": 11.3,
+        "WHIP": 1.64,
+        "H9": 9.90,
+    }
+    LOWER_BETTER = {"Barrel%", "HH%", "BB%", "WHIP", "H9"}
 
     # Pitch-type filter (optional)
     type_col_all = type_col_in_df(df_segment)
@@ -2316,29 +2253,87 @@ with tabs[3]:
         # Drop helper col(s) from display
         display_df = ranks_df.drop(columns=[c for c in ranks_df.columns if c.startswith("_")], errors="ignore").copy()
 
-        # Using st.dataframe gives clickable header sorting (ascending/descending toggles).
-        # Format numeric columns nicely.
-        percent_cols = ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%"]
-        two_dec_cols = ["WHIP","H9"]
-        int_cols     = ["App","H","HR","BB","HBP","SO"]
-
-        # Ensure dtypes for nicer rendering
-        for c in int_cols:
-            if c in display_df.columns:
-                display_df[c] = pd.to_numeric(display_df[c], errors="coerce").fillna(0).astype(int)
-        for c in two_dec_cols:
-            if c in display_df.columns:
-                display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(2)
-        for c in percent_cols:
+        # ----- Force display rounding BEFORE styling (so Streamlit shows rounded values) -----
+        round_1 = ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%"]
+        round_2 = ["WHIP","H9"]
+        for c in round_1:
             if c in display_df.columns:
                 display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(1)
+        for c in round_2:
+            if c in display_df.columns:
+                display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(2)
+        # -------------------------------------------------------------------------------------
 
-        # Note: "IP" is shown in baseball notation (e.g., 5.2 for 5⅔). Header-click sorting
-        # will sort it lexicographically, not by true innings. If you want numeric sorting too,
-        # you can also display an extra column like "IP (outs)" or "IP (numeric)".
+        # ----- Build cell background colors: light→dark green for better; light→dark red for worse -----
+        import numpy as np
+        import matplotlib
+        import matplotlib.cm as cm
 
-        # NEW: build the colored Styler and show it
-styled = style_rankings_by_league_avg(display_df.copy())
-st.dataframe(styled, use_container_width=True, hide_index=True)
+        # target columns to color
+        cols_target = [c for c in [
+            "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%","WHIP","H9"
+        ] if c in display_df.columns]
 
+        # ensure numeric for calculations
+        for c in cols_target:
+            display_df[c] = pd.to_numeric(display_df[c], errors="coerce")
 
+        # per-column scale = std dev (clamped) to set how fast colors deepen
+        col_scales = {}
+        for c in cols_target:
+            s = np.nanstd(display_df[c].to_numpy(dtype=float))
+            col_scales[c] = s if s and np.isfinite(s) and s > 0 else 1.0
+
+        greens = cm.get_cmap("Greens")  # 0→light, 1→dark
+        reds   = cm.get_cmap("Reds")
+
+        def _to_hex(rgba):
+            return matplotlib.colors.to_hex((rgba[0], rgba[1], rgba[2]))
+
+        # Build a style frame with CSS background-color for the colored columns
+        styles = pd.DataFrame("", index=display_df.index, columns=display_df.columns)
+        for c in cols_target:
+            avg = LEAGUE_AVG.get(c, np.nan)
+            scale = float(col_scales[c])
+            lower_is_better = c in LOWER_BETTER
+
+            def cell_css(val):
+                if pd.isna(val) or pd.isna(avg) or scale <= 0:
+                    return "background-color: transparent;"
+                # delta_better > 0 means "better than average"
+                delta_better = (avg - val) if lower_is_better else (val - avg)
+
+                if abs(delta_better) < 1e-12:
+                    # exactly at average → no color
+                    return "background-color: transparent;"
+
+                # Normalize magnitude: 0 near avg (light), 1 = far (dark), clamp to ±2σ
+                t = np.clip(abs(delta_better) / (2.0 * scale), 0.0, 1.0)
+                # avoid ultra-pale (close to white) but keep clearly light near avg
+                t_scaled = 0.15 + 0.75 * t  # maps [0..1] → [0.15..0.90]
+
+                if delta_better > 0:
+                    rgba = greens(t_scaled)   # better → green
+                else:
+                    rgba = reds(t_scaled)     # worse  → red
+                return f"background-color: {_to_hex(rgba)};"
+
+            styles[c] = display_df[c].apply(cell_css)
+        # -----------------------------------------------------------------------------------------------
+
+        # Build Styler with our background colors; index hidden for a clean look
+        styled = (
+            display_df.style
+            .hide(axis="index")
+            .apply(lambda _: styles, axis=None)
+        )
+
+        # Show the colored table. If your Streamlit ignores Styler colors in dataframe, use st.table(styled)
+        st.dataframe(styled, use_container_width=True, hide_index=True)
+
+        st.download_button(
+            "Download rankings (CSV)",
+            data=csv_rank.to_csv(index=False).encode("utf-8"),
+            file_name="pitcher_rankings.csv",
+            mime="text/csv"
+        )

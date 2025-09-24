@@ -2239,7 +2239,7 @@ with tabs[3]:
         help="Leave empty for all pitch types."
     )
 
-    # Apply colors ONLY when no pitch type is selected (league avgs are "all pitches")
+    # Colors apply ONLY when no pitch type is selected (league avgs are for all pitches)
     apply_colors = (len(types_selected) == 0)
 
     ranks_df = make_pitcher_rankings(df_segment, pitch_types_filter=types_selected)
@@ -2266,7 +2266,6 @@ with tabs[3]:
             "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%","WHIP","H9"
         ] if c in display_df.columns]
 
-        # numeric copy for calculations only
         display_df_num = display_df.copy()
         for c in color_cols:
             display_df_num[c] = pd.to_numeric(display_df_num[c], errors="coerce")
@@ -2303,9 +2302,7 @@ with tabs[3]:
                 styles[c] = display_df_num[c].apply(cell_css)
         # ----------------------------------------------------------------
 
-        # ------- Format the display values to your exact spec -------
-        #   • WHIP → 3 decimals (e.g., 1.340)
-        #   • H9, all % columns → 1 decimal (e.g., 9.9, 17.3)
+        # ------- Format display values exactly as requested -------
         display_df_fmt = display_df.copy()
 
         fmt_1_dec = ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%","H9"]
@@ -2324,22 +2321,18 @@ with tabs[3]:
                 display_df_fmt[c] = pd.to_numeric(display_df_fmt[c], errors="coerce").fillna(0).astype(int)
         # ----------------------------------------------------------------
 
-        # ------- Right-align numeric columns & hug right edge -------
+        # ------- Right-align numeric columns & hug the right edge -------
         numeric_right_cols = (
             ["App","H","HR","BB","HBP","SO","WHIP","H9",
              "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%"]
         )
         right_subset = [c for c in numeric_right_cols if c in display_df_fmt.columns]
-
-        # small right padding so numbers visually "hug" the border; tiny left pad
         PAD_RIGHT_PX = 4
         PAD_LEFT_PX  = 6  # for Pitcher column readability
         # ----------------------------------------------------------------
 
-        # Build Styler; apply optional backgrounds; then alignment & padding
+        # Build Styler; apply optional backgrounds; alignment & padding
         styled = display_df_fmt.style.hide(axis="index")
-
-        # Global small vertical padding (keeps rows tight) and header alignment
         styled = styled.set_table_styles([
             {"selector": "th", "props": [("text-align", "center"), ("padding", "6px 6px")]},
             {"selector": "td", "props": [("padding-top", "4px"), ("padding-bottom", "4px")]},
@@ -2348,7 +2341,6 @@ with tabs[3]:
         if apply_colors:
             styled = styled.apply(lambda _: styles, axis=None)
 
-        # Right-align numeric columns with minimal right padding; keep Pitcher left
         if right_subset:
             styled = styled.set_properties(
                 subset=pd.IndexSlice[:, right_subset],
@@ -2360,8 +2352,51 @@ with tabs[3]:
                 **{"text-align": "left", "padding-left": f"{PAD_LEFT_PX}px"}
             )
 
-        # Show the table
-        st.dataframe(styled, use_container_width=True, hide_index=True)
+        # Render:
+        # • With colors → st.table (ensures CSS alignment/backgrounds apply)
+        # • Without colors → st.dataframe with numeric types for sorting & native right align
+        if apply_colors:
+            st.table(styled)
+        else:
+            df_numeric = display_df.copy()
+            # keep integers numeric
+            for c in ["App","H","HR","BB","HBP","SO"]:
+                if c in df_numeric.columns:
+                    df_numeric[c] = pd.to_numeric(df_numeric[c], errors="coerce").fillna(0).astype(int)
+            # keep numeric for formats
+            if "WHIP" in df_numeric.columns:
+                df_numeric["WHIP"] = pd.to_numeric(df_numeric["WHIP"], errors="coerce").round(3)
+            if "H9" in df_numeric.columns:
+                df_numeric["H9"] = pd.to_numeric(df_numeric["H9"], errors="coerce").round(1)
+            for c in ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%"]:
+                if c in df_numeric.columns:
+                    df_numeric[c] = pd.to_numeric(df_numeric[c], errors="coerce").round(1)
+
+            st.dataframe(
+                df_numeric.drop(columns=[col for col in df_numeric.columns if col.startswith("_")], errors="ignore"),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Pitcher": st.column_config.TextColumn("Pitcher"),
+                    "App":     st.column_config.NumberColumn("App", format="%d"),
+                    "H":       st.column_config.NumberColumn("H", format="%d"),
+                    "HR":      st.column_config.NumberColumn("HR", format="%d"),
+                    "BB":      st.column_config.NumberColumn("BB", format="%d"),
+                    "HBP":     st.column_config.NumberColumn("HBP", format="%d"),
+                    "SO":      st.column_config.NumberColumn("SO", format="%d"),
+                    "WHIP":    st.column_config.NumberColumn("WHIP", format="%.3f"),
+                    "H9":      st.column_config.NumberColumn("H9", format="%.1f"),
+                    "BB%":     st.column_config.NumberColumn("BB%", format="%.1f"),
+                    "SO%":     st.column_config.NumberColumn("SO%", format="%.1f"),
+                    "Strike%": st.column_config.NumberColumn("Strike%", format="%.1f"),
+                    "HH%":     st.column_config.NumberColumn("HH%", format="%.1f"),
+                    "Barrel%": st.column_config.NumberColumn("Barrel%", format="%.1f"),
+                    "Zone%":   st.column_config.NumberColumn("Zone%", format="%.1f"),
+                    "Zwhiff%": st.column_config.NumberColumn("Zwhiff%", format="%.1f"),
+                    "Whiff%":  st.column_config.NumberColumn("Whiff%", format="%.1f"),
+                    "Chase%":  st.column_config.NumberColumn("Chase%", format="%.1f"),
+                },
+            )
 
         st.download_button(
             "Download rankings (CSV)",
@@ -2369,4 +2404,5 @@ with tabs[3]:
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
+
 

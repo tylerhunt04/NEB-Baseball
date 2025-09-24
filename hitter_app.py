@@ -658,13 +658,14 @@ def style_rankings(df: pd.DataFrame):
           ])
           .apply(color_leader_last, axis=0)
           .format({
-              "PA":"{:.0f}", "AB":"{:.0f}", "SO":"{:.0f}", "BB":"{:.0f}",
-              "Hits":"{:.0f}", "2B":"{:.0f}", "3B":"{:.0f}", "HR":"{:.0f}",
-              "AVG":"{:.3f}", "OBP":"{:.3f}", "SLG":"{:.3f}", "OPS":"{:.3f}",
-              "Avg EV":"{:.2f}", "Max EV":"{:.2f}",
-              "HardHit%":"{:.1f}%", "Barrel%":"{:.1f}%",
-              "ZWhiff%":"{:.1f}%", "Chase%":"{:.1f}%, "Whiff%":"{:.1f}%"
-          }, na_rep="—")
+    "PA":"{:.0f}", "AB":"{:.0f}", "SO":"{:.0f}", "BB":"{:.0f}",
+    "Hits":"{:.0f}", "2B":"{:.0f}", "3B":"{:.0f}", "HR":"{:.0f}",
+    "AVG":"{:.3f}", "OBP":"{:.3f}", "SLG":"{:.3f}", "OPS":"{:.3f}",
+    "Avg EV":"{:.2f}", "Max EV":"{:.2f}",
+    "HardHit%":"{:.1f}%", "Barrel%":"{:.1f}%",
+    "ZWhiff%":"{:.1f}%", "Chase%":"{:.1f}%", "Whiff%":"{:.1f}%"  # ← added
+}, na_rep="—")
+
     )
     return sty
 

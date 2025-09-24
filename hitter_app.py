@@ -1096,13 +1096,13 @@ elif view_mode == "Profiles & Heatmaps":
 
         t1_counts, t2_rates, t3_batted = build_profile_tables(df_profiles)
 
-        st.markdown("**Totals & By Pitch — PA/AB/SO/BB/Hits/2B/3B/HR & AVG/OBP/SLG/OPS**")
+        st.markdown("**Summary**")
         st.table(themed_styler(t1_counts, nowrap=True))
 
-        st.markdown("**Totals & By Pitch — EV/LA & Discipline**")
+        st.markdown("**Plate Discipline**")
         st.table(themed_styler(t2_rates, nowrap=True))
 
-        st.markdown("**Batted Ball Distribution (Totals only)**")
+        st.markdown("**Batted Ball Distribution**")
         st.table(themed_styler(t3_batted, nowrap=True))
 
         st.markdown("#### Hitter Heatmaps")

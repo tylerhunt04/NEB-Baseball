@@ -611,7 +611,7 @@ def style_rankings(df: pd.DataFrame):
       • Special-case SO, ZWhiff%, Chase%: higher = red, lower = green
     """
     numeric_cols = [c for c in RANKABLE_COLS if c in df.columns]
-    inverted_cols = {"SO", "ZWhiff%", "Chase%"}  # ← higher is worse for these
+    inverted_cols = {"SO", "ZWhiff%", "Chase%, Whiff%"}  # ← higher is worse for these
 
     def color_leader_last(col: pd.Series):
         if col.name not in numeric_cols:
@@ -663,7 +663,7 @@ def style_rankings(df: pd.DataFrame):
               "AVG":"{:.3f}", "OBP":"{:.3f}", "SLG":"{:.3f}", "OPS":"{:.3f}",
               "Avg EV":"{:.2f}", "Max EV":"{:.2f}",
               "HardHit%":"{:.1f}%", "Barrel%":"{:.1f}%",
-              "ZWhiff%":"{:.1f}%", "Chase%":"{:.1f}%"
+              "ZWhiff%":"{:.1f}%", "Chase%":"{:.1f}%, "Whiff%":"{:.1f}%"
           }, na_rep="—")
     )
     return sty

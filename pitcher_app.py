@@ -2202,6 +2202,85 @@ with tabs[2]:
             )
             if fig_top3:
                 st.plotly_chart(fig_top3, use_container_width=True)
+# ─── League averages & styling helper for Rankings ────────────────────────────
+LEAGUE_AVG = {
+    "Whiff%": 23.0,
+    "Chase%": 24.3,
+    "Zwhiff%": 15.7,
+    "Zone%": 45.5,
+    "Barrel%": 17.3,
+    "HH%": 36.0,
+    "Strike%": 60.7,
+    "SO%": 19.3,
+    "BB%": 11.3,
+    "WHIP": 1.64,
+    "H9": 9.90,
+}
+LOWER_BETTER = {"Barrel%", "HH%", "BB%", "WHIP", "H9"}
+
+def style_rankings_by_league_avg(display_df: pd.DataFrame) -> pd.io.formats.style.Styler:
+    """
+    Color cells by deviation from league average.
+      • Green as performance improves relative to the average.
+      • Red as performance worsens relative to the average.
+      • White at the average.
+    Scaling is data-driven (per-column std); clamped to ±2σ so outliers don’t saturate everything.
+    """
+    import matplotlib
+    import numpy as np
+
+    # Ensure numeric types for the columns we’ll color
+    cols_target = [c for c in [
+        "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%","WHIP","H9"
+    ] if c in display_df.columns]
+
+    for c in cols_target:
+        display_df[c] = pd.to_numeric(display_df[c], errors="coerce")
+
+    # Build a per-cell color map
+    cmap = matplotlib.cm.get_cmap("RdYlGn")  # red→yellow→green
+    def color_cell(val, avg, lower_is_better, scale):
+        if pd.isna(val) or pd.isna(avg) or scale <= 0:
+            return "background-color: transparent;"
+        # delta is "how much better than avg" (positive=better)
+        delta = (avg - val) if lower_is_better else (val - avg)
+        # normalize to [0,1] with 0.5=avg (white), clamp ±2σ
+        x = 0.5 + 0.5 * np.clip(delta / (2.0*scale), -1, 1)
+        r, g, b, _ = cmap(x)
+        hex_color = matplotlib.colors.to_hex((r, g, b))
+        return f"background-color: {hex_color};"
+
+    # Precompute column scales (std dev)
+    col_scales = {}
+    for c in cols_target:
+        s = np.nanstd(display_df[c].to_numpy(dtype=float))
+        col_scales[c] = s if s and np.isfinite(s) and s > 0 else 1.0  # avoid zero/NaN
+
+    # Create style DataFrame of same shape with CSS strings
+    styles = pd.DataFrame("", index=display_df.index, columns=display_df.columns)
+    for c in cols_target:
+        avg = LEAGUE_AVG.get(c)
+        lower_is_better = c in LOWER_BETTER
+        scale = col_scales[c]
+        styles[c] = display_df[c].apply(lambda v: color_cell(v, avg, lower_is_better, scale))
+
+    # Keep your numeric formatting
+    styler = display_df.style.hide(axis="index")
+    # Two-decimal metrics
+    for c in ["WHIP","H9"]:
+        if c in display_df.columns:
+            styler = styler.format({c: "{:.2f}"})
+    # One-decimal percentage metrics
+    for c in ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%"]:
+        if c in display_df.columns:
+            styler = styler.format({c: "{:.1f}"})
+
+    # Apply background colors
+    styler = styler.apply(lambda _: styles, axis=None)
+
+    # Bold the league average row if you add one later; for now, just return
+    return styler
+
 # ──────────────────────────────────────────────────────────────────────────────
 # UI — Rankings tab  (click headers to sort; no sort dropdown)
 #   NOTE: make sure your tabs list includes "Rankings" and this is the correct index.

@@ -582,7 +582,7 @@ RANKABLE_COLS = [
     "PA","AB","SO","BB","Hits","2B","3B","HR",
     "AVG","OBP","SLG","OPS",
     "Avg EV","Max EV","HardHit%","Barrel%",
-    "ZWhiff%","Chase%"
+    "ZWhiff%","Chase%, Whiff%"
 ]
 
 def build_rankings_numeric(df_player_scope: pd.DataFrame, display_name_by_key: dict) -> pd.DataFrame:

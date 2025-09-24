@@ -2253,46 +2253,33 @@ with tabs[3]:
         # Drop helper col(s) from display
         display_df = ranks_df.drop(columns=[c for c in ranks_df.columns if c.startswith("_")], errors="ignore").copy()
 
-        # ----- Force display rounding BEFORE styling (so Streamlit shows rounded values) -----
-        round_1 = ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%"]
-        round_2 = ["WHIP","H9"]
-        for c in round_1:
-            if c in display_df.columns:
-                display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(1)
-        for c in round_2:
-            if c in display_df.columns:
-                display_df[c] = pd.to_numeric(display_df[c], errors="coerce").round(2)
-        # -------------------------------------------------------------------------------------
-
-        # ----- Build cell background colors: light→dark green for better; light→dark red for worse -----
+        # ------- Build colors on numeric data (no formatting yet) -------
         import numpy as np
         import matplotlib
         import matplotlib.cm as cm
+        import pandas as pd
 
-        # target columns to color
-        cols_target = [c for c in [
-            "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Chase%","Whiff%","WHIP","H9"
+        color_cols = [c for c in [
+            "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%","WHIP","H9"
         ] if c in display_df.columns]
 
-        # ensure numeric for calculations
-        for c in cols_target:
-            display_df[c] = pd.to_numeric(display_df[c], errors="coerce")
+        # numeric copy for calculations only
+        display_df_num = display_df.copy()
+        for c in color_cols:
+            display_df_num[c] = pd.to_numeric(display_df_num[c], errors="coerce")
 
-        # per-column scale = std dev (clamped) to set how fast colors deepen
+        # per-column std to scale intensity; clamp
         col_scales = {}
-        for c in cols_target:
-            s = np.nanstd(display_df[c].to_numpy(dtype=float))
+        for c in color_cols:
+            s = np.nanstd(display_df_num[c].to_numpy(dtype=float))
             col_scales[c] = s if s and np.isfinite(s) and s > 0 else 1.0
 
         greens = cm.get_cmap("Greens")  # 0→light, 1→dark
         reds   = cm.get_cmap("Reds")
+        def _to_hex(rgba): return matplotlib.colors.to_hex((rgba[0], rgba[1], rgba[2]))
 
-        def _to_hex(rgba):
-            return matplotlib.colors.to_hex((rgba[0], rgba[1], rgba[2]))
-
-        # Build a style frame with CSS background-color for the colored columns
-        styles = pd.DataFrame("", index=display_df.index, columns=display_df.columns)
-        for c in cols_target:
+        styles = pd.DataFrame("", index=display_df_num.index, columns=display_df_num.columns)
+        for c in color_cols:
             avg = LEAGUE_AVG.get(c, np.nan)
             scale = float(col_scales[c])
             lower_is_better = c in LOWER_BETTER
@@ -2300,35 +2287,46 @@ with tabs[3]:
             def cell_css(val):
                 if pd.isna(val) or pd.isna(avg) or scale <= 0:
                     return "background-color: transparent;"
-                # delta_better > 0 means "better than average"
-                delta_better = (avg - val) if lower_is_better else (val - avg)
-
+                delta_better = (avg - val) if lower_is_better else (val - avg)  # >0 = better
                 if abs(delta_better) < 1e-12:
-                    # exactly at average → no color
                     return "background-color: transparent;"
-
-                # Normalize magnitude: 0 near avg (light), 1 = far (dark), clamp to ±2σ
                 t = np.clip(abs(delta_better) / (2.0 * scale), 0.0, 1.0)
-                # avoid ultra-pale (close to white) but keep clearly light near avg
-                t_scaled = 0.15 + 0.75 * t  # maps [0..1] → [0.15..0.90]
-
-                if delta_better > 0:
-                    rgba = greens(t_scaled)   # better → green
-                else:
-                    rgba = reds(t_scaled)     # worse  → red
+                t_scaled = 0.15 + 0.75 * t  # light near avg → dark far
+                rgba = greens(t_scaled) if delta_better > 0 else reds(t_scaled)
                 return f"background-color: {_to_hex(rgba)};"
 
-            styles[c] = display_df[c].apply(cell_css)
-        # -----------------------------------------------------------------------------------------------
+            styles[c] = display_df_num[c].apply(cell_css)
+        # ----------------------------------------------------------------
 
-        # Build Styler with our background colors; index hidden for a clean look
+        # ------- Format the display values to your exact spec -------
+        #   • WHIP → 3 decimals (e.g., 1.340)
+        #   • H9, all % columns → 1 decimal (e.g., 9.9, 17.3)
+        display_df_fmt = display_df.copy()
+
+        fmt_1_dec = ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%","H9"]
+        for c in fmt_1_dec:
+            if c in display_df_fmt.columns:
+                display_df_fmt[c] = pd.to_numeric(display_df_fmt[c], errors="coerce").map(
+                    lambda v: (f"{v:.1f}" if pd.notna(v) else "")
+                )
+        if "WHIP" in display_df_fmt.columns:
+            display_df_fmt["WHIP"] = pd.to_numeric(display_df_fmt["WHIP"], errors="coerce").map(
+                lambda v: (f"{v:.3f}" if pd.notna(v) else "")
+            )
+        # Integers keep as ints
+        for c in ["App","H","HR","BB","HBP","SO"]:
+            if c in display_df_fmt.columns:
+                display_df_fmt[c] = pd.to_numeric(display_df_fmt[c], errors="coerce").fillna(0).astype(int)
+        # ----------------------------------------------------------------
+
+        # Build Styler with background colors; (styles aligns by index/columns)
         styled = (
-            display_df.style
+            display_df_fmt.style
             .hide(axis="index")
             .apply(lambda _: styles, axis=None)
         )
 
-        # Show the colored table. If your Streamlit ignores Styler colors in dataframe, use st.table(styled)
+        # Show the colored, formatted table
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
         st.download_button(
@@ -2337,3 +2335,4 @@ with tabs[3]:
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
+

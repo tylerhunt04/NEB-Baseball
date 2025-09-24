@@ -2319,14 +2319,25 @@ with tabs[3]:
                 display_df_fmt[c] = pd.to_numeric(display_df_fmt[c], errors="coerce").fillna(0).astype(int)
         # ----------------------------------------------------------------
 
-        # Build Styler with background colors; (styles aligns by index/columns)
+        # ------- Right-align numeric columns -------
+        numeric_right_cols = (
+            ["App","H","HR","BB","HBP","SO","WHIP","H9",
+             "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%"]
+        )
+        right_subset = [c for c in numeric_right_cols if c in display_df_fmt.columns]
+        # ------------------------------------------
+
+        # Build Styler with background colors + alignment; (styles aligns by index/columns)
         styled = (
             display_df_fmt.style
             .hide(axis="index")
             .apply(lambda _: styles, axis=None)
+            .set_properties(subset=pd.IndexSlice[:, right_subset], **{"text-align": "right"})
+            .set_properties(subset=pd.IndexSlice[:, ["Pitcher"]] if "Pitcher" in display_df_fmt.columns else pd.IndexSlice[:, []],
+                            **{"text-align": "left"})
         )
 
-        # Show the colored, formatted table
+        # Show the colored, formatted, right-aligned table
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
         st.download_button(
@@ -2335,4 +2346,3 @@ with tabs[3]:
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
-

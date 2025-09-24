@@ -2337,37 +2337,8 @@ with tabs[3]:
         # will sort it lexicographically, not by true innings. If you want numeric sorting too,
         # you can also display an extra column like "IP (outs)" or "IP (numeric)".
 
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Pitcher": st.column_config.TextColumn("Pitcher"),
-                "App":     st.column_config.NumberColumn("App", format="%d"),
-                "IP":      st.column_config.TextColumn("IP"),
-                "H":       st.column_config.NumberColumn("H", format="%d"),
-                "HR":      st.column_config.NumberColumn("HR", format="%d"),
-                "BB":      st.column_config.NumberColumn("BB", format="%d"),
-                "HBP":     st.column_config.NumberColumn("HBP", format="%d"),
-                "SO":      st.column_config.NumberColumn("SO", format="%d"),
-                "WHIP":    st.column_config.NumberColumn("WHIP", format="%.2f"),
-                "H9":      st.column_config.NumberColumn("H9", format="%.2f"),
-                "BB%":     st.column_config.NumberColumn("BB%", format="%.1f"),
-                "SO%":     st.column_config.NumberColumn("SO%", format="%.1f"),
-                "Strike%": st.column_config.NumberColumn("Strike%", format="%.1f"),
-                "HH%":     st.column_config.NumberColumn("HH%", format="%.1f"),
-                "Barrel%": st.column_config.NumberColumn("Barrel%", format="%.1f"),
-                "Zone%":   st.column_config.NumberColumn("Zone%", format="%.1f"),
-                "Zwhiff%": st.column_config.NumberColumn("Zwhiff%", format="%.1f"),
-                "Chase%":  st.column_config.NumberColumn("Chase%", format="%.1f"),
-                "Whiff%":  st.column_config.NumberColumn("Whiff%", format="%.1f"),
-            }
-        )
+        # NEW: build the colored Styler and show it
+styled = style_rankings_by_league_avg(display_df.copy())
+st.dataframe(styled, use_container_width=True, hide_index=True)
 
-        st.download_button(
-            "Download rankings (CSV)",
-            data=csv_rank.to_csv(index=False).encode("utf-8"),
-            file_name="pitcher_rankings.csv",
-            mime="text/csv"
-        )
 

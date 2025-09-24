@@ -2324,27 +2324,43 @@ with tabs[3]:
                 display_df_fmt[c] = pd.to_numeric(display_df_fmt[c], errors="coerce").fillna(0).astype(int)
         # ----------------------------------------------------------------
 
-        # ------- Right-align numeric columns -------
+        # ------- Right-align numeric columns & hug right edge -------
         numeric_right_cols = (
             ["App","H","HR","BB","HBP","SO","WHIP","H9",
              "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%"]
         )
         right_subset = [c for c in numeric_right_cols if c in display_df_fmt.columns]
-        # ------------------------------------------
 
-        # Build Styler, optionally applying backgrounds; index hidden for a clean look
+        # small right padding so numbers visually "hug" the border; tiny left pad
+        PAD_RIGHT_PX = 4
+        PAD_LEFT_PX  = 6  # for Pitcher column readability
+        # ----------------------------------------------------------------
+
+        # Build Styler; apply optional backgrounds; then alignment & padding
         styled = display_df_fmt.style.hide(axis="index")
+
+        # Global small vertical padding (keeps rows tight) and header alignment
+        styled = styled.set_table_styles([
+            {"selector": "th", "props": [("text-align", "center"), ("padding", "6px 6px")]},
+            {"selector": "td", "props": [("padding-top", "4px"), ("padding-bottom", "4px")]},
+        ])
+
         if apply_colors:
             styled = styled.apply(lambda _: styles, axis=None)
-        styled = (
-            styled.set_properties(subset=pd.IndexSlice[:, right_subset], **{"text-align": "right"})
-                  .set_properties(
-                      subset=pd.IndexSlice[:, ["Pitcher"]] if "Pitcher" in display_df_fmt.columns else pd.IndexSlice[:, []],
-                      **{"text-align": "left"}
-                  )
-        )
 
-        # Show the table (colored when no pitch type selected; plain when filtered)
+        # Right-align numeric columns with minimal right padding; keep Pitcher left
+        if right_subset:
+            styled = styled.set_properties(
+                subset=pd.IndexSlice[:, right_subset],
+                **{"text-align": "right", "padding-right": f"{PAD_RIGHT_PX}px", "padding-left": "0px"}
+            )
+        if "Pitcher" in display_df_fmt.columns:
+            styled = styled.set_properties(
+                subset=pd.IndexSlice[:, ["Pitcher"]],
+                **{"text-align": "left", "padding-left": f"{PAD_LEFT_PX}px"}
+            )
+
+        # Show the table
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
         st.download_button(
@@ -2353,3 +2369,4 @@ with tabs[3]:
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
+

@@ -27,6 +27,10 @@ DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
 DATA_PATH_SCRIM  = "Scrimmage(13).csv"  # file, directory, or glob pattern
 DATA_PATH_2026   = "B10C26_hitter_app_columns.csv"  # placeholder; update when ready
 
+# Optional EV×LA probability lookup (used for xwOBA).
+# Build this once with the helper script; if absent, xwOBA will display as —.
+PROB_LOOKUP_PATH = "EV_LA_probabilities.csv"
+
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
     "/mnt/data/NebraskaChampions.jpg",
@@ -53,6 +57,17 @@ TEAM_NAME_MAP = {
     "RUT_SCA": "Rutgers",
     "SOU_TRO": "USC",
     "WAS_HUS": "Washington",
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# wOBA CONSTANTS (FanGraphs Guts! 2025)
+# ──────────────────────────────────────────────────────────────────────────────
+WOBAC_2025 = {
+    "wBB": 0.693, "wHBP": 0.723,
+    "w1B": 0.883, "w2B": 1.253, "w3B": 1.585, "wHR": 2.037,
+    # Handy for wRAA/wRC+ if you want later:
+    "wOBAScale": 1.23,
+    "lg_wOBA": 0.314,
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -385,7 +400,152 @@ def college_barrel_mask(ev_series: pd.Series, la_series: pd.Series) -> pd.Series
     ev = pd.to_numeric(ev_series, errors="coerce")
     la = pd.to_numeric(la_series, errors="coerce")
     return (ev >= 95.0) & la.between(10.0, 35.0, inclusive="both")
+# ──────────────────────────────────────────────────────────────────────────────
+# xwOBA SUPPORT: EV×LA probability merge + wOBA/xwOBA calculators
+# ──────────────────────────────────────────────────────────────────────────────
+@st.cache_data(show_spinner=False)
+def load_prob_lookup(path: str):
+    try:
+        if os.path.exists(path):
+            df = pd.read_csv(path)
+            # Expect columns: EV_bin, LA_bin, 1B, 2B, 3B, HR, Out (probabilities 0-1)
+            return df
+    except Exception:
+        pass
+    return None
 
+PROB_LOOKUP = load_prob_lookup(PROB_LOOKUP_PATH)
+
+def _bin_ev_la(df: pd.DataFrame):
+    """Add EV_bin/LA_bin (categorical intervals) used to join with probability lookup."""
+    df = df.copy()
+    df["ExitSpeed"] = pd.to_numeric(df.get("ExitSpeed"), errors="coerce")
+    df["Angle"]     = pd.to_numeric(df.get("Angle"), errors="coerce")
+    # Use the same binning as you used when you created EV_LA_probabilities.csv
+    ev_bins = np.arange(40, 115+3, 3)   # 40–115 mph, 3 mph bins
+    la_bins = np.arange(-30, 50+5, 5)   # -30–50°, 5° bins
+    df["EV_bin"] = pd.cut(df["ExitSpeed"], bins=ev_bins, right=False)
+    df["LA_bin"] = pd.cut(df["Angle"],     bins=la_bins, right=False)
+    return df
+
+def merge_probabilities(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge p1B/p2B/p3B/pHR into df based on EV_bin & LA_bin using PROB_LOOKUP.
+    If lookup is missing or EV/LA NaN, leaves probabilities as NaN.
+    """
+    if PROB_LOOKUP is None or df.empty:
+        return df
+    if "EV_bin" not in df.columns or "LA_bin" not in df.columns:
+        df = _bin_ev_la(df)
+
+    lk = PROB_LOOKUP.copy()
+    # Ensure columns present
+    for c in ["1B","2B","3B","HR","Out"]:
+        if c not in lk.columns:
+            lk[c] = 0.0
+
+    # Merge on the string representation of intervals to avoid category dtype mismatch
+    left = df.copy()
+    left["EV_bin_str"] = left["EV_bin"].astype(str)
+    left["LA_bin_str"] = left["LA_bin"].astype(str)
+
+    right = lk.copy()
+    right["EV_bin_str"] = right["EV_bin"].astype(str)
+    right["LA_bin_str"] = right["LA_bin"].astype(str)
+
+    merged = left.merge(
+        right[["EV_bin_str","LA_bin_str","1B","2B","3B","HR"]],
+        on=["EV_bin_str","LA_bin_str"],
+        how="left",
+        suffixes=("","_p")
+    )
+    # Rename to probability column names used by _compute_xwoba
+    merged = merged.rename(columns={"1B":"p1B","2B":"p2B","3B":"p3B","HR":"pHR"})
+    return merged
+
+def _derive_ev_counts(df: pd.DataFrame):
+    """Return dict with counts needed for wOBA: 1B,2B,3B,HR,BB,IBB,HBP,SF,AB,PA."""
+    s_call = df.get('PitchCall', pd.Series(dtype=object))
+    play   = df.get('PlayResult', pd.Series(dtype=object))
+    korbb  = df.get('KorBB', pd.Series(dtype=object))
+    pitchofpa = pd.to_numeric(df.get('PitchofPA', pd.Series(dtype=float)), errors="coerce")
+
+    inplay = s_call.eq('InPlay')
+    singles = int((inplay & play.eq('Single')).sum())
+    doubles = int((inplay & play.eq('Double')).sum())
+    triples = int((inplay & play.eq('Triple')).sum())
+    hrs     = int((inplay & play.eq('HomeRun')).sum())
+    hits    = singles + doubles + triples + hrs
+
+    # Walks/HBP/IBB/SF
+    bb      = int((korbb == 'Walk').sum())
+    ibb     = 0  # set if you track IBB separately
+    hbp     = int((s_call == 'HitByPitch').sum())
+    sf_mask = play.astype(str).str.contains(r'(?i)sacrifice\s*fly|^SF$', na=False)
+    sf      = int(sf_mask.sum())
+
+    # AB and PA (same AB logic as elsewhere for consistency)
+    bbout   = inplay & play.eq('Out')
+    fc_mask = play.eq('FieldersChoice')
+    err_mask= play.eq('Error')
+    so_mask = (korbb == 'Strikeout')
+
+    ab = int(hits + so_mask.sum() + bbout.sum() + fc_mask.sum() + err_mask.sum())
+    pa = int((pitchofpa == 1).sum())
+
+    return {
+        "1B": singles, "2B": doubles, "3B": triples, "HR": hrs,
+        "BB": bb, "IBB": ibb, "HBP": hbp, "SF": sf,
+        "AB": ab, "PA": pa,
+    }
+
+def _compute_woba(df: pd.DataFrame) -> float:
+    ev = _derive_ev_counts(df)
+    den = ev["AB"] + ev["BB"] - ev["IBB"] + ev["HBP"] + ev["SF"]
+    if den <= 0:
+        return float('nan')
+    num = (
+        WOBAC_2025["wBB"]  * (ev["BB"] - ev["IBB"])
+      + WOBAC_2025["wHBP"] * ev["HBP"]
+      + WOBAC_2025["w1B"]  * ev["1B"]
+      + WOBAC_2025["w2B"]  * ev["2B"]
+      + WOBAC_2025["w3B"]  * ev["3B"]
+      + WOBAC_2025["wHR"]  * ev["HR"]
+    )
+    return num / den
+
+def _compute_xwoba(df: pd.DataFrame) -> float:
+    """
+    Expected wOBA using EV×LA probabilities if present (p1B,p2B,p3B,pHR).
+    Falls back to NaN if probability columns are missing.
+    """
+    need = ["p1B","p2B","p3B","pHR"]
+    if not all(c in df.columns for c in need):
+        return float('nan')
+
+    p1 = pd.to_numeric(df["p1B"], errors="coerce").fillna(0.0)
+    p2 = pd.to_numeric(df["p2B"], errors="coerce").fillna(0.0)
+    p3 = pd.to_numeric(df["p3B"], errors="coerce").fillna(0.0)
+    pH = pd.to_numeric(df["pHR"], errors="coerce").fillna(0.0)
+
+    # Expected value on contact
+    exp_contact_num = (
+        WOBAC_2025["w1B"]*p1 + WOBAC_2025["w2B"]*p2
+      + WOBAC_2025["w3B"]*p3 + WOBAC_2025["wHR"]*pH
+    ).sum()
+
+    # Keep BB/HBP as actual events (standard)
+    s_call = df.get('PitchCall', pd.Series(dtype=object))
+    korbb  = df.get('KorBB', pd.Series(dtype=object))
+    exp_num = exp_contact_num \
+              + WOBAC_2025["wBB"]  * int((korbb == 'Walk').sum()) \
+              + WOBAC_2025["wHBP"] * int((s_call == 'HitByPitch').sum())
+
+    ev = _derive_ev_counts(df)
+    den = ev["AB"] + ev["BB"] - ev["IBB"] + ev["HBP"] + ev["SF"]
+    if den <= 0:
+        return float('nan')
+    return exp_num / den
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SPLIT METRICS (Totals & by pitch) + RANKINGS BASE
@@ -461,6 +621,10 @@ def _compute_split_core(df: pd.DataFrame) -> dict:
     z_contact = ((iscontact & isinzone).sum() / max(isswing[isinzone].sum(),1) * 100) if isinzone.sum() else 0.0
     z_whiff = ((iswhiff & isinzone).sum() / max(isswing[isinzone].sum(),1) * 100) if isinzone.sum() else 0.0
 
+    # NEW: wOBA & xwOBA
+    woba  = _compute_woba(df)
+    xwoba = _compute_xwoba(df)
+
     return {
         "PA": pa, "AB": ab, "SO": so, "BB": bb, "Hits": hits,
         "2B": doubles, "3B": triples, "HR": hrs,
@@ -469,6 +633,7 @@ def _compute_split_core(df: pd.DataFrame) -> dict:
         "HardHit%": hard, "Barrel%": barrel,
         "Swing%": swing, "Whiff%": whiff, "Chase%": chase,
         "ZSwing%": z_swing, "ZContact%": z_contact, "ZWhiff%": z_whiff,
+        "wOBA": woba, "xwOBA": xwoba,
     }
 
 def _pretty_pitch_name(p: str) -> str:
@@ -503,7 +668,7 @@ def _sorted_unique_pitches(series: pd.Series) -> list:
 def build_profile_tables(df_profiles: pd.DataFrame):
     """
     Returns three DataFrames:
-      t1_counts  -> Total + by pitch: PA AB SO BB Hits 2B 3B HR AVG OBP SLG OPS
+      t1_counts  -> Total + by pitch: PA AB SO BB Hits 2B 3B HR AVG OBP SLG OPS wOBA xwOBA
       t2_rates   -> Total + by pitch: Avg EV Max EV Avg LA HardHit% Barrel% Swing% Whiff% Chase% ZSwing% ZContact% ZWhiff%
       t3_batted  -> Totals only: LD% GB% FB% Pull% Middle% Oppo%
     """
@@ -514,7 +679,9 @@ def build_profile_tables(df_profiles: pd.DataFrame):
     core_total = _compute_split_core(df_profiles)
     row_total_counts = {
         "Split": "Total",
-        **{k: core_total[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]}
+        **{k: core_total[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]},
+        "wOBA": core_total.get("wOBA", np.nan),
+        "xwOBA": core_total.get("xwOBA", np.nan),
     }
     row_total_rates  = {
         "Split": "Total",
@@ -535,17 +702,19 @@ def build_profile_tables(df_profiles: pd.DataFrame):
             nice = _pretty_pitch_name(raw_pitch)
             t1_rows.append({
                 "Split": nice,
-                **{k: core[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]}
+                **{k: core[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]},
+                "wOBA": core.get("wOBA", np.nan),
+                "xwOBA": core.get("xwOBA", np.nan),
             })
             t2_rows.append({
                 "Split": nice,
                 **{k: core[k] for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
             })
 
-    # DataFrames (NOTE: include "Whiff%" here to match the rows & later formatting)
+    # DataFrames (NOTE: include the new columns)
     t1 = pd.DataFrame(
         t1_rows,
-        columns=["Split","PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]
+        columns=["Split","PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS","wOBA","xwOBA"]
     )
     t2 = pd.DataFrame(
         t2_rows,
@@ -553,11 +722,11 @@ def build_profile_tables(df_profiles: pd.DataFrame):
     )
 
     # Format t1 batting rates as .xxx (for tables)
-    for c in ["AVG","OBP","SLG","OPS"]:
+    for c in ["AVG","OBP","SLG","OPS","wOBA","xwOBA"]:
         if c in t1.columns:
             t1[c] = t1[c].apply(lambda v: "—" if pd.isna(v) else (f"{float(v):.3f}"[1:] if float(v) < 1.0 else f"{float(v):.3f}"))
 
-    # Format t2: EV/LA with 2 decimals, percents 1 decimal (guard against missing cols)
+    # Format t2: EV/LA with 2 decimals, percents 1 decimal
     for c in ["Avg EV","Max EV","Avg LA"]:
         if c in t2.columns:
             t2[c] = t2[c].apply(lambda v: "—" if pd.isna(v) else f"{float(v):.2f}")
@@ -572,15 +741,13 @@ def build_profile_tables(df_profiles: pd.DataFrame):
 
     return t1, t2, t3
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # RANKINGS HELPERS
 # ──────────────────────────────────────────────────────────────────────────────
-# Added EV/quality metrics right after OPS as requested
-# (Updated: append Zone Whiff% and Chase % at the end)
 RANKABLE_COLS = [
     "PA","AB","SO","BB","Hits","2B","3B","HR",
     "AVG","OBP","SLG","OPS",
+    "wOBA","xwOBA",          # ⬅️ after OPS
     "Avg EV","Max EV","HardHit%","Barrel%",
     "ZWhiff%","Chase%" , "Whiff%"
 ]
@@ -591,7 +758,6 @@ def build_rankings_numeric(df_player_scope: pd.DataFrame, display_name_by_key: d
         if not key:
             continue
         core = _compute_split_core(g)
-        #  ⬇️ use .get(...) to avoid KeyError if any column is missing
         row = {"Player": display_name_by_key.get(key, key)}
         row.update({k: core.get(k, np.nan) for k in RANKABLE_COLS})
         rows.append(row)
@@ -601,7 +767,6 @@ def build_rankings_numeric(df_player_scope: pd.DataFrame, display_name_by_key: d
         out[c] = pd.to_numeric(out[c], errors="coerce")
     return out
 
-
 def style_rankings(df: pd.DataFrame):
     """
     Husker red header + conditional fill:
@@ -609,7 +774,7 @@ def style_rankings(df: pd.DataFrame):
       • Special-case SO, ZWhiff%, Chase%: higher = red, lower = green
     """
     numeric_cols = [c for c in RANKABLE_COLS if c in df.columns]
-    inverted_cols = {"SO", "ZWhiff%", "Chase%", "Whiff%"}  # ← higher is worse for these
+    inverted_cols = {"SO", "ZWhiff%", "Chase%", "Whiff%"}  # higher is worse
 
     def color_leader_last(col: pd.Series):
         if col.name not in numeric_cols:
@@ -628,7 +793,6 @@ def style_rankings(df: pd.DataFrame):
                 styles.append('')
             else:
                 if not invert:
-                    # normal: green = max, red = min
                     if v == max_val:
                         styles.append('background-color: #b6f2b0;')  # green
                     elif v == min_val:
@@ -636,7 +800,6 @@ def style_rankings(df: pd.DataFrame):
                     else:
                         styles.append('')
                 else:
-                    # inverted: green = min (better), red = max (worse)
                     if v == min_val:
                         styles.append('background-color: #b6f2b0;')  # green
                     elif v == max_val:
@@ -656,154 +819,16 @@ def style_rankings(df: pd.DataFrame):
           ])
           .apply(color_leader_last, axis=0)
           .format({
-    "PA":"{:.0f}", "AB":"{:.0f}", "SO":"{:.0f}", "BB":"{:.0f}",
-    "Hits":"{:.0f}", "2B":"{:.0f}", "3B":"{:.0f}", "HR":"{:.0f}",
-    "AVG":"{:.3f}", "OBP":"{:.3f}", "SLG":"{:.3f}", "OPS":"{:.3f}",
-    "Avg EV":"{:.2f}", "Max EV":"{:.2f}",
-    "HardHit%":"{:.1f}%", "Barrel%":"{:.1f}%",
-    "ZWhiff%":"{:.1f}%", "Chase%":"{:.1f}%", "Whiff%":"{:.1f}%"  # ← added
-}, na_rep="—")
-
+              "PA":"{:.0f}", "AB":"{:.0f}", "SO":"{:.0f}", "BB":"{:.0f}",
+              "Hits":"{:.0f}", "2B":"{:.0f}", "3B":"{:.0f}", "HR":"{:.0f}",
+              "AVG":"{:.3f}", "OBP":"{:.3f}", "SLG":"{:.3f}", "OPS":"{:.3f}",
+              "wOBA":"{:.3f}", "xwOBA":"{:.3f}",
+              "Avg EV":"{:.2f}", "Max EV":"{:.2f}",
+              "HardHit%":"{:.1f}%", "Barrel%":"{:.1f}%",
+              "ZWhiff%":"{:.1f}%", "Chase%":"{:.1f}%", "Whiff%":"{:.1f}%"
+          }, na_rep="—")
     )
     return sty
-
-# ──────────────────────────────────────────────────────────────────────────────
-# STANDARD HITTER REPORT (single game) — with boxed legends bottom
-# ──────────────────────────────────────────────────────────────────────────────
-def create_hitter_report(df, batter_display_name, ncols=3):
-    bdf = df  # already filtered to this batter upstream
-    pa_groups = list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning']))
-    n_pa = len(pa_groups)
-    nrows = max(1, math.ceil(n_pa / ncols))
-
-    # helper to pretty-print TaggedHitType like "GroundBall" -> "Ground Ball"
-    def _pretty_hit_type(s):
-        if pd.isna(s) or s is None:
-            return None
-        t = str(s)
-        t = t.replace("_", " ")
-        t = re.sub(r"([a-z])([A-Z])", r"\1 \2", t)
-        return t.strip().title()
-
-    # textual descriptions per PA
-    descriptions = []
-    for _, pa_df in pa_groups:
-        lines = []
-        for _, p in pa_df.iterrows():
-            velo = p.get('EffectiveVelo', np.nan)
-            velo_str = f"{float(velo):.1f}" if pd.notna(velo) else "—"
-            lines.append(f"{int(p.get('PitchofPA', 0))} / {p.get('AutoPitchType', '—')}  {velo_str} MPH / {p.get('PitchCall', '—')}")
-        inplay = pa_df[pa_df.get('PitchCall')=='InPlay']
-        if not inplay.empty:
-            last = inplay.iloc[-1]
-            res = last.get('PlayResult', 'InPlay') or 'InPlay'
-            es  = last.get('ExitSpeed', np.nan)
-            tag = _pretty_hit_type(last.get('TaggedHitType'))
-            result_bits = [res]
-            if pd.notna(es):
-                result_bits[-1] = f"{result_bits[-1]} ({float(es):.1f} MPH)"
-            if tag:
-                result_bits.append(f"— {tag}")
-            lines.append(f"  ▶ PA Result: {' '.join(result_bits)}")
-        else:
-            balls = (pa_df.get('PitchCall')=='BallCalled').sum()
-            strikes = pa_df.get('PitchCall').isin(['StrikeCalled','StrikeSwinging']).sum()
-            if balls >= 4:
-                lines.append("  ▶ PA Result: Walk 🚶")
-            elif strikes >= 3:
-                lines.append("  ▶ PA Result: Strikeout 💥")
-        descriptions.append(lines)
-
-    # Figure + grid (leave extra space at bottom for legends)
-    fig = plt.figure(figsize=(3 + 4*ncols + 1, 4*nrows))
-    gs = GridSpec(nrows, ncols+1, width_ratios=[0.8] + [1]*ncols, wspace=0.15, hspace=0.55)
-
-    # Small top-right label: Name — Date   (no suptitle)
-    date_str = ""
-    if pa_groups:
-        d0 = pa_groups[0][1].get('Date').iloc[0]
-        date_str = format_date_long(d0)
-    if batter_display_name or date_str:
-        fig.text(0.985, 0.985, f"{batter_display_name} — {date_str}".strip(" —"),
-            ha='right', va='top', fontsize=9, fontweight='normal')
-
-    # summary line
-    gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
-    whiffs = (gd.get('PitchCall')=='StrikeSwinging').sum() if not gd.empty else 0
-    hardhits = (pd.to_numeric(gd.get('ExitSpeed'), errors="coerce") > 95).sum() if not gd.empty else 0
-    chases = 0
-    if not gd.empty:
-        pls = pd.to_numeric(gd.get('PlateLocSide'), errors='coerce')
-        plh = pd.to_numeric(gd.get('PlateLocHeight'), errors='coerce')
-        is_swing = gd.get('PitchCall').eq('StrikeSwinging')
-        chases = (is_swing & ((pls<-0.83)|(pls>0.83)|(plh<1.5)|(plh>3.5))).sum()
-    fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
-            ha='center', va='top', fontsize=12)
-
-    # panels
-    for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
-        row, col = divmod(idx, ncols)
-        ax = fig.add_subplot(gs[row, col+1])
-        draw_strikezone(ax)
-        hand_lbl = "RHP"
-        thr = str(pa_df.get('PitcherThrows').iloc[0]) if not pa_df.empty else ""
-        if thr.upper().startswith('L'): hand_lbl = "LHP"
-        pitcher = str(pa_df.get('Pitcher').iloc[0]) if not pa_df.empty else "—"
-
-        for _, p in pa_df.iterrows():
-            mk = {'Fastball':'o', 'Curveball':'s', 'Slider':'^', 'Changeup':'D'}.get(str(p.get('AutoPitchType')), 'o')
-            clr = {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
-                   'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
-            sz = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
-            x = p.get('PlateLocSide'); y = p.get('PlateLocHeight')
-            if pd.notna(x) and pd.notna(y):
-                ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', linewidth=1, zorder=2)
-                yoff = -0.05 if str(p.get('AutoPitchType'))=='Slider' else 0
-                ax.text(x, y + yoff, str(int(p.get('PitchofPA', 0))), ha='center', va='center',
-                        fontsize=6, fontweight='bold', zorder=3)
-
-        ax.set_xlim(*X_LIM); ax.set_ylim(*Y_LIM)
-        ax.set_xticks([]); ax.set_yticks([])
-        ax.set_title(f"PA {idx+1} | Inning {inn} {tb}", fontsize=10, fontweight='bold', pad=6)
-        ax.text(0.5, 0.1, f"vs {pitcher} ({hand_lbl})", transform=ax.transAxes,
-                ha='center', va='top', fontsize=9, style='italic')
-
-    # left descriptions column
-    axd = fig.add_subplot(gs[:, 0]); axd.axis('off')
-    y0 = 1.0; dy = 1.0 / (max(1, n_pa) * 5.0)
-    for i, lines in enumerate(descriptions, start=1):
-        axd.hlines(y0 - dy*0.1, 0, 1, transform=axd.transAxes, color='black', linewidth=1)
-        axd.text(0.02, y0, f"PA {i}", fontsize=6, fontweight='bold', transform=axd.transAxes)
-        yln = y0 - dy
-        for ln in lines:
-            axd.text(0.02, yln, ln, fontsize=6, transform=axd.transAxes)
-            yln -= dy
-        y0 = yln - dy*0.05
-
-    # Legends: boxed, side-by-side at the bottom (Result LEFT, Pitches RIGHT)
-    res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
-                          markerfacecolor=v, markersize=10, markeredgecolor='k')
-                   for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
-                               'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.items()]
-    pitch_handles = [Line2D([0],[0], marker=m, color='w', label=k,
-                             markerfacecolor='gray', markersize=10, markeredgecolor='k')
-                     for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
-
-    fig.legend(
-        res_handles, [h.get_label() for h in res_handles], title='Result',
-        loc='upper center', bbox_to_anchor=(0.42, 0.035), bbox_transform=fig.transFigure,
-        ncol=3, frameon=True, fancybox=True, framealpha=0.95, edgecolor='black',
-        borderpad=0.8, columnspacing=1.6, handlelength=1.6, handletextpad=0.6, labelspacing=0.7
-    )
-    fig.legend(
-        pitch_handles, [h.get_label() for h in pitch_handles], title='Pitches',
-        loc='upper center', bbox_to_anchor=(0.72, 0.035), bbox_transform=fig.transFigure,
-        ncol=4, frameon=True, fancybox=True, framealpha=0.95, edgecolor='black',
-        borderpad=0.8, columnspacing=1.6, handlelength=1.6, handletextpad=0.6, labelspacing=0.7
-    )
-
-    plt.tight_layout(rect=[0.12, 0.08, 1, 0.94])
-    return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
 # HITTER HEATMAPS — 3 panels (Contact, Whiffs, Damage)
@@ -941,6 +966,10 @@ df_neb_bat = df_all[df_all["BatterTeam"].astype(str).str.upper().eq("NEB")].copy
 df_neb_bat["PitchofPA"] = pd.to_numeric(df_neb_bat["PitchofPA"], errors="coerce")
 df_neb_bat["BatterKey"]  = df_neb_bat["Batter"].map(normalize_name)
 df_neb_bat["BatterDisp"] = df_neb_bat["BatterKey"]
+
+# Add EV/LA bins and merge probabilities (for xwOBA) once at load
+df_neb_bat = _bin_ev_la(df_neb_bat)
+df_neb_bat = merge_probabilities(df_neb_bat)
 
 has_pa = df_neb_bat[(df_neb_bat["PitchofPA"] == 1) & df_neb_bat["BatterKey"].ne("")]
 if has_pa.empty:

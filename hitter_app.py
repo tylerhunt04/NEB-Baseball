@@ -833,7 +833,11 @@ def style_rankings(df: pd.DataFrame):
 # STANDARD HITTER REPORT (single game) — with boxed legends bottom
 # ──────────────────────────────────────────────────────────────────────────────
 def create_hitter_report(df, batter_display_name, ncols=3):
-    bdf = df  # already filtered to this batter upstream
+    bdf = df.copy()  # already filtered to this batter upstream
+    # ensure correct within-PA ordering
+    if "PitchofPA" in bdf.columns:
+        bdf = bdf.sort_values(["GameID","Inning","Top/Bottom","PAofInning","PitchofPA"]).copy()
+
     pa_groups = list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning']))
     n_pa = len(pa_groups)
     nrows = max(1, math.ceil(n_pa / ncols))
@@ -847,6 +851,71 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         t = re.sub(r"([a-z])([A-Z])", r"\1 \2", t)
         return t.strip().title()
 
+    # --- NEW: strict PA adjudication with baseball rules ---
+    def adjudicate_pa(pa_df: pd.DataFrame) -> dict:
+        """Return {'label': str, 'klass': 'Walk'|'K'|'InPlay'|'Other', 'k_type': 'Swinging'|'Looking'|'Unknown'|None,
+                   'res': PlayResult or None, 'ev': float or None, 'tag': str or None}"""
+        s_call = pa_df.get('PitchCall')
+        play   = pa_df.get('PlayResult')
+        korbb  = pa_df.get('KorBB')
+
+        # If KorBB explicitly says Strikeout/Walk, trust that first.
+        kor = str(korbb.iloc[-1]) if not korbb.empty else ""
+        if kor == "Walk":
+            return {"label": "▶ PA Result: Walk 🚶", "klass": "Walk", "k_type": None, "res": None, "ev": None, "tag": None}
+        if kor == "Strikeout":
+            last_call = str(s_call.iloc[-1]) if not s_call.empty else ""
+            if last_call == "StrikeSwinging":
+                k_type = "Swinging"
+            elif last_call == "StrikeCalled":
+                k_type = "Looking"
+            else:
+                k_type = "Unknown"
+            return {"label": f"▶ PA Result: Strikeout ({k_type}) 💥", "klass": "K", "k_type": k_type, "res": None, "ev": None, "tag": None}
+
+        # Otherwise, rebuild balls/strikes
+        strikes = 0
+        balls = 0
+        k_type = None
+        for _, p in pa_df.iterrows():
+            call = str(p.get('PitchCall'))
+            if call in ("StrikeCalled","StrikeSwinging"):
+                strikes += 1
+                if strikes == 3:
+                    k_type = "Swinging" if call == "StrikeSwinging" else "Looking"
+                    break
+            elif call in ("FoulBallNotFieldable","FoulBallFieldable"):
+                if strikes < 2:
+                    strikes += 1
+            elif call == "BallCalled":
+                balls += 1
+                if balls == 4:
+                    return {"label": "▶ PA Result: Walk 🚶", "klass": "Walk", "k_type": None, "res": None, "ev": None, "tag": None}
+            elif call == "HitByPitch":
+                return {"label": "▶ PA Result: HBP", "klass": "Other", "k_type": None, "res": None, "ev": None, "tag": None}
+
+        if strikes >= 3:
+            return {"label": f"▶ PA Result: Strikeout ({k_type or 'Unknown'}) 💥", "klass": "K", "k_type": k_type or "Unknown",
+                    "res": None, "ev": None, "tag": None}
+
+        # In-Play outcome (if any)
+        inplay = pa_df[s_call == 'InPlay']
+        if not inplay.empty:
+            last = inplay.iloc[-1]
+            res  = last.get('PlayResult', 'InPlay') or 'InPlay'
+            es   = last.get('ExitSpeed', np.nan)
+            tag  = _pretty_hit_type(last.get('TaggedHitType'))
+            bits = [str(res)]
+            if pd.notna(es):
+                bits[-1] = f"{bits[-1]} ({float(es):.1f} MPH)"
+            if tag:
+                bits.append(f"— {tag}")
+            return {"label": f"▶ PA Result: {' '.join(bits)}", "klass": "InPlay", "k_type": None,
+                    "res": res, "ev": float(es) if pd.notna(es) else None, "tag": tag}
+
+        # Fallback (should be rare)
+        return {"label": "▶ PA Result: —", "klass": "Other", "k_type": None, "res": None, "ev": None, "tag": None}
+
     # textual descriptions per PA
     descriptions = []
     for _, pa_df in pa_groups:
@@ -855,25 +924,8 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             velo = p.get('EffectiveVelo', np.nan)
             velo_str = f"{float(velo):.1f}" if pd.notna(velo) else "—"
             lines.append(f"{int(p.get('PitchofPA', 0))} / {p.get('AutoPitchType', '—')}  {velo_str} MPH / {p.get('PitchCall', '—')}")
-        inplay = pa_df[pa_df.get('PitchCall')=='InPlay']
-        if not inplay.empty:
-            last = inplay.iloc[-1]
-            res = last.get('PlayResult', 'InPlay') or 'InPlay'
-            es  = last.get('ExitSpeed', np.nan)
-            tag = _pretty_hit_type(last.get('TaggedHitType'))
-            result_bits = [res]
-            if pd.notna(es):
-                result_bits[-1] = f"{result_bits[-1]} ({float(es):.1f} MPH)"
-            if tag:
-                result_bits.append(f"— {tag}")
-            lines.append(f"  ▶ PA Result: {' '.join(result_bits)}")
-        else:
-            balls = (pa_df.get('PitchCall')=='BallCalled').sum()
-            strikes = pa_df.get('PitchCall').isin(['StrikeCalled','StrikeSwinging']).sum()
-            if balls >= 4:
-                lines.append("  ▶ PA Result: Walk 🚶")
-            elif strikes >= 3:
-                lines.append("  ▶ PA Result: Strikeout 💥")
+        verdict = adjudicate_pa(pa_df)
+        lines.append("  " + verdict["label"])
         descriptions.append(lines)
 
     # Figure + grid (leave extra space at bottom for legends)
@@ -887,7 +939,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         date_str = format_date_long(d0)
     if batter_display_name or date_str:
         fig.text(0.985, 0.985, f"{batter_display_name} — {date_str}".strip(" —"),
-            ha='right', va='top', fontsize=9, fontweight='normal')
+                 ha='right', va='top', fontsize=9, fontweight='normal')
 
     # summary line
     gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
@@ -897,10 +949,10 @@ def create_hitter_report(df, batter_display_name, ncols=3):
     if not gd.empty:
         pls = pd.to_numeric(gd.get('PlateLocSide'), errors='coerce')
         plh = pd.to_numeric(gd.get('PlateLocHeight'), errors='coerce')
-        is_swing = gd.get('PitchCall').eq('StrikeSwinging')
+        is_swing = gd.get('PitchCall').isin(['StrikeSwinging'])  # pure whiffs for chase calc
         chases = (is_swing & ((pls<-0.83)|(pls>0.83)|(plh<1.5)|(plh>3.5))).sum()
     fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
-            ha='center', va='top', fontsize=12)
+             ha='center', va='top', fontsize=12)
 
     # panels
     for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
@@ -915,7 +967,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         for _, p in pa_df.iterrows():
             mk = {'Fastball':'o', 'Curveball':'s', 'Slider':'^', 'Changeup':'D'}.get(str(p.get('AutoPitchType')), 'o')
             clr = {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
-                   'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
+                   'FoulBallFieldable':'tan','InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
             sz = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
             x = p.get('PlateLocSide'); y = p.get('PlateLocHeight')
             if pd.notna(x) and pd.notna(y):
@@ -945,7 +997,8 @@ def create_hitter_report(df, batter_display_name, ncols=3):
     # legends
     res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
                           markerfacecolor=v, markersize=10, markeredgecolor='k')
-                   for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
+                   for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green',
+                               'FoulBallNotFieldable':'tan','FoulBallFieldable':'tan',
                                'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.items()]
     pitch_handles = [Line2D([0],[0], marker=m, color='w', label=k,
                              markerfacecolor='gray', markersize=10, markeredgecolor='k')
@@ -966,6 +1019,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
 
     plt.tight_layout(rect=[0.12, 0.08, 1, 0.94])
     return fig
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # HITTER HEATMAPS — 3 panels (Contact, Whiffs, Damage)

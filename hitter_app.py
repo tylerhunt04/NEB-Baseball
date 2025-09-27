@@ -546,6 +546,40 @@ def _compute_xwoba(df: pd.DataFrame) -> float:
     if den <= 0:
         return float('nan')
     return exp_num / den
+# ── Broad pitch groups for Profiles ───────────────────────────────────────────
+def _pitch_type_col(df: pd.DataFrame) -> str:
+    """Best-effort column for pitch labels."""
+    for c in ["AutoPitchType", "TaggedPitchType", "PitchType", "Pitch_Name"]:
+        if c in df.columns:
+            return c
+    # create a blank so downstream code never KeyErrors
+    df["AutoPitchType"] = ""
+    return "AutoPitchType"
+
+def _norm_text(x) -> str:
+    try:
+        return str(x).strip().lower()
+    except Exception:
+        return ""
+
+def pitch_group_of(label: str) -> str:
+    """Map raw label → {'Fastball','Offspeed','Breaking','Unknown'}"""
+    t = _norm_text(label)
+
+    # quick contains first (handles "FourSeamFastBall", "Two Seam", etc.)
+    if any(k in t for k in ["fast", "four", "2-seam", "two seam", "sinker", "cutter", "cut"]):
+        return "Fastball"
+    if any(k in t for k in ["change", "split", "fork", "vulcan", "palm"]):
+        return "Offspeed"
+    if any(k in t for k in ["slider", "sweep", "curve", "slurve", "knuck"]):
+        return "Breaking"
+
+    # common short codes
+    if t in {"ff","fa","fb","ft","si","fc"}: return "Fastball"
+    if t in {"ch","sp"}:                      return "Offspeed"
+    if t in {"sl","cu","kc"}:                 return "Breaking"
+
+    return "Unknown"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SPLIT METRICS (Totals & by pitch) + RANKINGS BASE

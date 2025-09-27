@@ -1157,20 +1157,12 @@ with tabs[0]:
                         side_s = f" ({side})" if isinstance(side, str) and side else ""
                         pa_text = f"PA {'' if pd.isna(pa) else int(pa)} — vs {batter}{side_s}"
 
-                        # ── Inner PA expander
-                        with st.expander(pa_text, expanded=False):
-                            if cols_pitch:
-                                st.table(themed_table(g[cols_pitch]))
-                            else:
-                                st.table(themed_table(g))
-
-                            # ── Interactive strike zone for THIS PA (inside PA expander)
-                            pa_id_str = f"{'' if pd.isna(pa) else int(pa)}"
-                            fig_pa = pa_interactive_strikezone(g, title=f"PA {pa_id_str} – Strike Zone")
-                            if fig_pa:
-                                st.plotly_chart(fig_pa, use_container_width=True)
-                            else:
-                                st.caption("No plate location data for this PA.")
+       # ── Inner PA expander
+with st.expander(pa_text, expanded=False):
+    if cols_pitch:
+        st.table(themed_table(g[cols_pitch]))
+    else:
+        st.table(themed_table(g))
 
             csv = pbp.to_csv(index=False).encode("utf-8")
             st.download_button("Download play-by-play (CSV)", data=csv,
@@ -1178,6 +1170,19 @@ with tabs[0]:
 
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
+      # === Top 3 pitch strike zones for this outing (Standard tab) ===
+st.markdown("### Top 3 Pitches — Strike Zone Map")
+fig_top3_std = heatmaps_top3_pitch_types(
+    neb_df,             # current outing/filters
+    player_disp,
+    hand_filter="Both", # show both sides by default
+    season_label=season_label
+)
+if fig_top3_std:
+    st.plotly_chart(fig_top3_std, use_container_width=True)
+else:
+    st.caption("No plate-location data available to plot top 3 pitches.")
+
 
 # ─── COMPARE & PROFILES tabs (optional): keep your existing logic or paste here
 # If you want me to merge all your Profiles/Compare code with these fixes, say the word and I’ll drop it in too.

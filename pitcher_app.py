@@ -2256,10 +2256,6 @@ with tabs[3]:
         # Work on a numeric frame (do NOT stringify)
         display_df = ranks_df.drop(columns=[c for c in ranks_df.columns if c.startswith("_")], errors="ignore").copy()
 
-        # Optional: numeric helper for innings (outs) if you want to sort by IP via column menu later
-        if "_IP_num" in ranks_df.columns:
-            display_df["IP_outs"] = (ranks_df["_IP_num"] * 3).round(0).astype("Int64")
-
         # Columns to show
         show_cols = [
             "Pitcher","App","IP","H","HR","BB","HBP","SO",

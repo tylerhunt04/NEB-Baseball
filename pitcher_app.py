@@ -2230,68 +2230,103 @@ with tabs[3]:
 
     if ranks_df.empty:
         st.info("No data available for rankings with the current filters.")
-    else:
-        # Default sort (users can still click headers to re-sort)
-        ranks_df = ranks_df.sort_values(
-            ["WHIP", "SO"], ascending=[True, False], na_position="last"
-        )
+      else:
+        # ---------- keep numerics; default sort still by WHIP asc, SO desc ----------
+        ranks_df = ranks_df.sort_values(["WHIP","SO"], ascending=[True, False], na_position="last")
 
-        # CSV (drop helper columns that start with "_")
-        csv_rank = ranks_df.drop(
-            columns=[c for c in ranks_df.columns if c.startswith("_")],
-            errors="ignore"
-        )
+        # CSV (drop helper cols)
+        csv_rank = ranks_df.drop(columns=[c for c in ranks_df.columns if c.startswith("_")], errors="ignore")
 
-        # Keep everything numeric for sorting; add a hidden numeric helper for IP
-        display_df = ranks_df.copy()
-        # _IP_num is numeric innings; convert to total outs for a clean integer sort key
-        if "_IP_num" in display_df.columns:
-            display_df["IP_outs"] = (display_df["_IP_num"] * 3).round(0).astype("Int64")
-        else:
-            display_df["IP_outs"] = pd.Series(pd.NA, index=display_df.index, dtype="Int64")
+        # Work on a fully numeric frame (no string formatting!)
+        display_df = ranks_df.drop(columns=[c for c in ranks_df.columns if c.startswith("_")], errors="ignore").copy()
 
-        # Columns to show (omit helpers by leaving them out of column_order)
+        # Which columns we show
         show_cols = [
             "Pitcher","App","IP","H","HR","BB","HBP","SO",
             "WHIP","H9","BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%"
         ]
         present_show_cols = [c for c in show_cols if c in display_df.columns]
+        display_df = display_df[present_show_cols]
 
-        # Column formatting: stays numeric → sorts correctly
-        col_cfg = {
-            "WHIP":    st.column_config.NumberColumn("WHIP",    format="%.3f"),
-            "H9":      st.column_config.NumberColumn("H9",      format="%.1f"),
-            "BB%":     st.column_config.NumberColumn("BB%",     format="%.1f"),
-            "SO%":     st.column_config.NumberColumn("SO%",     format="%.1f"),
-            "Strike%": st.column_config.NumberColumn("Strike%", format="%.1f"),
-            "HH%":     st.column_config.NumberColumn("HH%",     format="%.1f"),
-            "Barrel%": st.column_config.NumberColumn("Barrel%", format="%.1f"),
-            "Zone%":   st.column_config.NumberColumn("Zone%",   format="%.1f"),
-            "Zwhiff%": st.column_config.NumberColumn("Zwhiff%", format="%.1f"),
-            "Whiff%":  st.column_config.NumberColumn("Whiff%",  format="%.1f"),
-            "Chase%":  st.column_config.NumberColumn("Chase%",  format="%.1f"),
-            "App":     st.column_config.NumberColumn("App",     format="%d"),
-            "H":       st.column_config.NumberColumn("H",       format="%d"),
-            "HR":      st.column_config.NumberColumn("HR",      format="%d"),
-            "BB":      st.column_config.NumberColumn("BB",      format="%d"),
-            "HBP":     st.column_config.NumberColumn("HBP",     format="%d"),
-            "SO":      st.column_config.NumberColumn("SO",      format="%d"),
-            # Helper (kept in the dataframe so users can enable/sort from the column menu if they want)
-            "IP_outs": st.column_config.NumberColumn("IP_outs", format="%d", help="Sortable helper (total outs)"),
-        }
+        # ---------- Build league-avg color styles ON NUMERICS (no dtype changes) ----------
+        import numpy as np
+        import matplotlib
+        import matplotlib.cm as cm
+        import pandas as pd
 
-        st.dataframe(
-            display_df[present_show_cols + ["IP_outs"]],  # include helper so it’s available in the column menu
-            use_container_width=True,
-            hide_index=True,
-            column_config=col_cfg,
-            column_order=present_show_cols,               # hides IP_outs by default
+        color_cols = [c for c in [
+            "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%","WHIP","H9"
+        ] if c in display_df.columns]
+
+        # numeric copy for calculations only (keeps dtypes numeric)
+        df_num = display_df.copy()
+        for c in color_cols:
+            df_num[c] = pd.to_numeric(df_num[c], errors="coerce")
+
+        styles = pd.DataFrame("", index=df_num.index, columns=df_num.columns)
+
+        # Only apply coloring when no pitch-type filter (your original intent)
+        if len(types_selected) == 0:
+            col_scales = {}
+            for c in color_cols:
+                s = np.nanstd(df_num[c].to_numpy(dtype=float))
+                col_scales[c] = s if s and np.isfinite(s) and s > 0 else 1.0
+
+            greens = cm.get_cmap("Greens")  # better-than-league → green
+            reds   = cm.get_cmap("Reds")    # worse-than-league  → red
+
+            def _to_hex(rgba):
+                return matplotlib.colors.to_hex((rgba[0], rgba[1], rgba[2]))
+
+            for c in color_cols:
+                avg = LEAGUE_AVG.get(c, np.nan)
+                scale = float(col_scales[c])
+                lower_is_better = c in LOWER_BETTER
+
+                def cell_css(val):
+                    if pd.isna(val) or pd.isna(avg) or scale <= 0:
+                        return "background-color: transparent;"
+                    delta_better = (avg - val) if lower_is_better else (val - avg)  # >0 = better
+                    if abs(delta_better) < 1e-12:
+                        return "background-color: transparent;"
+                    t = np.clip(abs(delta_better) / (2.0 * scale), 0.0, 1.0)
+                    t_scaled = 0.15 + 0.75 * t  # light near avg → darker far from avg
+                    rgba = greens(t_scaled) if delta_better > 0 else reds(t_scaled)
+                    return f"background-color: {_to_hex(rgba)};"
+
+                styles[c] = df_num[c].apply(cell_css)
+
+        # ---------- Pretty formatting (display only) WITHOUT changing dtypes ----------
+        fmt_map = {}
+        for c in ["App","H","HR","BB","HBP","SO"]:
+            if c in display_df.columns: fmt_map[c] = "{:.0f}"
+        for c in ["H9","BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%"]:
+            if c in display_df.columns: fmt_map[c] = "{:.1f}"
+        if "WHIP" in display_df.columns:
+            fmt_map["WHIP"] = "{:.3f}"
+
+        # Build Styler on the numeric DataFrame (keeps sorting numeric)
+        styled = (
+            display_df.style
+            .hide(axis="index")
+            .format(fmt_map, na_rep="")
+            .set_table_styles([
+                {"selector": "th", "props": [("text-align","center"), ("padding","6px 6px")]},
+                {"selector": "td", "props": [("padding-top","4px"), ("padding-bottom","4px")]}
+            ])
         )
 
+        # Apply league-avg backgrounds if enabled
+        if len(types_selected) == 0:
+            styled = styled.apply(lambda _: styles[present_show_cols], axis=None)
+
+        # Show interactive table (sorting stays numeric because underlying dtypes are numeric)
+        st.dataframe(styled, use_container_width=True, hide_index=True)
+
+        # Download
         st.download_button(
             "Download rankings (CSV)",
             data=csv_rank.to_csv(index=False).encode("utf-8"),
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
-

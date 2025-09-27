@@ -2209,6 +2209,22 @@ with tabs[2]:
 with tabs[3]:
     st.markdown("#### Pitcher Rankings")
 
+    # League averages & which metrics are "lower is better"
+    LEAGUE_AVG = {
+        "Whiff%": 23.0,
+        "Chase%": 24.3,
+        "Zwhiff%": 15.7,
+        "Zone%": 45.5,
+        "Barrel%": 17.3,
+        "HH%": 36.0,
+        "Strike%": 60.7,
+        "SO%": 19.3,
+        "BB%": 11.3,
+        "WHIP": 1.64,
+        "H9": 9.90,
+    }
+    LOWER_BETTER = {"Barrel%", "HH%", "BB%", "WHIP", "H9"}
+
     # Pitch-type filter (optional)
     type_col_all = type_col_in_df(df_segment)
     type_options = []
@@ -2225,30 +2241,34 @@ with tabs[3]:
         help="Leave empty for all pitch types."
     )
 
-    # Build rankings (kept fully numeric)
+    # Build rankings (keep columns numeric)
     ranks_df = make_pitcher_rankings(df_segment, pitch_types_filter=types_selected)
 
     if ranks_df.empty:
         st.info("No data available for rankings with the current filters.")
-   else:
+    else:
         # ---------- keep numerics; default sort still by WHIP asc, SO desc ----------
-        ranks_df = ranks_df.sort_values(["WHIP","SO"], ascending=[True, False], na_position="last")
+        ranks_df = ranks_df.sort_values(["WHIP", "SO"], ascending=[True, False], na_position="last")
 
-        # CSV (drop helper cols)
+        # CSV copy (drop helpers)
         csv_rank = ranks_df.drop(columns=[c for c in ranks_df.columns if c.startswith("_")], errors="ignore")
 
-        # Work on a fully numeric frame (no string formatting!)
+        # Work on a numeric frame (do NOT stringify)
         display_df = ranks_df.drop(columns=[c for c in ranks_df.columns if c.startswith("_")], errors="ignore").copy()
 
-        # Which columns we show
+        # Optional: numeric helper for innings (outs) if you want to sort by IP via column menu later
+        if "_IP_num" in ranks_df.columns:
+            display_df["IP_outs"] = (ranks_df["_IP_num"] * 3).round(0).astype("Int64")
+
+        # Columns to show
         show_cols = [
             "Pitcher","App","IP","H","HR","BB","HBP","SO",
             "WHIP","H9","BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%"
         ]
         present_show_cols = [c for c in show_cols if c in display_df.columns]
-        display_df = display_df[present_show_cols]
+        display_df = display_df[present_show_cols + (["IP_outs"] if "IP_outs" in display_df.columns else [])]
 
-        # ---------- Build league-avg color styles ON NUMERICS (no dtype changes) ----------
+        # ---------- League-avg color styles ON NUMERICS ----------
         import numpy as np
         import matplotlib
         import matplotlib.cm as cm
@@ -2258,22 +2278,21 @@ with tabs[3]:
             "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%","WHIP","H9"
         ] if c in display_df.columns]
 
-        # numeric copy for calculations only (keeps dtypes numeric)
         df_num = display_df.copy()
         for c in color_cols:
             df_num[c] = pd.to_numeric(df_num[c], errors="coerce")
 
         styles = pd.DataFrame("", index=df_num.index, columns=df_num.columns)
 
-        # Only apply coloring when no pitch-type filter (your original intent)
+        # Only apply coloring when no pitch-type filter (matches your original intent)
         if len(types_selected) == 0:
             col_scales = {}
             for c in color_cols:
                 s = np.nanstd(df_num[c].to_numpy(dtype=float))
                 col_scales[c] = s if s and np.isfinite(s) and s > 0 else 1.0
 
-            greens = cm.get_cmap("Greens")  # better-than-league → green
-            reds   = cm.get_cmap("Reds")    # worse-than-league  → red
+            greens = cm.get_cmap("Greens")  # better than league → green
+            reds   = cm.get_cmap("Reds")    # worse than league  → red
 
             def _to_hex(rgba):
                 return matplotlib.colors.to_hex((rgba[0], rgba[1], rgba[2]))
@@ -2299,13 +2318,14 @@ with tabs[3]:
         # ---------- Pretty formatting (display only) WITHOUT changing dtypes ----------
         fmt_map = {}
         for c in ["App","H","HR","BB","HBP","SO"]:
-            if c in display_df.columns: fmt_map[c] = "{:.0f}"
+            if c in display_df.columns:
+                fmt_map[c] = "{:.0f}"
         for c in ["H9","BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%"]:
-            if c in display_df.columns: fmt_map[c] = "{:.1f}"
+            if c in display_df.columns:
+                fmt_map[c] = "{:.1f}"
         if "WHIP" in display_df.columns:
             fmt_map["WHIP"] = "{:.3f}"
 
-        # Build Styler on the numeric DataFrame (keeps sorting numeric)
         styled = (
             display_df.style
             .hide(axis="index")
@@ -2316,17 +2336,18 @@ with tabs[3]:
             ])
         )
 
-        # Apply league-avg backgrounds if enabled
         if len(types_selected) == 0:
-            styled = styled.apply(lambda _: styles[present_show_cols], axis=None)
+            # Apply only the columns we show; ignore helpers like IP_outs if present
+            styled = styled.apply(lambda _: styles[display_df.columns], axis=None)
 
-        # Show interactive table (sorting stays numeric because underlying dtypes are numeric)
+        # Render (sorting remains numeric)
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
-        # Download
+        # Download CSV
         st.download_button(
             "Download rankings (CSV)",
             data=csv_rank.to_csv(index=False).encode("utf-8"),
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
+

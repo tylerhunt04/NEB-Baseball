@@ -571,7 +571,7 @@ def pitch_group_of(label: str) -> str:
         return "Fastball"
     if any(k in t for k in ["change", "split", "fork", "vulcan", "palm"]):
         return "Offspeed"
-    if any(k in t for k in ["slider", "sweep", "curve", "slurve", "knuck"]):
+    if any(k in t for k in ["slider", "sweeper", "curve", "slurve", "knuck"]):
         return "Breaking"
 
     # common short codes
@@ -725,25 +725,37 @@ def build_profile_tables(df_profiles: pd.DataFrame):
     t1_rows = [row_total_counts]
     t2_rows = [row_total_rates]
 
-    # By pitch
-    if "AutoPitchType" in df_profiles.columns:
-        order = _sorted_unique_pitches(df_profiles["AutoPitchType"])
-        for raw_pitch in order:
-            sub = df_profiles[df_profiles["AutoPitchType"].astype(str) == raw_pitch]
-            if sub.empty:
-                continue
-            core = _compute_split_core(sub)
-            nice = _pretty_pitch_name(raw_pitch)
+      # By broad pitch group: Fastball, Offspeed, Breaking
+    col = _pitch_type_col(df_profiles)
+    groups_series = df_profiles[col].map(pitch_group_of)
+
+    for g in ["Fastball", "Offspeed", "Breaking"]:
+        sub = df_profiles[groups_series == g]
+        if sub.empty:
+            # keep row for consistency even if no pitches in that group
             t1_rows.append({
-                "Split": nice,
-                **{k: core[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]},
-                "wOBA": core.get("wOBA", np.nan),
-                "xwOBA": core.get("xwOBA", np.nan),
+                "Split": g,
+                **{k: np.nan for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]},
+                "wOBA": np.nan, "xwOBA": np.nan
             })
             t2_rows.append({
-                "Split": nice,
-                **{k: core[k] for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
+                "Split": g,
+                **{k: np.nan for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
             })
+            continue
+
+        core = _compute_split_core(sub)
+        t1_rows.append({
+            "Split": g,
+            **{k: core[k] for k in ["PA","AB","SO","BB","Hits","2B","3B","HR","AVG","OBP","SLG","OPS"]},
+            "wOBA": core.get("wOBA", np.nan),
+            "xwOBA": core.get("xwOBA", np.nan),
+        })
+        t2_rows.append({
+            "Split": g,
+            **{k: core[k] for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
+        })
+
 
     # DataFrames (NOTE: include the new columns)
     t1 = pd.DataFrame(

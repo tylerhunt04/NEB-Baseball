@@ -2230,7 +2230,7 @@ with tabs[3]:
 
     if ranks_df.empty:
         st.info("No data available for rankings with the current filters.")
-      else:
+   else:
         # ---------- keep numerics; default sort still by WHIP asc, SO desc ----------
         ranks_df = ranks_df.sort_values(["WHIP","SO"], ascending=[True, False], na_position="last")
 

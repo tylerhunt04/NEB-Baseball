@@ -1097,6 +1097,108 @@ appearances = int(df_pitcher_all['Date'].dropna().dt.date.nunique())
 st.subheader(f"{canonicalize_person_name(player_disp)} ({appearances} Appearances)")
 
 tabs = st.tabs(["Standard", "Compare", "Profiles", "Rankings"])
+# ========== Batter-side helpers (moved up so Standard tab can use) ==========
+def find_batter_side_col(df: pd.DataFrame) -> str | None:
+    return pick_col(
+        df, "BatterSide", "Batter Side", "Batter_Bats", "BatterBats", "Bats", "Stand",
+        "BatSide", "BatterBatSide", "BatterBatHand"
+    )
+
+def normalize_batter_side(series: pd.Series) -> pd.Series:
+    s = series.astype(str).str.strip().str[0].str.upper()
+    return s.replace({"L":"L","R":"R","S":"S","B":"S"})
+
+def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
+    s = str(hand_filter).strip().lower()
+    s = s.replace("vs", "").replace("batters", "").replace("hitters", "").strip()
+    if s in {"l", "lhh", "lhb", "left", "left-handed", "left handed"}:  return "L"
+    if s in {"r", "rhh", "rhb", "right", "right-handed", "right handed"}: return "R"
+    return None
+
+# ========== Interactive Top-3 Pitch Strikezones (Plotly) ==========
+def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season"):
+    df_p = subset_by_pitcher_if_possible(df, pitcher_name)
+    if df_p.empty:
+        st.info("No data for the selected filters.")
+        return None
+
+    type_col = type_col_in_df(df_p)
+
+    # Filter by batter side if provided
+    side_col = find_batter_side_col(df_p)
+    if side_col is not None:
+        sides = normalize_batter_side(df_p[side_col])
+        want = parse_hand_filter_to_LR(hand_filter)
+        if   want == "L": df_p = df_p[sides == "L"]
+        elif want == "R": df_p = df_p[sides == "R"]
+    if df_p.empty:
+        st.info("No pitches for the selected batter-side filter.")
+        return None
+
+    x_min, x_max, y_min, y_max = get_view_bounds()
+
+    try:
+        top3 = list(df_p[type_col].value_counts().index[:3])
+    except KeyError:
+        top3 = []
+
+    fig = make_subplots(rows=1, cols=3, shared_yaxes=True, shared_xaxes=True,
+                        subplot_titles=[str(t) if i < len(top3) else "—" for i, t in enumerate([*top3, None, None])][:3])
+
+    speed_col = pick_col(df_p, "RelSpeed","Relspeed","ReleaseSpeed","RelSpeedMPH","release_speed")
+    ivb_col   = pick_col(df_p, "InducedVertBreak","IVB","Induced Vert Break","IndVertBreak")
+    hb_col    = pick_col(df_p, "HorzBreak","HorizontalBreak","HB","HorizBreak")
+    exit_col  = pick_col(df_p, "ExitSpeed","Exit Velo","ExitVelocity","Exit_Velocity","ExitVel","EV","LaunchSpeed","Launch_Speed")
+    call_col  = pick_col(df_p, "PitchCall","Pitch Call","Call") or "PitchCall"
+
+    for i in range(3):
+        col = i + 1
+        for shp in _zone_shapes_for_subplot():
+            fig.add_shape(shp, row=1, col=col)
+
+        if i < len(top3):
+            pitch = top3[i]
+            sub = df_p[df_p[type_col] == pitch].copy()
+            xs = pd.to_numeric(sub.get('PlateLocSide',   pd.Series(dtype=float)), errors='coerce')
+            ys = pd.to_numeric(sub.get('PlateLocHeight', pd.Series(dtype=float)), errors='coerce')
+
+            cd = np.column_stack([
+                sub[type_col].astype(str).values,
+                pd.to_numeric(sub.get(speed_col, pd.Series(dtype=float)), errors='coerce').values if speed_col else np.full(len(sub), np.nan),
+                pd.to_numeric(sub.get(ivb_col,   pd.Series(dtype=float)), errors='coerce').values if ivb_col else np.full(len(sub), np.nan),
+                pd.to_numeric(sub.get(hb_col,    pd.Series(dtype=float)), errors='coerce').values if hb_col else np.full(len(sub), np.nan),
+                sub.get(call_col, pd.Series(dtype=object)).astype(str).values,
+                pd.to_numeric(sub.get(exit_col,  pd.Series(dtype=float)), errors='coerce').values if exit_col else np.full(len(sub), np.nan),
+            ])
+
+            fig.add_trace(
+                go.Scattergl(
+                    x=xs, y=ys,
+                    mode="markers",
+                    marker=dict(size=8, line=dict(width=0.5, color="black"),
+                                color=get_pitch_color(pitch)),
+                    customdata=cd,
+                    hovertemplate=(
+                        "Pitch Type: %{customdata[0]}<br>"
+                        "RelSpeed: %{customdata[1]:.1f} mph<br>"
+                        "IVB: %{customdata[2]:.1f}\"<br>"
+                        "HB: %{customdata[3]:.1f}\"<br>"
+                        "Result: %{customdata[4]}<br>"
+                        "Exit Velo: %{customdata[5]:.1f} mph<br>"
+                        "x: %{x:.2f}  y: %{y:.2f}<extra></extra>"
+                    ),
+                    showlegend=False,
+                    name=str(pitch),
+                ),
+                row=1, col=col
+            )
+
+        fig.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col)
+        fig.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col)
+
+    fig.update_layout(height=420, title_text=f"{canonicalize_person_name(pitcher_name)} — Top 3 Pitches ({season_label})",
+                      title_x=0.5, margin=dict(l=10, r=10, t=60, b=10))
+    return fig
 
 # ─── STANDARD TAB ─────────────────────────────────────────────────────────────
 with tabs[0]:

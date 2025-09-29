@@ -57,6 +57,7 @@ TEAM_NAME_MAP = {
     "RUT_SCA": "Rutgers",
     "SOU_TRO": "USC",
     "WAS_HUS": "Washington",
+    "WIC_SHO": "Wichita State",
 }
 
 # ──────────────────────────────────────────────────────────────────────────────

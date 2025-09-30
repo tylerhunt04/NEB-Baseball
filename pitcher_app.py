@@ -1082,6 +1082,8 @@ if df_scrim is not None: df_scrim = dedupe_pitches(df_scrim)
 # ─── Segment picker ───────────────────────────────────────────────────────────
 st.markdown("### Data Segment")
 segment_choice = st.selectbox("Choose time period", list(SEGMENT_DEFS.keys()), index=0, key="segment_choice")
+
+# Decide base dataset (main or scrimmage) first
 if segment_choice == "2025/26 Scrimmages":
     if df_scrim is None:
         st.error(f"Scrimmage data file not found. Tried: {', '.join(_scrim_candidates)}")
@@ -1089,19 +1091,22 @@ if segment_choice == "2025/26 Scrimmages":
     base_df = df_scrim
 else:
     if df_main is None:
-        st.error(f"Main data file not found at '{DATA_PATH_MAIN}'."); st.stop()
+        st.error(f"Main data file not found at '{DATA_PATH_MAIN}'.")
+        st.stop()
     base_df = df_main
 
-df_segment = filter_by_segment(base_df, segment_choice)
-if df_segment.empty:
-    st.info(f"No rows found for **{segment_choice}** with the current dataset."); st.stop()
-
+# IMPORTANT: Bullpens are their own single-page view (no tabs, separate CSV)
 SEG_TYPES = SEGMENT_DEFS.get(segment_choice, {}).get("types", [])
 is_bullpen_segment = "bullpen" in SEG_TYPES
 
-# ─── Bullpens → single-page mode (no tabs) ────────────────────────────────────
 if is_bullpen_segment:
-    render_bullpen_view()   # <-- make sure this function is defined ABOVE this call
+    render_bullpen_view()  # uses the bullpen CSV, not base_df
+    st.stop()
+
+# Non-bullpen flow uses the normal filtered dataset
+df_segment = filter_by_segment(base_df, segment_choice)
+if df_segment.empty:
+    st.info(f"No rows found for **{segment_choice}** with the current dataset.")
     st.stop()
 
 # ─── Pitcher picker ───────────────────────────────────────────────────────────
@@ -2614,10 +2619,5 @@ with tabs[3]:
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
-# ──────────────────────────────────────────────────────────────────────────────
-# UI — Bullpen tab (manual PitchType labeling + CSV save)
-# ──────────────────────────────────────────────────────────────────────────────
-with tabs[4]:
-    st.markdown("#### Bullpen Data & Pitch Type Editor")
-    bullpen_editor_ui()
+
 

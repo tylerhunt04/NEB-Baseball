@@ -24,6 +24,7 @@ st.set_page_config(page_title="Nebraska Baseball — Pitcher Reports",
 st.set_option("client.showErrorDetails", True)
 
 DATA_PATH_MAIN  = "pitcher_columns.csv"
+BULLPEN_DATA_DEFAULT = "combined_bullpen_2025-09-30.csv"
 DATA_PATH_SCRIM = "Scrimmage(18).csv"
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
@@ -2463,4 +2464,10 @@ with tabs[3]:
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
+# ──────────────────────────────────────────────────────────────────────────────
+# UI — Bullpen tab (manual PitchType labeling + CSV save)
+# ──────────────────────────────────────────────────────────────────────────────
+with tabs[4]:
+    st.markdown("#### Bullpen Data & Pitch Type Editor")
+    bullpen_editor_ui()
 

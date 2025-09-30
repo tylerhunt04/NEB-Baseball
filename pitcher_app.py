@@ -1119,6 +1119,112 @@ df_pitcher_all = neb_df_all[neb_df_all["PitcherKey"] == player_key].copy()
 df_pitcher_all['Date'] = pd.to_datetime(df_pitcher_all['Date'], errors="coerce")
 appearances = int(df_pitcher_all['Date'].dropna().dt.date.nunique())
 st.subheader(f"{canonicalize_person_name(player_disp)} ({appearances} Appearances)")
+# ─── Bullpen Pitch Type Editor UI ─────────────────────────────────────────────
+def bullpen_editor_ui():
+    st.markdown("### Bullpen — Pitch Type Editor")
+
+    # Choose data source
+    col_path, col_upload = st.columns([1.2, 0.8])
+    with col_path:
+        bp_path = st.text_input("Bullpen CSV path", value=BULLPEN_DATA_DEFAULT, key="bp_csv_path")
+    with col_upload:
+        up = st.file_uploader("…or upload bullpen CSV", type=["csv"], key="bp_uploader")
+
+    # Resolve source (uploaded file takes precedence for this session)
+    session_path = bp_path
+    if up is not None:
+        session_path = f"/tmp/_bullpen_upload.csv"
+        with open(session_path, "wb") as f:
+            f.write(up.getbuffer())
+
+    df = _load_bullpen_csv(session_path)
+    if df is None or df.empty:
+        st.info("Load a bullpen CSV to begin (path or upload).")
+        return
+
+    # Filters to label in chunks
+    if "Pitcher" in df.columns:
+        pitchers = sorted(df["Pitcher"].dropna().astype(str).unique().tolist())
+        sel_p = st.selectbox("Pitcher", pitchers, index=0, key="bp_sel_pitcher")
+        df = df[df["Pitcher"].astype(str) == sel_p].copy()
+
+    if "Date" in df.columns:
+        dser = pd.to_datetime(df["Date"], errors="coerce").dropna()
+        dates = sorted(dser.dt.date.unique().tolist())
+        if dates:
+            sel_date = st.selectbox(
+                "Session Date", options=dates, index=len(dates)-1,
+                format_func=lambda d: format_date_long(pd.to_datetime(d)),
+                key="bp_sel_date"
+            )
+            df = df[pd.to_datetime(df["Date"], errors="coerce").dt.date == sel_date].copy()
+
+    if df.empty:
+        st.info("No rows after filters.")
+        return
+
+    # Edit only PitchType; show some context columns read-only
+    edit_cols = ["PitchNo","RelSpeed","InducedVertBreak","HorzBreak","PitchType"]
+    present = [c for c in edit_cols if c in df.columns]
+    if "PitchType" not in present:
+        present.append("PitchType")
+
+    view = df.copy()
+    view = view[present].sort_values("PitchNo" if "PitchNo" in present else present[0]).reset_index(drop=True)
+    if "PitchType" not in view.columns:
+        view["PitchType"] = ""
+
+    st.caption("Edit PitchType values below, then click **Save**.")
+    edited = st.data_editor(
+        view,
+        hide_index=True,
+        column_config={
+            "PitchType": st.column_config.SelectboxColumn(
+                "PitchType", options=PITCHTYPE_CHOICES, required=False
+            )
+        },
+        disabled=[c for c in present if c != "PitchType"],
+        use_container_width=True,
+        key="bp_editor_grid"
+    )
+
+    # Merge edited PitchType back into the full bullpen dataset & save
+    if st.button("Save Pitch Types", type="primary", key="bp_save_btn"):
+        full_df = _load_bullpen_csv(session_path)
+        if full_df is None:
+            st.error("Could not reload bullpen CSV to save."); return
+        full_df = _ensure_pitchtype_column(full_df)
+
+        # Prefer a precise join on Pitcher+Date+PitchNo
+        join_keys = [k for k in ["Pitcher","Date","PitchNo"] if k in full_df.columns and k in edited.columns]
+        if join_keys:
+            map_df = edited[join_keys + ["PitchType"]].copy()
+            # Update only rows in the current filtered slice
+            mask = pd.Series(True, index=full_df.index)
+            if "Pitcher" in map_df.columns and len(map_df["Pitcher"].dropna()):
+                mask &= full_df["Pitcher"].astype(str) == map_df["Pitcher"].iloc[0]
+            if "Date" in map_df.columns and len(map_df["Date"].dropna()):
+                d0 = pd.to_datetime(map_df["Date"].iloc[0], errors="coerce")
+                mask &= pd.to_datetime(full_df["Date"], errors="coerce").dt.date == d0.date()
+            slice_df = full_df.loc[mask].copy()
+            slice_df = slice_df.drop(columns=["PitchType"], errors="ignore").merge(
+                map_df, on=[k for k in join_keys if k in slice_df.columns], how="left"
+            )
+            full_df.loc[mask, "PitchType"] = slice_df["PitchType"].fillna(full_df.loc[mask, "PitchType"])
+        else:
+            st.warning("Join keys not found; saving by position within the filtered slice.")
+            mask = pd.Series(True, index=full_df.index)
+            if "Pitcher" in df.columns:
+                mask &= full_df["Pitcher"].astype(str) == df["Pitcher"].iloc[0]
+            if "Date" in df.columns:
+                mask &= pd.to_datetime(full_df["Date"], errors="coerce").dt.date == pd.to_datetime(df["Date"].iloc[0]).date()
+            full_df.loc[mask, "PitchType"] = edited["PitchType"].values
+
+        if up is not None:
+            st.info("Edits apply to the uploaded copy for this session. Provide a path above to save permanently.")
+        else:
+            _save_bullpen_csv(full_df, session_path)
+            st.success(f"Saved PitchType edits to: {session_path}")
 
 tabs = st.tabs(["Standard", "Compare", "Profiles", "Rankings"])
 # ========== Batter-side helpers (moved up so Standard tab can use) ==========

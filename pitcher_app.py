@@ -668,6 +668,29 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
 # (Outcome summary helpers and other plots would continue here, unchanged)
 # To keep Part 1 a manageable size, we’ll include the outcome helpers in Part 2 right before use.
 # pitcher_app.py — FULL APP (Part 2/2)
+# ─── Bullpen helpers (load/save + PitchType column) ───────────────────────────
+PITCHTYPE_CHOICES = ["Fastball","Sinker","Cutter","Slider","Curveball","ChangeUp","Sweeper","Other",""]
+
+def _ensure_pitchtype_column(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    if "PitchType" not in df.columns:
+        df["PitchType"] = ""
+    return df
+
+def _load_bullpen_csv(path: str | None) -> pd.DataFrame | None:
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        df = pd.read_csv(path, low_memory=False)
+    except UnicodeDecodeError:
+        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
+    df = ensure_date_column(df)
+    return _ensure_pitchtype_column(df)
+
+def _save_bullpen_csv(df: pd.DataFrame, path: str) -> None:
+    tmp = f"{path}.tmp"
+    df.to_csv(tmp, index=False)
+    os.replace(tmp, path)
 
 # ─── Outcome summary helpers (needed in Profiles) ─────────────────────────────
 def _first_present(df: pd.DataFrame, cands: list[str]) -> str | None:

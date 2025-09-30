@@ -1051,6 +1051,21 @@ def make_pitcher_rankings(df_segment: pd.DataFrame, pitch_types_filter: list[str
     # Default sort by WHIP asc, then SO desc
     out = out.sort_values(["WHIP","SO"], ascending=[True, False], na_position="last").reset_index(drop=True)
     return out
+# ─── Bullpen helpers (load/save + PitchType column) ───────────────────────────
+PITCHTYPE_CHOICES = ["Fastball","Sinker","Cutter","Slider","Curveball","ChangeUp","Sweeper","Other",""]
+
+def _ensure_pitchtype_column(df: pd.DataFrame) -> pd.DataFrame:
+    ...
+
+def _load_bullpen_csv(path: str | None) -> pd.DataFrame | None:
+    ...
+
+def _save_bullpen_csv(df: pd.DataFrame, path: str) -> None:
+    ...
+
+# ─── Bullpen single-page view (NO TABS) ───────────────────────────────────────
+def render_bullpen_view():
+    ...
 
 # ─── Load data ────────────────────────────────────────────────────────────────
 def resolve_existing_path(candidates: list[str]) -> str | None:

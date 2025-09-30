@@ -1099,6 +1099,11 @@ if df_segment.empty:
 SEG_TYPES = SEGMENT_DEFS.get(segment_choice, {}).get("types", [])
 is_bullpen_segment = "bullpen" in SEG_TYPES
 
+# ─── Bullpens → single-page mode (no tabs) ────────────────────────────────────
+if is_bullpen_segment:
+    render_bullpen_view()   # <-- make sure this function is defined ABOVE this call
+    st.stop()
+
 # ─── Pitcher picker ───────────────────────────────────────────────────────────
 neb_df_all = df_segment[df_segment.get('PitcherTeam','') == 'NEB'].copy()
 neb_df_all["PitcherDisplay"] = neb_df_all.get("Pitcher", pd.Series(dtype=object)).map(canonicalize_person_name)

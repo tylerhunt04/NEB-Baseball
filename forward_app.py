@@ -1,16 +1,17 @@
-# LifeHub — a single‑file Streamlit app for self‑management
+# LifeHub — a single-file Streamlit app for self-management
 # Author: ChatGPT x Tyler
 # To run:  streamlit run lifehub_app.py
 # -----------------------------------------------------------------------------
 # Features
-# - Dashboard: quick stats, streaks, today's schedule & workouts
+# - Dashboard: quick stats, today's schedule & workouts, recent weigh-ins
 # - Schedule: weekly/daily planner with tasks, priorities, durations
 # - Workouts: plan builder, workout logger, volume charts
-# - Weigh‑ins: weekly weigh‑ins, BMI calc (optional), trend chart & stats
+# - Weigh-ins: weekly weigh-ins, trend chart & stats
 # - Journal: daily entries with mood, tags, rich text (Markdown)
-# - Habits: simple habit tracker with streaks & weekly review
-# - Data: auto‑save to ./lifehub_data (CSV/JSON). Export/Import supported.
-# - Theme: clean, keyboard‑friendly data_editor tables, sensible defaults
+# - Habits: simple habit tracker with weekly review
+# - Goals: goal list with category, timeframe, target date, progress
+# - Mission: your mission statement (stored in settings.json)
+# - Data: local-first; files live in ./lifehub_data
 # -----------------------------------------------------------------------------
 
 import os
@@ -24,8 +25,8 @@ import numpy as np
 import streamlit as st
 
 # =============== CONFIG & PATHS =================================================
-APP_NAME = "Intentional"
-DATA_DIR = "Intentional_data"
+APP_NAME = "LifeHub"
+DATA_DIR = "lifehub_data"
 
 FILES = {
     "schedule": os.path.join(DATA_DIR, "schedule.csv"),
@@ -35,22 +36,22 @@ FILES = {
     "journal": os.path.join(DATA_DIR, "journal.csv"),
     "habits": os.path.join(DATA_DIR, "habits.csv"),
     "settings": os.path.join(DATA_DIR, "settings.json"),
+    "goals": os.path.join(DATA_DIR, "goals.csv"),
 }
 
 DEFAULT_SETTINGS = {
-    "units": "imperial",  # or "metric"
+    "units": "imperial",          # or "metric" (used for weigh-in label)
     "default_week_start": "Monday",
-    "goal_weight": None,  # number in selected units
+    "goal_weight": None,          # keeps old behavior for "To goal" metric
+    "mission": "",                # new: mission statement
 }
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # =============== UTIL: LOAD / SAVE =============================================
-
 def _ensure_csv(path: str, columns: List[str]):
     if not os.path.exists(path):
         pd.DataFrame(columns=columns).to_csv(path, index=False)
-
 
 def load_csv(path: str, columns: List[str]) -> pd.DataFrame:
     _ensure_csv(path, columns)
@@ -64,10 +65,8 @@ def load_csv(path: str, columns: List[str]) -> pd.DataFrame:
             df[c] = np.nan
     return df[columns]
 
-
 def save_csv(path: str, df: pd.DataFrame):
     df.to_csv(path, index=False)
-
 
 def load_settings() -> Dict[str, Any]:
     if not os.path.exists(FILES["settings"]):
@@ -85,11 +84,9 @@ def load_settings() -> Dict[str, Any]:
             s[k] = v
     return s
 
-
 def save_settings(s: Dict[str, Any]):
     with open(FILES["settings"], "w") as f:
         json.dump(s, f, indent=2)
-
 
 # =============== DATA SCHEMAS ===================================================
 SCHEDULE_COLS = [
@@ -110,15 +107,17 @@ JOURNAL_COLS = [
 HABIT_COLS = [
     "id", "name", "weekly_target", "sun", "mon", "tue", "wed", "thu", "fri", "sat", "notes"
 ]
+GOALS_COLS = [
+    "id", "title", "category", "timeframe", "target_date", "status", "progress", "notes"
+]
 
 # =============== SESSION STATE ==================================================
 if "settings" not in st.session_state:
     st.session_state.settings = load_settings()
 
-
-# =============== SIDEBAR NAV ====================================================
+# =============== PAGE CONFIG & LIGHT THEME ENFORCE ==============================
 st.set_page_config(page_title=f"{APP_NAME} — Self Management", layout="wide", initial_sidebar_state="collapsed")
-# Force light-like appearance (works even if user theme is dark)
+# Force light-like appearance + hide sidebar
 st.markdown(
     """
     <style>
@@ -129,15 +128,18 @@ st.markdown(
     }
     [data-testid="stAppViewContainer"] {background: var(--background-color) !important;}
     [data-testid="stHeader"] {background: var(--background-color) !important;}
-    [data-testid="stSidebar"] {display: none !important;} /* hide sidebar entirely */
+    [data-testid="stSidebar"] {display: none !important;}
     .stMarkdown, .stText, .stDataFrame, .stMetric { color: var(--text-color) !important; }
     </style>
     """,
     unsafe_allow_html=True,
 )
-st.title("Tyler Hunt")
-# ---- TOP NAV TABS ----
+
+# =============== HEADER =========================================================
+st.markdown("**Tyler Hunt**")
 st.title("Be Intentional")
+
+# ---- TOP NAV TABS ----
 (
     tab_dashboard,
     tab_schedule,
@@ -145,21 +147,23 @@ st.title("Be Intentional")
     tab_weighins,
     tab_journal,
     tab_habits,
-    tab_data,
+    tab_goals,
+    tab_mission,
 ) = st.tabs([
     "Dashboard",
     "Schedule",
     "Workouts",
-    "Weigh‑ins",
+    "Weigh-ins",
     "Journal",
     "Habits",
-    "Data & Settings",
+    "Goals",
+    "Mission",
 ])
 
-# Quick Add lives on the Dashboard now
+# Quick Add lives on the Dashboard
 with tab_dashboard:
     with st.expander("➕ Quick Add", expanded=False):
-        qa_choice = st.selectbox("Type", ["Task", "Weigh‑in", "Journal"], key="qa_type_top")
+        qa_choice = st.selectbox("Type", ["Task", "Weigh-in", "Journal"], key="qa_type_top")
         if qa_choice == "Task":
             qa_date = st.date_input("Date", value=date.today(), key="qa_task_date_top")
             qa_title = st.text_input("Title", key="qa_task_title_top")
@@ -186,11 +190,11 @@ with tab_dashboard:
                 df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
                 save_csv(FILES["schedule"], df)
                 st.success("Task added.")
-        elif qa_choice == "Weigh‑in":
+        elif qa_choice == "Weigh-in":
             wi_date = st.date_input("Date", value=date.today(), key="qa_wi_date_top")
             wi_weight = st.number_input("Weight", min_value=0.0, step=0.1, key="qa_wi_weight_top")
             wi_bf = st.number_input("Body Fat %", min_value=0.0, max_value=100.0, step=0.1, key="qa_wi_bf_top")
-            if st.button("Add Weigh‑in", use_container_width=True, key="qa_add_wi_top"):
+            if st.button("Add Weigh-in", use_container_width=True, key="qa_add_wi_top"):
                 df = load_csv(FILES["weighins"], WEIGHIN_COLS)
                 new = {
                     "id": str(uuid.uuid4()),
@@ -202,12 +206,12 @@ with tab_dashboard:
                 }
                 df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
                 save_csv(FILES["weighins"], df)
-                st.success("Weigh‑in logged.")
+                st.success("Weigh-in logged.")
         else:
             j_date = st.date_input("Date", value=date.today(), key="qa_j_date_top")
             j_title = st.text_input("Title", key="qa_j_title_top")
             j_mood = st.slider("Mood", 1, 10, 6, key="qa_j_mood_top")
-            j_tags = st.text_input("Tags (comma‑sep)", key="qa_j_tags_top")
+            j_tags = st.text_input("Tags (comma-sep)", key="qa_j_tags_top")
             j_content = st.text_area("Entry", height=120, key="qa_j_content_top")
             if st.button("Save Journal", use_container_width=True, key="qa_add_journal_top"):
                 df = load_csv(FILES["journal"], JOURNAL_COLS)
@@ -224,16 +228,13 @@ with tab_dashboard:
                 st.success("Journal saved.")
 
 # =============== HELPERS ========================================================
-
 def _week_bounds(d: date, week_start: str = "Monday"):
     weekday_idx = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].index(week_start)
-    # shift so that chosen week_start is 0
     current = d.weekday()
     delta = (current - weekday_idx) % 7
     start = d - timedelta(days=delta)
     end = start + timedelta(days=6)
     return start, end
-
 
 def _human_duration(start_str: str, end_str: str) -> float:
     try:
@@ -244,7 +245,6 @@ def _human_duration(start_str: str, end_str: str) -> float:
         return (e - s).total_seconds() / 3600.0
     except Exception:
         return 0.0
-
 
 # =============== PAGES ==========================================================
 
@@ -263,11 +263,10 @@ with tab_dashboard:
     plan = load_csv(FILES["workout_plan"], WORKOUT_PLAN_COLS)
     today_plan = plan[plan["day_of_week"] == dow].copy()
 
-    # Weigh‑ins stats
+    # Weigh-ins stats
     wi = load_csv(FILES["weighins"], WEIGHIN_COLS)
     wi_sorted = wi.dropna(subset=["weight"]).sort_values("date")
     latest_weight = wi_sorted["weight"].iloc[-1] if len(wi_sorted) else None
-    last_7 = wi_sorted.tail(7)["weight"].mean() if len(wi_sorted) >= 1 else None
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -279,7 +278,7 @@ with tab_dashboard:
 
     st.markdown("### Today's Schedule")
     if today_tasks.empty:
-        st.info("No tasks for today yet. Use sidebar quick add or Schedule page.")
+        st.info("No tasks for today yet. Use Quick Add above or the Schedule tab.")
     else:
         st.dataframe(
             today_tasks[["start_time", "end_time", "title", "category", "priority", "status", "notes"]]
@@ -289,18 +288,17 @@ with tab_dashboard:
 
     st.markdown("### Today's Workout Plan")
     if today_plan.empty:
-        st.info("No workout blocks planned for today. Add some on the Workouts page.")
+        st.info("No workout blocks planned for today. Add some on the Workouts tab.")
     else:
         st.dataframe(today_plan[["block", "exercise", "target_sets", "target_reps", "target_load", "notes"]], use_container_width=True)
 
-    st.markdown("### Recent Weigh‑ins")
+    st.markdown("### Recent Weigh-ins")
     if wi_sorted.empty:
-        st.info("Log your first weigh‑in on the Weigh‑ins page or via sidebar.")
+        st.info("Log your first weigh-in on the Weigh-ins tab or via Quick Add.")
     else:
         st.line_chart(wi_sorted.set_index("date")["weight"], height=220)
 
 # ---- SCHEDULE ----
-
 with tab_schedule:
     st.subheader("Schedule Builder")
 
@@ -385,7 +383,6 @@ with tab_schedule:
             st.dataframe(agg.sort_values(["date", "category"]))
 
 # ---- WORKOUTS ----
-
 with tab_workouts:
     st.subheader("Workouts")
 
@@ -466,10 +463,9 @@ with tab_workouts:
             by_ex = dfl.groupby("exercise")["volume"].sum().sort_values(ascending=False).reset_index()
             st.dataframe(by_ex, use_container_width=True)
 
-# ---- WEIGH‑INS ----
-
+# ---- WEIGH-INS ----
 with tab_weighins:
-    st.subheader("Weekly Weigh‑ins")
+    st.subheader("Weekly Weigh-ins")
 
     settings = st.session_state.settings
     units = settings.get("units", "imperial")
@@ -487,7 +483,7 @@ with tab_weighins:
         waist = st.number_input("Waist (in/cm)", min_value=0.0, step=0.1, key="wi_waist_main")
     notes = st.text_input("Notes", key="wi_notes_main")
 
-    if st.button("Add Weigh‑in", type="primary"):
+    if st.button("Add Weigh-in", type="primary"):
         new = {
             "id": str(uuid.uuid4()),
             "date": wi_date.isoformat(),
@@ -498,11 +494,11 @@ with tab_weighins:
         }
         wi = pd.concat([wi, pd.DataFrame([new])], ignore_index=True)
         save_csv(FILES["weighins"], wi)
-        st.success("Saved weigh‑in.")
+        st.success("Saved weigh-in.")
 
     st.markdown("### Trend")
     if wi.empty:
-        st.info("Add weigh‑ins to see your trend.")
+        st.info("Add weigh-ins to see your trend.")
     else:
         wi_sorted = wi.dropna(subset=["weight"]).sort_values("date")
         st.line_chart(wi_sorted.set_index("date")["weight"], height=260)
@@ -519,7 +515,6 @@ with tab_weighins:
             st.metric("To goal", f"{(latest - goal):+.1f}" if goal else "—")
 
 # ---- JOURNAL ----
-
 with tab_journal:
     st.subheader("Journal")
 
@@ -532,7 +527,7 @@ with tab_journal:
             j_content = st.text_area("Content (Markdown supported)", height=200, key="journal_content_form")
         with c2:
             j_mood = st.slider("Mood", 1, 10, 6, key="journal_mood_form")
-            j_tags = st.text_input("Tags (comma‑sep)", key="journal_tags_form")
+            j_tags = st.text_input("Tags (comma-sep)", key="journal_tags_form")
         submitted = st.form_submit_button("Save Entry", type="primary")
         if submitted:
             new = {
@@ -569,7 +564,6 @@ with tab_journal:
             st.divider()
 
 # ---- HABITS ----
-
 with tab_habits:
     st.subheader("Habit Tracker")
 
@@ -620,73 +614,67 @@ with tab_habits:
         view["progress"] = (view["done"] / view["weekly_target"]).clip(upper=1.0)
         st.dataframe(view[["name","weekly_target","done","progress","notes"]])
 
-# ---- DATA & SETTINGS ----
+# ---- GOALS ----
+with tab_goals:
+    st.subheader("Goals")
 
-with tab_data:
-    st.subheader("Settings")
+    goals_df = load_csv(FILES["goals"], GOALS_COLS)
+
+    with st.expander("➕ Add a goal"):
+        g_title = st.text_input("Title", key="goal_title")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            g_cat = st.selectbox("Category", ["Health", "Career", "School", "Finance", "Personal", "Other"], key="goal_cat")
+        with c2:
+            g_timeframe = st.selectbox("Timeframe", ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly", "Long-term"], key="goal_timeframe")
+        with c3:
+            g_target = st.date_input("Target date", value=date.today(), key="goal_target")
+        g_notes = st.text_area("Notes", key="goal_notes")
+
+        if st.button("Add Goal", type="primary") and g_title:
+            new = {
+                "id": str(uuid.uuid4()),
+                "title": g_title,
+                "category": g_cat,
+                "timeframe": g_timeframe,
+                "target_date": g_target.isoformat(),
+                "status": "Active",
+                "progress": 0,
+                "notes": g_notes,
+            }
+            goals_df = pd.concat([goals_df, pd.DataFrame([new])], ignore_index=True)
+            save_csv(FILES["goals"], goals_df)
+            st.success("Goal added.")
+
+    st.markdown("### Your Goals")
+    if goals_df.empty:
+        st.info("No goals yet—add your first one above.")
+    else:
+        edited = st.data_editor(
+            goals_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "id": st.column_config.TextColumn("id", disabled=True),
+                "progress": st.column_config.NumberColumn(min_value=0, max_value=100, step=1),
+                "status": st.column_config.SelectboxColumn(options=["Active","Paused","Completed","Dropped"]),
+            },
+        )
+        if st.button("Save Goals"):
+            save_csv(FILES["goals"], edited[GOALS_COLS])
+            st.success("Saved.")
+
+# ---- MISSION ----
+with tab_mission:
+    st.subheader("Mission")
     settings = st.session_state.settings
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        units = st.selectbox("Units", ["imperial", "metric"], index=0 if settings.get("units")=="imperial" else 1)
-    with c2:
-        week_start = st.selectbox("Week starts", ["Monday", "Sunday"], index=0 if settings.get("default_week_start")=="Monday" else 1, key="settings_week_start")
-    with c3:
-        goal_weight = st.number_input("Goal weight", min_value=0.0, value=float(settings.get("goal_weight") or 0.0))
-    if st.button("Save Settings", type="primary"):
-        settings.update({"units": units, "default_week_start": week_start, "goal_weight": goal_weight if goal_weight>0 else None})
+    mission_text = st.text_area("Your mission statement", value=settings.get("mission", ""), height=180, key="mission_text")
+    if st.button("Save Mission", type="primary"):
+        settings["mission"] = mission_text
         save_settings(settings)
         st.session_state.settings = settings
-        st.success("Settings saved.")
+        st.success("Mission saved.")
 
-    st.divider()
-    st.subheader("Data Export / Import")
-
-    # Export
-    if st.button("Download all data as ZIP"):
-        import zipfile
-        from io import BytesIO
-
-        memory_file = BytesIO()
-        with zipfile.ZipFile(memory_file, 'w') as zf:
-            # ensure files exist before zipping
-            load_csv(FILES["schedule"], SCHEDULE_COLS).to_csv(FILES["schedule"], index=False)
-            load_csv(FILES["workout_plan"], WORKOUT_PLAN_COLS).to_csv(FILES["workout_plan"], index=False)
-            load_csv(FILES["workout_log"], WORKOUT_LOG_COLS).to_csv(FILES["workout_log"], index=False)
-            load_csv(FILES["weighins"], WEIGHIN_COLS).to_csv(FILES["weighins"], index=False)
-            load_csv(FILES["journal"], JOURNAL_COLS).to_csv(FILES["journal"], index=False)
-            load_csv(FILES["habits"], HABIT_COLS).to_csv(FILES["habits"], index=False)
-            for name, path in FILES.items():
-                if os.path.exists(path):
-                    zf.write(path, arcname=os.path.basename(path))
-        st.download_button(
-            label="Download lifehub_data.zip",
-            data=memory_file.getvalue(),
-            file_name="lifehub_data.zip",
-            mime="application/zip",
-        )
-
-    # Import (replace)
-    up = st.file_uploader("Upload CSV to replace a dataset (careful!)", type=["csv"], accept_multiple_files=False)
-    target = st.selectbox("Target dataset", ["schedule","workout_plan","workout_log","weighins","journal","habits"], index=0)
-    if st.button("Replace with uploaded CSV") and up is not None:
-        try:
-            df = pd.read_csv(up)
-            expected = {
-                "schedule": SCHEDULE_COLS,
-                "workout_plan": WORKOUT_PLAN_COLS,
-                "workout_log": WORKOUT_LOG_COLS,
-                "weighins": WEIGHIN_COLS,
-                "journal": JOURNAL_COLS,
-                "habits": HABIT_COLS,
-            }[target]
-            # attempt to align columns
-            for c in expected:
-                if c not in df.columns:
-                    df[c] = np.nan
-            save_csv(FILES[target], df[expected])
-            st.success(f"Replaced '{target}' dataset.")
-        except Exception as e:
-            st.error(f"Import failed: {e}")
-
-st.caption("© 2025 LifeHub — Local‑first personal data. Your files live in ./lifehub_data next to this script.")
+# ---- FOOTER ----
+st.caption("© 2025 LifeHub — Local-first personal data. Your files live in ./lifehub_data next to this script.")

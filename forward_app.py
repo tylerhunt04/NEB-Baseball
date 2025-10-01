@@ -663,357 +663,337 @@ with tab_habits:
 # ---- FINANCE ----
 with tab_finance:
     st.subheader("Finance")
-    import matplotlib.pyplot as plt
+    import altair as alt
 
-    # ---------- Ensure files/schemas exist ----------
-    if "accounts" not in FILES:
-        FILES.update({
-            "accounts": os.path.join(DATA_DIR, "accounts.csv"),
-            "transactions": os.path.join(DATA_DIR, "transactions.csv"),
-            "paychecks": os.path.join(DATA_DIR, "paychecks.csv"),
-            "budget": os.path.join(DATA_DIR, "budget.csv"),
-        })
-
-    try:
-        ACCOUNT_COLS
-    except NameError:
-        ACCOUNT_COLS = ["id", "name", "type", "opening_balance", "notes"]
-
-    try:
-        TRANSACTION_COLS
-    except NameError:
-        TRANSACTION_COLS = ["id", "date", "account", "category", "description", "amount", "status", "notes"]
-
-    try:
-        PAYCHECK_COLS
-    except NameError:
-        PAYCHECK_COLS = ["id", "date", "net_amount", "hours", "rate", "account", "notes"]
-
-    try:
-        BUDGET_COLS
-    except NameError:
-        BUDGET_COLS = ["id", "category", "percent", "auto_account", "notes"]
-
-    # ---------- Load data ----------
+    # ---------- Load data (assumes these FILES & *_COLS exist at top of the app) ----------
+    # FILES needs: "accounts","transactions","paychecks","budget"
     accounts     = load_csv(FILES["accounts"], ACCOUNT_COLS)
     transactions = load_csv(FILES["transactions"], TRANSACTION_COLS)
     paychecks    = load_csv(FILES["paychecks"], PAYCHECK_COLS)
     budget       = load_csv(FILES["budget"], BUDGET_COLS)
 
-    # Seed three accounts if empty
+    # ---------- Seed/ensure 3 core accounts exist ----------
+    def ensure_account(rows_df, name, acc_type="bank"):
+        if rows_df[rows_df["name"] == name].empty:
+            rows_df = pd.concat([rows_df, pd.DataFrame([{
+                "id": str(uuid.uuid4()),
+                "name": name,
+                "type": acc_type,
+                "opening_balance": 0.0,
+                "notes": "",
+            }])], ignore_index=True)
+        return rows_df
+
     if accounts.empty:
-        seed = pd.DataFrame([
-            {"id": str(uuid.uuid4()), "name": "Checking",    "type": "bank",   "opening_balance": 0.0, "notes": ""},
-            {"id": str(uuid.uuid4()), "name": "Savings",     "type": "bank",   "opening_balance": 0.0, "notes": ""},
-            {"id": str(uuid.uuid4()), "name": "Credit Card", "type": "credit", "opening_balance": 0.0, "notes": ""},
-        ], columns=ACCOUNT_COLS)
-        save_csv(FILES["accounts"], seed)
-        accounts = seed
-
-    # Normalize legacy "cash" to "bank"
+        accounts = pd.DataFrame(columns=ACCOUNT_COLS)
+    accounts = ensure_account(accounts, "Checking", "bank")
+    accounts = ensure_account(accounts, "Savings", "bank")
+    accounts = ensure_account(accounts, "Credit Card", "credit")
     accounts["type"] = accounts["type"].fillna("bank").replace({"cash": "bank"})
+    accounts["id"]   = accounts["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
     save_csv(FILES["accounts"], accounts)
+    acc_names = accounts["name"].tolist()
+    acc_type_map = dict(zip(accounts["name"], accounts["type"]))
 
-    # =========================
-    # 1) ACCOUNT BALANCES
-    # =========================
-    st.markdown("### Account Balances")
+    # ---------- Three horizontal sections ----------
+    col_accounts, col_budget, col_tx = st.columns([1, 1, 1])
 
-    # Inline numeric inputs for the three core accounts (plus any extras user added)
-    edited_openings = []
-    cols = st.columns(min(3, max(1, len(accounts))))
-    for i, (_, row) in enumerate(accounts.iterrows()):
-        with cols[i % len(cols)]:
-            bal = st.number_input(
+    # =========================================================
+    # LEFT: ACCOUNT BALANCES (inputs + interactive bar chart)
+    # =========================================================
+    with col_accounts:
+        st.markdown("### Account Balances")
+
+        # Inputs for each account's current/starting balance
+        new_bal_vals = {}
+        for _, row in accounts.iterrows():
+            key = f"bal_{row['name'].lower().replace(' ', '_')}"
+            new_bal_vals[row["name"]] = st.number_input(
                 f"{row['name']} balance",
                 value=float(row.get("opening_balance", 0) or 0),
                 step=50.0,
-                key=f"acc_bal_{row['name'].lower().replace(' ','_')}",
+                key=key,
             )
-            edited_openings.append(bal)
 
-    if st.button("Save Balances", key="fin_save_balances"):
-        accounts.loc[:, "opening_balance"] = edited_openings
-        # Ensure stable IDs
-        if "id" not in accounts.columns:
-            accounts["id"] = [str(uuid.uuid4()) for _ in range(len(accounts))]
-        accounts["id"] = accounts["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
-        save_csv(FILES["accounts"], accounts)
-        st.success("Balances saved.")
+        if st.button("Save Balances", key="fin_save_balances"):
+            for name, val in new_bal_vals.items():
+                accounts.loc[accounts["name"] == name, "opening_balance"] = float(val or 0.0)
+            accounts["id"] = accounts["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
+            save_csv(FILES["accounts"], accounts)
+            st.success("Balances saved.")
 
-    # Compute CURRENT balance = opening + sum(all transaction amounts by account)
-    acc_type_map = dict(zip(accounts["name"], accounts["type"]))
-    tx = transactions.copy()
-    if not tx.empty:
-        tx["amount"] = pd.to_numeric(tx["amount"], errors="coerce").fillna(0.0)
-    sum_by_acc = tx.groupby("account")["amount"].sum() if not tx.empty else pd.Series(dtype=float)
+        # Compute live CURRENT balance = opening + sum(all transactions by account)
+        tx = transactions.copy()
+        if not tx.empty:
+            tx["amount"] = pd.to_numeric(tx["amount"], errors="coerce").fillna(0.0)
+        sum_by_acc = tx.groupby("account")["amount"].sum() if not tx.empty else pd.Series(dtype=float)
 
-    current_rows = []
-    for _, r in accounts.iterrows():
-        name = r["name"]
-        opening = float(r.get("opening_balance", 0) or 0)
-        delta = float(sum_by_acc.get(name, 0.0))
-        current_rows.append({"account": name, "type": r["type"], "opening_balance": opening, "current_balance": opening + delta})
-    balances_df = pd.DataFrame(current_rows)
+        rows = []
+        for _, r in accounts.iterrows():
+            opening = float(r.get("opening_balance", 0) or 0)
+            delta   = float(sum_by_acc.get(r["name"], 0.0))
+            rows.append({"Account": r["name"], "Balance": opening + delta})
+        balances_df = pd.DataFrame(rows)
 
-    # Matplotlib bar chart (y max = 10,000)
-    if not balances_df.empty:
-        fig, ax = plt.subplots(figsize=(6.5, 3.6))
-        ax.bar(balances_df["account"], balances_df["current_balance"])
-        ax.set_ylabel("Balance ($)")
-        ax.set_ylim(0, 10000)  # cap at 10k as requested
-        ax.set_title("Current Balances")
-        for idx, val in enumerate(balances_df["current_balance"].values):
-            ax.text(idx, min(val, 10000) + (10000 * 0.02 if val <= 9900 else 0), f"${val:,.0f}", ha="center", va="bottom", fontsize=9)
-        st.pyplot(fig, use_container_width=True)
-
-    st.divider()
-
-    # =========================
-    # 2) BUDGETING (Paycheck)
-    # =========================
-    st.markdown("### Budgeting")
-
-    col_b1, col_b2 = st.columns(2)
-    with col_b1:
-        p_date = st.date_input("Paycheck date", value=date.today(), key="fin_paycheck_date")
-    with col_b2:
-        p_net = st.number_input("Paycheck amount (net $)", min_value=0.0, value=0.0, step=50.0, key="fin_paycheck_amount")
-
-    # Budget table: Savings/Investing, Expenses, Wants (editable percentages)
-    # Preseed (or update) those three rows by name
-    desired = ["Savings/Investing", "Expenses", "Wants"]
-    b = budget.copy()
-
-    # Map similar names to our three desired labels (case-insensitive)
-    def norm_label(x: str) -> str:
-        s = (x or "").strip().lower()
-        if s in ["savings", "investing", "savings/investing", "save/invest", "save & invest", "savings & investing"]:
-            return "Savings/Investing"
-        if s in ["expenses", "bills", "essentials"]:
-            return "Expenses"
-        if s in ["wants", "fun", "discretionary"]:
-            return "Wants"
-        return x
-
-    if not b.empty:
-        b["category"] = b["category"].apply(norm_label)
-
-    have = set((b["category"].dropna().str.strip()).tolist()) if not b.empty else set()
-    for lbl in desired:
-        if lbl not in have:
-            b = pd.concat([b, pd.DataFrame([{
-                "id": str(uuid.uuid4()),
-                "category": lbl,
-                "percent": 0,
-                "auto_account": "Checking" if lbl != "Savings/Investing" else "Savings",
-                "notes": ""
-            }])], ignore_index=True)
-
-    # Only show the three rows in the editor (order as desired)
-    mask = b["category"].isin(desired)
-    b3 = b[mask].copy()
-    # sort by our desired order
-    order_map = {k: i for i, k in enumerate(desired)}
-    b3["__order__"] = b3["category"].map(order_map)
-    b3 = b3.sort_values("__order__").drop(columns="__order__")
-
-    edited_b3 = st.data_editor(
-        b3[["category", "percent", "auto_account", "notes"]],
-        num_rows="fixed",
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "percent": st.column_config.NumberColumn(min_value=0, max_value=100, step=1),
-            "auto_account": st.column_config.SelectboxColumn(options=accounts["name"].dropna().tolist()),
-        },
-        key="fin_budget_editor_simple",
-    )
-
-    # Save merges back into full budget (preserve ids by category)
-    if st.button("Save Budget", key="fin_budget_save"):
-        # rebuild b3 with IDs preserved by matching category names (case-insensitive)
-        id_map = {str(r["category"]).strip().lower(): r["id"] for _, r in b.iterrows() if pd.notna(r.get("id", None))}
-        edited_b3 = edited_b3.copy()
-        edited_b3["id"] = edited_b3.apply(lambda r: id_map.get(str(r["category"]).strip().lower(), str(uuid.uuid4())), axis=1)
-
-        # Merge edited three rows back into full budget
-        b_rest = b[~b["category"].isin(desired)].copy()
-        merged = pd.concat([b_rest, edited_b3], ignore_index=True)
-        save_csv(FILES["budget"], merged[BUDGET_COLS])
-        budget = merged[BUDGET_COLS]
-        st.success("Budget saved.")
-
-    # Pie chart: split paycheck by the three lines (Savings/Investing, Expenses, Wants)
-    st.markdown("#### Paycheck Split (Planned)")
-    if p_net > 0 and not edited_b3.empty:
-        labels = edited_b3["category"].tolist()
-        perc   = [float(x or 0) for x in edited_b3["percent"].fillna(0).tolist()]
-        amts   = [p_net * p / 100.0 for p in perc]
-        nz     = [(l, a) for l, a in zip(labels, amts) if a > 0]
-
-        if nz:
-            fig, ax = plt.subplots(figsize=(6, 6))
-            ax.pie(
-                [a for _, a in nz],
-                labels=[f"{l} (${a:,.0f})" for l, a in nz],
-                startangle=90,  # FULL PIE (no donut)
-                autopct=None
+        # Interactive bar (Altair) — y max = 10,000
+        if not balances_df.empty:
+            bar = (
+                alt.Chart(balances_df)
+                .mark_bar()
+                .encode(
+                    x=alt.X("Account:N", sort=None),
+                    y=alt.Y("Balance:Q", scale=alt.Scale(domain=[0, 10000])),
+                    tooltip=["Account:N", alt.Tooltip("Balance:Q", format="$,.2f")],
+                )
+                .properties(height=220)
+                .interactive()
             )
-            ax.set_title("Where this paycheck is planned to go")
-            st.pyplot(fig, use_container_width=True)
-        else:
-            st.info("Enter non-zero percentages to see the pie chart.")
-    elif p_net <= 0:
-        st.info("Enter your paycheck **amount** to see the pie chart.")
+            st.altair_chart(bar, use_container_width=True)
 
-    st.divider()
+    # =========================================================
+    # MIDDLE: BUDGETING (paycheck + 3-row percentages + pie)
+    # =========================================================
+    with col_budget:
+        st.markdown("### Budgeting")
 
-    # =========================
-    # 3) TRANSACTIONS
-    # =========================
-    st.markdown("### Transactions")
-
-    acc_names = accounts["name"].dropna().tolist()
-    acc_type_map = dict(zip(accounts["name"], accounts["type"]))
-
-    flow = st.radio("Type", ["Expense", "Income", "Transfer"], horizontal=True, key="fin_tx_flow")
-
-    if flow == "Expense":
-        c1, c2, c3, c4 = st.columns([1, 1, 1, 1.2])
+        # Paycheck inputs
+        c1, c2 = st.columns(2)
         with c1:
-            tx_date = st.date_input("Date", value=date.today(), key="fin_tx_exp_date")
+            p_date = st.date_input("Paycheck date", value=date.today(), key="fin_paycheck_date")
         with c2:
-            from_acc = st.selectbox("From account", acc_names, index=0 if acc_names else None, key="fin_tx_exp_from")
-        with c3:
-            amount = st.number_input("Amount ($)", min_value=0.0, value=0.0, step=5.0, key="fin_tx_exp_amt")
-        with c4:
-            category = st.text_input("Category (e.g., Groceries)", key="fin_tx_exp_cat")
-        notes = st.text_input("Notes", key="fin_tx_exp_notes")
-        if st.button("Add Expense", key="fin_tx_exp_add", type="primary"):
-            signed = -abs(amount)  # default for bank: decrease cash
-            if acc_type_map.get(from_acc, "bank") == "credit":
-                signed = +abs(amount)  # credit card charge increases owed
-            row = {
-                "id": str(uuid.uuid4()),
-                "date": tx_date.isoformat(),
-                "account": from_acc,
-                "category": category or "Expense",
-                "description": "",
-                "amount": float(signed),
-                "status": "Logged",
-                "notes": notes or "",
-            }
-            transactions = pd.concat([transactions, pd.DataFrame([row])], ignore_index=True)
-            save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
-            st.success("Expense added.")
+            p_net = st.number_input("Paycheck amount (net $)", min_value=0.0, value=0.0, step=50.0, key="fin_paycheck_amount")
 
-    elif flow == "Income":
-        c1, c2, c3, c4 = st.columns([1, 1, 1, 1.2])
-        with c1:
-            tx_date = st.date_input("Date", value=date.today(), key="fin_tx_inc_date")
-        with c2:
-            to_acc = st.selectbox("To account", acc_names, index=0 if acc_names else None, key="fin_tx_inc_to")
-        with c3:
-            amount = st.number_input("Amount ($)", min_value=0.0, value=0.0, step=5.0, key="fin_tx_inc_amt")
-        with c4:
-            category = st.text_input("Category (e.g., Income: Paycheck)", value="Income: Paycheck", key="fin_tx_inc_cat")
-        notes = st.text_input("Notes", key="fin_tx_inc_notes")
-        if st.button("Add Income", key="fin_tx_inc_add", type="primary"):
-            signed = +abs(amount)
-            # For credit account, a positive amount would increase owed (not typical for income),
-            # so invert to reduce owed if depositing to credit (i.e., refund/credit)
-            if acc_type_map.get(to_acc, "bank") == "credit":
+        # Ensure 3 budget rows exist: Savings/Investing, Expenses, Wants
+        desired_rows = [
+            ("Savings/Investing", "Savings",  "Savings"),    # default auto_account name
+            ("Expenses",          "Checking", "Bills etc"),
+            ("Wants",             "Checking", "Fun/Discretionary"),
+        ]
+        b = budget.copy()
+        if b.empty:
+            b = pd.DataFrame(columns=BUDGET_COLS)
+
+        names_lower = b["category"].fillna("").str.lower().tolist()
+        for label, auto_acct, note in desired_rows:
+            if label.lower() not in names_lower:
+                b = pd.concat([b, pd.DataFrame([{
+                    "id": str(uuid.uuid4()),
+                    "category": label,
+                    "percent": 0,
+                    "auto_account": auto_acct if auto_acct in acc_names else "Checking",
+                    "notes": note,
+                }])], ignore_index=True)
+
+        # Keep only our three, in order
+        order_map = {name: i for i, (name, _, _) in enumerate(desired_rows)}
+        b3 = b[b["category"].isin(order_map.keys())].copy()
+        b3["__o__"] = b3["category"].map(order_map)
+        b3 = b3.sort_values("__o__").drop(columns="__o__")
+
+        edited_b3 = st.data_editor(
+            b3[["category", "percent", "auto_account", "notes"]],
+            num_rows="fixed",
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "percent": st.column_config.NumberColumn(min_value=0, max_value=100, step=1),
+                "auto_account": st.column_config.SelectboxColumn(options=acc_names),
+            },
+            key="fin_bud_editor",
+        )
+
+        if st.button("Save Budget", key="fin_budget_save"):
+            # merge back into full budget, preserve IDs by category
+            cur_ids = {str(r["category"]).strip().lower(): r["id"] for _, r in b.iterrows() if pd.notna(r.get("id"))}
+            edited_b3 = edited_b3.copy()
+            edited_b3["id"] = edited_b3.apply(
+                lambda r: cur_ids.get(str(r["category"]).strip().lower(), str(uuid.uuid4())), axis=1
+            )
+            # Replace/keep only our three (you can have other rows elsewhere if you extend later)
+            merged = edited_b3[BUDGET_COLS]
+            save_csv(FILES["budget"], merged)
+            budget = merged
+            st.success("Budget saved.")
+
+        # Interactive FULL PIE (not donut): split planned amounts
+        st.markdown("#### Paycheck Split (Planned)")
+        if p_net > 0 and not edited_b3.empty:
+            pie_df = edited_b3.copy()
+            pie_df["amount"] = (pie_df["percent"].fillna(0).astype(float) / 100.0) * float(p_net)
+            pie_df = pie_df[pie_df["amount"] > 0]
+
+            if not pie_df.empty:
+                pie = (
+                    alt.Chart(pie_df)
+                    .mark_arc()  # full pie
+                    .encode(
+                        theta=alt.Theta("amount:Q"),
+                        color=alt.Color("category:N", legend=alt.Legend(title="Category")),
+                        tooltip=[
+                            "category:N",
+                            alt.Tooltip("percent:Q", title="Percent", format=".0f"),
+                            alt.Tooltip("amount:Q",  title="Amount",  format="$,.2f"),
+                        ],
+                    )
+                    .properties(height=260)
+                    .interactive()
+                )
+                st.altair_chart(pie, use_container_width=True)
+            else:
+                st.info("Set non-zero percentages to see the pie chart.")
+        elif p_net <= 0:
+            st.info("Enter your paycheck amount to see the pie chart.")
+
+    # =========================================================
+    # RIGHT: TRANSACTIONS (forms + interactive cash-flow bar)
+    # =========================================================
+    with col_tx:
+        st.markdown("### Transactions")
+
+        flow = st.radio("Type", ["Expense", "Income", "Transfer"], horizontal=True, key="fin_tx_flow")
+
+        if flow == "Expense":
+            c1, c2, c3, c4 = st.columns([1, 1, 1, 1.2])
+            with c1:
+                tx_date = st.date_input("Date", value=date.today(), key="fin_tx_exp_date")
+            with c2:
+                from_acc = st.selectbox("From account", acc_names, index=0 if acc_names else None, key="fin_tx_exp_from")
+            with c3:
+                amount = st.number_input("Amount ($)", min_value=0.0, value=0.0, step=5.0, key="fin_tx_exp_amt")
+            with c4:
+                category = st.text_input("Category (e.g., Groceries)", key="fin_tx_exp_cat")
+            notes = st.text_input("Notes", key="fin_tx_exp_notes")
+            if st.button("Add Expense", key="fin_tx_exp_add", type="primary"):
                 signed = -abs(amount)
-            row = {
-                "id": str(uuid.uuid4()),
-                "date": tx_date.isoformat(),
-                "account": to_acc,
-                "category": category or "Income",
-                "description": "",
-                "amount": float(signed),
-                "status": "Logged",
-                "notes": notes or "",
-            }
-            transactions = pd.concat([transactions, pd.DataFrame([row])], ignore_index=True)
-            save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
-            st.success("Income added.")
+                if acc_type_map.get(from_acc, "bank") == "credit":
+                    signed = +abs(amount)  # credit charge increases owed
+                row = {
+                    "id": str(uuid.uuid4()),
+                    "date": tx_date.isoformat(),
+                    "account": from_acc,
+                    "category": category or "Expense",
+                    "description": "",
+                    "amount": float(signed),
+                    "status": "Logged",
+                    "notes": notes or "",
+                }
+                transactions = pd.concat([transactions, pd.DataFrame([row])], ignore_index=True)
+                save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
+                st.success("Expense added.")
 
-    else:  # Transfer
-        c1, c2, c3, c4 = st.columns([1, 1, 1, 1.2])
-        with c1:
-            tx_date = st.date_input("Date", value=date.today(), key="fin_tx_trf_date")
-        with c2:
-            from_acc = st.selectbox("From", acc_names, index=0 if acc_names else None, key="fin_tx_trf_from")
-        with c3:
-            to_acc = st.selectbox("To", [a for a in acc_names if a != from_acc] or acc_names, index=0 if acc_names else None, key="fin_tx_trf_to")
-        with c4:
-            amount = st.number_input("Amount ($)", min_value=0.0, value=0.0, step=5.0, key="fin_tx_trf_amt")
-        notes = st.text_input("Notes", value="Transfer", key="fin_tx_trf_notes")
-        if st.button("Record Transfer", key="fin_tx_trf_add", type="primary"):
-            # From account always decreases (uses cash / reduces asset / reduces owed if credit)
-            amt_from = -abs(amount)
-            # To account increases asset; if credit (paying card), reduce owed
-            amt_to = +abs(amount)
-            if acc_type_map.get(to_acc, "bank") == "credit":
-                amt_to = -abs(amount)
+        elif flow == "Income":
+            c1, c2, c3, c4 = st.columns([1, 1, 1, 1.2])
+            with c1:
+                tx_date = st.date_input("Date", value=date.today(), key="fin_tx_inc_date")
+            with c2:
+                to_acc = st.selectbox("To account", acc_names, index=0 if acc_names else None, key="fin_tx_inc_to")
+            with c3:
+                amount = st.number_input("Amount ($)", min_value=0.0, value=0.0, step=5.0, key="fin_tx_inc_amt")
+            with c4:
+                category = st.text_input("Category (e.g., Income: Paycheck)", value="Income: Paycheck", key="fin_tx_inc_cat")
+            notes = st.text_input("Notes", key="fin_tx_inc_notes")
+            if st.button("Add Income", key="fin_tx_inc_add", type="primary"):
+                signed = +abs(amount)
+                if acc_type_map.get(to_acc, "bank") == "credit":
+                    signed = -abs(amount)  # refund/credit reduces owed
+                row = {
+                    "id": str(uuid.uuid4()),
+                    "date": tx_date.isoformat(),
+                    "account": to_acc,
+                    "category": category or "Income",
+                    "description": "",
+                    "amount": float(signed),
+                    "status": "Logged",
+                    "notes": notes or "",
+                }
+                transactions = pd.concat([transactions, pd.DataFrame([row])], ignore_index=True)
+                save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
+                st.success("Income added.")
 
-            rows = [
-                {"id": str(uuid.uuid4()), "date": tx_date.isoformat(), "account": from_acc,
-                 "category": "Transfer", "description": f"Transfer to {to_acc}", "amount": float(amt_from),
-                 "status": "Logged", "notes": notes or ""},
-                {"id": str(uuid.uuid4()), "date": tx_date.isoformat(), "account": to_acc,
-                 "category": "Transfer", "description": f"Transfer from {from_acc}", "amount": float(amt_to),
-                 "status": "Logged", "notes": notes or ""},
-            ]
-            transactions = pd.concat([transactions, pd.DataFrame(rows)], ignore_index=True)
-            save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
-            st.success("Transfer recorded.")
+        else:  # Transfer
+            c1, c2, c3, c4 = st.columns([1, 1, 1, 1.2])
+            with c1:
+                tx_date = st.date_input("Date", value=date.today(), key="fin_tx_trf_date")
+            with c2:
+                from_acc = st.selectbox("From", acc_names, index=0 if acc_names else None, key="fin_tx_trf_from")
+            # To options exclude the selected from_acc
+            to_options = [a for a in acc_names if a != from_acc] or acc_names
+            with c3:
+                to_acc = st.selectbox("To", to_options, index=0 if to_options else None, key="fin_tx_trf_to")
+            with c4:
+                amount = st.number_input("Amount ($)", min_value=0.0, value=0.0, step=5.0, key="fin_tx_trf_amt")
+            notes = st.text_input("Notes", value="Transfer", key="fin_tx_trf_notes")
+            if st.button("Record Transfer", key="fin_tx_trf_add", type="primary"):
+                # From decreases asset / reduces cash; To increases asset; special-case credit card
+                amt_from = -abs(amount)
+                amt_to   = +abs(amount)
+                if acc_type_map.get(to_acc, "bank") == "credit":
+                    amt_to = -abs(amount)  # paying card reduces owed
 
-    # Editable table view (simple)
-    st.markdown("#### All Transactions")
-    if transactions.empty:
-        st.info("No transactions yet.")
-    else:
-        view_tx = transactions.sort_values("date", ascending=False).copy()
-        st.dataframe(view_tx[["date","account","category","description","amount","status","notes"]], use_container_width=True)
+                rows = [
+                    {"id": str(uuid.uuid4()), "date": tx_date.isoformat(), "account": from_acc,
+                     "category": "Transfer", "description": f"Transfer to {to_acc}", "amount": float(amt_from),
+                     "status": "Logged", "notes": notes or ""},
+                    {"id": str(uuid.uuid4()), "date": tx_date.isoformat(), "account": to_acc,
+                     "category": "Transfer", "description": f"Transfer from {from_acc}", "amount": float(amt_to),
+                     "status": "Logged", "notes": notes or ""},
+                ]
+                transactions = pd.concat([transactions, pd.DataFrame(rows)], ignore_index=True)
+                save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
+                st.success("Transfer recorded.")
 
-    # Cash flow visual: Spending by Category (last 30 days)
-    st.markdown("#### Cash Flow — Spending by Category (Last 30 Days)")
-    if not transactions.empty:
-        tx2 = transactions.copy()
-        tx2["date"] = pd.to_datetime(tx2["date"], errors="coerce")
-        last30 = pd.Timestamp(date.today()) - pd.Timedelta(days=30)
-        tx2 = tx2[tx2["date"] >= last30]
+        # Show recent table (compact)
+        if not transactions.empty:
+            st.markdown("#### All Transactions")
+            view_tx = transactions.sort_values("date", ascending=False).copy()
+            st.dataframe(view_tx[["date","account","category","description","amount","status","notes"]], use_container_width=True)
 
-        # Merge in account type to determine outflows for credit vs bank
-        tx2 = tx2.merge(accounts[["name","type"]], left_on="account", right_on="name", how="left").rename(columns={"type":"acc_type"}).drop(columns=["name"])
-        # Exclude transfers and incomes for spending chart
-        mask_not_income_transfer = ~tx2["category"].fillna("").str.startswith("Income")
-        mask_not_transfer = tx2["category"].fillna("").str.lower() != "transfer"
-        tx_exp = tx2[mask_not_income_transfer & mask_not_transfer].copy()
+        # Interactive cash-flow bar: spending by category (last 30 days)
+        st.markdown("#### Cash Flow — Spending by Category (Last 30 Days)")
+        if not transactions.empty:
+            tx2 = transactions.copy()
+            tx2["date"] = pd.to_datetime(tx2["date"], errors="coerce")
+            last30 = pd.Timestamp(date.today()) - pd.Timedelta(days=30)
+            tx2 = tx2[tx2["date"] >= last30]
 
-        if not tx_exp.empty:
-            # Outflow detection: bank (<0) or credit (>0). Sum absolute.
-            tx_exp["outflow"] = np.where(
-                tx_exp["acc_type"].fillna("bank") == "credit",
-                tx_exp["amount"].clip(lower=0),                 # credit charge = + amount
-                (-tx_exp["amount"]).clip(lower=0),              # bank spend = negative amount
-            )
-            by_cat = tx_exp.groupby("category")["outflow"].sum().sort_values(ascending=False)
-            if not by_cat.empty:
-                fig, ax = plt.subplots(figsize=(7, 3.2))
-                ax.bar(by_cat.index, by_cat.values)
-                ax.set_ylabel("Spend ($)")
-                ax.set_title("Spending by Category — Last 30 Days")
-                ax.tick_params(axis='x', rotation=30)
-                st.pyplot(fig, use_container_width=True)
+            # Merge account type for outflow logic
+            tx2 = tx2.merge(accounts[["name","type"]], left_on="account", right_on="name", how="left") \
+                     .rename(columns={"type":"acc_type"}).drop(columns=["name"])
+
+            # Exclude transfers and incomes
+            not_income  = ~tx2["category"].fillna("").str.startswith("Income")
+            not_transfer = tx2["category"].fillna("").str.lower() != "transfer"
+            spend = tx2[not_income & not_transfer].copy()
+
+            if not spend.empty:
+                # bank outflow = negative; credit outflow = positive charge
+                spend["outflow"] = np.where(
+                    spend["acc_type"].fillna("bank") == "credit",
+                    spend["amount"].clip(lower=0),
+                    (-spend["amount"]).clip(lower=0),
+                )
+                by_cat = spend.groupby("category", dropna=False)["outflow"].sum().reset_index()
+                by_cat = by_cat.sort_values("outflow", ascending=False)
+
+                flow_bar = (
+                    alt.Chart(by_cat)
+                    .mark_bar()
+                    .encode(
+                        x=alt.X("category:N", sort="-y", title="Category"),
+                        y=alt.Y("outflow:Q", title="Spend ($)"),
+                        tooltip=[
+                            alt.Tooltip("category:N", title="Category"),
+                            alt.Tooltip("outflow:Q",  title="Spend ($)", format="$,.2f"),
+                        ],
+                    )
+                    .properties(height=220)
+                    .interactive()
+                )
+                st.altair_chart(flow_bar, use_container_width=True)
             else:
                 st.info("No spend found in the last 30 days.")
         else:
-            st.info("No spend found in the last 30 days.")
-    else:
-        st.info("Add a few transactions to see your cash flow by category.")
+            st.info("Add a few transactions to see your cash flow.")
 
 
 

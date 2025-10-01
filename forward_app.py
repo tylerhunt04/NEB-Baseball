@@ -715,8 +715,8 @@ with tab_finance:
     # Seed accounts if empty (Checking/Savings as 'bank')
     if accounts.empty:
         accounts = pd.DataFrame([
-            {"id": str(uuid.uuid4()), "name": "Checking", "type": "bank", "opening_balance": 0.0, "notes": ""},
-            {"id": str(uuid.uuid4()), "name": "Savings",  "type": "bank", "opening_balance": 0.0, "notes": ""},
+            {"id": str(uuid.uuid4()), "name": "Checking", "type": "bank", "Balance": 0.0, "notes": ""},
+            {"id": str(uuid.uuid4()), "name": "Savings",  "type": "bank", "Balance": 0.0, "notes": ""},
         ], columns=ACCOUNT_COLS)
         save_csv(FILES["accounts"], accounts)
 

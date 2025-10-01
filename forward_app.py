@@ -695,18 +695,25 @@ with tab_finance:
     # ---------- Accounts & Balances ----------
     st.markdown("### Accounts")
 
-    edited_accounts = st.data_editor(
-        accounts,
-        num_rows="dynamic", use_container_width=True, hide_index=True,
-        column_config={
-            "id": st.column_config.TextColumn("id", disabled=True),
-            "type": st.column_config.SelectboxColumn(
-                options=["bank", "cash", "credit", "loan", "investment"],
-                default="bank"
-            ),
-        },
-        key="fin_accounts_editor",
-    )
+edited_accounts = st.data_editor(
+    accounts,
+    column_order=["name", "type", "opening_balance", "notes"],  # hide 'id'
+    num_rows="dynamic", use_container_width=True, hide_index=True,
+    column_config={
+        # keep the type dropdown
+        "type": st.column_config.SelectboxColumn(
+            options=["bank", "cash", "credit", "loan", "investment"], default="bank"
+        ),
+    },
+    key="fin_accounts_editor",
+)
+
+# ensure each row has an id before saving
+if "id" not in edited_accounts.columns:
+    edited_accounts["id"] = ""
+edited_accounts["id"] = edited_accounts["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
+save_csv(FILES["accounts"], edited_accounts[ACCOUNT_COLS])
+
     if st.button("Save Accounts", key="fin_save_accounts"):
         if "id" in edited_accounts.columns:
             edited_accounts["id"] = edited_accounts["id"].fillna("").apply(lambda x: x if x else str(uuid.uuid4()))

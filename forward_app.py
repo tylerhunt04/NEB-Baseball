@@ -670,13 +670,19 @@ with tab_finance:
     paychecks = load_csv(FILES["paychecks"], PAYCHECK_COLS)
     budget = load_csv(FILES["budget"], BUDGET_COLS)
 
-    # Seed defaults if empty
-    if accounts.empty:
-        accounts = pd.DataFrame([
-            {"id": str(uuid.uuid4()), "name": "Checking", "type": "cash", "opening_balance": 0.0, "notes": ""},
-            {"id": str(uuid.uuid4()), "name": "Savings", "type": "cash", "opening_balance": 0.0, "notes": ""},
-        ], columns=ACCOUNT_COLS)
-        save_csv(FILES["accounts"], accounts)
+ # Seed defaults if empty
+if accounts.empty:
+    accounts = pd.DataFrame([
+        {"id": str(uuid.uuid4()), "name": "Checking", "type": "bank", "opening_balance": 0.0, "notes": ""},
+        {"id": str(uuid.uuid4()), "name": "Savings",  "type": "bank", "opening_balance": 0.0, "notes": ""},
+    ], columns=ACCOUNT_COLS)
+    save_csv(FILES["accounts"], accounts)
+    
+# Normalize old 'cash' label to 'bank' for online accounts
+if not accounts.empty:
+    accounts["type"] = accounts["type"].fillna("bank").replace({"cash": "bank"})
+    save_csv(FILES["accounts"], accounts)
+
 
     if budget.empty:
         budget = pd.DataFrame([

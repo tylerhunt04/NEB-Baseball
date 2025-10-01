@@ -1,4 +1,17 @@
-
+# LifeHub — a single‑file Streamlit app for self‑management
+# Author: ChatGPT x Tyler
+# To run:  streamlit run lifehub_app.py
+# -----------------------------------------------------------------------------
+# Features
+# - Dashboard: quick stats, streaks, today's schedule & workouts
+# - Schedule: weekly/daily planner with tasks, priorities, durations
+# - Workouts: plan builder, workout logger, volume charts
+# - Weigh‑ins: weekly weigh‑ins, BMI calc (optional), trend chart & stats
+# - Journal: daily entries with mood, tags, rich text (Markdown)
+# - Habits: simple habit tracker with streaks & weekly review
+# - Data: auto‑save to ./lifehub_data (CSV/JSON). Export/Import supported.
+# - Theme: clean, keyboard‑friendly data_editor tables, sensible defaults
+# -----------------------------------------------------------------------------
 
 import os
 import json
@@ -104,91 +117,113 @@ if "settings" not in st.session_state:
 
 
 # =============== SIDEBAR NAV ====================================================
-st.set_page_config(page_title=f"{APP_NAME} — Self Management", layout="wide")
+st.set_page_config(page_title=f"{APP_NAME} — Self Management", layout="wide", initial_sidebar_state="collapsed")
+# Force light-like appearance (works even if user theme is dark)
+st.markdown(
+    """
+    <style>
+    :root {
+      --background-color: #ffffff;
+      --secondary-background-color: #f6f6f6;
+      --text-color: #111111;
+    }
+    [data-testid="stAppViewContainer"] {background: var(--background-color) !important;}
+    [data-testid="stHeader"] {background: var(--background-color) !important;}
+    [data-testid="stSidebar"] {display: none !important;} /* hide sidebar entirely */
+    .stMarkdown, .stText, .stDataFrame, .stMetric { color: var(--text-color) !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("🌱 LifeHub — Self‑Management")
 
-with st.sidebar:
-    st.header("Navigation")
-    page = st.radio(
-        "Go to",
-        [
-            "Dashboard",
-            "Schedule",
-            "Workouts",
-            "Weigh‑ins",
-            "Journal",
-            "Habits",
-            "Data & Settings",
-        ],
-        index=0,
-    )
+# ---- TOP NAV TABS ----
+st.title("🌱 LifeHub — Self‑Management")
+(
+    tab_dashboard,
+    tab_schedule,
+    tab_workouts,
+    tab_weighins,
+    tab_journal,
+    tab_habits,
+    tab_data,
+) = st.tabs([
+    "Dashboard",
+    "Schedule",
+    "Workouts",
+    "Weigh‑ins",
+    "Journal",
+    "Habits",
+    "Data & Settings",
+])
 
-    st.divider()
-    st.caption("Quick add")
-    qa_choice = st.selectbox("Type", ["Task", "Weigh‑in", "Journal"])
-    if qa_choice == "Task":
-        qa_date = st.date_input("Date", value=date.today())
-        qa_title = st.text_input("Title", key="qa_task_title")
-        col1, col2 = st.columns(2)
-        with col1:
-            qa_start = st.time_input("Start", value=datetime.now().time())
-        with col2:
-            qa_end = st.time_input("End", value=(datetime.now() + timedelta(hours=1)).time())
-        qa_cat = st.selectbox("Category", ["Work", "Study", "Health", "Personal", "Other"], index=2)
-        qa_pri = st.selectbox("Priority", ["Low", "Med", "High"], index=1)
-        if st.button("Add Task", use_container_width=True):
-            df = load_csv(FILES["schedule"], SCHEDULE_COLS)
-            new = {
-                "id": str(uuid.uuid4()),
-                "date": qa_date.isoformat(),
-                "start_time": qa_start.strftime("%H:%M"),
-                "end_time": qa_end.strftime("%H:%M"),
-                "title": qa_title,
-                "category": qa_cat,
-                "priority": qa_pri,
-                "notes": "",
-                "status": "Todo",
-            }
-            df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
-            save_csv(FILES["schedule"], df)
-            st.success("Task added.")
-    elif qa_choice == "Weigh‑in":
-        wi_date = st.date_input("Date", value=date.today(), key="qa_wi_date")
-        units = st.session_state.settings.get("units", "imperial")
-        wi_weight = st.number_input("Weight", min_value=0.0, step=0.1)
-        wi_bf = st.number_input("Body Fat %", min_value=0.0, max_value=100.0, step=0.1)
-        if st.button("Add Weigh‑in", use_container_width=True):
-            df = load_csv(FILES["weighins"], WEIGHIN_COLS)
-            new = {
-                "id": str(uuid.uuid4()),
-                "date": wi_date.isoformat(),
-                "weight": wi_weight,
-                "body_fat_pct": wi_bf if wi_bf else np.nan,
-                "waist": np.nan,
-                "notes": "",
-            }
-            df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
-            save_csv(FILES["weighins"], df)
-            st.success("Weigh‑in logged.")
-    else:
-        j_date = st.date_input("Date", value=date.today(), key="qa_j_date")
-        j_title = st.text_input("Title", key="qa_j_title")
-        j_mood = st.slider("Mood", 1, 10, 6)
-        j_tags = st.text_input("Tags (comma‑sep)")
-        j_content = st.text_area("Entry", height=120)
-        if st.button("Save Journal", use_container_width=True):
-            df = load_csv(FILES["journal"], JOURNAL_COLS)
-            new = {
-                "id": str(uuid.uuid4()),
-                "date": j_date.isoformat(),
-                "title": j_title,
-                "mood": j_mood,
-                "tags": j_tags,
-                "content": j_content,
-            }
-            df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
-            save_csv(FILES["journal"], df)
-            st.success("Journal saved.")
+# Quick Add lives on the Dashboard now
+with tab_dashboard:
+    with st.expander("➕ Quick Add", expanded=False):
+        qa_choice = st.selectbox("Type", ["Task", "Weigh‑in", "Journal"], key="qa_type_top")
+        if qa_choice == "Task":
+            qa_date = st.date_input("Date", value=date.today(), key="qa_task_date_top")
+            qa_title = st.text_input("Title", key="qa_task_title_top")
+            col1, col2 = st.columns(2)
+            with col1:
+                qa_start = st.time_input("Start", value=datetime.now().time(), key="qa_task_start_top")
+            with col2:
+                qa_end = st.time_input("End", value=(datetime.now() + timedelta(hours=1)).time(), key="qa_task_end_top")
+            qa_cat = st.selectbox("Category", ["Work", "Study", "Health", "Personal", "Other"], index=2, key="qa_task_cat_top")
+            qa_pri = st.selectbox("Priority", ["Low", "Med", "High"], index=1, key="qa_task_pri_top")
+            if st.button("Add Task", use_container_width=True, key="qa_add_task_top"):
+                df = load_csv(FILES["schedule"], SCHEDULE_COLS)
+                new = {
+                    "id": str(uuid.uuid4()),
+                    "date": qa_date.isoformat(),
+                    "start_time": qa_start.strftime("%H:%M"),
+                    "end_time": qa_end.strftime("%H:%M"),
+                    "title": qa_title,
+                    "category": qa_cat,
+                    "priority": qa_pri,
+                    "notes": "",
+                    "status": "Todo",
+                }
+                df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
+                save_csv(FILES["schedule"], df)
+                st.success("Task added.")
+        elif qa_choice == "Weigh‑in":
+            wi_date = st.date_input("Date", value=date.today(), key="qa_wi_date_top")
+            wi_weight = st.number_input("Weight", min_value=0.0, step=0.1, key="qa_wi_weight_top")
+            wi_bf = st.number_input("Body Fat %", min_value=0.0, max_value=100.0, step=0.1, key="qa_wi_bf_top")
+            if st.button("Add Weigh‑in", use_container_width=True, key="qa_add_wi_top"):
+                df = load_csv(FILES["weighins"], WEIGHIN_COLS)
+                new = {
+                    "id": str(uuid.uuid4()),
+                    "date": wi_date.isoformat(),
+                    "weight": wi_weight,
+                    "body_fat_pct": wi_bf if wi_bf else np.nan,
+                    "waist": np.nan,
+                    "notes": "",
+                }
+                df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
+                save_csv(FILES["weighins"], df)
+                st.success("Weigh‑in logged.")
+        else:
+            j_date = st.date_input("Date", value=date.today(), key="qa_j_date_top")
+            j_title = st.text_input("Title", key="qa_j_title_top")
+            j_mood = st.slider("Mood", 1, 10, 6, key="qa_j_mood_top")
+            j_tags = st.text_input("Tags (comma‑sep)", key="qa_j_tags_top")
+            j_content = st.text_area("Entry", height=120, key="qa_j_content_top")
+            if st.button("Save Journal", use_container_width=True, key="qa_add_journal_top"):
+                df = load_csv(FILES["journal"], JOURNAL_COLS)
+                new = {
+                    "id": str(uuid.uuid4()),
+                    "date": j_date.isoformat(),
+                    "title": j_title,
+                    "mood": j_mood,
+                    "tags": j_tags,
+                    "content": j_content,
+                }
+                df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
+                save_csv(FILES["journal"], df)
+                st.success("Journal saved.")
 
 # =============== HELPERS ========================================================
 
@@ -216,7 +251,7 @@ def _human_duration(start_str: str, end_str: str) -> float:
 # =============== PAGES ==========================================================
 
 # ---- DASHBOARD ----
-if page == "Dashboard":
+with tab_dashboard:
     st.subheader("Today")
     today = date.today().isoformat()
 
@@ -267,7 +302,8 @@ if page == "Dashboard":
         st.line_chart(wi_sorted.set_index("date")["weight"], height=220)
 
 # ---- SCHEDULE ----
-elif page == "Schedule":
+
+with tab_schedule:
     st.subheader("Schedule Builder")
 
     sched = load_csv(FILES["schedule"], SCHEDULE_COLS)
@@ -351,7 +387,8 @@ elif page == "Schedule":
             st.dataframe(agg.sort_values(["date", "category"]))
 
 # ---- WORKOUTS ----
-elif page == "Workouts":
+
+with tab_workouts:
     st.subheader("Workouts")
 
     plan = load_csv(FILES["workout_plan"], WORKOUT_PLAN_COLS)
@@ -432,7 +469,8 @@ elif page == "Workouts":
             st.dataframe(by_ex, use_container_width=True)
 
 # ---- WEIGH‑INS ----
-elif page == "Weigh‑ins":
+
+with tab_weighins:
     st.subheader("Weekly Weigh‑ins")
 
     settings = st.session_state.settings
@@ -483,7 +521,8 @@ elif page == "Weigh‑ins":
             st.metric("To goal", f"{(latest - goal):+.1f}" if goal else "—")
 
 # ---- JOURNAL ----
-elif page == "Journal":
+
+with tab_journal:
     st.subheader("Journal")
 
     jr = load_csv(FILES["journal"], JOURNAL_COLS)
@@ -532,7 +571,8 @@ elif page == "Journal":
             st.divider()
 
 # ---- HABITS ----
-elif page == "Habits":
+
+with tab_habits:
     st.subheader("Habit Tracker")
 
     hb = load_csv(FILES["habits"], HABIT_COLS)
@@ -583,7 +623,8 @@ elif page == "Habits":
         st.dataframe(view[["name","weekly_target","done","progress","notes"]])
 
 # ---- DATA & SETTINGS ----
-elif page == "Data & Settings":
+
+with tab_data:
     st.subheader("Settings")
     settings = st.session_state.settings
 

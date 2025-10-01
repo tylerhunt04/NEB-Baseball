@@ -24,7 +24,7 @@ st.set_page_config(page_title="Nebraska Baseball — Pitcher Reports",
 st.set_option("client.showErrorDetails", True)
 
 DATA_PATH_MAIN  = "pitcher_columns.csv"
-DATA_PATH_SCRIM = "Scrimmage(18).csv"
+DATA_PATH_SCRIM = "Scrimmage(15) (1).csv"
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
 HUSKER_RED  = "#E60026"
@@ -1121,7 +1121,8 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
     if df_p.empty:
         st.info("No data for the selected filters.")
         return None
-      type_col = type_col_in_df(df_p)
+
+    type_col = type_col_in_df(df_p)
 
     # Filter by batter side if provided
     side_col = find_batter_side_col(df_p)

@@ -1,4 +1,4 @@
-# pitcher_app.py — FULL APP (Part 1/2)
+here is the first half, # pitcher_app.py — FULL APP (Part 1/2)
 
 import os, gc, re, base64
 import numpy as np
@@ -24,7 +24,6 @@ st.set_page_config(page_title="Nebraska Baseball — Pitcher Reports",
 st.set_option("client.showErrorDetails", True)
 
 DATA_PATH_MAIN  = "pitcher_columns.csv"
-BULLPEN_DATA_DEFAULT = "combined_bullpen_2025-09-30.csv"
 DATA_PATH_SCRIM = "Scrimmage(18).csv"
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
@@ -668,29 +667,6 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
 # (Outcome summary helpers and other plots would continue here, unchanged)
 # To keep Part 1 a manageable size, we’ll include the outcome helpers in Part 2 right before use.
 # pitcher_app.py — FULL APP (Part 2/2)
-# ─── Bullpen helpers (load/save + PitchType column) ───────────────────────────
-PITCHTYPE_CHOICES = ["Fastball","Sinker","Cutter","Slider","Curveball","ChangeUp","Sweeper","Other",""]
-
-def _ensure_pitchtype_column(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    if "PitchType" not in df.columns:
-        df["PitchType"] = ""
-    return df
-
-def _load_bullpen_csv(path: str | None) -> pd.DataFrame | None:
-    if not path or not os.path.exists(path):
-        return None
-    try:
-        df = pd.read_csv(path, low_memory=False)
-    except UnicodeDecodeError:
-        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
-    df = ensure_date_column(df)
-    return _ensure_pitchtype_column(df)
-
-def _save_bullpen_csv(df: pd.DataFrame, path: str) -> None:
-    tmp = f"{path}.tmp"
-    df.to_csv(tmp, index=False)
-    os.replace(tmp, path)
 
 # ─── Outcome summary helpers (needed in Profiles) ─────────────────────────────
 def _first_present(df: pd.DataFrame, cands: list[str]) -> str | None:
@@ -1051,21 +1027,6 @@ def make_pitcher_rankings(df_segment: pd.DataFrame, pitch_types_filter: list[str
     # Default sort by WHIP asc, then SO desc
     out = out.sort_values(["WHIP","SO"], ascending=[True, False], na_position="last").reset_index(drop=True)
     return out
-# ─── Bullpen helpers (load/save + PitchType column) ───────────────────────────
-PITCHTYPE_CHOICES = ["Fastball","Sinker","Cutter","Slider","Curveball","ChangeUp","Sweeper","Other",""]
-
-def _ensure_pitchtype_column(df: pd.DataFrame) -> pd.DataFrame:
-    ...
-
-def _load_bullpen_csv(path: str | None) -> pd.DataFrame | None:
-    ...
-
-def _save_bullpen_csv(df: pd.DataFrame, path: str) -> None:
-    ...
-
-# ─── Bullpen single-page view (NO TABS) ───────────────────────────────────────
-def render_bullpen_view():
-    ...
 
 # ─── Load data ────────────────────────────────────────────────────────────────
 def resolve_existing_path(candidates: list[str]) -> str | None:
@@ -1097,8 +1058,6 @@ if df_scrim is not None: df_scrim = dedupe_pitches(df_scrim)
 # ─── Segment picker ───────────────────────────────────────────────────────────
 st.markdown("### Data Segment")
 segment_choice = st.selectbox("Choose time period", list(SEGMENT_DEFS.keys()), index=0, key="segment_choice")
-
-# Decide base dataset (main or scrimmage) first
 if segment_choice == "2025/26 Scrimmages":
     if df_scrim is None:
         st.error(f"Scrimmage data file not found. Tried: {', '.join(_scrim_candidates)}")
@@ -1106,23 +1065,15 @@ if segment_choice == "2025/26 Scrimmages":
     base_df = df_scrim
 else:
     if df_main is None:
-        st.error(f"Main data file not found at '{DATA_PATH_MAIN}'.")
-        st.stop()
+        st.error(f"Main data file not found at '{DATA_PATH_MAIN}'."); st.stop()
     base_df = df_main
 
-# IMPORTANT: Bullpens are their own single-page view (no tabs, separate CSV)
-SEG_TYPES = SEGMENT_DEFS.get(segment_choice, {}).get("types", [])
-is_bullpen_segment = "bullpen" in SEG_TYPES
-
-if is_bullpen_segment:
-    render_bullpen_view()  # uses the bullpen CSV, not base_df
-    st.stop()
-
-# Non-bullpen flow uses the normal filtered dataset
 df_segment = filter_by_segment(base_df, segment_choice)
 if df_segment.empty:
-    st.info(f"No rows found for **{segment_choice}** with the current dataset.")
-    st.stop()
+    st.info(f"No rows found for **{segment_choice}** with the current dataset."); st.stop()
+
+SEG_TYPES = SEGMENT_DEFS.get(segment_choice, {}).get("types", [])
+is_bullpen_segment = "bullpen" in SEG_TYPES
 
 # ─── Pitcher picker ───────────────────────────────────────────────────────────
 neb_df_all = df_segment[df_segment.get('PitcherTeam','') == 'NEB'].copy()
@@ -1144,128 +1095,6 @@ df_pitcher_all = neb_df_all[neb_df_all["PitcherKey"] == player_key].copy()
 df_pitcher_all['Date'] = pd.to_datetime(df_pitcher_all['Date'], errors="coerce")
 appearances = int(df_pitcher_all['Date'].dropna().dt.date.nunique())
 st.subheader(f"{canonicalize_person_name(player_disp)} ({appearances} Appearances)")
-# ─── Bullpen single-page (no tabs) ────────────────────────────────────────────
-def render_bullpen_view():
-    st.subheader("Bullpen — Pitch-by-Pitch")
-
-    # Source: default path or upload override
-    col_path, col_upload = st.columns([1.3, 0.7])
-    with col_path:
-        bp_path = st.text_input("Bullpen CSV path", value=BULLPEN_DATA_DEFAULT, key="bp_csv_path_inline")
-    with col_upload:
-        up = st.file_uploader("…or upload bullpen CSV", type=["csv"], key="bp_uploader_inline")
-
-    session_path = bp_path
-    if up is not None:
-        session_path = "/tmp/_bullpen_upload.csv"
-        with open(session_path, "wb") as f:
-            f.write(up.getbuffer())
-
-    df_bp = _load_bullpen_csv(session_path)
-    if df_bp is None or df_bp.empty:
-        st.info("Load a bullpen CSV to begin (path or upload).")
-        return
-
-    # Pick pitcher + date
-    if "Pitcher" not in df_bp.columns:
-        st.error("Bullpen CSV must include a 'Pitcher' column."); return
-    df_bp["PitcherDisplay"] = df_bp["Pitcher"].map(canonicalize_person_name)
-
-    pitchers = sorted(df_bp["PitcherDisplay"].dropna().unique().tolist())
-    sel_pitcher = st.selectbox("Pitcher", pitchers, key="bp_sel_pitcher_inline")
-    df_p = df_bp[df_bp["PitcherDisplay"] == sel_pitcher].copy()
-
-    if "Date" in df_bp.columns:
-        dser = pd.to_datetime(df_p["Date"], errors="coerce").dropna()
-        dates = sorted(dser.dt.date.unique().tolist())
-        if dates:
-            sel_date = st.selectbox(
-                "Session Date",
-                options=dates,
-                index=len(dates)-1,
-                format_func=lambda d: format_date_long(pd.to_datetime(d)),
-                key="bp_sel_date_inline"
-            )
-            df_p = df_p[pd.to_datetime(df_p["Date"], errors="coerce").dt.date == sel_date].copy()
-            season_label = format_date_long(sel_date)
-        else:
-            season_label = "Bullpen"
-    else:
-        season_label = "Bullpen"
-
-    if df_p.empty:
-        st.info("No rows for the selected pitcher/date.")
-        return
-
-    # Optional movement summary (re-uses your plot)
-    logo_img = load_logo_img()
-    out = combined_pitcher_report(df_p, sel_pitcher, logo_img, coverage=0.8, season_label=season_label)
-    if out:
-        fig_m, _ = out
-        show_and_close(fig_m)
-
-    # Pitch-by-pitch table (no innings/PA)
-    st.markdown("### Play-by-Play (Pitch by Pitch)")
-    cols_show = [
-        "PitchNo","PitchType","RelSpeed","SpinRate","Tilt",
-        "InducedVertBreak","HorzBreak","RelHeight","Extension","RelSide"
-    ]
-    present = [c for c in cols_show if c in df_p.columns]
-    if "PitchNo" in df_p.columns:
-        df_p = df_p.sort_values("PitchNo", kind="stable")
-    view = df_p[present].copy()
-    view = _ensure_pitchtype_column(view)
-
-    # Inline editing of PitchType (optional)
-    view_edit = st.data_editor(
-        view,
-        hide_index=True,
-        column_config={
-            "PitchType": st.column_config.SelectboxColumn("PitchType", options=PITCHTYPE_CHOICES, required=False)
-        },
-        disabled=[c for c in present if c != "PitchType"],
-        use_container_width=True,
-        key="bp_editor_inline"
-    )
-
-    # Save back (matches only the selected pitcher/date slice)
-    if st.button("Save Pitch Types", type="primary", key="bp_save_inline"):
-        full = _load_bullpen_csv(session_path)
-        if full is None:
-            st.error("Could not reload bullpen CSV to save."); return
-        full = _ensure_pitchtype_column(full)
-
-        mask = full["Pitcher"].map(canonicalize_person_name).eq(sel_pitcher)
-        if "Date" in full.columns and "Date" in df_p.columns and "Date" in view_edit.columns:
-            if "Date" in df_p.columns and not df_p["Date"].isna().all():
-                d0 = pd.to_datetime(df_p["Date"].iloc[0], errors="coerce")
-                mask &= pd.to_datetime(full["Date"], errors="coerce").dt.date == d0.date()
-
-        # Join on PitchNo if present, else positional update
-        if "PitchNo" in full.columns and "PitchNo" in view_edit.columns:
-            slice_df = full.loc[mask].copy()
-            upd = slice_df.drop(columns=["PitchType"], errors="ignore").merge(
-                view_edit[["PitchNo","PitchType"]], on="PitchNo", how="left"
-            )
-            full.loc[mask, "PitchType"] = upd["PitchType"].fillna(full.loc[mask, "PitchType"])
-        else:
-            st.warning("PitchNo not found; saving by position within selected slice.")
-            full.loc[mask, "PitchType"] = view_edit["PitchType"].values
-
-        if up is not None:
-            st.info("Edits apply to the uploaded copy for this session. Provide a path above to save permanently.")
-        else:
-            _save_bullpen_csv(full, session_path)
-            st.success(f"Saved PitchType edits to: {session_path}")
-
-    # Download current slice (optional)
-    st.download_button(
-        "Download this bullpen (CSV)",
-        data=view_edit.to_csv(index=False).encode("utf-8"),
-        file_name=f"bullpen_{sel_pitcher.replace(' ','_')}_{season_label.replace(' ','_')}.csv",
-        mime="text/csv"
-    )
-
 
 tabs = st.tabs(["Standard", "Compare", "Profiles", "Rankings"])
 # ========== Batter-side helpers (moved up so Standard tab can use) ==========
@@ -1292,8 +1121,7 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
     if df_p.empty:
         st.info("No data for the selected filters.")
         return None
-
-    type_col = type_col_in_df(df_p)
+       type_col = type_col_in_df(df_p)
 
     # Filter by batter side if provided
     side_col = find_batter_side_col(df_p)
@@ -2634,5 +2462,3 @@ with tabs[3]:
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
-
-

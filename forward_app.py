@@ -24,8 +24,8 @@ import numpy as np
 import streamlit as st
 
 # =============== CONFIG & PATHS =================================================
-APP_NAME = "LifeHub"
-DATA_DIR = "lifehub_data"
+APP_NAME = "Intentional"
+DATA_DIR = "Intentional_data"
 
 FILES = {
     "schedule": os.path.join(DATA_DIR, "schedule.csv"),
@@ -136,10 +136,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("🌱 LifeHub — Self‑Management")
-
 # ---- TOP NAV TABS ----
-st.title("🌱 LifeHub — Self‑Management")
+st.title("Be Intentional")
 (
     tab_dashboard,
     tab_schedule,

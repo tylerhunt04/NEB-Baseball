@@ -3,14 +3,14 @@
 # To run:  streamlit run lifehub_app.py
 # -----------------------------------------------------------------------------
 # Features
-# - Dashboard: quick stats, today's schedule & workouts, recent weigh-ins
+# - Header: Tyler Hunt (big) + Be Intentional (smaller) + mission shown under it
+# - Dashboard: quick stats, today's schedule & workouts, recent weigh-ins, GOALS SECTION
 # - Schedule: weekly/daily planner with tasks, priorities, durations
 # - Workouts: plan builder, workout logger, volume charts
 # - Weigh-ins: weekly weigh-ins, trend chart & stats
 # - Journal: daily entries with mood, tags, rich text (Markdown)
 # - Habits: simple habit tracker with weekly review
-# - Goals: goal list with category, timeframe, target date, progress
-# - Mission: your mission statement (stored in settings.json)
+# - Mission & Goals: full-page editor for mission + goals management
 # - Data: local-first; files live in ./lifehub_data
 # -----------------------------------------------------------------------------
 
@@ -42,8 +42,8 @@ FILES = {
 DEFAULT_SETTINGS = {
     "units": "imperial",          # or "metric" (used for weigh-in label)
     "default_week_start": "Monday",
-    "goal_weight": None,          # keeps old behavior for "To goal" metric
-    "mission": "",                # new: mission statement
+    "goal_weight": None,          # keeps To-goal metric in Weigh-ins
+    "mission": "",                # mission text shown under header
 }
 
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -130,14 +130,24 @@ st.markdown(
     [data-testid="stHeader"] {background: var(--background-color) !important;}
     [data-testid="stSidebar"] {display: none !important;}
     .stMarkdown, .stText, .stDataFrame, .stMetric { color: var(--text-color) !important; }
+    .mission-box { background:#f6f6f6; border:1px solid #eee; padding:12px 14px; border-radius:10px; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 # =============== HEADER =========================================================
-st.markdown("**Tyler Hunt**")
-st.title("Be Intentional")
+# Your name larger; Be Intentional smaller; mission displayed right below.
+st.title("Tyler Hunt")                     # bigger
+st.subheader("Be Intentional")             # smaller
+
+# Show mission statement below the header (edit via expander)
+settings = st.session_state.settings
+mission_text = settings.get("mission", "").strip()
+if mission_text:
+    st.markdown(f'<div class="mission-box">{mission_text}</div>', unsafe_allow_html=True)
+else:
+    st.info("Add your mission below (Mission & Goals tab) so it always appears here.")
 
 # ---- TOP NAV TABS ----
 (
@@ -147,8 +157,7 @@ st.title("Be Intentional")
     tab_weighins,
     tab_journal,
     tab_habits,
-    tab_goals,
-    tab_mission,
+    tab_mission_goals,
 ) = st.tabs([
     "Dashboard",
     "Schedule",
@@ -156,8 +165,7 @@ st.title("Be Intentional")
     "Weigh-ins",
     "Journal",
     "Habits",
-    "Goals",
-    "Mission",
+    "Mission & Goals",
 ])
 
 # Quick Add lives on the Dashboard
@@ -297,6 +305,41 @@ with tab_dashboard:
         st.info("Log your first weigh-in on the Weigh-ins tab or via Quick Add.")
     else:
         st.line_chart(wi_sorted.set_index("date")["weight"], height=220)
+
+    # ---- GOALS SUMMARY (UNDER DASHBOARD) ----
+    st.markdown("### Goals (Summary)")
+    goals_df = load_csv(FILES["goals"], GOALS_COLS)
+    with st.expander("➕ Quick add goal"):
+        g_title = st.text_input("Title", key="dash_goal_title")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            g_cat = st.selectbox("Category", ["Health", "Career", "School", "Finance", "Personal", "Other"], key="dash_goal_cat")
+        with c2:
+            g_timeframe = st.selectbox("Timeframe", ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly", "Long-term"], key="dash_goal_timeframe")
+        with c3:
+            g_target = st.date_input("Target date", value=date.today(), key="dash_goal_target")
+        g_notes = st.text_area("Notes", key="dash_goal_notes")
+        if st.button("Add Goal", key="dash_add_goal", type="primary") and g_title:
+            new = {
+                "id": str(uuid.uuid4()),
+                "title": g_title,
+                "category": g_cat,
+                "timeframe": g_timeframe,
+                "target_date": g_target.isoformat(),
+                "status": "Active",
+                "progress": 0,
+                "notes": g_notes,
+            }
+            goals_df = pd.concat([goals_df, pd.DataFrame([new])], ignore_index=True)
+            save_csv(FILES["goals"], goals_df)
+            st.success("Goal added.")
+
+    # show top/active goals
+    if goals_df.empty:
+        st.info("No goals yet.")
+    else:
+        view = goals_df.copy().sort_values(["status", "target_date"])
+        st.dataframe(view[["title","category","timeframe","target_date","status","progress"]].head(10), use_container_width=True)
 
 # ---- SCHEDULE ----
 with tab_schedule:
@@ -614,24 +657,34 @@ with tab_habits:
         view["progress"] = (view["done"] / view["weekly_target"]).clip(upper=1.0)
         st.dataframe(view[["name","weekly_target","done","progress","notes"]])
 
-# ---- GOALS ----
-with tab_goals:
-    st.subheader("Goals")
+# ---- MISSION & GOALS (full-page editor) ----
+with tab_mission_goals:
+    st.subheader("Mission & Goals")
 
+    # Mission editor
+    st.markdown("#### Mission")
+    mission_edit = st.text_area("Your mission statement", value=settings.get("mission", ""), height=180, key="mission_text_edit")
+    if st.button("Save Mission", type="primary", key="save_mission_btn"):
+        settings["mission"] = mission_edit
+        save_settings(settings)
+        st.session_state.settings = settings
+        st.success("Mission saved. Refresh the page to see it update under the header.")
+
+    # Goals management
+    st.markdown("#### Goals")
     goals_df = load_csv(FILES["goals"], GOALS_COLS)
-
     with st.expander("➕ Add a goal"):
-        g_title = st.text_input("Title", key="goal_title")
+        g_title = st.text_input("Title", key="mg_goal_title")
         c1, c2, c3 = st.columns(3)
         with c1:
-            g_cat = st.selectbox("Category", ["Health", "Career", "School", "Finance", "Personal", "Other"], key="goal_cat")
+            g_cat = st.selectbox("Category", ["Health", "Career", "School", "Finance", "Personal", "Other"], key="mg_goal_cat")
         with c2:
-            g_timeframe = st.selectbox("Timeframe", ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly", "Long-term"], key="goal_timeframe")
+            g_timeframe = st.selectbox("Timeframe", ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly", "Long-term"], key="mg_goal_timeframe")
         with c3:
-            g_target = st.date_input("Target date", value=date.today(), key="goal_target")
-        g_notes = st.text_area("Notes", key="goal_notes")
+            g_target = st.date_input("Target date", value=date.today(), key="mg_goal_target")
+        g_notes = st.text_area("Notes", key="mg_goal_notes")
 
-        if st.button("Add Goal", type="primary") and g_title:
+        if st.button("Add Goal", type="primary", key="mg_add_goal") and g_title:
             new = {
                 "id": str(uuid.uuid4()),
                 "title": g_title,
@@ -661,20 +714,9 @@ with tab_goals:
                 "status": st.column_config.SelectboxColumn(options=["Active","Paused","Completed","Dropped"]),
             },
         )
-        if st.button("Save Goals"):
+        if st.button("Save Goals", key="mg_save_goals"):
             save_csv(FILES["goals"], edited[GOALS_COLS])
             st.success("Saved.")
 
-# ---- MISSION ----
-with tab_mission:
-    st.subheader("Mission")
-    settings = st.session_state.settings
-    mission_text = st.text_area("Your mission statement", value=settings.get("mission", ""), height=180, key="mission_text")
-    if st.button("Save Mission", type="primary"):
-        settings["mission"] = mission_text
-        save_settings(settings)
-        st.session_state.settings = settings
-        st.success("Mission saved.")
-
 # ---- FOOTER ----
-st.caption("© 2025 LifeHub — Local-first personal data. Your files live in ./lifehub_data next to this script.")
+st.caption("© be intentional with everything you - life is beautiful.")

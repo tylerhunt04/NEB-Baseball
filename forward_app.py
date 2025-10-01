@@ -312,7 +312,7 @@ with tab_schedule:
     with col_a:
         d = st.date_input("Date", value=date.today(), key="schedule_date")
     with col_b:
-        week_start = st.selectbox("Week starts", ["Monday", "Sunday"], index=0)
+        week_start = st.selectbox("Week starts", ["Monday", "Sunday"], index=0, key="schedule_week_start")
     with col_c:
         show_week = st.toggle("Show week overview", value=True)
 
@@ -482,12 +482,12 @@ with tab_weighins:
     with c1:
         wi_date = st.date_input("Date", value=date.today(), key="wi_date_main")
     with c2:
-        weight = st.number_input("Weight" + (" (lb)" if units == "imperial" else " (kg)"), min_value=0.0, step=0.1)
+        weight = st.number_input("Weight" + (" (lb)" if units == "imperial" else " (kg)"), min_value=0.0, step=0.1, key="wi_weight_main")
     with c3:
-        bf = st.number_input("Body Fat %", min_value=0.0, max_value=100.0, step=0.1)
+        bf = st.number_input("Body Fat %", min_value=0.0, max_value=100.0, step=0.1, key="wi_bf_main")
     with c4:
-        waist = st.number_input("Waist (in/cm)", min_value=0.0, step=0.1)
-    notes = st.text_input("Notes")
+        waist = st.number_input("Waist (in/cm)", min_value=0.0, step=0.1, key="wi_waist_main")
+    notes = st.text_input("Notes", key="wi_notes_main")
 
     if st.button("Add Weigh‑in", type="primary"):
         new = {
@@ -533,8 +533,8 @@ with tab_journal:
         with c1:
             j_content = st.text_area("Content (Markdown supported)", height=200, key="journal_content_form")
         with c2:
-            j_mood = st.slider("Mood", 1, 10, 6)
-            j_tags = st.text_input("Tags (comma‑sep)")
+            j_mood = st.slider("Mood", 1, 10, 6, key="journal_mood_form")
+            j_tags = st.text_input("Tags (comma‑sep)", key="journal_tags_form")
         submitted = st.form_submit_button("Save Entry", type="primary")
         if submitted:
             new = {
@@ -632,7 +632,7 @@ with tab_data:
     with c1:
         units = st.selectbox("Units", ["imperial", "metric"], index=0 if settings.get("units")=="imperial" else 1)
     with c2:
-        week_start = st.selectbox("Week starts", ["Monday", "Sunday"], index=0 if settings.get("default_week_start")=="Monday" else 1)
+        week_start = st.selectbox("Week starts", ["Monday", "Sunday"], index=0 if settings.get("default_week_start")=="Monday" else 1, key="settings_week_start")
     with c3:
         goal_weight = st.number_input("Goal weight", min_value=0.0, value=float(settings.get("goal_weight") or 0.0))
     if st.button("Save Settings", type="primary"):

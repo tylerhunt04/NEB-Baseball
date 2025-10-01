@@ -141,10 +141,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("🌱 LifeHub — Self‑Management")
+st.title("Tyler Hunt")
 
 # ---- TOP NAV TABS ----
-st.title("🌱 LifeHub — Self‑Management")
+st.title("Be Intentional")
 (
     tab_dashboard,
     tab_schedule,

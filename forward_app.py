@@ -310,7 +310,7 @@ with tab_schedule:
 
     col_a, col_b, col_c = st.columns([1,1,2])
     with col_a:
-        d = st.date_input("Date", value=date.today())
+        d = st.date_input("Date", value=date.today(), key="schedule_date")
     with col_b:
         week_start = st.selectbox("Week starts", ["Monday", "Sunday"], index=0)
     with col_c:
@@ -326,11 +326,11 @@ with tab_schedule:
         t_title = st.text_input("Title", key="sch_title")
         c3, c4, c5 = st.columns([1,1,2])
         with c3:
-            t_cat = st.selectbox("Category", ["Work", "Study", "Health", "Personal", "Other"], index=2)
+            t_cat = st.selectbox("Category", ["Work", "Study", "Health", "Personal", "Other"], index=2, key="schedule_task_cat")
         with c4:
-            t_pri = st.selectbox("Priority", ["Low", "Med", "High"], index=1)
+            t_pri = st.selectbox("Priority", ["Low", "Med", "High"], index=1, key="schedule_task_pri")
         with c5:
-            t_status = st.selectbox("Status", ["Todo", "Doing", "Done"], index=0)
+            t_status = st.selectbox("Status", ["Todo", "Doing", "Done"], index=0, key="schedule_task_status")
         t_notes = st.text_area("Notes", height=80)
         if st.button("Add to schedule", type="primary"):
             new = {
@@ -480,7 +480,7 @@ with tab_weighins:
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        wi_date = st.date_input("Date", value=date.today())
+        wi_date = st.date_input("Date", value=date.today(), key="wi_date_main")
     with c2:
         weight = st.number_input("Weight" + (" (lb)" if units == "imperial" else " (kg)"), min_value=0.0, step=0.1)
     with c3:
@@ -527,11 +527,11 @@ with tab_journal:
 
     jr = load_csv(FILES["journal"], JOURNAL_COLS)
     with st.form("journal_form"):
-        j_date = st.date_input("Date", value=date.today())
-        j_title = st.text_input("Title", placeholder="Daily reflection")
+        j_date = st.date_input("Date", value=date.today(), key="journal_date_form")
+        j_title = st.text_input("Title", placeholder="Daily reflection", key="journal_title_form")
         c1, c2 = st.columns([2,1])
         with c1:
-            j_content = st.text_area("Content (Markdown supported)", height=200)
+            j_content = st.text_area("Content (Markdown supported)", height=200, key="journal_content_form")
         with c2:
             j_mood = st.slider("Mood", 1, 10, 6)
             j_tags = st.text_input("Tags (comma‑sep)")

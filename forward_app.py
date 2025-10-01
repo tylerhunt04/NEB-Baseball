@@ -135,7 +135,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
+st.title("Tyler Hunt")
 # ---- TOP NAV TABS ----
 st.title("Be Intentional")
 (

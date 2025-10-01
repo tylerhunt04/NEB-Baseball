@@ -665,24 +665,22 @@ with tab_finance:
     st.subheader("Finance")
     import altair as alt
 
-    # ---------- Load data (assumes these FILES & *_COLS exist at top of the app) ----------
-    # FILES needs: "accounts","transactions","paychecks","budget"
+    # ---------- Load data (assumes FILES & *_COLS are defined at top) ----------
     accounts     = load_csv(FILES["accounts"], ACCOUNT_COLS)
     transactions = load_csv(FILES["transactions"], TRANSACTION_COLS)
-    paychecks    = load_csv(FILES["paychecks"], PAYCHECK_COLS)
     budget       = load_csv(FILES["budget"], BUDGET_COLS)
 
-    # ---------- Seed/ensure 3 core accounts exist ----------
-    def ensure_account(rows_df, name, acc_type="bank"):
-        if rows_df[rows_df["name"] == name].empty:
-            rows_df = pd.concat([rows_df, pd.DataFrame([{
+    # ---------- Ensure core accounts exist (Checking, Savings, Credit Card) ----------
+    def ensure_account(df, name, acc_type):
+        if df[df["name"] == name].empty:
+            df = pd.concat([df, pd.DataFrame([{
                 "id": str(uuid.uuid4()),
                 "name": name,
                 "type": acc_type,
                 "opening_balance": 0.0,
                 "notes": "",
             }])], ignore_index=True)
-        return rows_df
+        return df
 
     if accounts.empty:
         accounts = pd.DataFrame(columns=ACCOUNT_COLS)
@@ -695,16 +693,16 @@ with tab_finance:
     acc_names = accounts["name"].tolist()
     acc_type_map = dict(zip(accounts["name"], accounts["type"]))
 
-    # ---------- Three horizontal sections ----------
-    col_accounts, col_budget, col_tx = st.columns([1, 1, 1])
+    # ========================= TOP ROW: Balances | Budgeting =========================
+    col_bal, col_bud = st.columns([1, 1])
 
-    # =========================================================
-    # LEFT: ACCOUNT BALANCES (inputs + interactive bar chart)
-    # =========================================================
-    with col_accounts:
+    # --------------------------------------------------------------------------------
+    # LEFT: Account Balances (inputs + interactive bar chart)
+    # --------------------------------------------------------------------------------
+    with col_bal:
         st.markdown("### Account Balances")
 
-        # Inputs for each account's current/starting balance
+        # Inputs for each account's starting/current balance
         new_bal_vals = {}
         for _, row in accounts.iterrows():
             key = f"bal_{row['name'].lower().replace(' ', '_')}"
@@ -722,11 +720,11 @@ with tab_finance:
             save_csv(FILES["accounts"], accounts)
             st.success("Balances saved.")
 
-        # Compute live CURRENT balance = opening + sum(all transactions by account)
-        tx = transactions.copy()
-        if not tx.empty:
-            tx["amount"] = pd.to_numeric(tx["amount"], errors="coerce").fillna(0.0)
-        sum_by_acc = tx.groupby("account")["amount"].sum() if not tx.empty else pd.Series(dtype=float)
+        # Compute CURRENT balance = opening + sum(all transactions by account)
+        tx_sum = transactions.copy()
+        if not tx_sum.empty:
+            tx_sum["amount"] = pd.to_numeric(tx_sum["amount"], errors="coerce").fillna(0.0)
+        sum_by_acc = tx_sum.groupby("account")["amount"].sum() if not tx_sum.empty else pd.Series(dtype=float)
 
         rows = []
         for _, r in accounts.iterrows():
@@ -741,8 +739,8 @@ with tab_finance:
                 alt.Chart(balances_df)
                 .mark_bar()
                 .encode(
-                    x=alt.X("Account:N", sort=None),
-                    y=alt.Y("Balance:Q", scale=alt.Scale(domain=[0, 10000])),
+                    x=alt.X("Account:N", sort=None, title=""),
+                    y=alt.Y("Balance:Q", scale=alt.Scale(domain=[0, 10000]), title="Balance ($)"),
                     tooltip=["Account:N", alt.Tooltip("Balance:Q", format="$,.2f")],
                 )
                 .properties(height=220)
@@ -750,10 +748,10 @@ with tab_finance:
             )
             st.altair_chart(bar, use_container_width=True)
 
-    # =========================================================
-    # MIDDLE: BUDGETING (paycheck + 3-row percentages + pie)
-    # =========================================================
-    with col_budget:
+    # --------------------------------------------------------------------------------
+    # RIGHT: Budgeting (paycheck + 3-row percentages + interactive pie)
+    # --------------------------------------------------------------------------------
+    with col_bud:
         st.markdown("### Budgeting")
 
         # Paycheck inputs
@@ -765,8 +763,8 @@ with tab_finance:
 
         # Ensure 3 budget rows exist: Savings/Investing, Expenses, Wants
         desired_rows = [
-            ("Savings/Investing", "Savings",  "Savings"),    # default auto_account name
-            ("Expenses",          "Checking", "Bills etc"),
+            ("Savings/Investing", "Savings",  "Save & invest"),
+            ("Expenses",          "Checking", "Bills, groceries, etc."),
             ("Wants",             "Checking", "Fun/Discretionary"),
         ]
         b = budget.copy()
@@ -803,19 +801,18 @@ with tab_finance:
         )
 
         if st.button("Save Budget", key="fin_budget_save"):
-            # merge back into full budget, preserve IDs by category
+            # preserve IDs by category
             cur_ids = {str(r["category"]).strip().lower(): r["id"] for _, r in b.iterrows() if pd.notna(r.get("id"))}
             edited_b3 = edited_b3.copy()
             edited_b3["id"] = edited_b3.apply(
-                lambda r: cur_ids.get(str(r["category"]).strip().lower(), str(uuid.uuid4())), axis=1
+                lambda r: cur_ids.get(str(r["category"]).strip().lower(), str(uuid.uuid4())),
+                axis=1
             )
-            # Replace/keep only our three (you can have other rows elsewhere if you extend later)
-            merged = edited_b3[BUDGET_COLS]
-            save_csv(FILES["budget"], merged)
-            budget = merged
+            save_csv(FILES["budget"], edited_b3[BUDGET_COLS])
+            budget = edited_b3[BUDGET_COLS]
             st.success("Budget saved.")
 
-        # Interactive FULL PIE (not donut): split planned amounts
+        # Interactive FULL PIE (planned split)
         st.markdown("#### Paycheck Split (Planned)")
         if p_net > 0 and not edited_b3.empty:
             pie_df = edited_b3.copy()
@@ -825,7 +822,7 @@ with tab_finance:
             if not pie_df.empty:
                 pie = (
                     alt.Chart(pie_df)
-                    .mark_arc()  # full pie
+                    .mark_arc()
                     .encode(
                         theta=alt.Theta("amount:Q"),
                         color=alt.Color("category:N", legend=alt.Legend(title="Category")),
@@ -840,16 +837,19 @@ with tab_finance:
                 )
                 st.altair_chart(pie, use_container_width=True)
             else:
-                st.info("Set non-zero percentages to see the pie chart.")
+                st.info("Enter non-zero percentages to see the pie chart.")
         elif p_net <= 0:
             st.info("Enter your paycheck amount to see the pie chart.")
 
-    # =========================================================
-    # RIGHT: TRANSACTIONS (forms + interactive cash-flow bar)
-    # =========================================================
-    with col_tx:
-        st.markdown("### Transactions")
+    st.divider()
 
+    # ========================= SECOND ROW: Transactions (form | table) =========================
+    st.markdown("### Transactions")
+
+    col_tx_form, col_tx_table = st.columns([1, 1])
+
+    # ---------------- LEFT: Transaction forms ----------------
+    with col_tx_form:
         flow = st.radio("Type", ["Expense", "Income", "Transfer"], horizontal=True, key="fin_tx_flow")
 
         if flow == "Expense":
@@ -916,7 +916,6 @@ with tab_finance:
                 tx_date = st.date_input("Date", value=date.today(), key="fin_tx_trf_date")
             with c2:
                 from_acc = st.selectbox("From", acc_names, index=0 if acc_names else None, key="fin_tx_trf_from")
-            # To options exclude the selected from_acc
             to_options = [a for a in acc_names if a != from_acc] or acc_names
             with c3:
                 to_acc = st.selectbox("To", to_options, index=0 if to_options else None, key="fin_tx_trf_to")
@@ -924,7 +923,6 @@ with tab_finance:
                 amount = st.number_input("Amount ($)", min_value=0.0, value=0.0, step=5.0, key="fin_tx_trf_amt")
             notes = st.text_input("Notes", value="Transfer", key="fin_tx_trf_notes")
             if st.button("Record Transfer", key="fin_tx_trf_add", type="primary"):
-                # From decreases asset / reduces cash; To increases asset; special-case credit card
                 amt_from = -abs(amount)
                 amt_to   = +abs(amount)
                 if acc_type_map.get(to_acc, "bank") == "credit":
@@ -942,58 +940,62 @@ with tab_finance:
                 save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
                 st.success("Transfer recorded.")
 
-        # Show recent table (compact)
-        if not transactions.empty:
-            st.markdown("#### All Transactions")
-            view_tx = transactions.sort_values("date", ascending=False).copy()
-            st.dataframe(view_tx[["date","account","category","description","amount","status","notes"]], use_container_width=True)
-
-        # Interactive cash-flow bar: spending by category (last 30 days)
-        st.markdown("#### Cash Flow — Spending by Category (Last 30 Days)")
-        if not transactions.empty:
-            tx2 = transactions.copy()
-            tx2["date"] = pd.to_datetime(tx2["date"], errors="coerce")
-            last30 = pd.Timestamp(date.today()) - pd.Timedelta(days=30)
-            tx2 = tx2[tx2["date"] >= last30]
-
-            # Merge account type for outflow logic
-            tx2 = tx2.merge(accounts[["name","type"]], left_on="account", right_on="name", how="left") \
-                     .rename(columns={"type":"acc_type"}).drop(columns=["name"])
-
-            # Exclude transfers and incomes
-            not_income  = ~tx2["category"].fillna("").str.startswith("Income")
-            not_transfer = tx2["category"].fillna("").str.lower() != "transfer"
-            spend = tx2[not_income & not_transfer].copy()
-
-            if not spend.empty:
-                # bank outflow = negative; credit outflow = positive charge
-                spend["outflow"] = np.where(
-                    spend["acc_type"].fillna("bank") == "credit",
-                    spend["amount"].clip(lower=0),
-                    (-spend["amount"]).clip(lower=0),
-                )
-                by_cat = spend.groupby("category", dropna=False)["outflow"].sum().reset_index()
-                by_cat = by_cat.sort_values("outflow", ascending=False)
-
-                flow_bar = (
-                    alt.Chart(by_cat)
-                    .mark_bar()
-                    .encode(
-                        x=alt.X("category:N", sort="-y", title="Category"),
-                        y=alt.Y("outflow:Q", title="Spend ($)"),
-                        tooltip=[
-                            alt.Tooltip("category:N", title="Category"),
-                            alt.Tooltip("outflow:Q",  title="Spend ($)", format="$,.2f"),
-                        ],
-                    )
-                    .properties(height=220)
-                    .interactive()
-                )
-                st.altair_chart(flow_bar, use_container_width=True)
-            else:
-                st.info("No spend found in the last 30 days.")
+    # ---------------- RIGHT: All Transactions table (next to the forms) ----------------
+    with col_tx_table:
+        st.markdown("#### All Transactions")
+        if transactions.empty:
+            st.info("No transactions yet.")
         else:
-            st.info("Add a few transactions to see your cash flow.")
+            view_tx = transactions.sort_values("date", ascending=False).copy()
+            st.dataframe(view_tx[["date","account","category","description","amount","status","notes"]],
+                         use_container_width=True, height=320)
+
+    # ---------------- Full-width visual BELOW the transactions section ----------------
+    st.markdown("#### Cash Flow — Spending by Category (Last 30 Days)")
+    if not transactions.empty:
+        tx2 = transactions.copy()
+        tx2["date"] = pd.to_datetime(tx2["date"], errors="coerce")
+        last30 = pd.Timestamp(date.today()) - pd.Timedelta(days=30)
+        tx2 = tx2[tx2["date"] >= last30]
+
+        # Merge account type for outflow logic
+        tx2 = tx2.merge(accounts[["name","type"]], left_on="account", right_on="name", how="left") \
+                 .rename(columns={"type":"acc_type"}).drop(columns=["name"])
+
+        # Exclude transfers and incomes from spend
+        not_income   = ~tx2["category"].fillna("").str.startswith("Income")
+        not_transfer = tx2["category"].fillna("").str.lower() != "transfer"
+        spend = tx2[not_income & not_transfer].copy()
+
+        if not spend.empty:
+            # bank outflow = negative; credit outflow = positive charge
+            spend["outflow"] = np.where(
+                spend["acc_type"].fillna("bank") == "credit",
+                spend["amount"].clip(lower=0),
+                (-spend["amount"]).clip(lower=0),
+            )
+            by_cat = spend.groupby("category", dropna=False)["outflow"].sum().reset_index()
+            by_cat = by_cat.sort_values("outflow", ascending=False)
+
+            flow_bar = (
+                alt.Chart(by_cat)
+                .mark_bar()
+                .encode(
+                    x=alt.X("category:N", sort="-y", title="Category"),
+                    y=alt.Y("outflow:Q", title="Spend ($)"),
+                    tooltip=[
+                        alt.Tooltip("category:N", title="Category"),
+                        alt.Tooltip("outflow:Q",  title="Spend ($)", format="$,.2f"),
+                    ],
+                )
+                .properties(height=240)
+                .interactive()
+            )
+            st.altair_chart(flow_bar, use_container_width=True)
+        else:
+            st.info("No spend found in the last 30 days.")
+    else:
+        st.info("Add a few transactions to see your cash flow.")
 
 
 

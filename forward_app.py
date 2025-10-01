@@ -663,24 +663,26 @@ with tab_habits:
 # ---- FINANCE ----
 with tab_finance:
     st.subheader("Finance")
-    import matplotlib.pyplot as plt  # for donut & circular gauges
+    import matplotlib.pyplot as plt
 
-    # Handy colors for budget rings
-    BUDGET_COLORS = {
-        "Savings": "#4CAF50",    # green
-        "Investing": "#1E88E5",  # blue
-        "Expenses": "#E53935",   # red
-        "Wants": "#FB8C00",      # orange
+    # ---- constants / colors ----
+    CORE_CATS = ["Savings", "Investing", "Expenses", "Wants"]  # expected budget categories
+    COLORS = {
+        "Savings":   "#4CAF50",
+        "Investing": "#1E88E5",
+        "Expenses":  "#E53935",
+        "Wants":     "#FB8C00",
+        "Other":     "#9E9E9E",
     }
 
-    # Load datasets
+    # ---- load data ----
     accounts = load_csv(FILES["accounts"], ACCOUNT_COLS)
     transactions = load_csv(FILES["transactions"], TRANSACTION_COLS)
     paychecks = load_csv(FILES["paychecks"], PAYCHECK_COLS)
     budget = load_csv(FILES["budget"], BUDGET_COLS)
     sett = st.session_state.settings
 
-    # Seed defaults if empty (Checking/Savings as 'bank' accounts)
+    # seed accounts if empty (bank type)
     if accounts.empty:
         accounts = pd.DataFrame([
             {"id": str(uuid.uuid4()), "name": "Checking", "type": "bank", "opening_balance": 0.0, "notes": ""},
@@ -688,12 +690,12 @@ with tab_finance:
         ], columns=ACCOUNT_COLS)
         save_csv(FILES["accounts"], accounts)
 
-    # Normalize any older 'cash' labels to 'bank'
+    # normalize old 'cash' to 'bank'
     if not accounts.empty:
         accounts["type"] = accounts["type"].fillna("bank").replace({"cash": "bank"})
         save_csv(FILES["accounts"], accounts)
 
-    # Default allocation rules if none exist yet (must sum ~100)
+    # seed budget if empty (make sure four core categories exist)
     if budget.empty:
         budget = pd.DataFrame([
             {"id": str(uuid.uuid4()), "category": "Savings",   "percent": 20, "auto_account": "Savings",  "notes": "Emergency/investing"},
@@ -702,73 +704,109 @@ with tab_finance:
             {"id": str(uuid.uuid4()), "category": "Wants",     "percent": 20, "auto_account": "Checking", "notes": "Fun, eating out"},
         ], columns=BUDGET_COLS)
         save_csv(FILES["budget"], budget)
+    else:
+        # ensure all four rows exist; add any missing at 0%
+        existing = set(map(lambda x: str(x).strip().lower(), budget["category"].fillna("")))
+        to_add = [c for c in CORE_CATS if c.lower() not in existing]
+        if to_add:
+            add_rows = [{"id": str(uuid.uuid4()), "category": c, "percent": 0, "auto_account": "Checking", "notes": ""} for c in to_add]
+            budget = pd.concat([budget, pd.DataFrame(add_rows)], ignore_index=True)
+            save_csv(FILES["budget"], budget)
 
-    # ---------- Accounts & Balances ----------
+    # ---------------- ACCOUNTS ----------------
     st.markdown("### Accounts")
 
-    # Editor (hide internal id; keep type as a dropdown)
+    # columns to show (hide from view if you want)
+    acc_all_cols = ["name", "type", "opening_balance", "notes"]
+    acc_show_cols = st.multiselect(
+        "Columns to show (Accounts)",
+        options=acc_all_cols,
+        default=acc_all_cols,
+        key="acc_cols_show",
+    )
+
+    # add delete checkbox
+    acc_edit_df = accounts.copy()
+    acc_edit_df["__delete__"] = False
+
     edited_accounts = st.data_editor(
-        accounts,
-        column_order=["name", "type", "opening_balance", "notes"],
-        num_rows="dynamic", use_container_width=True, hide_index=True,
+        acc_edit_df[acc_show_cols + ["__delete__"]] if acc_show_cols else acc_edit_df[["__delete__"]],
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
         column_config={
             "type": st.column_config.SelectboxColumn(
                 options=["bank", "cash", "credit", "loan", "investment"], default="bank"
             ),
+            "__delete__": st.column_config.CheckboxColumn("Delete?", default=False),
         },
         key="fin_accounts_editor",
     )
 
-    if st.button("Save Accounts", key="fin_save_accounts"):
-        # ensure ids exist
-        if "id" not in edited_accounts.columns:
-            edited_accounts["id"] = ""
-        edited_accounts["id"] = edited_accounts["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
-        # persist in canonical order
-        save_csv(FILES["accounts"], edited_accounts[ACCOUNT_COLS])
-        accounts = edited_accounts[ACCOUNT_COLS]
-        st.success("Accounts saved.")
+    col_acc_btn1, col_acc_btn2 = st.columns([1,1])
+    with col_acc_btn1:
+        if st.button("Save Accounts", key="fin_save_accounts"):
+            merged = accounts.copy()
+            # align by index (data_editor preserves row order)
+            for c in set(acc_show_cols + ["__delete__"]).intersection(edited_accounts.columns):
+                merged[c] = edited_accounts[c].values
+            merged = merged[~merged["__delete__"].fillna(False)].drop(columns=["__delete__"], errors="ignore")
+            if "id" not in merged.columns:
+                merged["id"] = ""
+            merged["id"] = merged["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
+            save_csv(FILES["accounts"], merged[ACCOUNT_COLS])
+            accounts = merged[ACCOUNT_COLS]
+            st.success("Accounts saved.")
+    with col_acc_btn2:
+        if st.button("Delete checked rows (Accounts)", key="fin_del_accounts"):
+            merged = accounts.copy()
+            if "__delete__" in edited_accounts.columns:
+                merged["__delete__"] = edited_accounts["__delete__"].reindex(merged.index).fillna(False)
+                merged = merged[~merged["__delete__"]].drop(columns=["__delete__"], errors="ignore")
+                if "id" not in merged.columns:
+                    merged["id"] = ""
+                merged["id"] = merged["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
+                save_csv(FILES["accounts"], merged[ACCOUNT_COLS])
+                accounts = merged[ACCOUNT_COLS]
+                st.success("Deleted selected rows.")
+            else:
+                st.warning("Nothing marked for deletion.")
 
+    # balances
     def compute_balances(acc_df: pd.DataFrame, tx_df: pd.DataFrame) -> pd.DataFrame:
         if acc_df.empty:
             return pd.DataFrame(columns=["account","type","opening_balance","current_balance"])
         tx = tx_df.copy()
         tx["amount"] = pd.to_numeric(tx["amount"], errors="coerce").fillna(0.0)
-        # Only 'Cleared' impact balances
-        tx = tx[tx["status"].fillna("Cleared") == "Cleared"]
+        tx = tx[tx["status"].fillna("Cleared") == "Cleared"]  # only cleared impact balances
         rows = []
         for _, acc in acc_df.iterrows():
             opening = float(acc.get("opening_balance", 0) or 0)
             total_tx = float(tx[tx["account"] == acc.get("name", "")]["amount"].sum())
-            current = opening + total_tx
             rows.append({
                 "account": acc.get("name", ""),
                 "type": acc.get("type", ""),
                 "opening_balance": opening,
-                "current_balance": current,
+                "current_balance": opening + total_tx,
             })
         return pd.DataFrame(rows)
 
     balances = compute_balances(accounts, transactions)
-
     c1, c2, c3 = st.columns(3)
     with c1:
-        chk_bal = balances.loc[balances["account"] == "Checking", "current_balance"].sum() if not balances.empty else 0.0
-        st.metric("Checking", f"${chk_bal:,.2f}")
+        st.metric("Checking", f"${balances.loc[balances['account']=='Checking','current_balance'].sum():,.2f}" if not balances.empty else "$0.00")
     with c2:
-        svg_bal = balances.loc[balances["account"] == "Savings", "current_balance"].sum() if not balances.empty else 0.0
-        st.metric("Savings", f"${svg_bal:,.2f}")
+        st.metric("Savings", f"${balances.loc[balances['account']=='Savings','current_balance'].sum():,.2f}" if not balances.empty else "$0.00")
     with c3:
-        total_bal = balances["current_balance"].sum() if not balances.empty else 0.0
-        st.metric("Total balance", f"${total_bal:,.2f}")
-
+        st.metric("Total balance", f"${balances['current_balance'].sum():,.2f}" if not balances.empty else "$0.00")
     if not balances.empty:
         st.bar_chart(balances.set_index("account")["current_balance"])
 
     st.divider()
 
-    # ---------- Transactions ----------
+    # ---------------- TRANSACTIONS ----------------
     st.markdown("### Transactions")
+
     acc_names = accounts["name"].dropna().tolist()
     common_cats = [
         "Rent", "Groceries", "Gas", "Dining", "Utilities", "Phone", "Insurance",
@@ -776,15 +814,16 @@ with tab_finance:
         "Income: Paycheck", "Transfer", "Other"
     ]
 
+    # quick add row
     tx_cols = st.columns(5)
     with tx_cols[0]:
         t_date = st.date_input("Date", value=date.today(), key="fin_tx_date")
     with tx_cols[1]:
-        t_account = st.selectbox("Account", acc_names, index=0, key="fin_tx_account")
+        t_account = st.selectbox("Account", acc_names, index=0 if acc_names else None, key="fin_tx_account")
     with tx_cols[2]:
         t_category = st.selectbox("Category", common_cats, index=1, key="fin_tx_cat")
     with tx_cols[3]:
-        t_amount = st.number_input("Amount", value=0.0, step=1.0, key="fin_tx_amt")  # label simplified
+        t_amount = st.number_input("Amount", value=0.0, step=1.0, key="fin_tx_amt")
     with tx_cols[4]:
         t_status = st.selectbox("Status", ["Cleared", "Planned"], index=0, key="fin_tx_status")
     t_desc = st.text_input("Description", placeholder="e.g., Costco", key="fin_tx_desc")
@@ -794,7 +833,7 @@ with tab_finance:
         new = {
             "id": str(uuid.uuid4()),
             "date": t_date.isoformat(),
-            "account": t_account,
+            "account": t_account or "",
             "category": t_category,
             "description": t_desc,
             "amount": float(t_amount),
@@ -805,92 +844,73 @@ with tab_finance:
         save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
         st.success("Transaction added.")
 
-    # Quick transfer helper
-    with st.expander("🔁 Transfer between accounts"):
-        tf_cols = st.columns(4)
-        with tf_cols[0]:
-            tf_date = st.date_input("Date", value=date.today(), key="fin_tf_date")
-        with tf_cols[1]:
-            tf_from = st.selectbox("From", acc_names, key="fin_tf_from")
-        with tf_cols[2]:
-            tf_to = st.selectbox("To", [a for a in acc_names if a != tf_from] or acc_names, key="fin_tf_to")
-        with tf_cols[3]:
-            tf_amount = st.number_input("Amount", min_value=0.0, value=0.0, step=10.0, key="fin_tf_amount")
-        tf_desc = st.text_input("Description", value="Transfer", key="fin_tf_desc")
-        if st.button("Record Transfer", key="fin_tf_btn"):
-            if tf_from == tf_to:
-                st.error("Choose two different accounts.")
+    # show/hide columns
+    tx_all_cols = ["date", "account", "category", "description", "amount", "status", "notes"]
+    tx_show_cols = st.multiselect(
+        "Columns to show (Transactions)",
+        options=tx_all_cols,
+        default=tx_all_cols,
+        key="tx_cols_show",
+    )
+
+    # editor + delete
+    tx_edit_df = transactions.copy()
+    tx_edit_df["__delete__"] = False
+    edited_tx = st.data_editor(
+        tx_edit_df[tx_show_cols + ["__delete__"]] if tx_show_cols else tx_edit_df[["__delete__"]],
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "__delete__": st.column_config.CheckboxColumn("Delete?", default=False),
+        },
+        key="fin_tx_editor",
+    )
+
+    col_tx_btn1, col_tx_btn2 = st.columns([1,1])
+    with col_tx_btn1:
+        if st.button("Save Transactions", key="fin_save_tx"):
+            merged = transactions.copy()
+            for c in set(tx_show_cols + ["__delete__"]).intersection(edited_tx.columns):
+                merged[c] = edited_tx[c].values
+            merged = merged[~merged["__delete__"].fillna(False)].drop(columns=["__delete__"], errors="ignore")
+            if "id" not in merged.columns:
+                merged["id"] = ""
+            merged["id"] = merged["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
+            save_csv(FILES["transactions"], merged[TRANSACTION_COLS])
+            transactions = merged[TRANSACTION_COLS]
+            st.success("Transactions saved.")
+    with col_tx_btn2:
+        if st.button("Delete checked rows (Transactions)", key="fin_del_tx"):
+            merged = transactions.copy()
+            if "__delete__" in edited_tx.columns:
+                merged["__delete__"] = edited_tx["__delete__"].reindex(merged.index).fillna(False)
+                merged = merged[~merged["__delete__"]].drop(columns=["__delete__"], errors="ignore")
+                if "id" not in merged.columns:
+                    merged["id"] = ""
+                merged["id"] = merged["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
+                save_csv(FILES["transactions"], merged[TRANSACTION_COLS])
+                transactions = merged[TRANSACTION_COLS]
+                st.success("Deleted selected rows.")
             else:
-                rows = [
-                    {"id": str(uuid.uuid4()), "date": tf_date.isoformat(), "account": tf_from,
-                     "category": "Transfer", "description": tf_desc, "amount": -float(tf_amount),
-                     "status": "Cleared", "notes": ""},
-                    {"id": str(uuid.uuid4()), "date": tf_date.isoformat(), "account": tf_to,
-                     "category": "Transfer", "description": tf_desc, "amount": float(tf_amount),
-                     "status": "Cleared", "notes": ""},
-                ]
-                transactions = pd.concat([transactions, pd.DataFrame(rows)], ignore_index=True)
-                save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
-                st.success("Transfer recorded.")
+                st.warning("Nothing marked for deletion.")
 
-    # ---- Transaction Visuals & Views ----
-    st.markdown("#### Spending Insights")
-    view_choice = st.radio("View range", ["This pay period", "This month", "Last 30 days"], horizontal=True, key="fin_tx_view")
-
-    tx = transactions.copy()
-    if not tx.empty:
-        tx["date"] = pd.to_datetime(tx["date"], errors="coerce")
-        # build ranges
-        today_dt = pd.Timestamp(date.today())
-        if view_choice == "This month":
-            mask = tx["date"].dt.to_period("M") == today_dt.to_period("M")
-        elif view_choice == "Last 30 days":
-            start = today_dt - pd.Timedelta(days=30)
-            mask = (tx["date"] >= start) & (tx["date"] <= today_dt)
-        else:
-            # This pay period based on settings
-            freq_days = int(sett.get("pay_frequency_days", 14))
-            last_pay_str = sett.get("last_pay_date", "")
-            if last_pay_str:
-                last_pay = pd.to_datetime(last_pay_str)
-            else:
-                last_pay = today_dt - pd.Timedelta(days=freq_days)
-            next_pay = last_pay + pd.Timedelta(days=freq_days)
-            mask = (tx["date"] >= last_pay) & (tx["date"] < next_pay)
-
-        view_tx = tx[mask].copy()
-
-        # Category donut (expenses only, cleared)
-        exp = view_tx[(view_tx["amount"] < 0) & (view_tx["status"].fillna("Cleared") == "Cleared")]
-        if not exp.empty:
-            by_cat = exp.groupby("category")["amount"].sum().sort_values()
-            fig, ax = plt.subplots(figsize=(4.5, 4.5))
-            vals = by_cat.abs().values
-            labels = by_cat.index.tolist()
-            ax.pie(vals, labels=labels, startangle=90, wedgeprops={"width": 0.45})
-            ax.set_title("Spending by Category")
-            st.pyplot(fig, use_container_width=False)
-
-            st.markdown("Top Categories (Cleared)")
-            st.bar_chart(by_cat.abs().sort_values(ascending=False).head(10))
-
-        # Weekly cashflow (cleared)
-        cleared = view_tx[view_tx["status"].fillna("Cleared") == "Cleared"]
-        if not cleared.empty:
-            weekly = cleared.resample("W-MON", on="date")["amount"].sum().rename("net").reset_index()
-            weekly["week"] = weekly["date"].dt.strftime("%Y-%m-%d")
-            st.markdown("Weekly Cashflow (Cleared)")
-            st.line_chart(weekly.set_index("week")["net"])
+    st.markdown("#### Recent")
+    if transactions.empty:
+        st.info("No transactions yet.")
+    else:
+        st.dataframe(transactions.sort_values("date", ascending=False).head(50), use_container_width=True)
 
     st.divider()
 
-    # ---------- Paycheck Planner ----------
+    # ---------------- PAYCHECK PLANNER ----------------
     st.markdown("### Paycheck Planner (bi-weekly)")
 
+    # settings row
     acc_names = accounts["name"].dropna().tolist()
     default_deposit_idx = (
         acc_names.index(sett.get("default_deposit_account", "Checking"))
-        if sett.get("default_deposit_account", "Checking") in acc_names else 0
+        if sett.get("default_deposit_account", "Checking") in acc_names else (0 if acc_names else None)
     )
 
     colp1, colp2, colp3 = st.columns(3)
@@ -905,7 +925,7 @@ with tab_finance:
     if st.button("Save Pay Settings", key="fin_save_pay_settings"):
         sett["last_pay_date"] = last_pay.isoformat()
         sett["pay_frequency_days"] = int(freq_days)
-        sett["default_deposit_account"] = deposit_account
+        sett["default_deposit_account"] = deposit_account or "Checking"
         save_settings(sett)
         st.success("Pay settings saved.")
 
@@ -913,104 +933,180 @@ with tab_finance:
     next2 = next1 + timedelta(days=int(freq_days))
     st.caption(f"Next paydays: {next1.isoformat()} and {next2.isoformat()}")
 
-    # Minimal planner: date + net only
     colpp1, colpp2 = st.columns(2)
     with colpp1:
         p_date = st.date_input("Paycheck date", value=next1, key="fin_plan_pay_date")
     with colpp2:
         net_amount = st.number_input("Net amount ($)", min_value=0.0, value=0.0, step=10.0, key="fin_plan_net")
 
-    # Allocation rules (hide id)
+    # -------- Budget editor (percent of net) with hide/delete --------
     st.markdown("#### Allocation rules (percent of net)")
+    bud_all_cols = ["category", "percent", "auto_account", "notes"]
+    bud_show_cols = st.multiselect(
+        "Columns to show (Budget)",
+        options=bud_all_cols,
+        default=bud_all_cols,
+        key="bud_cols_show",
+    )
+    bud_edit_df = budget.copy()
+    bud_edit_df["__delete__"] = False
+
     edited_budget = st.data_editor(
-        budget,
-        column_order=["category", "percent", "auto_account", "notes"],  # hide 'id'
-        num_rows="dynamic", use_container_width=True, hide_index=True,
+        bud_edit_df[bud_show_cols + ["__delete__"]] if bud_show_cols else bud_edit_df[["__delete__"]],
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
         column_config={
             "percent": st.column_config.NumberColumn(min_value=0, max_value=100, step=1),
             "auto_account": st.column_config.SelectboxColumn(options=acc_names),
+            "__delete__": st.column_config.CheckboxColumn("Delete?", default=False),
         },
         key="fin_budget_editor",
     )
-    # ensure ids exist before saving
-    if "id" not in edited_budget.columns:
-        edited_budget["id"] = ""
+
     total_pct = float(edited_budget["percent"].fillna(0).sum()) if not edited_budget.empty else 0.0
     st.caption(f"Total: {total_pct:.0f}% (aim for 100%)")
 
-    if st.button("Save Allocation Rules", key="fin_save_budget"):
-        edited_budget["id"] = edited_budget["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
-        save_csv(FILES["budget"], edited_budget[BUDGET_COLS])
-        budget = edited_budget[BUDGET_COLS]
-        st.success("Allocation rules saved.")
+    col_b1, col_b2 = st.columns([1,1])
+    with col_b1:
+        if st.button("Save Allocation Rules", key="fin_save_budget"):
+            merged = edited_budget.drop(columns=["__delete__"], errors="ignore").copy()
+            if "id" not in merged.columns:
+                merged["id"] = ""
+            merged["id"] = merged["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
+            save_csv(FILES["budget"], merged[BUDGET_COLS])
+            budget = merged[BUDGET_COLS]
+            st.success("Allocation rules saved.")
+    with col_b2:
+        if st.button("Delete checked rows (Budget)", key="fin_del_budget"):
+            merged = edited_budget.copy()
+            merged = merged[~merged["__delete__"].fillna(False)].drop(columns=["__delete__"], errors="ignore")
+            if "id" not in merged.columns:
+                merged["id"] = ""
+            merged["id"] = merged["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
+            save_csv(FILES["budget"], merged[BUDGET_COLS])
+            budget = merged[BUDGET_COLS]
+            st.success("Deleted selected rows.")
 
-    # ---- Budget percentage circles ----
+    # helper: fetch percent for a named category (case-insensitive)
+    def get_pct(df, cat):
+        if df.empty:
+            return 0.0
+        row = df[df["category"].fillna("").str.lower() == str(cat).lower()]
+        if row.empty:
+            return 0.0
+        try:
+            return float(row.iloc[0]["percent"] or 0)
+        except Exception:
+            return 0.0
+
+    # ---- Circular gauges for the 4 column titles (Savings/Investing/Expenses/Wants) ----
     def circular_gauge(ax, pct: float, label: str, color: str):
         pct = float(max(0.0, min(100.0, pct)))
-        ax.pie([pct, 100 - pct], startangle=90,
-               colors=[color, "#EAEAEA"], wedgeprops={"width": 0.35})
+        ax.pie([pct, 100 - pct], startangle=90, colors=[color, "#EAEAEA"], wedgeprops={"width": 0.35})
         ax.text(0, 0, f"{pct:.0f}%", ha="center", va="center", fontsize=14, fontweight="bold")
         ax.set(aspect="equal")
         ax.set_title(label, fontsize=11)
 
-    if net_amount > 0:
-        # Pay period window for expense calc: from (p_date - freq_days + 1) to p_date (inclusive)
-        period_start = pd.to_datetime(p_date) - pd.Timedelta(days=int(freq_days) - 1)
-        period_end = pd.to_datetime(p_date)
-        txp = transactions.copy()
-        if not txp.empty:
-            txp["date"] = pd.to_datetime(txp["date"], errors="coerce")
+    # determine the pay period window centered on paycheck date
+    period_start = pd.to_datetime(p_date) - pd.Timedelta(days=int(freq_days) - 1)
+    period_end = pd.to_datetime(p_date)
+
+    # actual expenses in the pay period (cleared only)
+    txp = transactions.copy()
+    if not txp.empty:
+        txp["date"] = pd.to_datetime(txp["date"], errors="coerce")
         txp = txp[(txp["date"] >= period_start) & (txp["date"] <= period_end)]
-        exp_cleared = txp[(txp["amount"] < 0) & (txp["status"].fillna("Cleared") == "Cleared")]
-        expenses_amt = float(exp_cleared["amount"].sum()) if not exp_cleared.empty else 0.0
-        expenses_pct = (abs(expenses_amt) / net_amount) * 100.0 if net_amount > 0 else 0.0
+    exp_cleared = txp[(txp["amount"] < 0) & (txp["status"].fillna("Cleared") == "Cleared")] if not txp.empty else pd.DataFrame(columns=transactions.columns)
+    expenses_amt_actual = abs(float(exp_cleared["amount"].sum())) if not exp_cleared.empty else 0.0
+    expenses_pct_actual = (expenses_amt_actual / net_amount) * 100.0 if net_amount > 0 else 0.0
 
-        # Pull target budget %s for the other rings
-        def get_pct(cat):
-            row = edited_budget[edited_budget["category"].str.lower() == cat.lower()] if not edited_budget.empty else pd.DataFrame()
-            return float(row["percent"].iloc[0]) if not row.empty and not pd.isna(row["percent"].iloc[0]) else 0.0
+    sav_pct = get_pct(edited_budget, "Savings")
+    inv_pct = get_pct(edited_budget, "Investing")
+    wnt_pct = get_pct(edited_budget, "Wants")
 
-        sav_pct = get_pct("Savings")
-        inv_pct = get_pct("Investing")
-        wnt_pct = get_pct("Wants")
-
-        fig, axes = plt.subplots(1, 4, figsize=(12, 3.4))
-        circular_gauge(axes[0], sav_pct, "Savings",   BUDGET_COLORS["Savings"])
-        circular_gauge(axes[1], inv_pct, "Investing", BUDGET_COLORS["Investing"])
-        circular_gauge(axes[2], expenses_pct, "Expenses (actual)", BUDGET_COLORS["Expenses"])
-        circular_gauge(axes[3], wnt_pct, "Wants",     BUDGET_COLORS["Wants"])
+    # Show the four gauges (labels derived from categories you use)
+    gauge_cols = st.columns(4)
+    with gauge_cols[0]:
+        fig, ax = plt.subplots(figsize=(3, 3))
+        circular_gauge(ax, sav_pct, "Savings", COLORS["Savings"])
+        st.pyplot(fig, use_container_width=True)
+    with gauge_cols[1]:
+        fig, ax = plt.subplots(figsize=(3, 3))
+        circular_gauge(ax, inv_pct, "Investing", COLORS["Investing"])
+        st.pyplot(fig, use_container_width=True)
+    with gauge_cols[2]:
+        fig, ax = plt.subplots(figsize=(3, 3))
+        circular_gauge(ax, expenses_pct_actual, "Expenses (actual)", COLORS["Expenses"])
+        st.pyplot(fig, use_container_width=True)
+    with gauge_cols[3]:
+        fig, ax = plt.subplots(figsize=(3, 3))
+        circular_gauge(ax, wnt_pct, "Wants", COLORS["Wants"])
         st.pyplot(fig, use_container_width=True)
 
-        # Show allocation amounts table (targets) for this paycheck
-        alloc_df = edited_budget.copy()
-        alloc_df["amount"] = (alloc_df["percent"].fillna(0).astype(float) / 100.0) * float(net_amount)
-        st.dataframe(alloc_df[["category","percent","amount","auto_account","notes"]], use_container_width=True)
-        if abs(alloc_df["percent"].fillna(0).sum() - 100) > 0.01:
-            st.warning("Your allocation percentages do not sum to 100%. Adjust above to reach 100%.")
+    # planned allocation amounts based on net (Savings/Investing/Wants use budget; Expenses uses actual)
+    sav_amt = (sav_pct / 100.0) * net_amount
+    inv_amt = (inv_pct / 100.0) * net_amount
+    wnt_amt = (wnt_pct / 100.0) * net_amount
+    exp_amt = expenses_amt_actual  # actual cleared during period
 
+    alloc_view = pd.DataFrame({
+        "Category": ["Savings", "Investing", "Expenses (actual)", "Wants"],
+        "Amount":   [sav_amt,     inv_amt,     exp_amt,                wnt_amt],
+        "Percent":  [sav_pct,     inv_pct,     expenses_pct_actual,    wnt_pct],
+    })
+    st.dataframe(alloc_view, use_container_width=True)
+
+    # ---- One pie chart splitting where the money is going (amounts) ----
+    if net_amount > 0:
+        fig, ax = plt.subplots(figsize=(5.5, 5.5))
+        slices = [sav_amt, inv_amt, exp_amt, wnt_amt]
+        labels = ["Savings", "Investing", "Expenses", "Wants"]
+        colors = [COLORS["Savings"], COLORS["Investing"], COLORS["Expenses"], COLORS["Wants"]]
+        # Avoid zero-slice label clutter
+        nonzero = [(lab, val, col) for lab, val, col in zip(labels, slices, colors) if val > 0]
+        if nonzero:
+            ax.pie([v for _, v, _ in nonzero],
+                   labels=[f"{l} (${v:,.0f})" for l, v, _ in nonzero],
+                   colors=[c for _, _, c in nonzero],
+                   startangle=90, wedgeprops={"width": 0.65})
+            ax.set_title("Paycheck Split (Planned vs Expenses Actual)")
+            st.pyplot(fig, use_container_width=True)
+        total_plotted = sum(slices)
+        if abs(total_plotted - net_amount) > 1e-6:
+            st.caption(f"Note: plotted total ${total_plotted:,.2f} vs net ${net_amount:,.2f} (difference due to Expenses using *actual* spend).")
     else:
-        st.info("Enter your paycheck **Net amount ($)** to see budget rings and allocation amounts.")
+        st.info("Enter a paycheck **Net amount ($)** to show the paycheck split pie.")
 
-    # ---- Log paycheck & planned allocations (no hours/rate) ----
+    # ---- Cash flow bar chart (weekly, pay-period window, cleared only) ----
+    cleared_period = txp[txp["status"].fillna("Cleared") == "Cleared"] if not txp.empty else pd.DataFrame(columns=transactions.columns)
+    if not cleared_period.empty:
+        weekly_net = cleared_period.resample("W-MON", on="date")["amount"].sum().rename("Net").to_frame()
+        st.markdown("#### Cash Flow (Weekly, this pay period)")
+        st.bar_chart(weekly_net)
+    else:
+        st.info("No cleared transactions in this pay period yet for the cash flow chart.")
+
+    # ---- Log paycheck + planned allocations (Savings/Investing/Wants planned; Expenses tracked by actual) ----
     if net_amount > 0 and st.button("Log paycheck + planned allocations", type="primary", key="fin_post_paycheck"):
-        # 1) record paycheck
+        # pay record
         p_record = {
             "id": str(uuid.uuid4()),
             "date": p_date.isoformat(),
             "net_amount": float(net_amount),
-            "hours": np.nan,   # kept for schema compatibility
-            "rate": np.nan,    # kept for schema compatibility
-            "account": deposit_account,
+            "hours": np.nan,
+            "rate": np.nan,
+            "account": deposit_account or "Checking",
             "notes": "",
         }
         paychecks = pd.concat([paychecks, pd.DataFrame([p_record])], ignore_index=True)
         save_csv(FILES["paychecks"], paychecks[PAYCHECK_COLS])
 
-        # 2) deposit transaction (cleared)
+        # deposit tx
         tx_deposit = {
             "id": str(uuid.uuid4()),
             "date": p_date.isoformat(),
-            "account": deposit_account,
+            "account": deposit_account or "Checking",
             "category": "Income: Paycheck",
             "description": "Bi-weekly paycheck",
             "amount": float(net_amount),
@@ -1019,27 +1115,29 @@ with tab_finance:
         }
         transactions = pd.concat([transactions, pd.DataFrame([tx_deposit])], ignore_index=True)
 
-        # 3) planned allocation transactions (Savings, Investing, Wants only)
-        planned_rows = []
-        for _, r in edited_budget.iterrows():
-            cat = str(r.get("category", "") or "")
-            if cat.lower() in ["savings", "investing", "wants"]:  # skip "Expenses" (tracked by actual spend)
-                amt = (float(r.get("percent", 0) or 0) / 100.0) * float(net_amount)
-                planned_rows.append({
+        # planned allocations (Savings/Investing/Wants only). Expenses are measured by actual spend.
+        plan_rows = []
+        for cat, amt in [("Savings", sav_amt), ("Investing", inv_amt), ("Wants", wnt_amt)]:
+            if amt > 0:
+                # find target account from budget
+                row = edited_budget[edited_budget["category"].fillna("").str.lower() == cat.lower()]
+                target_acct = row.iloc[0]["auto_account"] if not row.empty else (deposit_account or "Checking")
+                plan_rows.append({
                     "id": str(uuid.uuid4()),
                     "date": p_date.isoformat(),
-                    "account": deposit_account,
+                    "account": deposit_account or "Checking",
                     "category": f"Planned: {cat}",
-                    "description": f"Allocation plan → {r.get('auto_account','')}",
-                    "amount": -amt,
+                    "description": f"Allocation plan → {target_acct}",
+                    "amount": -float(amt),
                     "status": "Planned",
-                    "notes": r.get("notes", ""),
+                    "notes": "",
                 })
-        if planned_rows:
-            transactions = pd.concat([transactions, pd.DataFrame(planned_rows)], ignore_index=True)
+        if plan_rows:
+            transactions = pd.concat([transactions, pd.DataFrame(plan_rows)], ignore_index=True)
 
         save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
-        st.success("Paycheck logged and allocations planned. Use Transfers + mark items Cleared as you move money.")
+        st.success("Paycheck logged and allocations planned. Use Transfers and mark items **Cleared** as you actually move money.")
+
 
 
 # ---- MISSION & GOALS (full-page editor) ----

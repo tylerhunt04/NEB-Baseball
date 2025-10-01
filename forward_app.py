@@ -670,20 +670,20 @@ with tab_finance:
     paychecks = load_csv(FILES["paychecks"], PAYCHECK_COLS)
     budget = load_csv(FILES["budget"], BUDGET_COLS)
 
- # Seed defaults if empty
-if accounts.empty:
-    accounts = pd.DataFrame([
-        {"id": str(uuid.uuid4()), "name": "Checking", "type": "bank", "opening_balance": 0.0, "notes": ""},
-        {"id": str(uuid.uuid4()), "name": "Savings",  "type": "bank", "opening_balance": 0.0, "notes": ""},
-    ], columns=ACCOUNT_COLS)
-    save_csv(FILES["accounts"], accounts)
-    
-# Normalize old 'cash' label to 'bank' for online accounts
-if not accounts.empty:
-    accounts["type"] = accounts["type"].fillna("bank").replace({"cash": "bank"})
-    save_csv(FILES["accounts"], accounts)
+    # Seed defaults if empty (Checking/Savings as 'bank' accounts)
+    if accounts.empty:
+        accounts = pd.DataFrame([
+            {"id": str(uuid.uuid4()), "name": "Checking", "type": "bank", "opening_balance": 0.0, "notes": ""},
+            {"id": str(uuid.uuid4()), "name": "Savings",  "type": "bank", "opening_balance": 0.0, "notes": ""},
+        ], columns=ACCOUNT_COLS)
+        save_csv(FILES["accounts"], accounts)
 
+    # Normalize any older 'cash' labels to 'bank'
+    if not accounts.empty:
+        accounts["type"] = accounts["type"].fillna("bank").replace({"cash": "bank"})
+        save_csv(FILES["accounts"], accounts)
 
+    # Default allocation rules if none exist yet
     if budget.empty:
         budget = pd.DataFrame([
             {"id": str(uuid.uuid4()), "category": "Savings",    "percent": 20, "auto_account": "Savings",  "notes": "Emergency/investing"},
@@ -693,19 +693,20 @@ if not accounts.empty:
         save_csv(FILES["budget"], budget)
 
     # ---------- Accounts & Balances ----------
-  edited_accounts = st.data_editor(
-    accounts,
-    num_rows="dynamic", use_container_width=True, hide_index=True,
-    column_config={
-        "id": st.column_config.TextColumn("id", disabled=True),
-        "type": st.column_config.SelectboxColumn(
-            options=["bank", "cash", "credit", "loan", "investment"],
-            default="bank"
-        ),
-    },
-    key="fin_accounts_editor",
-)
+    st.markdown("### Accounts")
 
+    edited_accounts = st.data_editor(
+        accounts,
+        num_rows="dynamic", use_container_width=True, hide_index=True,
+        column_config={
+            "id": st.column_config.TextColumn("id", disabled=True),
+            "type": st.column_config.SelectboxColumn(
+                options=["bank", "cash", "credit", "loan", "investment"],
+                default="bank"
+            ),
+        },
+        key="fin_accounts_editor",
+    )
     if st.button("Save Accounts", key="fin_save_accounts"):
         if "id" in edited_accounts.columns:
             edited_accounts["id"] = edited_accounts["id"].fillna("").apply(lambda x: x if x else str(uuid.uuid4()))
@@ -720,7 +721,7 @@ if not accounts.empty:
             return pd.DataFrame(columns=["account","type","opening_balance","current_balance"])
         tx = tx_df.copy()
         tx["amount"] = pd.to_numeric(tx["amount"], errors="coerce").fillna(0.0)
-        # Only 'Cleared' affect balances
+        # Only 'Cleared' impact balances
         tx = tx[tx["status"].fillna("Cleared") == "Cleared"]
         rows = []
         for _, acc in acc_df.iterrows():
@@ -736,6 +737,7 @@ if not accounts.empty:
         return pd.DataFrame(rows)
 
     balances = compute_balances(accounts, transactions)
+
     c1, c2, c3 = st.columns(3)
     with c1:
         chk_bal = balances.loc[balances["account"] == "Checking", "current_balance"].sum() if not balances.empty else 0.0
@@ -755,8 +757,11 @@ if not accounts.empty:
     # ---------- Transactions ----------
     st.markdown("### Transactions")
     acc_names = accounts["name"].dropna().tolist()
-    common_cats = ["Rent", "Groceries", "Gas", "Dining", "Utilities", "Phone", "Insurance",
-                   "Entertainment", "Gym", "Medical", "Travel", "Gifts", "Income: Paycheck", "Transfer", "Other"]
+    common_cats = [
+        "Rent", "Groceries", "Gas", "Dining", "Utilities", "Phone", "Insurance",
+        "Entertainment", "Gym", "Medical", "Travel", "Gifts",
+        "Income: Paycheck", "Transfer", "Other"
+    ]
 
     tx_cols = st.columns(5)
     with tx_cols[0]:
@@ -838,7 +843,7 @@ if not accounts.empty:
             st.markdown("#### This Month — Spending by Category")
             st.bar_chart(by_cat.abs())
 
-        # Weekly cashflow (all cleared only)
+        # Weekly cashflow (Cleared only)
         txc = tx[tx["status"].fillna("Cleared") == "Cleared"]
         if not txc.empty:
             weekly = txc.resample("W-MON", on="date")["amount"].sum().rename("net").reset_index()
@@ -853,7 +858,10 @@ if not accounts.empty:
 
     sett = st.session_state.settings
     acc_names = accounts["name"].dropna().tolist()
-    default_deposit_idx = acc_names.index(sett.get("default_deposit_account", "Checking")) if sett.get("default_deposit_account", "Checking") in acc_names else 0
+    default_deposit_idx = (
+        acc_names.index(sett.get("default_deposit_account", "Checking"))
+        if sett.get("default_deposit_account", "Checking") in acc_names else 0
+    )
 
     colp1, colp2, colp3 = st.columns(3)
     with colp1:
@@ -962,7 +970,8 @@ if not accounts.empty:
                 transactions = pd.concat([transactions, pd.DataFrame(planned_rows)], ignore_index=True)
 
             save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
-            st.success("Paycheck logged and allocations planned. Use the Transfer helper when you move money, and switch Status to Cleared.")
+            st.success("Paycheck logged and allocations planned. Use the Transfer helper when you move money, then mark items Cleared.")
+
 
 # ---- MISSION & GOALS (full-page editor) ----
 with tab_mission_goals:

@@ -690,16 +690,22 @@ with tab_finance:
     except NameError:
         BUDGET_COLS = ["id", "category", "percent", "auto_account", "notes"]
 
-    # Colors used in visuals
-    COLORS = {
-        "Savings":   "#4CAF50",
-        "Investing": "#1E88E5",
-        "Expenses":  "#E53935",
-        "Wants":     "#FB8C00",
+    # Colors used in visuals (fallback palette for unknown categories)
+    NAMED_COLORS = {
+        "savings":   "#4CAF50",
+        "investing": "#1E88E5",
+        "expenses":  "#E53935",
+        "wants":     "#FB8C00",
     }
-    CORE_CATS = ["Savings", "Investing", "Expenses", "Wants"]
+    def color_for(cat: str, i: int):
+        key = (cat or "").strip().lower()
+        if key in NAMED_COLORS:
+            return NAMED_COLORS[key]
+        # fallback cycle
+        default_cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
+        return default_cycle[i % max(1, len(default_cycle))] if default_cycle else "#9E9E9E"
 
-    # Load datasets
+    # ---------------- LOAD / SEED ----------------
     accounts     = load_csv(FILES["accounts"], ACCOUNT_COLS)
     transactions = load_csv(FILES["transactions"], TRANSACTION_COLS)
     paychecks    = load_csv(FILES["paychecks"], PAYCHECK_COLS)
@@ -719,7 +725,7 @@ with tab_finance:
         accounts["type"] = accounts["type"].fillna("bank").replace({"cash": "bank"})
         save_csv(FILES["accounts"], accounts)
 
-    # Seed budget with the 4 core categories if empty
+    # If budget empty, provide the four common categories as a starting point
     if budget.empty:
         budget = pd.DataFrame([
             {"id": str(uuid.uuid4()), "category": "Savings",   "percent": 20, "auto_account": "Savings",  "notes": "Emergency/long-term"},
@@ -728,19 +734,11 @@ with tab_finance:
             {"id": str(uuid.uuid4()), "category": "Wants",     "percent": 20, "auto_account": "Checking", "notes": "Fun, dining out"},
         ], columns=BUDGET_COLS)
         save_csv(FILES["budget"], budget)
-    else:
-        # Ensure the 4 categories exist (add missing at 0%)
-        have = budget["category"].fillna("").str.lower().tolist()
-        missing = [c for c in CORE_CATS if c.lower() not in have]
-        if missing:
-            add_rows = [{"id": str(uuid.uuid4()), "category": c, "percent": 0, "auto_account": "Checking", "notes": ""} for c in missing]
-            budget = pd.concat([budget, pd.DataFrame(add_rows)], ignore_index=True)
-            save_csv(FILES["budget"], budget)
 
     # ---------------- ACCOUNTS ----------------
     st.markdown("### Accounts")
 
-    # Simple editor (no column picker, no delete checkbox, 'id' hidden)
+    # Simple editor (no column picker, no delete UI, 'id' hidden)
     edited_accounts = st.data_editor(
         accounts[["name", "type", "opening_balance", "notes"]],
         num_rows="dynamic",
@@ -757,16 +755,26 @@ with tab_finance:
 
     if st.button("Save Accounts", key="fin_save_accounts"):
         merged = accounts.copy()
-        # align rows by order; for robust apps you'd join by a stable key — keeping simple here
+        # Extend or overwrite by row order (simple approach)
         for i in range(len(edited_accounts)):
-            for col in ["name", "type", "opening_balance", "notes"]:
-                merged.loc[merged.index[i] if i < len(merged) else len(merged), col] = edited_accounts.iloc[i][col]
-        # Trim if user removed rows visually (by leaving empties at the end) — optional light cleanup
+            if i < len(merged):
+                for col in ["name", "type", "opening_balance", "notes"]:
+                    merged.loc[merged.index[i], col] = edited_accounts.iloc[i][col]
+            else:
+                # new row added in editor
+                new_row = {c: None for c in ACCOUNT_COLS}
+                new_row.update({
+                    "id": str(uuid.uuid4()),
+                    "name": edited_accounts.iloc[i]["name"],
+                    "type": edited_accounts.iloc[i]["type"],
+                    "opening_balance": edited_accounts.iloc[i]["opening_balance"],
+                    "notes": edited_accounts.iloc[i]["notes"],
+                })
+                merged = pd.concat([merged, pd.DataFrame([new_row])], ignore_index=True)
+        # drop trailing empties (no name)
         merged = merged.dropna(subset=["name"]).reset_index(drop=True)
         # Ensure IDs
-        if "id" not in merged.columns:
-            merged["id"] = ""
-        merged["id"] = merged["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
+        merged["id"] = merged.get("id", "").fillna("").apply(lambda x: x or str(uuid.uuid4()))
         save_csv(FILES["accounts"], merged[ACCOUNT_COLS])
         accounts = merged[ACCOUNT_COLS]
         st.success("Accounts saved.")
@@ -854,15 +862,26 @@ with tab_finance:
     )
     if st.button("Save Transaction Changes", key="fin_save_tx_changes"):
         merged = transactions.copy()
-        # overwrite displayed columns with edits (by row order)
+        # Overwrite/extend by row order
         for i in range(len(edited_tx)):
-            for col in ["date","account","category","description","amount","status","notes"]:
-                merged.loc[merged.index[i] if i < len(merged) else len(merged), col] = edited_tx.iloc[i][col]
-        # best-effort cleanup: drop rows with no date/account/category/amount
+            if i < len(merged):
+                for col in ["date","account","category","description","amount","status","notes"]:
+                    merged.loc[merged.index[i], col] = edited_tx.iloc[i][col]
+            else:
+                new_row = {c: None for c in TRANSACTION_COLS}
+                new_row.update({
+                    "id": str(uuid.uuid4()),
+                    "date": edited_tx.iloc[i]["date"],
+                    "account": edited_tx.iloc[i]["account"],
+                    "category": edited_tx.iloc[i]["category"],
+                    "description": edited_tx.iloc[i]["description"],
+                    "amount": edited_tx.iloc[i]["amount"],
+                    "status": edited_tx.iloc[i]["status"],
+                    "notes": edited_tx.iloc[i]["notes"],
+                })
+                merged = pd.concat([merged, pd.DataFrame([new_row])], ignore_index=True)
         merged = merged.dropna(subset=["date"]).reset_index(drop=True)
-        if "id" not in merged.columns:
-            merged["id"] = ""
-        merged["id"] = merged["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
+        merged["id"] = merged.get("id", "").fillna("").apply(lambda x: x or str(uuid.uuid4()))
         save_csv(FILES["transactions"], merged[TRANSACTION_COLS])
         transactions = merged[TRANSACTION_COLS]
         st.success("Transactions saved.")
@@ -879,9 +898,10 @@ with tab_finance:
     st.markdown("### Paycheck Planner (bi-weekly)")
 
     # Settings row
+    acc_list = accounts["name"].dropna().tolist()
     default_deposit_idx = (
-        accounts["name"].tolist().index(sett.get("default_deposit_account", "Checking"))
-        if sett.get("default_deposit_account", "Checking") in accounts["name"].tolist() else (0 if len(accounts) else None)
+        acc_list.index(sett.get("default_deposit_account", "Checking"))
+        if sett.get("default_deposit_account", "Checking") in acc_list else (0 if acc_list else None)
     )
     colp1, colp2, colp3 = st.columns(3)
     with colp1:
@@ -890,7 +910,7 @@ with tab_finance:
     with colp2:
         freq_days = st.number_input("Pay frequency (days)", min_value=7, max_value=31, value=int(sett.get("pay_frequency_days", 14)), step=1, key="fin_pay_freq")
     with colp3:
-        deposit_account = st.selectbox("Deposit to account", accounts["name"].tolist(), index=default_deposit_idx, key="fin_deposit_acct")
+        deposit_account = st.selectbox("Deposit to account", acc_list, index=default_deposit_idx, key="fin_deposit_acct")
 
     if st.button("Save Pay Settings", key="fin_save_pay_settings"):
         sett["last_pay_date"] = last_pay.isoformat()
@@ -910,7 +930,7 @@ with tab_finance:
     with colpp2:
         net_amount = st.number_input("Net amount ($)", min_value=0.0, value=0.0, step=10.0, key="fin_plan_net")
 
-    # Budget editor (simple; no delete UI, 'id' hidden)
+    # Allocation rules editor (no delete UI; 'id' hidden). Add any rows you like (title + percent).
     st.markdown("#### Allocation rules (percent of net)")
     edited_budget = st.data_editor(
         budget[["category","percent","auto_account","notes"]],
@@ -919,38 +939,61 @@ with tab_finance:
         hide_index=True,
         column_config={
             "percent": st.column_config.NumberColumn(min_value=0, max_value=100, step=1),
-            "auto_account": st.column_config.SelectboxColumn(options=accounts["name"].dropna().tolist()),
+            "auto_account": st.column_config.SelectboxColumn(options=acc_list),
         },
         key="fin_budget_editor",
     )
+
     total_pct = float(edited_budget["percent"].fillna(0).sum()) if not edited_budget.empty else 0.0
     st.caption(f"Total: {total_pct:.0f}% (aim for 100%)")
 
     if st.button("Save Allocation Rules", key="fin_save_budget"):
         merged = edited_budget.copy()
-        # Ensure all four core categories exist
-        have = merged["category"].fillna("").str.lower().tolist()
-        for c in CORE_CATS:
-            if c.lower() not in have:
-                merged = pd.concat([merged, pd.DataFrame([{"category": c, "percent": 0, "auto_account": "Checking", "notes": ""}])], ignore_index=True)
-        # IDs
-        if "id" not in budget.columns:
-            budget["id"] = ""
+
+        # Preserve IDs by category name where possible
+        old_ids = {str(r["category"]).strip().lower(): r["id"] for _, r in budget.iterrows() if pd.notna(r.get("id", None))}
         if "id" not in merged.columns:
             merged["id"] = ""
-        # Try to preserve ids by matching category names (simple)
-        id_map = {str(r["category"]).strip().lower(): r["id"] for _, r in budget.iterrows()}
-        merged["id"] = merged.apply(lambda r: id_map.get(str(r["category"]).strip().lower(), str(uuid.uuid4())), axis=1)
+        merged["id"] = merged.apply(
+            lambda r: old_ids.get(str(r["category"]).strip().lower(), str(uuid.uuid4())),
+            axis=1
+        )
+        # Clean empties
+        merged = merged.dropna(subset=["category"]).reset_index(drop=True)
+
         save_csv(FILES["budget"], merged[BUDGET_COLS])
         budget = merged[BUDGET_COLS]
         st.success("Allocation rules saved.")
 
-    # Helper: get percent for a category (case-insensitive)
-    def get_pct(df, cat):
-        row = df[df["category"].fillna("").str.lower() == str(cat).lower()]
-        return float(row.iloc[0]["percent"]) if not row.empty and pd.notna(row.iloc[0]["percent"]) else 0.0
+    # ---- PIE: planned split based on ALL rows you added in Allocation Rules ----
+    # The pie uses your current editor rows: every row (title + percent) appears in the pie.
+    st.markdown("#### Paycheck Split (Planned)")
+    if net_amount > 0 and not edited_budget.empty:
+        # Use percentages directly for the pie slices; label shows name + $ amount
+        cats = [str(c) for c in edited_budget["category"].fillna("").tolist()]
+        pcts = [float(x or 0) for x in edited_budget["percent"].fillna(0).tolist()]
+        amts = [net_amount * p / 100.0 for p in pcts]
 
-    # ---- PIE: where the money is going (Savings/Investing from % of net, Expenses = actual, Wants from % of net) ----
+        # Filter out zero-percent categories
+        nz = [(c, p, a) for c, p, a in zip(cats, pcts, amts) if p > 0]
+        if nz:
+            labels = [f"{c} (${a:,.0f})" for c, _, a in nz]
+            values = [p for _, p, _ in nz]  # pie by percent keeps proportions clear
+            colors = [color_for(c, i) for i, (c, _, _) in enumerate(nz)]
+
+            fig, ax = plt.subplots(figsize=(6, 6))
+            ax.pie(values, labels=labels, colors=colors, startangle=90, autopct=None)  # FULL PIE (not donut)
+            ax.set_title("Where this paycheck is planned to go")
+            st.pyplot(fig, use_container_width=True)
+        else:
+            st.info("Set some non-zero percentages above to see the pie chart.")
+    elif net_amount <= 0:
+        st.info("Enter your paycheck **Net amount ($)** to show the planned split pie.")
+    else:
+        st.info("Add at least one allocation row (category + percent) to show the pie chart.")
+
+    # ---- Cash Flow (weekly bars) during this pay period, cleared only ----
+    st.markdown("#### Cash Flow (Weekly, this pay period)")
     # Pay period window: from (p_date - freq_days + 1) to p_date (inclusive)
     period_start = pd.to_datetime(p_date) - pd.Timedelta(days=int(freq_days) - 1)
     period_end   = pd.to_datetime(p_date)
@@ -959,63 +1002,25 @@ with tab_finance:
     if not txp.empty:
         txp["date"] = pd.to_datetime(txp["date"], errors="coerce")
         txp = txp[(txp["date"] >= period_start) & (txp["date"] <= period_end)]
-
-    # Actual cleared expenses during period
-    exp_cleared = txp[(txp["amount"] < 0) & (txp["status"].fillna("Cleared") == "Cleared")] if not txp.empty else pd.DataFrame(columns=transactions.columns)
-    expenses_amt = abs(float(exp_cleared["amount"].sum())) if not exp_cleared.empty else 0.0
-
-    # Planned allocations from net
-    sav_pct = get_pct(edited_budget, "Savings")
-    inv_pct = get_pct(edited_budget, "Investing")
-    wnt_pct = get_pct(edited_budget, "Wants")
-    sav_amt = (sav_pct / 100.0) * net_amount
-    inv_amt = (inv_pct / 100.0) * net_amount
-    wnt_amt = (wnt_pct / 100.0) * net_amount
-
-    st.markdown("#### Paycheck Split")
-    if net_amount > 0:
-        fig, ax = plt.subplots(figsize=(5.5, 5.5))
-        labels  = ["Savings", "Investing", "Expenses", "Wants"]
-        values  = [sav_amt, inv_amt, expenses_amt, wnt_amt]
-        colors  = [COLORS["Savings"], COLORS["Investing"], COLORS["Expenses"], COLORS["Wants"]]
-        nonzero = [(l, v, c) for l, v, c in zip(labels, values, colors) if v > 0]
-        if nonzero:
-            ax.pie(
-                [v for _, v, _ in nonzero],
-                labels=[f"{l} (${v:,.0f})" for l, v, _ in nonzero],
-                colors=[c for _, _, c in nonzero],
-                startangle=90,
-                wedgeprops={"width": 0.65},
-            )
-            ax.set_title("Where this paycheck is going")
-            st.pyplot(fig, use_container_width=True)
-        total_plotted = sum(values)
-        if abs(total_plotted - net_amount) > 1e-6:
-            st.caption(
-                f"Note: plotted total ${total_plotted:,.2f} vs net ${net_amount:,.2f}. "
-                f"Difference happens because **Expenses** uses *actual cleared spend* in the pay period."
-            )
+        cleared_period = txp[txp["status"].fillna("Cleared") == "Cleared"]
     else:
-        st.info("Enter your paycheck **Net amount ($)** to show the split pie.")
+        cleared_period = pd.DataFrame(columns=TRANSACTION_COLS)
 
-    # ---- Cash Flow (weekly bars) during this pay period, cleared only ----
-    st.markdown("#### Cash Flow (Weekly, this pay period)")
-    cleared_period = txp[txp["status"].fillna("Cleared") == "Cleared"] if not txp.empty else pd.DataFrame(columns=transactions.columns)
     if not cleared_period.empty:
         weekly = cleared_period.resample("W-MON", on="date")["amount"].sum().rename("Net").to_frame()
         st.bar_chart(weekly)
     else:
         st.info("No cleared transactions in this pay period yet for the cash flow chart.")
 
-    # ---- Log paycheck + planned allocations (Savings/Investing/Wants planned; Expenses tracked by actual) ----
+    # ---- Log paycheck + planned allocations (create planned rows for ALL budget categories) ----
     if net_amount > 0 and st.button("Log paycheck + planned allocations", type="primary", key="fin_post_paycheck"):
         # 1) record paycheck
         p_record = {
             "id": str(uuid.uuid4()),
             "date": p_date.isoformat(),
             "net_amount": float(net_amount),
-            "hours": np.nan,  # kept for schema compatibility
-            "rate": np.nan,   # kept for schema compatibility
+            "hours": np.nan,  # schema compatibility
+            "rate": np.nan,   # schema compatibility
             "account": deposit_account or "Checking",
             "notes": "",
         }
@@ -1035,27 +1040,32 @@ with tab_finance:
         }
         transactions = pd.concat([transactions, pd.DataFrame([tx_deposit])], ignore_index=True)
 
-        # 3) planned allocations (Savings/Investing/Wants). Expenses are measured by actual spend.
+        # 3) planned negative transactions for *every* allocation row
         plan_rows = []
-        for cat, amt in [("Savings", sav_amt), ("Investing", inv_amt), ("Wants", wnt_amt)]:
-            if amt > 0:
-                row = edited_budget[edited_budget["category"].fillna("").str.lower() == cat.lower()]
-                target_acct = row.iloc[0]["auto_account"] if not row.empty else (deposit_account or "Checking")
-                plan_rows.append({
-                    "id": str(uuid.uuid4()),
-                    "date": p_date.isoformat(),
-                    "account": deposit_account or "Checking",
-                    "category": f"Planned: {cat}",
-                    "description": f"Allocation plan → {target_acct}",
-                    "amount": -float(amt),
-                    "status": "Planned",
-                    "notes": "",
-                })
+        for _, r in edited_budget.iterrows():
+            cat = str(r.get("category", "") or "").strip()
+            pct = float(r.get("percent", 0) or 0)
+            if pct <= 0 or not cat:
+                continue
+            amt = (pct / 100.0) * float(net_amount)
+            target_acct = r.get("auto_account") or (deposit_account or "Checking")
+            plan_rows.append({
+                "id": str(uuid.uuid4()),
+                "date": p_date.isoformat(),
+                "account": deposit_account or "Checking",
+                "category": f"Planned: {cat}",
+                "description": f"Allocation plan → {target_acct}",
+                "amount": -amt,
+                "status": "Planned",
+                "notes": r.get("notes", ""),
+            })
+
         if plan_rows:
             transactions = pd.concat([transactions, pd.DataFrame(plan_rows)], ignore_index=True)
 
         save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
         st.success("Paycheck logged and allocations planned. Use Transfers and mark items **Cleared** as you move money.")
+
 
 
 

@@ -24,7 +24,7 @@ st.set_page_config(page_title="Nebraska Baseball — Pitcher Reports",
 st.set_option("client.showErrorDetails", True)
 
 DATA_PATH_MAIN  = "pitcher_columns.csv"
-DATA_PATH_SCRIM = "Scrimmage(15) (1).csv"
+DATA_PATH_SCRIM = "Scrimmage(18).csv"
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
 HUSKER_RED  = "#E60026"

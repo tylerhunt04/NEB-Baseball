@@ -1,4 +1,5 @@
 
+
 import os
 import json
 import uuid
@@ -21,29 +22,32 @@ FILES = {
     "journal": os.path.join(DATA_DIR, "journal.csv"),
     "habits": os.path.join(DATA_DIR, "habits.csv"),
     "settings": os.path.join(DATA_DIR, "settings.json"),
-    "transactions": os.path.join(DATA_DIR, "transactions.csv"),
+    "goals": os.path.join(DATA_DIR, "goals.csv"),
+    # Finance datasets (manual)
     "accounts": os.path.join(DATA_DIR, "accounts.csv"),
+    "transactions": os.path.join(DATA_DIR, "transactions.csv"),
     "paychecks": os.path.join(DATA_DIR, "paychecks.csv"),
     "budget": os.path.join(DATA_DIR, "budget.csv"),
 }
 
 DEFAULT_SETTINGS = {
-    "units": "imperial",  # or "metric"
+    "units": "imperial",          # or "metric" (used for weigh-in label)
     "default_week_start": "Monday",
-    "goal_weight": None,  # number in selected units
-    "pay_frequency_days": 14,  # bi-weekly
-    "last_pay_date": "",      # ISO date of last paycheck
-    "default_deposit_account": "",
+    "goal_weight": None,          # keeps To-goal metric in Weigh-ins
+    "mission": "",                # mission text shown under header
+
+    # Finance defaults
+    "pay_frequency_days": 14,     # bi-weekly
+    "last_pay_date": "",          # ISO date string
+    "default_deposit_account": "Checking",
 }
 
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # =============== UTIL: LOAD / SAVE =============================================
-
 def _ensure_csv(path: str, columns: List[str]):
     if not os.path.exists(path):
         pd.DataFrame(columns=columns).to_csv(path, index=False)
-
 
 def load_csv(path: str, columns: List[str]) -> pd.DataFrame:
     _ensure_csv(path, columns)
@@ -57,10 +61,8 @@ def load_csv(path: str, columns: List[str]) -> pd.DataFrame:
             df[c] = np.nan
     return df[columns]
 
-
 def save_csv(path: str, df: pd.DataFrame):
     df.to_csv(path, index=False)
-
 
 def load_settings() -> Dict[str, Any]:
     if not os.path.exists(FILES["settings"]):
@@ -78,11 +80,9 @@ def load_settings() -> Dict[str, Any]:
             s[k] = v
     return s
 
-
 def save_settings(s: Dict[str, Any]):
     with open(FILES["settings"], "w") as f:
         json.dump(s, f, indent=2)
-
 
 # =============== DATA SCHEMAS ===================================================
 SCHEDULE_COLS = [
@@ -103,27 +103,23 @@ JOURNAL_COLS = [
 HABIT_COLS = [
     "id", "name", "weekly_target", "sun", "mon", "tue", "wed", "thu", "fri", "sat", "notes"
 ]
-TRANSACTION_COLS = [
-    "id", "date", "account", "category", "description", "amount", "status", "notes"
+GOALS_COLS = [
+    "id", "title", "category", "timeframe", "target_date", "status", "progress", "notes"
 ]
-ACCOUNT_COLS = [
-    "id", "name", "type", "opening_balance", "notes"
-]
-PAYCHECK_COLS = [
-    "id", "date", "net_amount", "hours", "rate", "account", "notes"
-]
-BUDGET_COLS = [
-    "id", "category", "percent", "auto_account", "notes"
-]
+
+# Finance schemas
+ACCOUNT_COLS = ["id", "name", "type", "opening_balance", "notes"]
+TRANSACTION_COLS = ["id", "date", "account", "category", "description", "amount", "status", "notes"]
+PAYCHECK_COLS = ["id", "date", "net_amount", "hours", "rate", "account", "notes"]
+BUDGET_COLS = ["id", "category", "percent", "auto_account", "notes"]
 
 # =============== SESSION STATE ==================================================
 if "settings" not in st.session_state:
     st.session_state.settings = load_settings()
 
-
-# =============== SIDEBAR NAV ====================================================
+# =============== PAGE CONFIG & LIGHT THEME ENFORCE ==============================
 st.set_page_config(page_title=f"{APP_NAME} — Self Management", layout="wide", initial_sidebar_state="collapsed")
-# Force light-like appearance (works even if user theme is dark)
+# Force light-like appearance + hide sidebar
 st.markdown(
     """
     <style>
@@ -134,17 +130,28 @@ st.markdown(
     }
     [data-testid="stAppViewContainer"] {background: var(--background-color) !important;}
     [data-testid="stHeader"] {background: var(--background-color) !important;}
-    [data-testid="stSidebar"] {display: none !important;} /* hide sidebar entirely */
+    [data-testid="stSidebar"] {display: none !important;}
     .stMarkdown, .stText, .stDataFrame, .stMetric { color: var(--text-color) !important; }
+    .mission-box { background:#f6f6f6; border:1px solid #eee; padding:12px 14px; border-radius:10px; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.title("Tyler Hunt")
+# =============== HEADER =========================================================
+# Your name larger; Be Intentional smaller; mission displayed right below.
+st.title("Tyler Hunt")                     # bigger
+st.subheader("Be Intentional")             # smaller
+
+# Show mission statement below the header (edit via Mission & Goals tab)
+settings = st.session_state.settings
+mission_text = settings.get("mission", "").strip()
+if mission_text:
+    st.markdown(f'<div class="mission-box">{mission_text}</div>', unsafe_allow_html=True)
+else:
+    st.info("Add your mission below (Mission & Goals tab) so it always appears here.")
 
 # ---- TOP NAV TABS ----
-st.title("Be Intentional")
 (
     tab_dashboard,
     tab_schedule,
@@ -152,23 +159,23 @@ st.title("Be Intentional")
     tab_weighins,
     tab_journal,
     tab_habits,
-    tab_finance,
-    tab_data,
+    tab_finance,          # NEW
+    tab_mission_goals,
 ) = st.tabs([
     "Dashboard",
     "Schedule",
     "Workouts",
-    "Weigh‑ins",
+    "Weigh-ins",
     "Journal",
     "Habits",
-    "Finance",
-    "Data & Settings",
+    "Finance",            # NEW
+    "Mission & Goals",
 ])
 
-# Quick Add lives on the Dashboard now
+# Quick Add lives on the Dashboard
 with tab_dashboard:
     with st.expander("➕ Quick Add", expanded=False):
-        qa_choice = st.selectbox("Type", ["Task", "Weigh‑in", "Journal"], key="qa_type_top")
+        qa_choice = st.selectbox("Type", ["Task", "Weigh-in", "Journal"], key="qa_type_top")
         if qa_choice == "Task":
             qa_date = st.date_input("Date", value=date.today(), key="qa_task_date_top")
             qa_title = st.text_input("Title", key="qa_task_title_top")
@@ -195,11 +202,11 @@ with tab_dashboard:
                 df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
                 save_csv(FILES["schedule"], df)
                 st.success("Task added.")
-        elif qa_choice == "Weigh‑in":
+        elif qa_choice == "Weigh-in":
             wi_date = st.date_input("Date", value=date.today(), key="qa_wi_date_top")
             wi_weight = st.number_input("Weight", min_value=0.0, step=0.1, key="qa_wi_weight_top")
             wi_bf = st.number_input("Body Fat %", min_value=0.0, max_value=100.0, step=0.1, key="qa_wi_bf_top")
-            if st.button("Add Weigh‑in", use_container_width=True, key="qa_add_wi_top"):
+            if st.button("Add Weigh-in", use_container_width=True, key="qa_add_wi_top"):
                 df = load_csv(FILES["weighins"], WEIGHIN_COLS)
                 new = {
                     "id": str(uuid.uuid4()),
@@ -211,12 +218,12 @@ with tab_dashboard:
                 }
                 df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
                 save_csv(FILES["weighins"], df)
-                st.success("Weigh‑in logged.")
+                st.success("Weigh-in logged.")
         else:
             j_date = st.date_input("Date", value=date.today(), key="qa_j_date_top")
             j_title = st.text_input("Title", key="qa_j_title_top")
             j_mood = st.slider("Mood", 1, 10, 6, key="qa_j_mood_top")
-            j_tags = st.text_input("Tags (comma‑sep)", key="qa_j_tags_top")
+            j_tags = st.text_input("Tags (comma-sep)", key="qa_j_tags_top")
             j_content = st.text_area("Entry", height=120, key="qa_j_content_top")
             if st.button("Save Journal", use_container_width=True, key="qa_add_journal_top"):
                 df = load_csv(FILES["journal"], JOURNAL_COLS)
@@ -233,16 +240,13 @@ with tab_dashboard:
                 st.success("Journal saved.")
 
 # =============== HELPERS ========================================================
-
 def _week_bounds(d: date, week_start: str = "Monday"):
     weekday_idx = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].index(week_start)
-    # shift so that chosen week_start is 0
     current = d.weekday()
     delta = (current - weekday_idx) % 7
     start = d - timedelta(days=delta)
     end = start + timedelta(days=6)
     return start, end
-
 
 def _human_duration(start_str: str, end_str: str) -> float:
     try:
@@ -253,7 +257,6 @@ def _human_duration(start_str: str, end_str: str) -> float:
         return (e - s).total_seconds() / 3600.0
     except Exception:
         return 0.0
-
 
 # =============== PAGES ==========================================================
 
@@ -272,11 +275,10 @@ with tab_dashboard:
     plan = load_csv(FILES["workout_plan"], WORKOUT_PLAN_COLS)
     today_plan = plan[plan["day_of_week"] == dow].copy()
 
-    # Weigh‑ins stats
+    # Weigh-ins stats
     wi = load_csv(FILES["weighins"], WEIGHIN_COLS)
     wi_sorted = wi.dropna(subset=["weight"]).sort_values("date")
     latest_weight = wi_sorted["weight"].iloc[-1] if len(wi_sorted) else None
-    last_7 = wi_sorted.tail(7)["weight"].mean() if len(wi_sorted) >= 1 else None
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -288,7 +290,7 @@ with tab_dashboard:
 
     st.markdown("### Today's Schedule")
     if today_tasks.empty:
-        st.info("No tasks for today yet. Use sidebar quick add or Schedule page.")
+        st.info("No tasks for today yet. Use Quick Add above or the Schedule tab.")
     else:
         st.dataframe(
             today_tasks[["start_time", "end_time", "title", "category", "priority", "status", "notes"]]
@@ -298,18 +300,52 @@ with tab_dashboard:
 
     st.markdown("### Today's Workout Plan")
     if today_plan.empty:
-        st.info("No workout blocks planned for today. Add some on the Workouts page.")
+        st.info("No workout blocks planned for today. Add some on the Workouts tab.")
     else:
         st.dataframe(today_plan[["block", "exercise", "target_sets", "target_reps", "target_load", "notes"]], use_container_width=True)
 
-    st.markdown("### Recent Weigh‑ins")
+    st.markdown("### Recent Weigh-ins")
     if wi_sorted.empty:
-        st.info("Log your first weigh‑in on the Weigh‑ins page or via sidebar.")
+        st.info("Log your first weigh-in on the Weigh-ins tab or via Quick Add.")
     else:
         st.line_chart(wi_sorted.set_index("date")["weight"], height=220)
 
-# ---- SCHEDULE ----
+    # ---- GOALS SUMMARY (UNDER DASHBOARD) ----
+    st.markdown("### Goals (Summary)")
+    goals_df = load_csv(FILES["goals"], GOALS_COLS)
+    with st.expander("➕ Quick add goal"):
+        g_title = st.text_input("Title", key="dash_goal_title")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            g_cat = st.selectbox("Category", ["Health", "Career", "School", "Finance", "Personal", "Other"], key="dash_goal_cat")
+        with c2:
+            g_timeframe = st.selectbox("Timeframe", ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly", "Long-term"], key="dash_goal_timeframe")
+        with c3:
+            g_target = st.date_input("Target date", value=date.today(), key="dash_goal_target")
+        g_notes = st.text_area("Notes", key="dash_goal_notes")
+        if st.button("Add Goal", key="dash_add_goal", type="primary") and g_title:
+            new = {
+                "id": str(uuid.uuid4()),
+                "title": g_title,
+                "category": g_cat,
+                "timeframe": g_timeframe,
+                "target_date": g_target.isoformat(),
+                "status": "Active",
+                "progress": 0,
+                "notes": g_notes,
+            }
+            goals_df = pd.concat([goals_df, pd.DataFrame([new])], ignore_index=True)
+            save_csv(FILES["goals"], goals_df)
+            st.success("Goal added.")
 
+    # show top/active goals
+    if goals_df.empty:
+        st.info("No goals yet.")
+    else:
+        view = goals_df.copy().sort_values(["status", "target_date"])
+        st.dataframe(view[["title","category","timeframe","target_date","status","progress"]].head(10), use_container_width=True)
+
+# ---- SCHEDULE ----
 with tab_schedule:
     st.subheader("Schedule Builder")
 
@@ -394,7 +430,6 @@ with tab_schedule:
             st.dataframe(agg.sort_values(["date", "category"]))
 
 # ---- WORKOUTS ----
-
 with tab_workouts:
     st.subheader("Workouts")
 
@@ -475,10 +510,9 @@ with tab_workouts:
             by_ex = dfl.groupby("exercise")["volume"].sum().sort_values(ascending=False).reset_index()
             st.dataframe(by_ex, use_container_width=True)
 
-# ---- WEIGH‑INS ----
-
+# ---- WEIGH-INS ----
 with tab_weighins:
-    st.subheader("Weekly Weigh‑ins")
+    st.subheader("Weekly Weigh-ins")
 
     settings = st.session_state.settings
     units = settings.get("units", "imperial")
@@ -496,7 +530,7 @@ with tab_weighins:
         waist = st.number_input("Waist (in/cm)", min_value=0.0, step=0.1, key="wi_waist_main")
     notes = st.text_input("Notes", key="wi_notes_main")
 
-    if st.button("Add Weigh‑in", type="primary"):
+    if st.button("Add Weigh-in", type="primary"):
         new = {
             "id": str(uuid.uuid4()),
             "date": wi_date.isoformat(),
@@ -507,11 +541,11 @@ with tab_weighins:
         }
         wi = pd.concat([wi, pd.DataFrame([new])], ignore_index=True)
         save_csv(FILES["weighins"], wi)
-        st.success("Saved weigh‑in.")
+        st.success("Saved weigh-in.")
 
     st.markdown("### Trend")
     if wi.empty:
-        st.info("Add weigh‑ins to see your trend.")
+        st.info("Add weigh-ins to see your trend.")
     else:
         wi_sorted = wi.dropna(subset=["weight"]).sort_values("date")
         st.line_chart(wi_sorted.set_index("date")["weight"], height=260)
@@ -526,9 +560,7 @@ with tab_weighins:
             goal = settings.get("goal_weight")
             latest = wi_sorted["weight"].iloc[-1]
             st.metric("To goal", f"{(latest - goal):+.1f}" if goal else "—")
-
 # ---- JOURNAL ----
-
 with tab_journal:
     st.subheader("Journal")
 
@@ -541,7 +573,7 @@ with tab_journal:
             j_content = st.text_area("Content (Markdown supported)", height=200, key="journal_content_form")
         with c2:
             j_mood = st.slider("Mood", 1, 10, 6, key="journal_mood_form")
-            j_tags = st.text_input("Tags (comma‑sep)", key="journal_tags_form")
+            j_tags = st.text_input("Tags (comma-sep)", key="journal_tags_form")
         submitted = st.form_submit_button("Save Entry", type="primary")
         if submitted:
             new = {
@@ -560,12 +592,11 @@ with tab_journal:
     if jr.empty:
         st.info("No entries yet.")
     else:
-        # filters
         colf1, colf2 = st.columns(2)
         with colf1:
-            tag_filter = st.text_input("Filter by tag contains")
+            tag_filter = st.text_input("Filter by tag contains", key="jr_filter_tag")
         with colf2:
-            mood_min, mood_max = st.slider("Mood range", 1, 10, (1, 10))
+            mood_min, mood_max = st.slider("Mood range", 1, 10, (1, 10), key="jr_filter_mood")
         view = jr.copy()
         if tag_filter:
             view = view[view["tags"].fillna("").str.contains(tag_filter, case=False)]
@@ -578,16 +609,15 @@ with tab_journal:
             st.divider()
 
 # ---- HABITS ----
-
 with tab_habits:
     st.subheader("Habit Tracker")
 
     hb = load_csv(FILES["habits"], HABIT_COLS)
 
     with st.expander("➕ Add a habit"):
-        h_name = st.text_input("Habit name", placeholder="e.g., Read 20 min")
-        h_weekly = st.number_input("Weekly target (times)", min_value=1, max_value=21, value=5)
-        if st.button("Add Habit") and h_name:
+        h_name = st.text_input("Habit name", placeholder="e.g., Read 20 min", key="hab_add_name")
+        h_weekly = st.number_input("Weekly target (times)", min_value=1, max_value=21, value=5, key="hab_add_weekly")
+        if st.button("Add Habit", key="hab_add_btn"):
             new = {
                 "id": str(uuid.uuid4()),
                 "name": h_name,
@@ -617,8 +647,9 @@ with tab_habits:
                 "fri": st.column_config.NumberColumn(min_value=0),
                 "sat": st.column_config.NumberColumn(min_value=0),
             },
+            key="hab_editor",
         )
-        if st.button("Save Habits"):
+        if st.button("Save Habits", key="hab_save_btn"):
             save_csv(FILES["habits"], edited[HABIT_COLS])
             st.success("Saved.")
 
@@ -627,7 +658,7 @@ with tab_habits:
         days = ["sun","mon","tue","wed","thu","fri","sat"]
         view["done"] = view[days].sum(axis=1)
         view["progress"] = (view["done"] / view["weekly_target"]).clip(upper=1.0)
-        st.dataframe(view[["name","weekly_target","done","progress","notes"]])
+        st.dataframe(view[["name","weekly_target","done","progress","notes"]], use_container_width=True)
 
 # ---- FINANCE ----
 with tab_finance:
@@ -639,20 +670,26 @@ with tab_finance:
     paychecks = load_csv(FILES["paychecks"], PAYCHECK_COLS)
     budget = load_csv(FILES["budget"], BUDGET_COLS)
 
-    # Provide sensible default budget if empty
+    # Seed defaults if empty
+    if accounts.empty:
+        accounts = pd.DataFrame([
+            {"id": str(uuid.uuid4()), "name": "Checking", "type": "cash", "opening_balance": 0.0, "notes": ""},
+            {"id": str(uuid.uuid4()), "name": "Savings", "type": "cash", "opening_balance": 0.0, "notes": ""},
+        ], columns=ACCOUNT_COLS)
+        save_csv(FILES["accounts"], accounts)
+
     if budget.empty:
         budget = pd.DataFrame([
-            {"id": str(uuid.uuid4()), "category": "Savings", "percent": 20, "auto_account": "", "notes": "Emergency/investing"},
-            {"id": str(uuid.uuid4()), "category": "Essentials", "percent": 50, "auto_account": "", "notes": "Rent, utilities, groceries"},
-            {"id": str(uuid.uuid4()), "category": "Wants", "percent": 30, "auto_account": "", "notes": "Fun, eating out"},
+            {"id": str(uuid.uuid4()), "category": "Savings",    "percent": 20, "auto_account": "Savings",  "notes": "Emergency/investing"},
+            {"id": str(uuid.uuid4()), "category": "Essentials", "percent": 50, "auto_account": "Checking", "notes": "Rent, utilities, groceries"},
+            {"id": str(uuid.uuid4()), "category": "Wants",      "percent": 30, "auto_account": "Checking", "notes": "Fun, eating out"},
         ], columns=BUDGET_COLS)
         save_csv(FILES["budget"], budget)
 
-    # --- Accounts section ---
+    # ---------- Accounts & Balances ----------
     st.markdown("### Accounts")
-    st.caption("Add your accounts with opening balances. Current balance is opening balance plus cleared transactions.")
     edited_accounts = st.data_editor(
-        accounts if not accounts.empty else pd.DataFrame(columns=ACCOUNT_COLS),
+        accounts,
         num_rows="dynamic", use_container_width=True, hide_index=True,
         column_config={"id": st.column_config.TextColumn("id", disabled=True)},
         key="fin_accounts_editor",
@@ -663,17 +700,16 @@ with tab_finance:
         else:
             edited_accounts["id"] = [str(uuid.uuid4()) for _ in range(len(edited_accounts))]
         save_csv(FILES["accounts"], edited_accounts[ACCOUNT_COLS])
-        st.success("Accounts saved.")
         accounts = edited_accounts[ACCOUNT_COLS]
+        st.success("Accounts saved.")
 
-    # Compute balances from cleared transactions
     def compute_balances(acc_df: pd.DataFrame, tx_df: pd.DataFrame) -> pd.DataFrame:
         if acc_df.empty:
             return pd.DataFrame(columns=["account","type","opening_balance","current_balance"])
         tx = tx_df.copy()
         tx["amount"] = pd.to_numeric(tx["amount"], errors="coerce").fillna(0.0)
-        mask = tx["status"].fillna("Cleared") != "Planned"
-        tx = tx[mask]
+        # Only 'Cleared' affect balances
+        tx = tx[tx["status"].fillna("Cleared") == "Cleared"]
         rows = []
         for _, acc in acc_df.iterrows():
             opening = float(acc.get("opening_balance", 0) or 0)
@@ -688,49 +724,84 @@ with tab_finance:
         return pd.DataFrame(rows)
 
     balances = compute_balances(accounts, transactions)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        chk_bal = balances.loc[balances["account"] == "Checking", "current_balance"].sum() if not balances.empty else 0.0
+        st.metric("Checking", f"${chk_bal:,.2f}")
+    with c2:
+        svg_bal = balances.loc[balances["account"] == "Savings", "current_balance"].sum() if not balances.empty else 0.0
+        st.metric("Savings", f"${svg_bal:,.2f}")
+    with c3:
+        total_cash = balances["current_balance"].sum() if not balances.empty else 0.0
+        st.metric("Total cash", f"${total_cash:,.2f}")
+
     if not balances.empty:
-        total_cash = balances["current_balance"].sum()
-        c1, c2 = st.columns(2)
-        with c1:
-            st.metric("Total cash (cleared)", f"${total_cash:,.2f}")
-        with c2:
-            st.dataframe(balances, use_container_width=True)
-    else:
-        st.info("Add at least one account to see balances.")
+        st.bar_chart(balances.set_index("account")["current_balance"])
 
     st.divider()
 
-    # --- Transactions section ---
+    # ---------- Transactions ----------
     st.markdown("### Transactions")
-    acc_names = accounts["name"].dropna().tolist() if not accounts.empty else []
-    colt1, colt2, colt3 = st.columns(3)
-    with colt1:
+    acc_names = accounts["name"].dropna().tolist()
+    common_cats = ["Rent", "Groceries", "Gas", "Dining", "Utilities", "Phone", "Insurance",
+                   "Entertainment", "Gym", "Medical", "Travel", "Gifts", "Income: Paycheck", "Transfer", "Other"]
+
+    tx_cols = st.columns(5)
+    with tx_cols[0]:
         t_date = st.date_input("Date", value=date.today(), key="fin_tx_date")
-    with colt2:
-        t_account = st.selectbox("Account", acc_names if acc_names else ["(no accounts)"] , key="fin_tx_account")
-    with colt3:
-        t_amount = st.number_input("Amount (\u2212 expense, + income)", value=0.0, step=1.0, key="fin_tx_amount")
-    t_desc = st.text_input("Description", key="fin_tx_desc")
-    t_cat = st.text_input("Category", value="", key="fin_tx_cat")
-    t_status = st.selectbox("Status", ["Cleared", "Planned"], index=0, key="fin_tx_status")
+    with tx_cols[1]:
+        t_account = st.selectbox("Account", acc_names, index=0, key="fin_tx_account")
+    with tx_cols[2]:
+        t_category = st.selectbox("Category", common_cats, index=1, key="fin_tx_cat")
+    with tx_cols[3]:
+        t_amount = st.number_input("Amount (− expense, + income)", value=0.0, step=1.0, key="fin_tx_amt")
+    with tx_cols[4]:
+        t_status = st.selectbox("Status", ["Cleared", "Planned"], index=0, key="fin_tx_status")
+    t_desc = st.text_input("Description", placeholder="e.g., Costco", key="fin_tx_desc")
     t_notes = st.text_input("Notes", key="fin_tx_notes")
+
     if st.button("Add Transaction", type="primary", key="fin_add_tx"):
-        if not acc_names:
-            st.error("Please add an account first in Accounts above.")
-        else:
-            new = {
-                "id": str(uuid.uuid4()),
-                "date": t_date.isoformat(),
-                "account": t_account if t_account != "(no accounts)" else "",
-                "category": t_cat,
-                "description": t_desc,
-                "amount": float(t_amount),
-                "status": t_status,
-                "notes": t_notes,
-            }
-            transactions = pd.concat([transactions, pd.DataFrame([new])], ignore_index=True)
-            save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
-            st.success("Transaction added.")
+        new = {
+            "id": str(uuid.uuid4()),
+            "date": t_date.isoformat(),
+            "account": t_account,
+            "category": t_category,
+            "description": t_desc,
+            "amount": float(t_amount),
+            "status": t_status,
+            "notes": t_notes,
+        }
+        transactions = pd.concat([transactions, pd.DataFrame([new])], ignore_index=True)
+        save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
+        st.success("Transaction added.")
+
+    # Quick transfer helper
+    with st.expander("🔁 Transfer between accounts"):
+        tf_cols = st.columns(4)
+        with tf_cols[0]:
+            tf_date = st.date_input("Date", value=date.today(), key="fin_tf_date")
+        with tf_cols[1]:
+            tf_from = st.selectbox("From", acc_names, key="fin_tf_from")
+        with tf_cols[2]:
+            tf_to = st.selectbox("To", [a for a in acc_names if a != tf_from] or acc_names, key="fin_tf_to")
+        with tf_cols[3]:
+            tf_amount = st.number_input("Amount", min_value=0.0, value=0.0, step=10.0, key="fin_tf_amount")
+        tf_desc = st.text_input("Description", value="Transfer", key="fin_tf_desc")
+        if st.button("Record Transfer", key="fin_tf_btn"):
+            if tf_from == tf_to:
+                st.error("Choose two different accounts.")
+            else:
+                rows = [
+                    {"id": str(uuid.uuid4()), "date": tf_date.isoformat(), "account": tf_from,
+                     "category": "Transfer", "description": tf_desc, "amount": -float(tf_amount),
+                     "status": "Cleared", "notes": ""},
+                    {"id": str(uuid.uuid4()), "date": tf_date.isoformat(), "account": tf_to,
+                     "category": "Transfer", "description": tf_desc, "amount": float(tf_amount),
+                     "status": "Cleared", "notes": ""},
+                ]
+                transactions = pd.concat([transactions, pd.DataFrame(rows)], ignore_index=True)
+                save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
+                st.success("Transfer recorded.")
 
     st.markdown("#### Recent")
     if transactions.empty:
@@ -740,43 +811,58 @@ with tab_finance:
             transactions.sort_values("date", ascending=False).head(50),
             use_container_width=True,
         )
-        # Spending this month by category (expenses only)
-        txm = transactions.copy()
-        txm["date"] = pd.to_datetime(txm["date"], errors="coerce")
-        month_mask = txm["date"].dt.to_period("M") == pd.Timestamp(date.today()).to_period("M")
-        txm = txm[month_mask]
-        txm_exp = txm[txm["amount"] < 0]
-        if not txm_exp.empty:
-            by_cat = txm_exp.groupby("category")["amount"].sum().sort_values()
+
+    # Visuals: this month's spending by category & weekly cashflow
+    tx = transactions.copy()
+    if not tx.empty:
+        tx["date"] = pd.to_datetime(tx["date"], errors="coerce")
+        this_month = pd.Timestamp(date.today()).to_period("M")
+        txm = tx[tx["date"].dt.to_period("M") == this_month]
+
+        # Spending by category (expenses only)
+        exp = txm[txm["amount"] < 0]
+        if not exp.empty:
+            by_cat = exp.groupby("category")["amount"].sum().sort_values()
+            st.markdown("#### This Month — Spending by Category")
             st.bar_chart(by_cat.abs())
+
+        # Weekly cashflow (all cleared only)
+        txc = tx[tx["status"].fillna("Cleared") == "Cleared"]
+        if not txc.empty:
+            weekly = txc.resample("W-MON", on="date")["amount"].sum().rename("net").reset_index()
+            weekly["week"] = weekly["date"].dt.strftime("%Y-%m-%d")
+            st.markdown("#### Weekly Cashflow (Cleared)")
+            st.line_chart(weekly.set_index("week")["net"])
 
     st.divider()
 
-    # --- Paycheck Planner ---
-    st.markdown("### Paycheck Planner (bi‑weekly)")
+    # ---------- Paycheck Planner ----------
+    st.markdown("### Paycheck Planner (bi-weekly)")
+
     sett = st.session_state.settings
+    acc_names = accounts["name"].dropna().tolist()
+    default_deposit_idx = acc_names.index(sett.get("default_deposit_account", "Checking")) if sett.get("default_deposit_account", "Checking") in acc_names else 0
 
     colp1, colp2, colp3 = st.columns(3)
     with colp1:
-        last_pay = st.date_input("Last payday", value=(date.today() if not sett.get("last_pay_date") else pd.to_datetime(sett.get("last_pay_date")).date()), key="fin_last_pay")
+        last_pay_val = pd.to_datetime(sett.get("last_pay_date")).date() if sett.get("last_pay_date") else date.today()
+        last_pay = st.date_input("Last payday", value=last_pay_val, key="fin_last_pay")
     with colp2:
         freq_days = st.number_input("Pay frequency (days)", min_value=7, max_value=31, value=int(sett.get("pay_frequency_days", 14)), step=1, key="fin_pay_freq")
     with colp3:
-        deposit_account = st.selectbox("Deposit to account", acc_names if acc_names else ["(no accounts)"], key="fin_deposit_acct")
+        deposit_account = st.selectbox("Deposit to account", acc_names, index=default_deposit_idx, key="fin_deposit_acct")
 
     if st.button("Save Pay Settings", key="fin_save_pay_settings"):
         sett["last_pay_date"] = last_pay.isoformat()
         sett["pay_frequency_days"] = int(freq_days)
-        sett["default_deposit_account"] = deposit_account if deposit_account != "(no accounts)" else ""
+        sett["default_deposit_account"] = deposit_account
         save_settings(sett)
         st.success("Pay settings saved.")
 
-    # Next paydays preview
     next1 = last_pay + timedelta(days=int(freq_days))
     next2 = next1 + timedelta(days=int(freq_days))
     st.caption(f"Next paydays: {next1.isoformat()} and {next2.isoformat()}")
 
-    st.markdown("#### Plan this paycheck")
     colpp1, colpp2, colpp3 = st.columns(3)
     with colpp1:
         p_date = st.date_input("Paycheck date", value=next1, key="fin_plan_pay_date")
@@ -784,8 +870,10 @@ with tab_finance:
         hours = st.number_input("Hours", min_value=0.0, value=0.0, step=0.25, key="fin_plan_hours")
     with colpp3:
         rate = st.number_input("Rate ($/hr)", min_value=0.0, value=0.0, step=0.25, key="fin_plan_rate")
-    net_amount = st.number_input("Net amount ($)", min_value=0.0, value=0.0 if (hours==0 or rate==0) else round(hours*rate*0.8,2), step=10.0, key="fin_plan_net")
-    st.caption("Enter net (after taxes/withholding). If you fill Hours & Rate, we'll prefill net ~80% for convenience—adjust as needed.")
+
+    suggested_net = round(hours * rate * 0.8, 2) if hours and rate else 0.0
+    net_amount = st.number_input("Net amount ($)", min_value=0.0, value=suggested_net, step=10.0, key="fin_plan_net")
+    st.caption("Tip: If you enter Hours & Rate, we prefill ~80% as net (adjust as needed).")
 
     st.markdown("#### Allocation rules (percent of net)")
     edited_budget = st.data_editor(
@@ -794,151 +882,137 @@ with tab_finance:
         column_config={
             "id": st.column_config.TextColumn("id", disabled=True),
             "percent": st.column_config.NumberColumn(min_value=0, max_value=100, step=1),
+            "auto_account": st.column_config.SelectboxColumn(options=acc_names),
         },
         key="fin_budget_editor",
     )
     total_pct = float(edited_budget["percent"].sum()) if not edited_budget.empty else 0.0
-    st.caption(f"Total: {total_pct:.0f}% (should be 100%)")
+    st.caption(f"Total: {total_pct:.0f}% (aim for 100%)")
+
     if st.button("Save Allocation Rules", key="fin_save_budget"):
         if "id" in edited_budget.columns:
             edited_budget["id"] = edited_budget["id"].fillna("").apply(lambda x: x if x else str(uuid.uuid4()))
         else:
             edited_budget["id"] = [str(uuid.uuid4()) for _ in range(len(edited_budget))]
         save_csv(FILES["budget"], edited_budget[BUDGET_COLS])
-        st.success("Allocation rules saved.")
         budget = edited_budget[BUDGET_COLS]
+        st.success("Allocation rules saved.")
 
     if net_amount > 0 and not edited_budget.empty:
         alloc_df = edited_budget.copy()
         alloc_df["amount"] = (alloc_df["percent"].astype(float) / 100.0) * float(net_amount)
         st.dataframe(alloc_df[["category","percent","amount","auto_account","notes"]], use_container_width=True)
+
         if abs(alloc_df["percent"].sum() - 100) > 0.01:
             st.warning("Your allocation percentages do not sum to 100%. Adjust above to reach 100%.")
+
         if st.button("Log paycheck + planned allocations", type="primary", key="fin_post_paycheck"):
-            if not acc_names:
-                st.error("Add an account in Accounts first.")
-            else:
-                # 1) record paycheck
-                p_record = {
+            # 1) record paycheck
+            p_record = {
+                "id": str(uuid.uuid4()),
+                "date": p_date.isoformat(),
+                "net_amount": float(net_amount),
+                "hours": float(hours),
+                "rate": float(rate),
+                "account": deposit_account,
+                "notes": "",
+            }
+            paychecks = pd.concat([paychecks, pd.DataFrame([p_record])], ignore_index=True)
+            save_csv(FILES["paychecks"], paychecks[PAYCHECK_COLS])
+
+            # 2) deposit transaction (cleared)
+            tx_deposit = {
+                "id": str(uuid.uuid4()),
+                "date": p_date.isoformat(),
+                "account": deposit_account,
+                "category": "Income: Paycheck",
+                "description": "Bi-weekly paycheck",
+                "amount": float(net_amount),
+                "status": "Cleared",
+                "notes": "",
+            }
+            transactions = pd.concat([transactions, pd.DataFrame([tx_deposit])], ignore_index=True)
+
+            # 3) planned allocations (negative on the deposit account)
+            planned_rows = []
+            for _, r in alloc_df.iterrows():
+                planned_rows.append({
                     "id": str(uuid.uuid4()),
                     "date": p_date.isoformat(),
-                    "net_amount": float(net_amount),
-                    "hours": float(hours),
-                    "rate": float(rate),
-                    "account": deposit_account if deposit_account != "(no accounts)" else "",
-                    "notes": "",
-                }
-                paychecks = pd.concat([paychecks, pd.DataFrame([p_record])], ignore_index=True)
-                save_csv(FILES["paychecks"], paychecks[PAYCHECK_COLS])
+                    "account": deposit_account,
+                    "category": f"Planned: {r['category']}",
+                    "description": f"Allocation plan → {r['auto_account']}",
+                    "amount": -float(r["amount"]),
+                    "status": "Planned",
+                    "notes": r.get("notes", ""),
+                })
+            if planned_rows:
+                transactions = pd.concat([transactions, pd.DataFrame(planned_rows)], ignore_index=True)
 
-                # 2) deposit transaction (cleared)
-                tx_deposit = {
-                    "id": str(uuid.uuid4()),
-                    "date": p_date.isoformat(),
-                    "account": deposit_account if deposit_account != "(no accounts)" else "",
-                    "category": "Income: Paycheck",
-                    "description": "Bi-weekly paycheck",
-                    "amount": float(net_amount),
-                    "status": "Cleared",
-                    "notes": "",
-                }
-                transactions = pd.concat([transactions, pd.DataFrame([tx_deposit])], ignore_index=True)
+            save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
+            st.success("Paycheck logged and allocations planned. Use the Transfer helper when you move money, and switch Status to Cleared.")
 
-                # 3) planned allocation transactions (negative amounts)
-                planned_rows = []
-                for _, r in alloc_df.iterrows():
-                    planned_rows.append({
-                        "id": str(uuid.uuid4()),
-                        "date": p_date.isoformat(),
-                        "account": deposit_account if deposit_account != "(no accounts)" else "",
-                        "category": f"Planned: {r['category']}",
-                        "description": "Allocation plan",
-                        "amount": -float(r["amount"]),
-                        "status": "Planned",
-                        "notes": r.get("notes", ""),
-                    })
-                if planned_rows:
-                    transactions = pd.concat([transactions, pd.DataFrame(planned_rows)], ignore_index=True)
-                save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
-                st.success("Paycheck logged and allocations planned. Mark items as Cleared when money actually moves.")
+# ---- MISSION & GOALS (full-page editor) ----
+with tab_mission_goals:
+    st.subheader("Mission & Goals")
 
-st.divider()
-
-# ---- DATA & SETTINGS ----
-
-with tab_data:
-    st.subheader("Settings")
-    settings = st.session_state.settings
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        units = st.selectbox("Units", ["imperial", "metric"], index=0 if settings.get("units")=="imperial" else 1)
-    with c2:
-        week_start = st.selectbox("Week starts", ["Monday", "Sunday"], index=0 if settings.get("default_week_start")=="Monday" else 1, key="settings_week_start")
-    with c3:
-        goal_weight = st.number_input("Goal weight", min_value=0.0, value=float(settings.get("goal_weight") or 0.0))
-    if st.button("Save Settings", type="primary"):
-        settings.update({"units": units, "default_week_start": week_start, "goal_weight": goal_weight if goal_weight>0 else None})
+    # Mission editor
+    st.markdown("#### Mission")
+    mission_edit = st.text_area("Your mission statement", value=settings.get("mission", ""), height=180, key="mission_text_edit")
+    if st.button("Save Mission", type="primary", key="save_mission_btn"):
+        settings["mission"] = mission_edit
         save_settings(settings)
         st.session_state.settings = settings
-        st.success("Settings saved.")
+        st.success("Mission saved. Refresh the page to see it update under the header.")
 
-    st.divider()
-    st.subheader("Data Export / Import")
+    # Goals management
+    st.markdown("#### Goals")
+    goals_df = load_csv(FILES["goals"], GOALS_COLS)
+    with st.expander("➕ Add a goal"):
+        g_title = st.text_input("Title", key="mg_goal_title")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            g_cat = st.selectbox("Category", ["Health", "Career", "School", "Finance", "Personal", "Other"], key="mg_goal_cat")
+        with c2:
+            g_timeframe = st.selectbox("Timeframe", ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly", "Long-term"], key="mg_goal_timeframe")
+        with c3:
+            g_target = st.date_input("Target date", value=date.today(), key="mg_goal_target")
+        g_notes = st.text_area("Notes", key="mg_goal_notes")
 
-    # Export
-    if st.button("Download all data as ZIP"):
-        import zipfile
-        from io import BytesIO
+        if st.button("Add Goal", type="primary", key="mg_add_goal") and g_title:
+            new = {
+                "id": str(uuid.uuid4()),
+                "title": g_title,
+                "category": g_cat,
+                "timeframe": g_timeframe,
+                "target_date": g_target.isoformat(),
+                "status": "Active",
+                "progress": 0,
+                "notes": g_notes,
+            }
+            goals_df = pd.concat([goals_df, pd.DataFrame([new])], ignore_index=True)
+            save_csv(FILES["goals"], goals_df)
+            st.success("Goal added.")
 
-        memory_file = BytesIO()
-        with zipfile.ZipFile(memory_file, 'w') as zf:
-            # ensure files exist before zipping
-            load_csv(FILES["schedule"], SCHEDULE_COLS).to_csv(FILES["schedule"], index=False)
-            load_csv(FILES["workout_plan"], WORKOUT_PLAN_COLS).to_csv(FILES["workout_plan"], index=False)
-            load_csv(FILES["workout_log"], WORKOUT_LOG_COLS).to_csv(FILES["workout_log"], index=False)
-            load_csv(FILES["weighins"], WEIGHIN_COLS).to_csv(FILES["weighins"], index=False)
-            load_csv(FILES["journal"], JOURNAL_COLS).to_csv(FILES["journal"], index=False)
-            load_csv(FILES["habits"], HABIT_COLS).to_csv(FILES["habits"], index=False)
-            load_csv(FILES["transactions"], TRANSACTION_COLS).to_csv(FILES["transactions"], index=False)
-            load_csv(FILES["accounts"], ACCOUNT_COLS).to_csv(FILES["accounts"], index=False)
-            load_csv(FILES["paychecks"], PAYCHECK_COLS).to_csv(FILES["paychecks"], index=False)
-            load_csv(FILES["budget"], BUDGET_COLS).to_csv(FILES["budget"], index=False)
-            for name, path in FILES.items():
-                if os.path.exists(path):
-                    zf.write(path, arcname=os.path.basename(path))
-        st.download_button(
-            label="Download lifehub_data.zip",
-            data=memory_file.getvalue(),
-            file_name="lifehub_data.zip",
-            mime="application/zip",
+    st.markdown("### Your Goals")
+    if goals_df.empty:
+        st.info("No goals yet—add your first one above.")
+    else:
+        edited = st.data_editor(
+            goals_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "id": st.column_config.TextColumn("id", disabled=True),
+                "progress": st.column_config.NumberColumn(min_value=0, max_value=100, step=1),
+                "status": st.column_config.SelectboxColumn(options=["Active","Paused","Completed","Dropped"]),
+            },
+            key="mg_goals_editor",
         )
+        if st.button("Save Goals", key="mg_save_goals"):
+            save_csv(FILES["goals"], edited[GOALS_COLS])
+            st.success("Saved.")
 
-    # Import (replace)
-    up = st.file_uploader("Upload CSV to replace a dataset (careful!)", type=["csv"], accept_multiple_files=False)
-    target = st.selectbox("Target dataset", ["schedule","workout_plan","workout_log","weighins","journal","habits","transactions","accounts","paychecks","budget"], index=0)
-    if st.button("Replace with uploaded CSV") and up is not None:
-        try:
-            df = pd.read_csv(up)
-            expected = {
-                "schedule": SCHEDULE_COLS,
-                "workout_plan": WORKOUT_PLAN_COLS,
-                "workout_log": WORKOUT_LOG_COLS,
-                "weighins": WEIGHIN_COLS,
-                "journal": JOURNAL_COLS,
-                "habits": HABIT_COLS,
-                "transactions": TRANSACTION_COLS,
-                "accounts": ACCOUNT_COLS,
-                "paychecks": PAYCHECK_COLS,
-                "budget": BUDGET_COLS,
-            }[target]
-            # attempt to align columns
-            for c in expected:
-                if c not in df.columns:
-                    df[c] = np.nan
-            save_csv(FILES[target], df[expected])
-            st.success(f"Replaced '{target}' dataset.")
-        except Exception as e:
-            st.error(f"Import failed: {e}")
-
-st.caption("© be intentional in everything you do - life is beautiful.")
+# ---- FOOTER ----
+st.caption("© be intentional with everything you do - life is beautiful.")

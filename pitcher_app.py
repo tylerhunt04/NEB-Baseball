@@ -1,4 +1,4 @@
-here is the first half, # pitcher_app.py — FULL APP (Part 1/2)
+# pitcher_app.py — FULL APP (Part 1/2)
 
 import os, gc, re, base64
 import numpy as np

@@ -693,13 +693,19 @@ if not accounts.empty:
         save_csv(FILES["budget"], budget)
 
     # ---------- Accounts & Balances ----------
-    st.markdown("### Accounts")
-    edited_accounts = st.data_editor(
-        accounts,
-        num_rows="dynamic", use_container_width=True, hide_index=True,
-        column_config={"id": st.column_config.TextColumn("id", disabled=True)},
-        key="fin_accounts_editor",
-    )
+  edited_accounts = st.data_editor(
+    accounts,
+    num_rows="dynamic", use_container_width=True, hide_index=True,
+    column_config={
+        "id": st.column_config.TextColumn("id", disabled=True),
+        "type": st.column_config.SelectboxColumn(
+            options=["bank", "cash", "credit", "loan", "investment"],
+            default="bank"
+        ),
+    },
+    key="fin_accounts_editor",
+)
+
     if st.button("Save Accounts", key="fin_save_accounts"):
         if "id" in edited_accounts.columns:
             edited_accounts["id"] = edited_accounts["id"].fillna("").apply(lambda x: x if x else str(uuid.uuid4()))

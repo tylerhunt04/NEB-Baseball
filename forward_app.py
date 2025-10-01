@@ -719,4 +719,4 @@ with tab_mission_goals:
             st.success("Saved.")
 
 # ---- FOOTER ----
-st.caption("© be intentional with everything you - life is beautiful.")
+st.caption("© be intentional with everything you do - life is beautiful.")

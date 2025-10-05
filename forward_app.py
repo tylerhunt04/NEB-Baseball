@@ -665,14 +665,26 @@ with tab_finance:
     st.subheader("Finance")
     import altair as alt
 
+    # ---------- Ensure file paths & column schemas exist (defined once, no output) ----------
+    if "accounts" not in FILES:
+        FILES.update({
+            "accounts": os.path.join(DATA_DIR, "accounts.csv"),
+            "transactions": os.path.join(DATA_DIR, "transactions.csv"),
+            "paychecks": os.path.join(DATA_DIR, "paychecks.csv"),
+        })
+    if "ACCOUNT_COLS" not in globals():
+        ACCOUNT_COLS = ["id", "name", "type", "opening_balance", "notes"]
+    if "TRANSACTION_COLS" not in globals():
+        TRANSACTION_COLS = ["id", "date", "account", "category", "description", "amount", "status", "notes"]
+    if "PAYCHECK_COLS" not in globals():
+        PAYCHECK_COLS = ["id", "date", "net_amount", "hours", "rate", "account", "notes"]
+
     # ---------- Load data ----------
-    sett          = st.session_state.settings
     accounts      = load_csv(FILES["accounts"], ACCOUNT_COLS)
     transactions  = load_csv(FILES["transactions"], TRANSACTION_COLS)
     paychecks     = load_csv(FILES["paychecks"], PAYCHECK_COLS)
-    budget        = load_csv(FILES["budget"], BUDGET_COLS)
 
-    # ---------- Ensure core accounts ----------
+    # ---------- Ensure core accounts (Checking, Savings, Credit Card) ----------
     def ensure_account(df, name, acc_type):
         if df[df["name"] == name].empty:
             df = pd.concat([df, pd.DataFrame([{
@@ -692,6 +704,7 @@ with tab_finance:
     accounts["type"] = accounts["type"].fillna("bank").replace({"cash": "bank"})
     accounts["id"]   = accounts["id"].fillna("").apply(lambda x: x or str(uuid.uuid4()))
     save_csv(FILES["accounts"], accounts)
+
     acc_names    = accounts["name"].tolist()
     acc_type_map = dict(zip(accounts["name"], accounts["type"]))
 
@@ -708,213 +721,63 @@ with tab_finance:
             rows.append({"Account": r["name"], "Balance": opening + delta})
         return pd.DataFrame(rows)
 
-    # Every other Thursday periods (anchor = tomorrow if it’s Thursday, otherwise next Thursday).
+    # Every-other-Thursday pay periods:
+    # "tomorrow" anchor; include the past period (two weeks before tomorrow), then each period after it
     def next_or_same_weekday(d: date, weekday: int) -> date:
-        # Monday=0 ... Sunday=6; Thursday=3
+        # Monday=0 ... Thursday=3 ... Sunday=6
         return d + timedelta(days=(weekday - d.weekday()) % 7)
 
     today = date.today()
-    next_thu = next_or_same_weekday(today + timedelta(days=1), 3)  # “tomorrow” → if Thu, it stays; else next Thu
-    first_start = next_thu - timedelta(days=14)  # include the past pay period (two weeks before tomorrow)
-
-    # Build a list of 16 pay periods from the requested starting point forward
+    next_thu = next_or_same_weekday(today + timedelta(days=1), 3)   # tomorrow → if Thu, stays; else next Thu
+    first_start = next_thu - timedelta(days=14)                      # past period start (two weeks before tomorrow)
     period_starts = [first_start + timedelta(days=14 * i) for i in range(16)]
-    periods = [(s, s + timedelta(days=13)) for s in period_starts]   # 14-day inclusive window
+    periods = [(s, s + timedelta(days=13)) for s in period_starts]   # 14-day inclusive windows
 
     def format_period(p):
         s, e = p
         return f"{s.isoformat()} → {e.isoformat()}"
 
-    # ========================= TOP ROW: Balances | Budgeting =========================
-    col_bal, col_bud = st.columns([1, 1])
+    # ========================= TOP: Account Balances =========================
+    st.markdown("### Account Balances")
 
-    # --------------------------------------------------------------------------------
-    # LEFT: Account Balances (computed only) + init expander + interactive bar
-    # --------------------------------------------------------------------------------
-    with col_bal:
-        st.markdown("### Account Balances")
+    with st.expander("Initialize / adjust starting balances (one-time)"):
+        init_cols = st.columns(3)
+        for i, name in enumerate(["Checking", "Savings", "Credit Card"]):
+            with init_cols[i]:
+                cur = float(accounts.loc[accounts["name"] == name, "opening_balance"].iloc[0])
+                new = st.number_input(f"{name} starting balance", value=cur, step=50.0, key=f"init_{name}")
+                accounts.loc[accounts["name"] == name, "opening_balance"] = new
+        if st.button("Save starting balances", key="fin_save_opening"):
+            save_csv(FILES["accounts"], accounts)
+            st.success("Starting balances saved.")
 
-        # One-time starting balances
-        with st.expander("Initialize / adjust starting balances (one-time)"):
-            init_cols = st.columns(3)
-            for i, name in enumerate(["Checking", "Savings", "Credit Card"]):
-                with init_cols[i]:
-                    cur = float(accounts.loc[accounts["name"] == name, "opening_balance"].iloc[0])
-                    new = st.number_input(f"{name} starting balance", value=cur, step=50.0, key=f"init_{name}")
-                    accounts.loc[accounts["name"] == name, "opening_balance"] = new
-            if st.button("Save starting balances", key="fin_save_opening"):
-                save_csv(FILES["accounts"], accounts)
-                st.success("Starting balances saved.")
+    # Computed balances (read-only)
+    balances_df = compute_current_balances(accounts, transactions)
 
-        # Computed (read-only) balances
-        balances_df = compute_current_balances(accounts, transactions)
+    # Quick metrics
+    c1, c2, c3 = st.columns(3)
+    with c1: st.metric("Checking", f"${balances_df.loc[balances_df['Account']=='Checking','Balance'].sum():,.2f}")
+    with c2: st.metric("Savings", f"${balances_df.loc[balances_df['Account']=='Savings','Balance'].sum():,.2f}")
+    with c3: st.metric("Credit Card (owed)", f"${balances_df.loc[balances_df['Account']=='Credit Card','Balance'].sum():,.2f}")
 
-        # Metrics
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric("Checking", f"${balances_df.loc[balances_df['Account']=='Checking','Balance'].sum():,.2f}")
-        with c2:
-            st.metric("Savings", f"${balances_df.loc[balances_df['Account']=='Savings','Balance'].sum():,.2f}")
-        with c3:
-            st.metric("Credit Card (owed)", f"${balances_df.loc[balances_df['Account']=='Credit Card','Balance'].sum():,.2f}")
-
-        # Interactive bar (cap at $10,000)
-        bar = (
-            alt.Chart(balances_df)
-            .mark_bar()
-            .encode(
-                x=alt.X("Account:N", sort=None, title=""),
-                y=alt.Y("Balance:Q", scale=alt.Scale(domain=[0, 10000]), title="Balance ($)"),
-                tooltip=["Account:N", alt.Tooltip("Balance:Q", format="$,.2f")],
-            )
-            .properties(height=220)
-            .interactive()
+    # Interactive bar (cap at $10,000)
+    bar = (
+        alt.Chart(balances_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("Account:N", sort=None, title=""),
+            y=alt.Y("Balance:Q", scale=alt.Scale(domain=[0, 10000]), title="Balance ($)"),
+            tooltip=["Account:N", alt.Tooltip("Balance:Q", format="$,.2f")],
         )
-        st.altair_chart(bar, use_container_width=True)
-
-    # --------------------------------------------------------------------------------
-    # RIGHT: Budgeting (pay-period dropdown + pie + actions that affect balances)
-    # --------------------------------------------------------------------------------
-    with col_bud:
-        st.markdown("### Budgeting")
-
-        # Pay-period dropdown (starts with the past period and each after it)
-        bud_labels = [format_period(p) for p in periods]
-        # Default to the *current* period (index 1), but you can change
-        bud_idx = 1 if len(bud_labels) > 1 else 0
-        bud_label = st.selectbox("Pay period", options=bud_labels, index=bud_idx, key="fin_bud_period_dd")
-        bud_start, bud_end = periods[bud_labels.index(bud_label)]
-
-        # Income in selected period (from transactions)
-        tdf = transactions.copy()
-        if not tdf.empty:
-            tdf["date"] = pd.to_datetime(tdf["date"], errors="coerce")
-            mask_bud = (tdf["date"].dt.date >= bud_start) & (tdf["date"].dt.date <= bud_end)
-            tdf_bud = tdf[mask_bud]
-            is_income = tdf_bud["category"].fillna("").str.strip().str.lower().str.startswith("income")
-            period_income = float(tdf_bud.loc[is_income, "amount"].sum()) if not tdf_bud.empty else 0.0
-        else:
-            period_income = 0.0
-
-        # Deposit paycheck (adds to Checking)
-        st.markdown("#### Add paycheck to Checking")
-        pc1, pc2 = st.columns(2)
-        with pc1:
-            paycheck_date = st.date_input("Paycheck date", value=bud_end + timedelta(days=1), key="fin_paycheck_date")
-        with pc2:
-            paycheck_net  = st.number_input("Net amount ($)", min_value=0.0, value=0.0, step=50.0, key="fin_paycheck_net")
-
-        if st.button("Add paycheck", key="fin_add_paycheck", type="primary"):
-            if paycheck_net > 0:
-                new_tx = {
-                    "id": str(uuid.uuid4()),
-                    "date": paycheck_date.isoformat(),
-                    "account": "Checking",
-                    "category": "Income: Paycheck",
-                    "description": "Bi-weekly paycheck",
-                    "amount": float(paycheck_net),
-                    "status": "Logged",
-                    "notes": f"Period {bud_start}–{bud_end}",
-                }
-                transactions = pd.concat([transactions, pd.DataFrame([new_tx])], ignore_index=True)
-                save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
-
-                new_pc = {
-                    "id": str(uuid.uuid4()),
-                    "date": paycheck_date.isoformat(),
-                    "net_amount": float(paycheck_net),
-                    "hours": np.nan, "rate": np.nan,
-                    "account": "Checking",
-                    "notes": f"Period {bud_start}–{bud_end}",
-                }
-                paychecks = pd.concat([paychecks, pd.DataFrame([new_pc])], ignore_index=True)
-                save_csv(FILES["paychecks"], paychecks[PAYCHECK_COLS])
-
-                st.success("Paycheck deposited to Checking.")
-                # refresh income for pie
-                period_income += float(paycheck_net)
-            else:
-                st.warning("Enter a positive net amount.")
-
-        # Ensure fixed 3 budget rows
-        desired_rows = [
-            ("Savings/Investing", "Savings",  "Save & invest"),
-            ("Expenses",          "Checking", "Bills, groceries, etc."),
-            ("Wants",             "Checking", "Fun/Discretionary"),
-        ]
-        b = budget.copy()
-        if b.empty:
-            b = pd.DataFrame(columns=BUDGET_COLS)
-
-        names_lower = b["category"].fillna("").str.lower().tolist()
-        for label, auto_acct, note in desired_rows:
-            if label.lower() not in names_lower:
-                b = pd.concat([b, pd.DataFrame([{
-                    "id": str(uuid.uuid4()),
-                    "category": label, "percent": 0,
-                    "auto_account": auto_acct if auto_acct in acc_names else "Checking",
-                    "notes": note,
-                }])], ignore_index=True)
-
-        order_map = {name: i for i, (name, _, _) in enumerate(desired_rows)}
-        b3 = b[b["category"].isin(order_map.keys())].copy()
-        b3["__o__"] = b3["category"].map(order_map)
-        b3 = b3.sort_values("__o__").drop(columns="__o__")
-
-        st.markdown("#### Allocation (percent of net)")
-        edited_b3 = st.data_editor(
-            b3[["category", "percent", "auto_account", "notes"]],
-            num_rows="fixed", hide_index=True, use_container_width=True,
-            column_config={
-                "percent": st.column_config.NumberColumn(min_value=0, max_value=100, step=1),
-                "auto_account": st.column_config.SelectboxColumn(options=acc_names),
-            },
-            key="fin_bud_editor",
-        )
-
-        if st.button("Save Budget", key="fin_budget_save"):
-            cur_ids = {str(r["category"]).strip().lower(): r["id"] for _, r in b.iterrows() if pd.notna(r.get("id"))}
-            edited_b3 = edited_b3.copy()
-            edited_b3["id"] = edited_b3.apply(
-                lambda r: cur_ids.get(str(r["category"]).strip().lower(), str(uuid.uuid4())), axis=1
-            )
-            save_csv(FILES["budget"], edited_b3[BUDGET_COLS])
-            budget = edited_b3[BUDGET_COLS]
-            st.success("Budget saved.")
-
-        # Pie chart (based on income in selected period)
-        st.markdown("#### Paycheck Split (Selected Period)")
-        if period_income > 0 and not edited_b3.empty:
-            pie_df = edited_b3.copy()
-            pie_df["amount"] = (pie_df["percent"].fillna(0).astype(float) / 100.0) * float(period_income)
-            pie_df = pie_df[pie_df["amount"] > 0]
-            if not pie_df.empty:
-                pie = (
-                    alt.Chart(pie_df)
-                    .mark_arc()
-                    .encode(
-                        theta=alt.Theta("amount:Q"),
-                        color=alt.Color("category:N", legend=alt.Legend(title="Category")),
-                        tooltip=[
-                            "category:N",
-                            alt.Tooltip("percent:Q", title="Percent", format=".0f"),
-                            alt.Tooltip("amount:Q",  title="Amount",  format="$,.2f"),
-                        ],
-                    )
-                    .properties(height=260)
-                    .interactive()
-                )
-                st.altair_chart(pie, use_container_width=True)
-            else:
-                st.info("Set non-zero percentages to see the pie chart.")
-        else:
-            st.info("No income found in this period yet. Add a paycheck above to populate the pie.")
+        .properties(height=220)
+        .interactive()
+    )
+    st.altair_chart(bar, use_container_width=True)
 
     st.divider()
 
     # ========================= SECOND ROW: Transactions (form | table) =========================
     st.markdown("### Transactions")
-
     col_tx_form, col_tx_table = st.columns([1, 1])
 
     # ---------------- LEFT: add transactions ----------------
@@ -943,7 +806,7 @@ with tab_finance:
             c1, c2, c3, c4 = st.columns([1, 1, 1, 1.2])
             with c1: tx_date = st.date_input("Date", value=today, key="fin_tx_inc_date")
             with c2: to_acc = st.selectbox("To account", acc_names, index=0 if acc_names else None, key="fin_tx_inc_to")
-            with c3: amount = st.number_input("Amount ($)", min_value=0.0, value=0.0, step=5.0, key="fin_tx_inc_amt")
+            with c3: amount = st.number_input("Amount ($)", min_value=0.0, value=0.0, step=50.0, key="fin_tx_inc_amt")
             with c4: category = st.text_input("Category (e.g., Income: Paycheck)", value="Income: Paycheck", key="fin_tx_inc_cat")
             notes = st.text_input("Notes", key="fin_tx_inc_notes")
             if st.button("Add Income", key="fin_tx_inc_add", type="primary"):
@@ -980,13 +843,13 @@ with tab_finance:
                 save_csv(FILES["transactions"], transactions[TRANSACTION_COLS])
                 st.success("Transfer recorded.")
 
-    # ---------------- RIGHT: table with pay-period dropdown + delete ----------------
+    # ---------------- RIGHT: table with pay-period dropdown + select-to-delete ----------------
     with col_tx_table:
         st.markdown("#### All Transactions")
 
         tx_labels = [format_period(p) for p in periods]
-        tx_idx = 1 if len(tx_labels) > 1 else 0
-        tx_label = st.selectbox("Pay period", options=tx_labels, index=tx_idx, key="fin_tx_period_dd")
+        # Default to the *past* period (index 0) as requested
+        tx_label = st.selectbox("Pay period", options=tx_labels, index=0, key="fin_tx_period_dd")
         tx_start, tx_end = periods[tx_labels.index(tx_label)]
 
         if transactions.empty:
@@ -998,7 +861,6 @@ with tab_finance:
             mask = (tdf["date"].dt.date >= tx_start) & (tdf["date"].dt.date <= tx_end)
             period_tx = tdf[mask].sort_values("date", ascending=False).copy()
 
-        # Add a selection checkbox column for deletions
         if not period_tx.empty:
             period_tx["select"] = False
             edited_tbl = st.data_editor(
@@ -1010,8 +872,6 @@ with tab_finance:
                 },
                 key="fin_tx_editor_period",
             )
-
-            # Delete selected rows by id
             to_delete_ids = edited_tbl.loc[edited_tbl["select"] == True, "id"].tolist()
             if st.button("Delete selected", key="fin_tx_delete_btn") and to_delete_ids:
                 remaining = transactions[~transactions["id"].isin(to_delete_ids)].copy()
@@ -1022,44 +882,84 @@ with tab_finance:
         else:
             st.info("No transactions in this pay period.")
 
-    # ---------------- Full-width visual (uses selected tx pay period) ----------------
-    st.markdown("#### Cash Flow — Spending by Category (Selected Period)")
+    # ========================= VISUALS (below Transactions) =========================
+    st.markdown("### Visuals — Selected Pay Period")
+
+    # Guard if we don't have period_tx because of the selection above
+    try:
+        period_tx
+    except NameError:
+        # reconstruct from latest selection
+        tdf = transactions.copy()
+        tdf["date"] = pd.to_datetime(tdf["date"], errors="coerce")
+        mask = (tdf["date"].dt.date >= tx_start) & (tdf["date"].dt.date <= tx_end)
+        period_tx = tdf[mask].sort_values("date", ascending=False).copy()
+
+    # --- Income visual ---
+    st.markdown("#### Income (by day)")
     if not period_tx.empty:
-        tx2 = period_tx.merge(accounts[["name","type"]], left_on="account", right_on="name", how="left") \
-                       .rename(columns={"type":"acc_type"}).drop(columns=["name"])
+        inc = period_tx.copy()
+        inc_mask = inc["category"].fillna("").str.strip().str.lower().str.startswith("income")
+        inc = inc[inc_mask].copy()
+        if not inc.empty:
+            inc["date"] = pd.to_datetime(inc["date"], errors="coerce").dt.date
+            inc_daily = inc.groupby("date")["amount"].sum().reset_index()
+            st.metric("Total income in period", f"${inc_daily['amount'].sum():,.2f}")
 
-        not_income   = ~tx2["category"].fillna("").str.strip().str.lower().str.startswith("income")
-        not_transfer = tx2["category"].fillna("").str.strip().str.lower() != "transfer"
-        spend = tx2[not_income & not_transfer].copy()
-
-        if not spend.empty:
-            spend["outflow"] = np.where(
-                spend["acc_type"].fillna("bank") == "credit",
-                spend["amount"].clip(lower=0),
-                (-spend["amount"]).clip(lower=0),
-            )
-            by_cat = spend.groupby("category", dropna=False)["outflow"].sum().reset_index()
-            by_cat = by_cat.sort_values("outflow", ascending=False)
-
-            flow_bar = (
-                alt.Chart(by_cat)
+            income_bar = (
+                alt.Chart(inc_daily)
                 .mark_bar()
                 .encode(
-                    x=alt.X("category:N", sort="-y", title="Category"),
-                    y=alt.Y("outflow:Q", title="Spend ($)"),
+                    x=alt.X("date:T", title="Date"),
+                    y=alt.Y("amount:Q", title="Income ($)"),
+                    tooltip=[alt.Tooltip("date:T", title="Date"),
+                             alt.Tooltip("amount:Q", title="Income ($)", format="$,.2f")],
+                )
+                .properties(height=220)
+                .interactive()
+            )
+            st.altair_chart(income_bar, use_container_width=True)
+        else:
+            st.info("No income in this period.")
+    else:
+        st.info("No transactions in this period.")
+
+    # --- Transfers visual ---
+    st.markdown("#### Transfers (In vs Out by Account)")
+    if not period_tx.empty:
+        tr = period_tx[period_tx["category"].fillna("").str.strip().str.lower() == "transfer"].copy()
+        if not tr.empty:
+            # direction from description; fallback to sign rule
+            desc = tr["description"].fillna("")
+            direction = np.where(desc.str.contains(r"Transfer to ", case=False), "Out",
+                                 np.where(desc.str.contains(r"Transfer from ", case=False), "In",
+                                          np.where(tr["amount"] >= 0, "In", "Out")))
+            tr["direction"] = direction
+            tr["abs_amount"] = tr["amount"].abs()
+
+            by_acc_dir = tr.groupby(["account","direction"])["abs_amount"].sum().reset_index()
+            transfer_bar = (
+                alt.Chart(by_acc_dir)
+                .mark_bar()
+                .encode(
+                    x=alt.X("account:N", title="Account"),
+                    y=alt.Y("abs_amount:Q", title="Transferred ($)"),
+                    color=alt.Color("direction:N", legend=alt.Legend(title="Direction")),
                     tooltip=[
-                        alt.Tooltip("category:N", title="Category"),
-                        alt.Tooltip("outflow:Q",  title="Spend ($)", format="$,.2f"),
+                        alt.Tooltip("account:N", title="Account"),
+                        alt.Tooltip("direction:N", title="Direction"),
+                        alt.Tooltip("abs_amount:Q", title="Amount ($)", format="$,.2f"),
                     ],
                 )
                 .properties(height=240)
                 .interactive()
             )
-            st.altair_chart(flow_bar, use_container_width=True)
+            st.altair_chart(transfer_bar, use_container_width=True)
         else:
-            st.info("No spending found in the selected period.")
+            st.info("No transfers in this period.")
     else:
-        st.info("Add a few transactions in this period to see your cash flow.")
+        st.info("No transactions in this period to visualize.")
+
 
 
 

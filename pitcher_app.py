@@ -1231,68 +1231,64 @@ with tabs[0]:
     if neb_df.empty:
         st.info("No rows for the selected filters.")
     else:
+        # Movement + summary table
         logo_img = load_logo_img()
         out = combined_pitcher_report(neb_df, player_disp, logo_img, coverage=0.8, season_label=season_label)
         if out:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        # ── Play-by-Play (no per-PA strike zone) ──────────────────────────────────────
-st.markdown("### Play-by-Play")
-style_pbp_expanders()
-st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
-st.markdown('<div class="inning-block">', unsafe_allow_html=True)
+        # ── Play-by-Play (NOW inside Standard tab) ─────────────────────────────
+        st.markdown("### Play-by-Play")
+        style_pbp_expanders()
+        st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
+        st.markdown('<div class="inning-block">', unsafe_allow_html=True)
 
-pbp = build_pitch_by_inning_pa_table(neb_df)
-if pbp.empty:
-    st.info("Play-by-Play not available for this selection.")
-else:
-    # Columns visible in the grid (we still keep PlateLoc* in df for potential plots)
-    cols_pitch = [
-        c for c in ["Pitch # in AB","Pitch Type","Result","Velo","Spin Rate","IVB","HB","Rel Height","Extension"]
-        if c in pbp.columns
-    ]
+        pbp = build_pitch_by_inning_pa_table(neb_df)
+        if pbp.empty:
+            st.info("Play-by-Play not available for this selection.")
+        else:
+            cols_pitch = [
+                c for c in ["Pitch # in AB","Pitch Type","Result","Velo","Spin Rate","IVB","HB","Rel Height","Extension"]
+                if c in pbp.columns
+            ]
+            for inn, df_inn in pbp.groupby("Inning #", sort=True, dropna=False):
+                inn_disp = f"Inning {int(inn)}" if pd.notna(inn) else "Inning —"
+                with st.expander(inn_disp, expanded=False):
+                    for pa, g in df_inn.groupby("PA # in Inning", sort=True, dropna=False):
+                        batter = g.get("Batter", pd.Series(["Unknown"])).iloc[0] if "Batter" in g.columns else "Unknown"
+                        side   = g.get("Batter Side", pd.Series([""])).iloc[0] if "Batter Side" in g.columns else ""
+                        side_s = f" ({side})" if isinstance(side, str) and side else ""
+                        pa_text = f"PA {'' if pd.isna(pa) else int(pa)} — vs {batter}{side_s}"
+                        with st.expander(pa_text, expanded=False):
+                            if cols_pitch: st.table(themed_table(g[cols_pitch]))
+                            else:          st.table(themed_table(g))
 
-    for inn, df_inn in pbp.groupby("Inning #", sort=True, dropna=False):
-        inn_disp = f"Inning {int(inn)}" if pd.notna(inn) else "Inning —"
-        with st.expander(inn_disp, expanded=False):
-            for pa, g in df_inn.groupby("PA # in Inning", sort=True, dropna=False):
-                batter = g.get("Batter", pd.Series(["Unknown"])).iloc[0] if "Batter" in g.columns else "Unknown"
-                side   = g.get("Batter Side", pd.Series([""])).iloc[0] if "Batter Side" in g.columns else ""
-                side_s = f" ({side})" if isinstance(side, str) and side else ""
-                pa_text = f"PA {'' if pd.isna(pa) else int(pa)} — vs {batter}{side_s}"
+            # CSV download for full PBP table
+            csv = pbp.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Download play-by-play (CSV)",
+                data=csv,
+                file_name="play_by_play_summary.csv",
+                mime="text/csv"
+            )
 
-                # ── Inner PA expander (table only; removed per-PA strike zone plot)
-                with st.expander(pa_text, expanded=False):
-                    if cols_pitch:
-                        st.table(themed_table(g[cols_pitch]))
-                    else:
-                        st.table(themed_table(g))
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # CSV download for full PBP table
-    csv = pbp.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download play-by-play (CSV)",
-        data=csv,
-        file_name="play_by_play_summary.csv",
-        mime="text/csv"
-    )
-
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# === Top 3 pitch strike zones for this outing (Standard tab) ==================
-st.markdown("### Top 3 Pitches — Strike Zone Map")
-fig_top3_std = heatmaps_top3_pitch_types(
-    neb_df,             # current outing / filters in Standard tab
-    player_disp,
-    hand_filter="Both", # show both sides by default
-    season_label=season_label
+        # === Top 3 pitch strike zones (NOW inside Standard tab) ================
+        st.markdown("### Top 3 Pitches — Strike Zone Map")
+        fig_top3_std = heatmaps_top3_pitch_types(
+            neb_df,             # current outing / filters in Standard tab
+            player_disp,
+            hand_filter="Both", # show both sides by default
+            season_label=season_label
+        )
+        if fig_top3_std:
+            st.plotly_chart(fig_top3_std, use_container_width=True)
+        else:
+            st.caption("No plate-location data available to plot top 3 pitches.")
 )
-if fig_top3_std:
-    st.plotly_chart(fig_top3_std, use_container_width=True)
-else:
-    st.caption("No plate-location data available to plot top 3 pitches.")
 
 
 

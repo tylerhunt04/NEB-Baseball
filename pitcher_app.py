@@ -1331,11 +1331,6 @@ with tabs[0]:
         summary_df = make_outing_overall_summary(neb_df)
         st.table(themed_table(summary_df))
 
-        # === Outcome Summary (PA-level) BEFORE movement ========================
-        st.markdown("### Outcome Summary (PA-level)")
-        out_tbl = make_pitcher_outcome_summary_table(neb_df)
-        st.table(themed_table(out_tbl))
-
         # === Movement + summary table =========================================
         logo_img = load_logo_img()
         out = combined_pitcher_report(

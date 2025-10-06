@@ -1369,6 +1369,10 @@ with tabs[0]:
             st.plotly_chart(fig_top3_std, use_container_width=True)
         else:
             st.caption("No plate-location data available to plot top 3 pitches.")
+          
+st.markdown("### Outing Summary")
+summary_df = make_outing_overall_summary(neb_df)
+st.table(themed_table(summary_df))
 
 
 

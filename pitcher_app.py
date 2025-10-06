@@ -92,6 +92,87 @@ def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 260
     )
 
 hero_banner("Nebraska Baseball", subtitle=None, height_px=260)
+def make_outing_overall_summary(df_in: pd.DataFrame) -> pd.DataFrame:
+    """
+    Overall outing summary for the currently filtered selection:
+    IP, Pitches, Hits, Walks, SO, HBP, Strike%, Whiffs, Zone Whiffs, HardHits
+    """
+    if df_in is None or df_in.empty:
+        return pd.DataFrame([{
+            "IP": "0.0", "Pitches": 0, "Hits": 0, "Walks": 0, "SO": 0, "HBP": 0,
+            "Strike%": np.nan, "Whiffs": 0, "Whiff%": np.nan,
+            "Zone Whiffs": 0, "Zone Whiff%": np.nan,
+            "HardHits": 0, "HardHit% (BIP)": np.nan
+        }])
+
+    # Pitches thrown
+    pitches = int(len(df_in))
+
+    # PA-level terminal rows → counts + IP
+    pa_tbl = _terminal_pa_table(df_in)
+    box = _box_counts_from_PA(pa_tbl)
+    ip_float, ip_disp = _compute_IP_from_outs(box["OUTS"])
+
+    # Strike %
+    strike_pct = strike_rate(df_in)  # already returns 0..100
+
+    # Whiffs + Zone Whiffs
+    call_col = _first_present(df_in, ["PitchCall","Pitch Call","PitchResult","Call"])
+    x_col    = _first_present(df_in, ["PlateLocSide","Plate Loc Side","PlateSide","px","PlateLocX"])
+    y_col    = _first_present(df_in, ["PlateLocHeight","Plate Loc Height","PlateHeight","pz","PlateLocZ"])
+
+    whiff_cnt = 0
+    whiff_pct = np.nan
+    zwhiff_cnt = 0
+    zwhiff_pct = np.nan
+
+    if call_col:
+        s_call = df_in[call_col].astype(str)
+        is_swing = s_call.isin(['StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
+        is_whiff = s_call.eq('StrikeSwinging')
+
+        swings_total = int(is_swing.sum())
+        whiff_cnt = int(is_whiff.sum())
+        whiff_pct = (whiff_cnt / swings_total * 100.0) if swings_total > 0 else np.nan
+
+        # Zone whiffs require plate location
+        if x_col and y_col and x_col in df_in.columns and y_col in df_in.columns:
+            xs = pd.to_numeric(df_in[x_col], errors="coerce")
+            ys = pd.to_numeric(df_in[y_col], errors="coerce")
+            l, b, w, h = get_zone_bounds()     # same zone as plots
+            in_zone = xs.between(l, l+w) & ys.between(b, b+h)
+
+            swings_in_zone = int((is_swing & in_zone).sum())
+            zwhiff_cnt = int((is_whiff & in_zone).sum())
+            zwhiff_pct = (zwhiff_cnt / swings_in_zone * 100.0) if swings_in_zone > 0 else np.nan
+
+    # HardHits: EV ≥ 95 mph on balls in play
+    ev_col = _first_present(df_in, ["ExitSpeed","Exit Velo","ExitVelocity","Exit_Velocity","ExitVel","EV","LaunchSpeed","Launch_Speed"])
+    hard_cnt = 0
+    hard_pct_bip = np.nan
+    if ev_col and call_col:
+        ev = pd.to_numeric(df_in[ev_col], errors="coerce")
+        inplay = df_in[call_col].astype(str).eq("InPlay")
+        bip = int(inplay.sum())
+        hard_cnt = int(((ev >= 95.0) & inplay & ev.notna()).sum())
+        hard_pct_bip = (hard_cnt / bip * 100.0) if bip > 0 else np.nan
+
+    row = {
+        "IP": ip_disp,
+        "Pitches": pitches,
+        "Hits": int(box["H"]),
+        "Walks": int(box["BB"]),
+        "SO": int(box["SO"]),
+        "HBP": int(box["HBP"]),
+        "Strike%": round(float(strike_pct), 1) if pd.notna(strike_pct) else np.nan,
+        "Whiffs": whiff_cnt,
+        "Whiff%": round(float(whiff_pct), 1) if pd.notna(whiff_pct) else np.nan,
+        "Zone Whiffs": zwhiff_cnt,
+        "Zone Whiff%": round(float(zwhiff_pct), 1) if pd.notna(zwhiff_pct) else np.nan,
+        "HardHits": hard_cnt,
+        "HardHit% (BIP)": round(float(hard_pct_bip), 1) if pd.notna(hard_pct_bip) else np.nan,
+    }
+    return pd.DataFrame([row])
 
 # ─── Date helpers ─────────────────────────────────────────────────────────────
 DATE_CANDIDATES = ["Date","date","GameDate","GAME_DATE","Game Date","date_game","Datetime",

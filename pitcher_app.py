@@ -1286,25 +1286,39 @@ with tabs[0]:
     if segment_choice == "2025/26 Scrimmages":
         dates_all = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
         if not dates_all:
-            st.info("No scrimmage dates available for this pitcher."); st.stop()
+            st.info("No scrimmage dates available for this pitcher.")
+            st.stop()
         default_idx = len(dates_all) - 1
         date_labels = [label_date_with_fb(d) for d in dates_all]
-        sel_label = st.selectbox("Scrimmage Date", options=date_labels, index=default_idx, key="scrim_std_date")
+        sel_label = st.selectbox(
+            "Scrimmage Date",
+            options=date_labels,
+            index=default_idx,
+            key="scrim_std_date"
+        )
         sel_date = dates_all[date_labels.index(sel_label)]
         neb_df = df_pitcher_all[pd.to_datetime(df_pitcher_all['Date']).dt.date == sel_date].copy()
         season_label = label_date_with_fb(sel_date)
     else:
         present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
-        col_m, col_d, _col_side = st.columns([1,1,1.6])
+        col_m, col_d, _col_side = st.columns([1, 1, 1.6])
         months_sel = col_m.multiselect(
-            "Months (optional)", options=present_months,
+            "Months (optional)",
+            options=present_months,
             format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
-            default=[], key="std_months",
+            default=[],
+            key="std_months"
         )
         dser = df_pitcher_all['Date'].dropna()
-        if months_sel: dser = dser[dser.dt.month.isin(months_sel)]
+        if months_sel:
+            dser = dser[dser.dt.month.isin(months_sel)]
         present_days = sorted(dser.dt.day.unique().tolist())
-        days_sel = col_d.multiselect("Days (optional)", options=present_days, default=[], key="std_days")
+        days_sel = col_d.multiselect(
+            "Days (optional)",
+            options=present_days,
+            default=[],
+            key="std_days"
+        )
         neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
         season_label_base = build_pitcher_season_label(months_sel, days_sel, neb_df)
         season_label = f"{segment_choice} — {season_label_base}" if season_label_base else segment_choice
@@ -1312,14 +1326,21 @@ with tabs[0]:
     if neb_df.empty:
         st.info("No rows for the selected filters.")
     else:
-        # Movement + summary table
+        # === Outing Summary ====================================================
+        st.markdown("### Outing Summary")
+        summary_df = make_outing_overall_summary(neb_df)
+        st.table(themed_table(summary_df))
+
+        # === Movement + summary table =========================================
         logo_img = load_logo_img()
-        out = combined_pitcher_report(neb_df, player_disp, logo_img, coverage=0.8, season_label=season_label)
+        out = combined_pitcher_report(
+            neb_df, player_disp, logo_img, coverage=0.8, season_label=season_label
+        )
         if out:
             fig_m, _ = out
             show_and_close(fig_m)
 
-        # ── Play-by-Play (NOW inside Standard tab) ─────────────────────────────
+        # === Play-by-Play (Standard tab only) =================================
         st.markdown("### Play-by-Play")
         style_pbp_expanders()
         st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
@@ -1342,13 +1363,15 @@ with tabs[0]:
                         side_s = f" ({side})" if isinstance(side, str) and side else ""
                         pa_text = f"PA {'' if pd.isna(pa) else int(pa)} — vs {batter}{side_s}"
                         with st.expander(pa_text, expanded=False):
-                            if cols_pitch: st.table(themed_table(g[cols_pitch]))
-                            else:          st.table(themed_table(g))
+                            if cols_pitch:
+                                st.table(themed_table(g[cols_pitch]))
+                            else:
+                                st.table(themed_table(g))
 
             # CSV download for full PBP table
             csv = pbp.to_csv(index=False).encode("utf-8")
             st.download_button(
-                "Download play-by-play (CSV)",
+                label="Download play-by-play (CSV)",
                 data=csv,
                 file_name="play_by_play_summary.csv",
                 mime="text/csv"
@@ -1357,22 +1380,19 @@ with tabs[0]:
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # === Top 3 pitch strike zones (NOW inside Standard tab) ================
+        # === Top 3 pitch strike zones (Standard tab only) ======================
         st.markdown("### Top 3 Pitches — Strike Zone Map")
         fig_top3_std = heatmaps_top3_pitch_types(
-            neb_df,             # current outing / filters in Standard tab
+            neb_df,
             player_disp,
-            hand_filter="Both", # show both sides by default
+            hand_filter="Both",
             season_label=season_label
         )
         if fig_top3_std:
             st.plotly_chart(fig_top3_std, use_container_width=True)
         else:
             st.caption("No plate-location data available to plot top 3 pitches.")
-          
-st.markdown("### Outing Summary")
-summary_df = make_outing_overall_summary(neb_df)
-st.table(themed_table(summary_df))
+
 
 
 

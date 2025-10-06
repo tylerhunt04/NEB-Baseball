@@ -1288,7 +1288,6 @@ with tabs[0]:
             st.plotly_chart(fig_top3_std, use_container_width=True)
         else:
             st.caption("No plate-location data available to plot top 3 pitches.")
-)
 
 
 

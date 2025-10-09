@@ -2485,8 +2485,6 @@ with tabs[2]:
 # UI — Rankings tab  (click headers to sort; no sort dropdown)
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[3]:
-    st.markdown("#### Pitcher Rankings")
-
     # League averages & which metrics are "lower is better"
     LEAGUE_AVG = {
         "Whiff%": 23.0,
@@ -2502,87 +2500,85 @@ with tabs[3]:
         "H9": 9.90,
     }
     LOWER_BETTER = {"Barrel%", "HH%", "BB%", "WHIP", "H9"}
-# --- Team Averages (NEB) — shown above filter + pitcher rankings title ---
-st.markdown("#### Team Averages (NEB)")
 
-team_df = make_team_averages(df_segment)  # unfiltered, whole team
-if team_df.empty:
-    st.info("No data available to compute team averages.")
-else:
-    # Columns we will color (align to pitcher rankings scheme)
-    color_cols = [c for c in [
-        "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%","WHIP","H9"
-    ] if c in team_df.columns]
+    # --- Team Averages (NEB) — shown above filter + pitcher rankings title ---
+    st.markdown("#### Team Averages (NEB)")
 
-    # Build numeric frame for styling
-    df_num = team_df.copy()
-    for c in color_cols:
-        df_num[c] = pd.to_numeric(df_num[c], errors="coerce")
+    team_df = make_team_averages(df_segment)  # unfiltered, whole team
+    if team_df.empty:
+        st.info("No data available to compute team averages.")
+    else:
+        # Columns we will color (align to pitcher rankings scheme)
+        color_cols = [c for c in [
+            "BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%","WHIP","H9"
+        ] if c in team_df.columns]
 
-    # Initialize empty style grid
-    import numpy as np
-    import matplotlib
-    import matplotlib.cm as cm
-    styles = pd.DataFrame("", index=df_num.index, columns=df_num.columns)
+        # Build numeric frame for styling
+        df_num = team_df.copy()
+        for c in color_cols:
+            df_num[c] = pd.to_numeric(df_num[c], errors="coerce")
 
-    # Same “only color when no pitch-type filter” rule as pitcher rankings
-    # (There is no filter yet at this point, so we always color here to match your ask)
-    col_scales = {}
-    for c in color_cols:
-        s = np.nanstd(df_num[c].to_numpy(dtype=float))
-        col_scales[c] = s if s and np.isfinite(s) and s > 0 else 1.0
+        # Initialize empty style grid
+        import numpy as np
+        import matplotlib
+        import matplotlib.cm as cm
+        styles = pd.DataFrame("", index=df_num.index, columns=df_num.columns)
 
-    greens = cm.get_cmap("Greens")  # better than league → green
-    reds   = cm.get_cmap("Reds")    # worse than league  → red
+        # Always color here (this is the unfiltered team view)
+        col_scales = {}
+        for c in color_cols:
+            s = np.nanstd(df_num[c].to_numpy(dtype=float))
+            col_scales[c] = s if s and np.isfinite(s) and s > 0 else 1.0
 
-    def _to_hex(rgba):
-        return matplotlib.colors.to_hex((rgba[0], rgba[1], rgba[2]))
+        greens = cm.get_cmap("Greens")  # better than league → green
+        reds   = cm.get_cmap("Reds")    # worse than league  → red
 
-    for c in color_cols:
-        avg = LEAGUE_AVG.get(c, np.nan)
-        scale = float(col_scales[c])
-        lower_is_better = c in LOWER_BETTER
+        def _to_hex(rgba):
+            return matplotlib.colors.to_hex((rgba[0], rgba[1], rgba[2]))
 
-        def cell_css(val):
-            if pd.isna(val) or pd.isna(avg) or scale <= 0:
-                return "background-color: transparent;"
-            delta_better = (avg - val) if lower_is_better else (val - avg)  # >0 = better
-            if abs(delta_better) < 1e-12:
-                return "background-color: transparent;"
-            t = np.clip(abs(delta_better) / (2.0 * scale), 0.0, 1.0)
-            t_scaled = 0.15 + 0.75 * t  # light near avg → darker far from avg
-            rgba = greens(t_scaled) if delta_better > 0 else reds(t_scaled)
-            return f"background-color: {_to_hex(rgba)};"
+        for c in color_cols:
+            avg = LEAGUE_AVG.get(c, np.nan)
+            scale = float(col_scales[c])
+            lower_is_better = c in LOWER_BETTER
 
-        styles[c] = df_num[c].apply(cell_css)
+            def cell_css(val):
+                if pd.isna(val) or pd.isna(avg) or scale <= 0:
+                    return "background-color: transparent;"
+                delta_better = (avg - val) if lower_is_better else (val - avg)  # >0 = better
+                if abs(delta_better) < 1e-12:
+                    return "background-color: transparent;"
+                t = np.clip(abs(delta_better) / (2.0 * scale), 0.0, 1.0)
+                t_scaled = 0.15 + 0.75 * t  # light near avg → darker far from avg
+                rgba = greens(t_scaled) if delta_better > 0 else reds(t_scaled)
+                return f"background-color: {_to_hex(rgba)};"
 
-    # Pretty formatting (match pitcher rankings)
-    fmt_map = {"WHIP": "{:.3f}", "H9": "{:.2f}"}
-    for c in ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%"]:
-        if c in df_num.columns:
-            fmt_map[c] = "{:.1f}"
+            styles[c] = df_num[c].apply(cell_css)
 
-    team_display = team_df.copy()  # keep types numeric
-    # Put columns in a sensible order (Team then metrics)
-    order = ["Team","WHIP","H9","BB%","SO%","Strike%","Zone%","Zwhiff%","HH%","Barrel%","Whiff%","Chase%"]
-    team_display = team_display[[c for c in order if c in team_display.columns]]
+        # Pretty formatting (match pitcher rankings)
+        fmt_map = {"WHIP": "{:.3f}", "H9": "{:.2f}"}
+        for c in ["BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%"]:
+            if c in df_num.columns:
+                fmt_map[c] = "{:.1f}"
 
-    styled_team = (
-        team_display.style
-        .hide(axis="index")
-        .format(fmt_map, na_rep="")
-        .set_table_styles([
-            {"selector": "th", "props": [("text-align","center"), ("padding","6px 6px")]},
-            {"selector": "td", "props": [("padding-top","4px"), ("padding-bottom","4px")]}
-        ])
-        .apply(lambda _: styles[team_display.columns], axis=None)
-    )
+        team_display = team_df.copy()  # keep types numeric
+        # Put columns in a sensible order (Team then metrics)
+        order = ["Team","WHIP","H9","BB%","SO%","Strike%","Zone%","Zwhiff%","HH%","Barrel%","Whiff%","Chase%"]
+        team_display = team_display[[c for c in order if c in team_display.columns]]
 
-    st.dataframe(styled_team, use_container_width=True, hide_index=True)
+        styled_team = (
+            team_display.style
+            .hide(axis="index")
+            .format(fmt_map, na_rep="")
+            .set_table_styles([
+                {"selector": "th", "props": [("text-align","center"), ("padding","6px 6px")]},
+                {"selector": "td", "props": [("padding-top","4px"), ("padding-bottom","4px")]}
+            ])
+            .apply(lambda _: styles[team_display.columns], axis=None)
+        )
 
-# ---- (keep the rest of your Rankings UI below: pitch-type filter, titles, tables, etc.) ----
+        st.dataframe(styled_team, use_container_width=True, hide_index=True)
 
-    # Pitch-type filter (optional)
+    # ---------- Pitch-type filter (optional) ----------
     type_col_all = type_col_in_df(df_segment)
     type_options = []
     if type_col_all in df_segment.columns:
@@ -2598,14 +2594,10 @@ else:
         help="Leave empty for all pitch types."
     )
 
-    # ── NEW: Team averages shown above the pitcher rankings ───────────────────
-    team_df = make_team_averages(
-        df_segment,
-        pitch_types_filter=types_selected if len(types_selected) else None
-    )
-    if team_df is not None and not team_df.empty:
-        st.markdown("#### Team Averages (NEB)")
-        st.table(themed_table(team_df))
+    # NOTE: Removed the OLD duplicate team table block here.
+
+    # ---------- Pitcher Rankings ----------
+    st.markdown("#### Pitcher Rankings")
 
     # Build rankings (keep columns numeric)
     ranks_df = make_pitcher_rankings(df_segment, pitch_types_filter=types_selected)

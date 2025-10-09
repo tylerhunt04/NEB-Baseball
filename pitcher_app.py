@@ -963,7 +963,6 @@ def _plate_metrics_detailed(sub: pd.DataFrame) -> dict:
 
     isswing   = s_call.isin(['StrikeSwinging','FoulBallNotFieldable','FoulBallFieldable','InPlay'])
     iswhiff   = s_call.eq('StrikeSwinging')
-    iscontact = s_call.isin(['InPlay','FoulBallNotFieldable','FoulBallFieldable'])
 
     # Zone bounds consistent with your draw
     z_left, z_bot, z_w, z_h = get_zone_bounds()
@@ -1027,13 +1026,7 @@ def make_pitcher_rankings(df_segment: pd.DataFrame, pitch_types_filter: list[str
     """
     if df_segment is None or df_segment.empty:
         return pd.DataFrame()
-      
-    # NEW — team averages helper (place right here)
-def make_team_averages(df_segment: pd.DataFrame, pitch_types_filter: list[str] | None = None) -> pd.DataFrame:
-    ...
-    return pd.DataFrame([row]).assign(**{"Team": "NEB"})[
-        ["Team","WHIP","H9","BB%","SO%","Strike%","Zone%","Zwhiff%","HH%","Barrel%","Whiff%","Chase%"]
-  
+
     # Restrict to NEB pitchers
     base = df_segment[df_segment.get('PitcherTeam','') == 'NEB'].copy()
     if base.empty: return pd.DataFrame()
@@ -1114,6 +1107,66 @@ def make_team_averages(df_segment: pd.DataFrame, pitch_types_filter: list[str] |
     # Default sort by WHIP asc, then SO desc
     out = out.sort_values(["WHIP","SO"], ascending=[True, False], na_position="last").reset_index(drop=True)
     return out
+
+# NEW — Team averages helper (used by Rankings tab to show NEB team numbers)
+def make_team_averages(df_segment: pd.DataFrame, pitch_types_filter: list[str] | None = None) -> pd.DataFrame:
+    """
+    Team-level numbers for NEB using the same logic as make_pitcher_rankings:
+    WHIP, H9, BB%, SO%, Strike%, Zone%, Zwhiff%, HH%, Barrel%, Whiff%, Chase%.
+    Optional pitch_types_filter applies before aggregation.
+    """
+    if df_segment is None or df_segment.empty:
+        return pd.DataFrame()
+
+    base = df_segment[df_segment.get('PitcherTeam','') == 'NEB'].copy()
+    if base.empty:
+        return pd.DataFrame()
+
+    # Apply optional pitch-type filter with the same column decision logic
+    type_col = type_col_in_df(base)
+    if pitch_types_filter:
+        if type_col in base.columns:
+            base = base[base[type_col].astype(str).isin(pitch_types_filter)].copy()
+        if base.empty:
+            return pd.DataFrame()
+
+    # PA-level counts → H, BB, SO, outs → IP
+    pa = _terminal_pa_table(base)
+    box = _box_counts_from_PA(pa)
+    outs = box["OUTS"]
+    ip_float, _ = _compute_IP_from_outs(outs)
+
+    # Plate discipline & strike%
+    pdm = _plate_metrics_detailed(base)         # returns % values 0..100
+    # HardHit / Barrel %
+    hhbm = _hardhit_barrel_metrics(base)        # returns % values 0..100
+
+    H, BB, SO = box["H"], box["BB"], box["SO"]
+    # Rates
+    WHIP = (BB + H) / ip_float if ip_float > 0 else np.nan
+    H9   = (H * 9.0) / ip_float if ip_float > 0 else np.nan
+    PA_n = len(pa)
+    BBpct = (BB / max(PA_n, 1)) * 100.0
+    SOpct = (SO / max(PA_n, 1)) * 100.0
+
+    row = {
+        "Team":     "NEB",
+        "WHIP":     round(WHIP, 3) if pd.notna(WHIP) else np.nan,
+        "H9":       round(H9, 2)   if pd.notna(H9)   else np.nan,
+        "BB%":      round(BBpct, 1),
+        "SO%":      round(SOpct, 1),
+        "Strike%":  round(pdm.get("StrikePct", np.nan), 1) if pdm else np.nan,
+        "Zone%":    round(pdm.get("ZonePct",   np.nan), 1) if pdm else np.nan,
+        "Zwhiff%":  round(pdm.get("ZwhiffPct", np.nan), 1) if pdm else np.nan,
+        "HH%":      round(hhbm.get("HardHitPct", np.nan), 1) if hhbm else np.nan,
+        "Barrel%":  round(hhbm.get("BarrelPct",  np.nan), 1) if hhbm else np.nan,
+        "Whiff%":   round(pdm.get("WhiffPct",  np.nan), 1) if pdm else np.nan,
+        "Chase%":   round(pdm.get("ChasePct",  np.nan), 1) if pdm else np.nan,
+    }
+    # Column order to match the UI ask
+    cols = ["Team","WHIP","H9","BB%","SO%","Strike%","Zone%","Zwhiff%","HH%","Barrel%","Whiff%","Chase%"]
+    return pd.DataFrame([row])[cols]
+
 
 # ─── Load data ────────────────────────────────────────────────────────────────
 def resolve_existing_path(candidates: list[str]) -> str | None:

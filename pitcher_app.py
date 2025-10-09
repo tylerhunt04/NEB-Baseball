@@ -1027,7 +1027,13 @@ def make_pitcher_rankings(df_segment: pd.DataFrame, pitch_types_filter: list[str
     """
     if df_segment is None or df_segment.empty:
         return pd.DataFrame()
-
+      
+    # NEW — team averages helper (place right here)
+def make_team_averages(df_segment: pd.DataFrame, pitch_types_filter: list[str] | None = None) -> pd.DataFrame:
+    ...
+    return pd.DataFrame([row]).assign(**{"Team": "NEB"})[
+        ["Team","WHIP","H9","BB%","SO%","Strike%","Zone%","Zwhiff%","HH%","Barrel%","Whiff%","Chase%"]
+  
     # Restrict to NEB pitchers
     base = df_segment[df_segment.get('PitcherTeam','') == 'NEB'].copy()
     if base.empty: return pd.DataFrame()
@@ -2422,7 +2428,6 @@ with tabs[2]:
                 st.plotly_chart(fig_top3, use_container_width=True)
 # ──────────────────────────────────────────────────────────────────────────────
 # UI — Rankings tab  (click headers to sort; no sort dropdown)
-#   NOTE: make sure your tabs list includes "Rankings" and this is the correct index.
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[3]:
     st.markdown("#### Pitcher Rankings")
@@ -2458,6 +2463,15 @@ with tabs[3]:
         default=[],
         help="Leave empty for all pitch types."
     )
+
+    # ── NEW: Team averages shown above the pitcher rankings ───────────────────
+    team_df = make_team_averages(
+        df_segment,
+        pitch_types_filter=types_selected if len(types_selected) else None
+    )
+    if team_df is not None and not team_df.empty:
+        st.markdown("#### Team Averages (NEB)")
+        st.table(themed_table(team_df))
 
     # Build rankings (keep columns numeric)
     ranks_df = make_pitcher_rankings(df_segment, pitch_types_filter=types_selected)
@@ -2564,3 +2578,4 @@ with tabs[3]:
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
+

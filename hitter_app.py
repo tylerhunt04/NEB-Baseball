@@ -24,7 +24,7 @@ st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # w
 
 # Default data paths per period (you can change these in the expander)
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
-DATA_PATH_SCRIM  = "Scrimmage(24).csv"  # file, directory, or glob pattern
+DATA_PATH_SCRIM  = "Scrimmage(25).csv"  # file, directory, or glob pattern
 DATA_PATH_2026   = "B10C26_hitter_app_columns.csv"  # placeholder; update when ready
 
 # Optional EV×LA probability lookup (used for xwOBA).

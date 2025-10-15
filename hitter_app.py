@@ -182,12 +182,18 @@ def draw_dirt_diamond(
     outfield_scale: float = 3.0,
     path_width: float = 8,
     foul_line_extend: float = 1.1,
-    arc_extend_scale: float = 1.7
+    arc_extend_scale: float = 1.7,
+    custom_outfield_radius: float = None  # NEW parameter for custom radius
 ):
     """Draw a baseball field with dirt infield and grass outfield"""
     home = np.array(origin)
 
-    outfield_radius = size * arc_extend_scale
+    # Use custom radius if provided, otherwise calculate from size
+    if custom_outfield_radius is not None:
+        outfield_radius = custom_outfield_radius
+    else:
+        outfield_radius = size * arc_extend_scale
+    
     # Draw the field
     ax.add_patch(Wedge(home, outfield_radius, 45, 135, facecolor='#228B22', edgecolor='black', linewidth=2))
     ax.add_patch(Wedge(home, size, 45, 135, facecolor='#ED8B00', edgecolor='black', linewidth=2))
@@ -1016,11 +1022,11 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     # Create figure
     fig, ax = plt.subplots(figsize=(12, 12))
     
-    # Draw the dirt diamond field - make it extend to the fence
-    # Use the shortest fence distance (325) as the basis for the field size
-    field_size = 120  # Base size for infield
-    # Scale the grass outfield to reach the fence
-    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=field_size, arc_extend_scale=2.8)
+    # Calculate the average fence distance to use for the grass outfield
+    avg_fence_dist = (335 + 395 + 325) / 3  # approximately 352
+    
+    # Draw the dirt diamond field with grass extending to the fence
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=100, custom_outfield_radius=avg_fence_dist)
     
     # Draw outfield wall with actual dimensions: LF=335, CF=395, RF=325
     angles = np.linspace(45, 135, 100)

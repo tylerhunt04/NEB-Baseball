@@ -1016,9 +1016,11 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     # Create figure
     fig, ax = plt.subplots(figsize=(12, 12))
     
-    # Draw the dirt diamond field (make it bigger to accommodate more distance)
-    field_size = 90  # increased from 80
-    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=field_size, arc_extend_scale=2.0)
+    # Draw the dirt diamond field - make it extend to the fence
+    # Use the shortest fence distance (325) as the basis for the field size
+    field_size = 120  # Base size for infield
+    # Scale the grass outfield to reach the fence
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=field_size, arc_extend_scale=2.8)
     
     # Draw outfield wall with actual dimensions: LF=335, CF=395, RF=325
     angles = np.linspace(45, 135, 100)

@@ -211,20 +211,28 @@ def draw_dirt_diamond(
         
         # Set outfield_radius to max distance for other calculations
         outfield_radius = max(distances)
+        
+        # Get the corner distances for basepaths (at 45° and 135°)
+        left_corner_dist = distances[0]  # First point at 45°
+        right_corner_dist = distances[-1]  # Last point at 135°
     elif custom_outfield_radius is not None:
         outfield_radius = custom_outfield_radius
         ax.add_patch(Wedge(home, outfield_radius, 45, 135, facecolor='#228B22', edgecolor='black', linewidth=2))
+        left_corner_dist = outfield_radius
+        right_corner_dist = outfield_radius
     else:
         outfield_radius = size * arc_extend_scale
         ax.add_patch(Wedge(home, outfield_radius, 45, 135, facecolor='#228B22', edgecolor='black', linewidth=2))
+        left_corner_dist = outfield_radius
+        right_corner_dist = outfield_radius
     
     # Draw dirt infield
     ax.add_patch(Wedge(home, size, 45, 135, facecolor='#ED8B00', edgecolor='black', linewidth=2))
     
-    # Basepaths
-    for angle in (45, 135):
+    # Basepaths - extend to the actual corner distances
+    for angle, corner_dist in [(45, left_corner_dist), (135, right_corner_dist)]:
         rad = math.radians(angle)
-        end = home + np.array([outfield_radius * math.cos(rad), outfield_radius * math.sin(rad)])
+        end = home + np.array([corner_dist * math.cos(rad), corner_dist * math.sin(rad)])
         perp = np.array([-math.sin(rad), math.cos(rad)])
         off = perp * (path_width / 2)
         corners = [home + off, home - off, end - off, end + off]
@@ -253,10 +261,10 @@ def draw_dirt_diamond(
     ax.add_patch(plate)
 
     # Foul lines
-    for angle in (45, 135):
+    for angle, corner_dist in [(45, left_corner_dist), (135, right_corner_dist)]:
         rad = math.radians(angle)
-        end = home + np.array([outfield_radius * foul_line_extend * math.cos(rad),
-                               outfield_radius * foul_line_extend * math.sin(rad)])
+        end = home + np.array([corner_dist * foul_line_extend * math.cos(rad),
+                               corner_dist * foul_line_extend * math.sin(rad)])
         ax.plot([home[0], end[0]], [home[1], end[1]], color='white', linewidth=2)
 
     ax.set_xlim(-outfield_radius, outfield_radius)

@@ -11,7 +11,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 from datetime import datetime
-from matplotlib.patches import Rectangle, Wedge, Circle
+from matplotlib.patches import Rectangle, Wedge, Circle, Polygon
 from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
 from scipy.stats import gaussian_kde
@@ -172,39 +172,75 @@ custom_cmap = colors.LinearSegmentedColormap.from_list(
 # ──────────────────────────────────────────────────────────────────────────────
 # SPRAY CHART HELPERS
 # ──────────────────────────────────────────────────────────────────────────────
-def draw_baseball_field(ax):
-    """Draw a baseball field (infield diamond + outfield arc)"""
-    # Infield diamond (90 feet between bases, scaled)
-    bases = np.array([[0, 0], [63.64, 63.64], [0, 127.28], [-63.64, 63.64], [0, 0]])
-    ax.plot(bases[:, 0], bases[:, 1], 'k-', linewidth=2, zorder=1)
+def draw_dirt_diamond(
+    ax,
+    origin=(0.0, 0.0),
+    size: float = 80,
+    base_size: float = 8,
+    grass_scale: float = 0.4,
+    base_offset_scale: float = 1.1,
+    outfield_scale: float = 3.0,
+    path_width: float = 8,
+    foul_line_extend: float = 1.1,
+    arc_extend_scale: float = 1.7
+):
+    """Draw a baseball field with dirt infield and grass outfield"""
+    home = np.array(origin)
+
+    outfield_radius = size * arc_extend_scale
+    # Draw the field
+    ax.add_patch(Wedge(home, outfield_radius, 45, 135, facecolor='#228B22', edgecolor='black', linewidth=2))
+    ax.add_patch(Wedge(home, size, 45, 135, facecolor='#ED8B00', edgecolor='black', linewidth=2))
     
-    # Outfield arc (roughly 400 feet)
-    theta = np.linspace(-45, 225, 100) * np.pi / 180
-    r = 280
-    x_arc = r * np.cos(theta)
-    y_arc = r * np.sin(theta)
-    ax.plot(x_arc, y_arc, 'k-', linewidth=2, zorder=1)
+    # Basepaths
+    for angle in (45, 135):
+        rad = math.radians(angle)
+        end = home + np.array([outfield_radius * math.cos(rad), outfield_radius * math.sin(rad)])
+        perp = np.array([-math.sin(rad), math.cos(rad)])
+        off = perp * (path_width / 2)
+        corners = [home + off, home - off, end - off, end + off]
+        ax.add_patch(Polygon(corners, closed=True, facecolor='#ED8B00', edgecolor='black', linewidth=1))
+
+    # Infield grass and bases
+    gsize = size * grass_scale
+    gfirst = home + np.array((gsize, gsize))
+    gsecond = home + np.array((0.0, 2 * gsize))
+    gthird = home + np.array((-gsize, gsize))
+    ax.add_patch(Polygon([gfirst, gsecond, gthird, home], closed=True, facecolor='#228B22', edgecolor='none'))
     
-    # Grass circle around pitcher's mound
-    grass_circle = Circle((0, 63.64), 10, color='lightgreen', alpha=0.3, zorder=0)
-    ax.add_patch(grass_circle)
-    
+    for pos in [gfirst, gsecond, gthird]:
+        ax.add_patch(Rectangle((pos[0] - base_size/2, pos[1] - base_size/2), base_size, base_size,
+                               facecolor='white', edgecolor='black', linewidth=1))
+
     # Home plate
-    ax.plot(0, 0, 'o', color='white', markersize=8, markeredgecolor='black', markeredgewidth=2, zorder=3)
-    
+    half = base_size / 2
+    plate = Polygon([
+        (home[0] - half, home[1]),
+        (home[0] + half, home[1]),
+        (home[0] + half * 0.6, home[1] - half * 0.8),
+        (home[0], home[1] - base_size),
+        (home[0] - half * 0.6, home[1] - half * 0.8)
+    ], closed=True, facecolor='white', edgecolor='black', linewidth=1)
+    ax.add_patch(plate)
+
     # Foul lines
-    ax.plot([0, -300], [0, 300], 'k--', linewidth=1, alpha=0.5, zorder=0)
-    ax.plot([0, 300], [0, 300], 'k--', linewidth=1, alpha=0.5, zorder=0)
-    
-    ax.set_xlim(-320, 320)
-    ax.set_ylim(-20, 320)
+    for angle in (45, 135):
+        rad = math.radians(angle)
+        end = home + np.array([outfield_radius * foul_line_extend * math.cos(rad),
+                               outfield_radius * foul_line_extend * math.sin(rad)])
+        ax.plot([home[0], end[0]], [home[1], end[1]], color='white', linewidth=2)
+
+    ax.set_xlim(-outfield_radius, outfield_radius)
+    ax.set_ylim(-base_size * 1.5, outfield_radius)
     ax.set_aspect('equal')
     ax.axis('off')
+    return ax
 
 def bearing_distance_to_xy(bearing, distance):
     """
     Convert bearing (degrees, 0=straight away center) and distance to x,y coordinates
     Bearing: negative = pull side for RHH (left field), positive = opposite field
+    Distance is in feet
     """
     # Convert bearing to radians (add 90 to make 0° point up the middle)
     angle_rad = np.radians(90 - bearing)
@@ -929,7 +965,7 @@ def style_rankings(df: pd.DataFrame):
 def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     """
     Create a spray chart for balls in play from the selected game.
-    Color-coded by PA number.
+    Color-coded by PA number. Uses actual field dimensions: 335-395-325.
     """
     # Filter to balls in play with valid Bearing and Distance
     inplay = df_game[df_game.get('PitchCall') == 'InPlay'].copy()
@@ -962,7 +998,39 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     
     # Create figure
     fig, ax = plt.subplots(figsize=(10, 10))
-    draw_baseball_field(ax)
+    
+    # Draw the dirt diamond field
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=80, arc_extend_scale=1.7)
+    
+    # Draw outfield wall with actual dimensions: LF=335, CF=395, RF=325
+    # Create a custom outfield boundary
+    angles = np.linspace(45, 135, 100)
+    wall_distances = []
+    for angle in angles:
+        # Linear interpolation between key points
+        if angle <= 90:  # Left field to center
+            # From 45° (LF line, 335 ft) to 90° (CF, 395 ft)
+            t = (angle - 45) / (90 - 45)
+            dist = 335 + t * (395 - 335)
+        else:  # Center to right field
+            # From 90° (CF, 395 ft) to 135° (RF line, 325 ft)
+            t = (angle - 90) / (135 - 90)
+            dist = 395 + t * (325 - 395)
+        wall_distances.append(dist)
+    
+    # Plot outfield wall
+    wall_x = [dist * np.cos(np.radians(ang)) for ang, dist in zip(angles, wall_distances)]
+    wall_y = [dist * np.sin(np.radians(ang)) for ang, dist in zip(angles, wall_distances)]
+    ax.plot(wall_x, wall_y, 'k-', linewidth=3, zorder=10, label='Outfield Wall')
+    
+    # Add distance markers
+    for angle, dist, label in [(45, 335, '335'), (90, 395, '395'), (135, 325, '325')]:
+        rad = np.radians(angle)
+        x = dist * np.cos(rad)
+        y = dist * np.sin(rad)
+        ax.text(x, y, label, ha='center', va='center', fontsize=10, 
+                fontweight='bold', bbox=dict(boxstyle='round,pad=0.3', 
+                facecolor='yellow', alpha=0.7), zorder=11)
     
     # Color palette for PAs (using a colormap)
     n_pas = inplay['PA_num'].nunique()
@@ -977,19 +1045,19 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
         
         # Marker size based on exit velocity (if available)
         if pd.notna(exit_speed):
-            marker_size = max(50, min(exit_speed * 3, 400))
+            marker_size = max(100, min(exit_speed * 4, 500))
         else:
-            marker_size = 150
+            marker_size = 200
         
         # Different markers for different outcomes
         if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
             marker = 'o'
             edgecolor = 'darkgreen'
-            linewidth = 2
+            linewidth = 2.5
         else:
             marker = 'x'
             edgecolor = 'darkred'
-            linewidth = 2
+            linewidth = 2.5
         
         ax.scatter(row['x'], row['y'], 
                   c=[pa_colors[pa_num]], 
@@ -997,17 +1065,17 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
                   marker=marker,
                   edgecolors=edgecolor, 
                   linewidths=linewidth,
-                  alpha=0.8,
-                  zorder=5)
+                  alpha=0.9,
+                  zorder=15)
         
         # Label with PA number
         ax.text(row['x'], row['y'], str(pa_num), 
                ha='center', va='center', 
-               fontsize=8, fontweight='bold',
+               fontsize=9, fontweight='bold',
                color='white',
-               zorder=6)
+               zorder=16)
     
-    # Create legend
+    # Create legend for PA numbers
     legend_elements = [Line2D([0], [0], marker='o', color='w', 
                              markerfacecolor=pa_colors[pa], markersize=10,
                              markeredgecolor='black', markeredgewidth=1,
@@ -1024,9 +1092,9 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
                label='Out')
     ])
     
-    ax.legend(handles=legend_elements, loc='upper right', 
-             bbox_to_anchor=(1.15, 1), frameon=True, 
-             fancybox=True, shadow=True)
+    ax.legend(handles=legend_elements, loc='upper left', 
+             bbox_to_anchor=(0.02, 0.98), frameon=True, 
+             fancybox=True, shadow=True, fontsize=9)
     
     # Title
     date_str = format_date_long(inplay['Date'].iloc[0]) if 'Date' in inplay.columns else ""

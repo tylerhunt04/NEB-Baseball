@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
+import plotly.graph_objects as go
 from datetime import datetime
 from matplotlib.patches import Rectangle, Wedge, Circle, Polygon
 from matplotlib.lines import Line2D
@@ -1857,7 +1858,7 @@ elif view_mode == "Profiles & Heatmaps":
         st.markdown("#### Spray Chart")
         fig_spray = create_profile_spray_chart(df_profiles, display_name_by_key.get(batter_key, batter_key))
         if fig_spray:
-            st.pyplot(fig_spray)
+            st.plotly_chart(fig_spray, use_container_width=True)
         else:
             st.info("No balls in play with valid location data for the selected filters.")
 

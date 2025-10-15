@@ -238,12 +238,25 @@ def draw_dirt_diamond(
         corners = [home + off, home - off, end - off, end + off]
         ax.add_patch(Polygon(corners, closed=True, facecolor='#ED8B00', edgecolor='black', linewidth=1))
 
-    # Infield grass and bases
+    # Infield grass with rounded arc behind bases (like Baseball Savant)
     gsize = size * grass_scale
     gfirst = home + np.array((gsize, gsize))
     gsecond = home + np.array((0.0, 2 * gsize))
     gthird = home + np.array((-gsize, gsize))
-    ax.add_patch(Polygon([gfirst, gsecond, gthird, home], closed=True, facecolor='#228B22', edgecolor='none'))
+    
+    # Create a rounded arc for the back of the infield grass instead of sharp triangle
+    arc_angles = np.linspace(45, 135, 50)
+    arc_radius = gsize * 1.8  # Extend the arc out further
+    arc_points = []
+    for angle in arc_angles:
+        rad = math.radians(angle)
+        x = home[0] + arc_radius * math.cos(rad)
+        y = home[1] + arc_radius * math.sin(rad)
+        arc_points.append([x, y])
+    
+    # Create polygon with rounded arc
+    grass_polygon = [gfirst.tolist()] + arc_points + [gthird.tolist(), home.tolist()]
+    ax.add_patch(Polygon(grass_polygon, closed=True, facecolor='#228B22', edgecolor='none'))
     
     for pos in [gfirst, gsecond, gthird]:
         ax.add_patch(Rectangle((pos[0] - base_size/2, pos[1] - base_size/2), base_size, base_size,

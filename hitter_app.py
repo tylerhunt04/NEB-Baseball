@@ -971,19 +971,32 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     inplay = df_game[df_game.get('PitchCall') == 'InPlay'].copy()
     
     if inplay.empty:
+        st.warning("No balls in play found for this game.")
         return None
     
     # Ensure we have the necessary columns
     if 'Bearing' not in inplay.columns or 'Distance' not in inplay.columns:
+        st.warning("Missing 'Bearing' or 'Distance' columns in data.")
         return None
     
     inplay['Bearing'] = pd.to_numeric(inplay['Bearing'], errors='coerce')
     inplay['Distance'] = pd.to_numeric(inplay['Distance'], errors='coerce')
     
+    # Show debug info
+    st.write(f"**Debug Info:** Found {len(inplay)} balls in play")
+    st.write(f"Bearing range: {inplay['Bearing'].min():.1f}° to {inplay['Bearing'].max():.1f}°")
+    st.write(f"Distance range: {inplay['Distance'].min():.0f} to {inplay['Distance'].max():.0f} feet")
+    
     # Remove rows with missing Bearing or Distance
+    before_drop = len(inplay)
     inplay = inplay.dropna(subset=['Bearing', 'Distance'])
+    after_drop = len(inplay)
+    
+    if after_drop < before_drop:
+        st.warning(f"Dropped {before_drop - after_drop} balls with missing Bearing/Distance data")
     
     if inplay.empty:
+        st.warning("No balls in play with valid Bearing and Distance data.")
         return None
     
     # Create PA number column based on GameID, Inning, Top/Bottom, PAofInning
@@ -996,24 +1009,25 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     inplay['x'] = [c[0] for c in coords]
     inplay['y'] = [c[1] for c in coords]
     
-    # Create figure
-    fig, ax = plt.subplots(figsize=(10, 10))
+    # Show coordinate info
+    st.write(f"X range: {inplay['x'].min():.1f} to {inplay['x'].max():.1f}")
+    st.write(f"Y range: {inplay['y'].min():.1f} to {inplay['y'].max():.1f}")
     
-    # Draw the dirt diamond field
-    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=80, arc_extend_scale=1.7)
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 12))
+    
+    # Draw the dirt diamond field (make it bigger to accommodate more distance)
+    field_size = 90  # increased from 80
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=field_size, arc_extend_scale=2.0)
     
     # Draw outfield wall with actual dimensions: LF=335, CF=395, RF=325
-    # Create a custom outfield boundary
     angles = np.linspace(45, 135, 100)
     wall_distances = []
     for angle in angles:
-        # Linear interpolation between key points
         if angle <= 90:  # Left field to center
-            # From 45° (LF line, 335 ft) to 90° (CF, 395 ft)
             t = (angle - 45) / (90 - 45)
             dist = 335 + t * (395 - 335)
         else:  # Center to right field
-            # From 90° (CF, 395 ft) to 135° (RF line, 325 ft)
             t = (angle - 90) / (135 - 90)
             dist = 395 + t * (325 - 395)
         wall_distances.append(dist)
@@ -1028,78 +1042,86 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
         rad = np.radians(angle)
         x = dist * np.cos(rad)
         y = dist * np.sin(rad)
-        ax.text(x, y, label, ha='center', va='center', fontsize=10, 
-                fontweight='bold', bbox=dict(boxstyle='round,pad=0.3', 
-                facecolor='yellow', alpha=0.7), zorder=11)
+        ax.text(x, y, label, ha='center', va='center', fontsize=11, 
+                fontweight='bold', bbox=dict(boxstyle='round,pad=0.4', 
+                facecolor='yellow', edgecolor='black', linewidth=2, alpha=0.9), zorder=11)
     
-    # Color palette for PAs (using a colormap)
+    # Color palette for PAs
     n_pas = inplay['PA_num'].nunique()
-    colors_list = plt.cm.tab20(np.linspace(0, 1, n_pas))
-    pa_colors = {pa: colors_list[i] for i, pa in enumerate(sorted(inplay['PA_num'].unique()))}
+    colors_list = plt.cm.tab20(np.linspace(0, 1, min(n_pas, 20)))
+    pa_colors = {pa: colors_list[i % 20] for i, pa in enumerate(sorted(inplay['PA_num'].unique()))}
     
     # Plot each ball in play
-    for _, row in inplay.iterrows():
+    for idx, row in inplay.iterrows():
         pa_num = row['PA_num']
         play_result = str(row.get('PlayResult', ''))
         exit_speed = row.get('ExitSpeed', np.nan)
         
-        # Marker size based on exit velocity (if available)
+        # Marker size based on exit velocity
         if pd.notna(exit_speed):
-            marker_size = max(100, min(exit_speed * 4, 500))
+            marker_size = max(150, min(exit_speed * 5, 600))
         else:
-            marker_size = 200
+            marker_size = 250
         
         # Different markers for different outcomes
         if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
             marker = 'o'
             edgecolor = 'darkgreen'
-            linewidth = 2.5
+            linewidth = 3
         else:
-            marker = 'x'
+            marker = 'X'
             edgecolor = 'darkred'
-            linewidth = 2.5
+            linewidth = 3
         
+        # Plot the marker
         ax.scatter(row['x'], row['y'], 
                   c=[pa_colors[pa_num]], 
                   s=marker_size, 
                   marker=marker,
                   edgecolors=edgecolor, 
                   linewidths=linewidth,
-                  alpha=0.9,
-                  zorder=15)
+                  alpha=0.95,
+                  zorder=20)
         
-        # Label with PA number
+        # Label with PA number (larger font, with background)
         ax.text(row['x'], row['y'], str(pa_num), 
                ha='center', va='center', 
-               fontsize=9, fontweight='bold',
+               fontsize=11, fontweight='bold',
                color='white',
-               zorder=16)
+               bbox=dict(boxstyle='circle,pad=0.1', facecolor='black', alpha=0.5),
+               zorder=21)
     
     # Create legend for PA numbers
     legend_elements = [Line2D([0], [0], marker='o', color='w', 
-                             markerfacecolor=pa_colors[pa], markersize=10,
-                             markeredgecolor='black', markeredgewidth=1,
+                             markerfacecolor=pa_colors[pa], markersize=12,
+                             markeredgecolor='black', markeredgewidth=1.5,
                              label=f'PA {pa}')
                       for pa in sorted(pa_colors.keys())]
     
     # Add outcome type legend
     legend_elements.extend([
         Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
-               markersize=10, markeredgecolor='darkgreen', markeredgewidth=2,
+               markersize=12, markeredgecolor='darkgreen', markeredgewidth=2.5,
                label='Hit'),
-        Line2D([0], [0], marker='x', color='w', markerfacecolor='gray',
-               markersize=10, markeredgecolor='darkred', markeredgewidth=2,
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='gray',
+               markersize=12, markeredgecolor='darkred', markeredgewidth=2.5,
                label='Out')
     ])
     
     ax.legend(handles=legend_elements, loc='upper left', 
              bbox_to_anchor=(0.02, 0.98), frameon=True, 
-             fancybox=True, shadow=True, fontsize=9)
+             fancybox=True, shadow=True, fontsize=10)
+    
+    # Set axis limits to ensure all data is visible
+    max_dist = max(inplay['Distance'].max(), 400)
+    ax.set_xlim(-max_dist * 0.85, max_dist * 0.85)
+    ax.set_ylim(-30, max_dist * 1.1)
+    ax.set_aspect('equal')
     
     # Title
     date_str = format_date_long(inplay['Date'].iloc[0]) if 'Date' in inplay.columns else ""
     ax.set_title(f"{batter_display_name} - Spray Chart\n{date_str}", 
-                fontsize=14, fontweight='bold', pad=20)
+                fontsize=16, fontweight='bold', pad=20)
     
     plt.tight_layout()
     return fig

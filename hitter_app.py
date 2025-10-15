@@ -11,7 +11,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 from datetime import datetime
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Rectangle, Wedge, Circle
 from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
 from scipy.stats import gaussian_kde
@@ -168,6 +168,51 @@ custom_cmap = colors.LinearSegmentedColormap.from_list(
     [(0.0, "white"), (0.2, "deepskyblue"), (0.3, "white"), (0.7, "red"), (1.0, "red")],
     N=256,
 )
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SPRAY CHART HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+def draw_baseball_field(ax):
+    """Draw a baseball field (infield diamond + outfield arc)"""
+    # Infield diamond (90 feet between bases, scaled)
+    bases = np.array([[0, 0], [63.64, 63.64], [0, 127.28], [-63.64, 63.64], [0, 0]])
+    ax.plot(bases[:, 0], bases[:, 1], 'k-', linewidth=2, zorder=1)
+    
+    # Outfield arc (roughly 400 feet)
+    theta = np.linspace(-45, 225, 100) * np.pi / 180
+    r = 280
+    x_arc = r * np.cos(theta)
+    y_arc = r * np.sin(theta)
+    ax.plot(x_arc, y_arc, 'k-', linewidth=2, zorder=1)
+    
+    # Grass circle around pitcher's mound
+    grass_circle = Circle((0, 63.64), 10, color='lightgreen', alpha=0.3, zorder=0)
+    ax.add_patch(grass_circle)
+    
+    # Home plate
+    ax.plot(0, 0, 'o', color='white', markersize=8, markeredgecolor='black', markeredgewidth=2, zorder=3)
+    
+    # Foul lines
+    ax.plot([0, -300], [0, 300], 'k--', linewidth=1, alpha=0.5, zorder=0)
+    ax.plot([0, 300], [0, 300], 'k--', linewidth=1, alpha=0.5, zorder=0)
+    
+    ax.set_xlim(-320, 320)
+    ax.set_ylim(-20, 320)
+    ax.set_aspect('equal')
+    ax.axis('off')
+
+def bearing_distance_to_xy(bearing, distance):
+    """
+    Convert bearing (degrees, 0=straight away center) and distance to x,y coordinates
+    Bearing: negative = pull side for RHH (left field), positive = opposite field
+    """
+    # Convert bearing to radians (add 90 to make 0° point up the middle)
+    angle_rad = np.radians(90 - bearing)
+    
+    x = distance * np.cos(angle_rad)
+    y = distance * np.sin(angle_rad)
+    
+    return x, y
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DENSITY
@@ -547,6 +592,7 @@ def _compute_xwoba(df: pd.DataFrame) -> float:
     if den <= 0:
         return float('nan')
     return exp_num / den
+
 # ── Broad pitch groups for Profiles ───────────────────────────────────────────
 def _pitch_type_col(df: pd.DataFrame) -> str:
     """Best-effort column for pitch labels."""
@@ -794,7 +840,7 @@ def build_profile_tables(df_profiles: pd.DataFrame):
 RANKABLE_COLS = [
     "PA","AB","SO","BB","Hits","2B","3B","HR",
     "AVG","OBP","SLG","OPS",
-    "wOBA","xwOBA",          # ⬅️ after OPS
+    "wOBA","xwOBA",
     "Avg EV","Max EV","HardHit%","Barrel%",
     "ZWhiff%","Chase%" , "Whiff%"
 ]
@@ -821,7 +867,7 @@ def style_rankings(df: pd.DataFrame):
       • Special-case SO, ZWhiff%, Chase%: higher = red, lower = green
     """
     numeric_cols = [c for c in RANKABLE_COLS if c in df.columns]
-    inverted_cols = {"SO", "ZWhiff%", "Chase%", "Whiff%"}  # higher is worse
+    inverted_cols = {"SO", "ZWhiff%", "Chase%", "Whiff%"}
 
     def color_leader_last(col: pd.Series):
         if col.name not in numeric_cols:
@@ -841,16 +887,16 @@ def style_rankings(df: pd.DataFrame):
             else:
                 if not invert:
                     if v == max_val:
-                        styles.append('background-color: #b6f2b0;')  # green
+                        styles.append('background-color: #b6f2b0;')
                     elif v == min_val:
-                        styles.append('background-color: #f9b0b0;')  # red
+                        styles.append('background-color: #f9b0b0;')
                     else:
                         styles.append('')
                 else:
                     if v == min_val:
-                        styles.append('background-color: #b6f2b0;')  # green
+                        styles.append('background-color: #b6f2b0;')
                     elif v == max_val:
-                        styles.append('background-color: #f9b0b0;')  # red
+                        styles.append('background-color: #f9b0b0;')
                     else:
                         styles.append('')
         return styles
@@ -876,12 +922,125 @@ def style_rankings(df: pd.DataFrame):
           }, na_rep="—")
     )
     return sty
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SPRAY CHART FUNCTION (NEW)
+# ──────────────────────────────────────────────────────────────────────────────
+def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
+    """
+    Create a spray chart for balls in play from the selected game.
+    Color-coded by PA number.
+    """
+    # Filter to balls in play with valid Bearing and Distance
+    inplay = df_game[df_game.get('PitchCall') == 'InPlay'].copy()
+    
+    if inplay.empty:
+        return None
+    
+    # Ensure we have the necessary columns
+    if 'Bearing' not in inplay.columns or 'Distance' not in inplay.columns:
+        return None
+    
+    inplay['Bearing'] = pd.to_numeric(inplay['Bearing'], errors='coerce')
+    inplay['Distance'] = pd.to_numeric(inplay['Distance'], errors='coerce')
+    
+    # Remove rows with missing Bearing or Distance
+    inplay = inplay.dropna(subset=['Bearing', 'Distance'])
+    
+    if inplay.empty:
+        return None
+    
+    # Create PA number column based on GameID, Inning, Top/Bottom, PAofInning
+    inplay = inplay.sort_values(['GameID', 'Inning', 'Top/Bottom', 'PAofInning', 'PitchofPA'])
+    inplay['PA_num'] = inplay.groupby(['GameID', 'Inning', 'Top/Bottom', 'PAofInning']).ngroup() + 1
+    
+    # Convert bearing/distance to x,y coordinates
+    coords = [bearing_distance_to_xy(row['Bearing'], row['Distance']) 
+              for _, row in inplay.iterrows()]
+    inplay['x'] = [c[0] for c in coords]
+    inplay['y'] = [c[1] for c in coords]
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 10))
+    draw_baseball_field(ax)
+    
+    # Color palette for PAs (using a colormap)
+    n_pas = inplay['PA_num'].nunique()
+    colors_list = plt.cm.tab20(np.linspace(0, 1, n_pas))
+    pa_colors = {pa: colors_list[i] for i, pa in enumerate(sorted(inplay['PA_num'].unique()))}
+    
+    # Plot each ball in play
+    for _, row in inplay.iterrows():
+        pa_num = row['PA_num']
+        play_result = str(row.get('PlayResult', ''))
+        exit_speed = row.get('ExitSpeed', np.nan)
+        
+        # Marker size based on exit velocity (if available)
+        if pd.notna(exit_speed):
+            marker_size = max(50, min(exit_speed * 3, 400))
+        else:
+            marker_size = 150
+        
+        # Different markers for different outcomes
+        if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
+            marker = 'o'
+            edgecolor = 'darkgreen'
+            linewidth = 2
+        else:
+            marker = 'x'
+            edgecolor = 'darkred'
+            linewidth = 2
+        
+        ax.scatter(row['x'], row['y'], 
+                  c=[pa_colors[pa_num]], 
+                  s=marker_size, 
+                  marker=marker,
+                  edgecolors=edgecolor, 
+                  linewidths=linewidth,
+                  alpha=0.8,
+                  zorder=5)
+        
+        # Label with PA number
+        ax.text(row['x'], row['y'], str(pa_num), 
+               ha='center', va='center', 
+               fontsize=8, fontweight='bold',
+               color='white',
+               zorder=6)
+    
+    # Create legend
+    legend_elements = [Line2D([0], [0], marker='o', color='w', 
+                             markerfacecolor=pa_colors[pa], markersize=10,
+                             markeredgecolor='black', markeredgewidth=1,
+                             label=f'PA {pa}')
+                      for pa in sorted(pa_colors.keys())]
+    
+    # Add outcome type legend
+    legend_elements.extend([
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
+               markersize=10, markeredgecolor='darkgreen', markeredgewidth=2,
+               label='Hit'),
+        Line2D([0], [0], marker='x', color='w', markerfacecolor='gray',
+               markersize=10, markeredgecolor='darkred', markeredgewidth=2,
+               label='Out')
+    ])
+    
+    ax.legend(handles=legend_elements, loc='upper right', 
+             bbox_to_anchor=(1.15, 1), frameon=True, 
+             fancybox=True, shadow=True)
+    
+    # Title
+    date_str = format_date_long(inplay['Date'].iloc[0]) if 'Date' in inplay.columns else ""
+    ax.set_title(f"{batter_display_name} - Spray Chart\n{date_str}", 
+                fontsize=14, fontweight='bold', pad=20)
+    
+    plt.tight_layout()
+    return fig
+
 # ──────────────────────────────────────────────────────────────────────────────
 # STANDARD HITTER REPORT (single game) — with boxed legends bottom
 # ──────────────────────────────────────────────────────────────────────────────
 def create_hitter_report(df, batter_display_name, ncols=3):
-    bdf = df.copy()  # already filtered to this batter upstream
-    # ensure correct within-PA ordering
+    bdf = df.copy()
     if "PitchofPA" in bdf.columns:
         bdf = bdf.sort_values(["GameID","Inning","Top/Bottom","PAofInning","PitchofPA"]).copy()
 
@@ -889,7 +1048,6 @@ def create_hitter_report(df, batter_display_name, ncols=3):
     n_pa = len(pa_groups)
     nrows = max(1, math.ceil(n_pa / ncols))
 
-    # helper to pretty-print TaggedHitType like "GroundBall" -> "Ground Ball"
     def _pretty_hit_type(s):
         if pd.isna(s) or s is None:
             return None
@@ -898,7 +1056,6 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         t = re.sub(r"([a-z])([A-Z])", r"\1 \2", t)
         return t.strip().title()
 
-    # --- NEW: strict PA adjudication with baseball rules ---
     def adjudicate_pa(pa_df: pd.DataFrame) -> dict:
         """Return {'label': str, 'klass': 'Walk'|'K'|'InPlay'|'Other', 'k_type': 'Swinging'|'Looking'|'Unknown'|None,
                    'res': PlayResult or None, 'ev': float or None, 'tag': str or None}"""
@@ -906,7 +1063,6 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         play   = pa_df.get('PlayResult')
         korbb  = pa_df.get('KorBB')
 
-        # If KorBB explicitly says Strikeout/Walk, trust that first.
         kor = str(korbb.iloc[-1]) if not korbb.empty else ""
         if kor == "Walk":
             return {"label": "▶ PA Result: Walk 🚶", "klass": "Walk", "k_type": None, "res": None, "ev": None, "tag": None}
@@ -920,7 +1076,6 @@ def create_hitter_report(df, batter_display_name, ncols=3):
                 k_type = "Unknown"
             return {"label": f"▶ PA Result: Strikeout ({k_type}) 💥", "klass": "K", "k_type": k_type, "res": None, "ev": None, "tag": None}
 
-        # Otherwise, rebuild balls/strikes
         strikes = 0
         balls = 0
         k_type = None
@@ -945,7 +1100,6 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             return {"label": f"▶ PA Result: Strikeout ({k_type or 'Unknown'}) 💥", "klass": "K", "k_type": k_type or "Unknown",
                     "res": None, "ev": None, "tag": None}
 
-        # In-Play outcome (if any)
         inplay = pa_df[s_call == 'InPlay']
         if not inplay.empty:
             last = inplay.iloc[-1]
@@ -960,10 +1114,8 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             return {"label": f"▶ PA Result: {' '.join(bits)}", "klass": "InPlay", "k_type": None,
                     "res": res, "ev": float(es) if pd.notna(es) else None, "tag": tag}
 
-        # Fallback (should be rare)
         return {"label": "▶ PA Result: —", "klass": "Other", "k_type": None, "res": None, "ev": None, "tag": None}
 
-    # textual descriptions per PA
     descriptions = []
     for _, pa_df in pa_groups:
         lines = []
@@ -975,11 +1127,9 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         lines.append("  " + verdict["label"])
         descriptions.append(lines)
 
-    # Figure + grid (leave extra space at bottom for legends)
     fig = plt.figure(figsize=(3 + 4*ncols + 1, 4*nrows))
     gs = GridSpec(nrows, ncols+1, width_ratios=[0.8] + [1]*ncols, wspace=0.15, hspace=0.55)
 
-    # small top-right label: Name — Date
     date_str = ""
     if pa_groups:
         d0 = pa_groups[0][1].get('Date').iloc[0]
@@ -988,7 +1138,6 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         fig.text(0.985, 0.985, f"{batter_display_name} — {date_str}".strip(" —"),
                  ha='right', va='top', fontsize=9, fontweight='normal')
 
-    # summary line
     gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
     whiffs = (gd.get('PitchCall')=='StrikeSwinging').sum() if not gd.empty else 0
     hardhits = (pd.to_numeric(gd.get('ExitSpeed'), errors="coerce") > 95).sum() if not gd.empty else 0
@@ -996,12 +1145,11 @@ def create_hitter_report(df, batter_display_name, ncols=3):
     if not gd.empty:
         pls = pd.to_numeric(gd.get('PlateLocSide'), errors='coerce')
         plh = pd.to_numeric(gd.get('PlateLocHeight'), errors='coerce')
-        is_swing = gd.get('PitchCall').isin(['StrikeSwinging'])  # pure whiffs for chase calc
+        is_swing = gd.get('PitchCall').isin(['StrikeSwinging'])
         chases = (is_swing & ((pls<-0.83)|(pls>0.83)|(plh<1.5)|(plh>3.5))).sum()
     fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
              ha='center', va='top', fontsize=12)
 
-    # panels
     for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
         row, col = divmod(idx, ncols)
         ax = fig.add_subplot(gs[row, col+1])
@@ -1029,7 +1177,6 @@ def create_hitter_report(df, batter_display_name, ncols=3):
         ax.text(0.5, 0.1, f"vs {pitcher} ({hand_lbl})", transform=ax.transAxes,
                 ha='center', va='top', fontsize=9, style='italic')
 
-    # left descriptions column
     axd = fig.add_subplot(gs[:, 0]); axd.axis('off')
     y0 = 1.0; dy = 1.0 / (max(1, n_pa) * 5.0)
     for i, lines in enumerate(descriptions, start=1):
@@ -1041,7 +1188,6 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             yln -= dy
         y0 = yln - dy*0.05
 
-    # legends
     res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
                           markerfacecolor=v, markersize=10, markeredgecolor='k')
                    for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green',
@@ -1066,7 +1212,6 @@ def create_hitter_report(df, batter_display_name, ncols=3):
 
     plt.tight_layout(rect=[0.12, 0.08, 1, 0.94])
     return fig
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # HITTER HEATMAPS — 3 panels (Contact, Whiffs, Damage)
@@ -1194,7 +1339,8 @@ if df_all.empty:
 # ──────────────────────────────────────────────────────────────────────────────
 for col in ["Batter", "BatterTeam", "PitchofPA", "PitcherThrows", "PitcherTeam",
             "PlayResult", "KorBB", "PitchCall", "AutoPitchType", "ExitSpeed", "Angle",
-            "PlateLocSide", "PlateLocHeight", "TaggedHitType", "Bearing", "BatterSide"]:
+            "PlateLocSide", "PlateLocHeight", "TaggedHitType", "Bearing", "BatterSide",
+            "Distance"]:
     if col not in df_all.columns:
         df_all[col] = pd.NA
 
@@ -1205,7 +1351,6 @@ df_neb_bat["PitchofPA"] = pd.to_numeric(df_neb_bat["PitchofPA"], errors="coerce"
 df_neb_bat["BatterKey"]  = df_neb_bat["Batter"].map(normalize_name)
 df_neb_bat["BatterDisp"] = df_neb_bat["BatterKey"]
 
-# Add EV/LA bins and merge probabilities (for xwOBA) once at load
 df_neb_bat = _bin_ev_la(df_neb_bat)
 df_neb_bat = merge_probabilities(df_neb_bat)
 
@@ -1281,6 +1426,14 @@ if view_mode == "Standard Hitter Report":
         fig_std = create_hitter_report(df_date, batter_display, ncols=3)
         if fig_std:
             st.pyplot(fig_std)
+        
+        # Add spray chart
+        st.markdown("### Spray Chart")
+        fig_spray = create_spray_chart(df_date, batter_display)
+        if fig_spray:
+            st.pyplot(fig_spray)
+        else:
+            st.info("No balls in play with valid location data for this game.")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # MODE: PROFILES & HEATMAPS (3 tables + heatmaps)
@@ -1382,13 +1535,11 @@ elif view_mode == "Profiles & Heatmaps":
 else:
     st.markdown("### Rankings")
 
-    # Filters apply team-wide
     st.markdown("#### Filters")
     colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
     df_scope = df_neb_bat.copy()
 
-    # months / days present in NEB batting set
     dates_all = pd.to_datetime(df_scope["Date"], errors="coerce").dropna().dt.date
     present_months = sorted(pd.Series(dates_all).map(lambda d: d.month).unique().tolist())
     sel_months = colM.multiselect(
@@ -1408,7 +1559,6 @@ else:
     lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="rk_lastn"))
     hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="rk_hand")
 
-    # Apply filters
     if sel_months:
         mask_m = pd.to_datetime(df_scope["Date"], errors="coerce").dt.month.isin(sel_months)
     else:
@@ -1434,13 +1584,11 @@ else:
         st.info("No rows for the selected filters.")
         st.stop()
 
-    # Build numeric rankings table and optional Min PA filter
     rankings_df = build_rankings_numeric(df_scope, display_name_by_key)
     min_pa = int(st.number_input("Min PA", min_value=0, value=0, step=1, key="rk_min_pa"))
     if min_pa > 0:
         rankings_df = rankings_df[rankings_df["PA"] >= min_pa]
 
-    # Styled (headers red + conditional leader/last cell coloring). Still sortable by clicking headers.
     styled = style_rankings(rankings_df)
 
     st.dataframe(

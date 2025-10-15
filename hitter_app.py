@@ -183,19 +183,42 @@ def draw_dirt_diamond(
     path_width: float = 8,
     foul_line_extend: float = 1.1,
     arc_extend_scale: float = 1.7,
-    custom_outfield_radius: float = None  # NEW parameter for custom radius
+    custom_outfield_radius: float = None,
+    custom_wall_distances: list = None  # NEW: list of (angle, distance) tuples
 ):
     """Draw a baseball field with dirt infield and grass outfield"""
     home = np.array(origin)
 
-    # Use custom radius if provided, otherwise calculate from size
-    if custom_outfield_radius is not None:
+    # Use custom wall distances if provided
+    if custom_wall_distances is not None:
+        # Create a polygon for the custom outfield shape
+        angles = [item[0] for item in custom_wall_distances]
+        distances = [item[1] for item in custom_wall_distances]
+        
+        # Generate points along the custom outfield boundary
+        outfield_points = []
+        for angle, dist in zip(angles, distances):
+            rad = math.radians(angle)
+            x = home[0] + dist * math.cos(rad)
+            y = home[1] + dist * math.sin(rad)
+            outfield_points.append([x, y])
+        
+        # Close the polygon by adding the origin
+        outfield_points.append(home.tolist())
+        
+        # Draw custom outfield grass
+        ax.add_patch(Polygon(outfield_points, closed=True, facecolor='#228B22', edgecolor='black', linewidth=2))
+        
+        # Set outfield_radius to max distance for other calculations
+        outfield_radius = max(distances)
+    elif custom_outfield_radius is not None:
         outfield_radius = custom_outfield_radius
+        ax.add_patch(Wedge(home, outfield_radius, 45, 135, facecolor='#228B22', edgecolor='black', linewidth=2))
     else:
         outfield_radius = size * arc_extend_scale
+        ax.add_patch(Wedge(home, outfield_radius, 45, 135, facecolor='#228B22', edgecolor='black', linewidth=2))
     
-    # Draw the field
-    ax.add_patch(Wedge(home, outfield_radius, 45, 135, facecolor='#228B22', edgecolor='black', linewidth=2))
+    # Draw dirt infield
     ax.add_patch(Wedge(home, size, 45, 135, facecolor='#ED8B00', edgecolor='black', linewidth=2))
     
     # Basepaths
@@ -1022,11 +1045,21 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     # Create figure
     fig, ax = plt.subplots(figsize=(12, 12))
     
-    # Use the maximum fence distance (395 to CF) so grass reaches all distance markers
-    max_fence_dist = 395
+    # Create the custom wall distances matching Nebraska's fence
+    # Generate many points along the fence for a smooth curve
+    angles = np.linspace(45, 135, 100)
+    wall_data = []
+    for angle in angles:
+        if angle <= 90:  # Left field to center
+            t = (angle - 45) / (90 - 45)
+            dist = 335 + t * (395 - 335)
+        else:  # Center to right field
+            t = (angle - 90) / (135 - 90)
+            dist = 395 + t * (325 - 395)
+        wall_data.append((angle, dist))
     
-    # Draw the dirt diamond field with grass extending to the furthest fence point
-    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=100, custom_outfield_radius=max_fence_dist)
+    # Draw the dirt diamond field with custom outfield shape
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=100, custom_wall_distances=wall_data)
     
     # Draw outfield wall with actual dimensions: LF=335, CF=395, RF=325
     angles = np.linspace(45, 135, 100)

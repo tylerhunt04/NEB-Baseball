@@ -1140,26 +1140,59 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
                bbox=dict(boxstyle='circle,pad=0.1', facecolor='black', alpha=0.5),
                zorder=21)
     
-    # Create legend for PA numbers
-    legend_elements = [Line2D([0], [0], marker='o', color='w', 
-                             markerfacecolor=pa_colors[pa], markersize=12,
-                             markeredgecolor='black', markeredgewidth=1.5,
-                             label=f'PA {pa}')
-                      for pa in sorted(pa_colors.keys())]
+    # Create legend for PA numbers with detailed info
+    legend_elements = []
+    for pa in sorted(pa_colors.keys()):
+        # Get all rows for this PA
+        pa_rows = inplay[inplay['PA_num'] == pa]
+        if pa_rows.empty:
+            continue
+        
+        # Use the last row (the actual batted ball)
+        row = pa_rows.iloc[-1]
+        
+        # Gather info
+        ev = row.get('ExitSpeed', np.nan)
+        ev_str = f"{ev:.1f}" if pd.notna(ev) else "—"
+        
+        la = row.get('Angle', np.nan)
+        la_str = f"{la:.1f}°" if pd.notna(la) else "—"
+        
+        dist = row.get('Distance', np.nan)
+        dist_str = f"{dist:.0f}'" if pd.notna(dist) else "—"
+        
+        hit_type = row.get('TaggedHitType', '')
+        if pd.notna(hit_type) and str(hit_type):
+            ht = str(hit_type).replace('GroundBall', 'GB').replace('LineDrive', 'LD').replace('FlyBall', 'FB').replace('Popup', 'PU')
+        else:
+            ht = "—"
+        
+        outcome = row.get('PlayResult', '')
+        outcome_str = str(outcome) if pd.notna(outcome) and str(outcome) else "Out"
+        
+        # Create label with all info
+        label = f"PA {pa}: {outcome_str} | {ev_str} mph, {la_str}, {dist_str} | {ht}"
+        
+        legend_elements.append(
+            Line2D([0], [0], marker='o', color='w', 
+                   markerfacecolor=pa_colors[pa], markersize=10,
+                   markeredgecolor='black', markeredgewidth=1.5,
+                   label=label)
+        )
     
     # Add outcome type legend
     legend_elements.extend([
         Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
-               markersize=12, markeredgecolor='darkgreen', markeredgewidth=2.5,
+               markersize=10, markeredgecolor='darkgreen', markeredgewidth=2.5,
                label='Hit'),
         Line2D([0], [0], marker='X', color='w', markerfacecolor='gray',
-               markersize=12, markeredgecolor='darkred', markeredgewidth=2.5,
+               markersize=10, markeredgecolor='darkred', markeredgewidth=2.5,
                label='Out')
     ])
     
     ax.legend(handles=legend_elements, loc='upper left', 
              bbox_to_anchor=(0.02, 0.98), frameon=True, 
-             fancybox=True, shadow=True, fontsize=10)
+             fancybox=True, shadow=True, fontsize=9)
     
     # Set axis limits to ensure all data is visible
     max_dist = max(inplay['Distance'].max(), 400)

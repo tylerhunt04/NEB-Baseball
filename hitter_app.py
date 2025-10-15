@@ -1053,7 +1053,7 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
         wall_data.append((angle, dist))
     
     # Draw the dirt diamond field with custom outfield shape
-    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=100, custom_wall_distances=wall_data)
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=140, custom_wall_distances=wall_data)
     
     # Draw outfield wall with actual dimensions: LF=335, CF=395, RF=325
     angles = np.linspace(45, 135, 100)

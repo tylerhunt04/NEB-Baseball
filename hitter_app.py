@@ -1019,18 +1019,8 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     inplay['Bearing'] = pd.to_numeric(inplay['Bearing'], errors='coerce')
     inplay['Distance'] = pd.to_numeric(inplay['Distance'], errors='coerce')
     
-    # Show debug info
-    st.write(f"**Debug Info:** Found {len(inplay)} balls in play")
-    st.write(f"Bearing range: {inplay['Bearing'].min():.1f}° to {inplay['Bearing'].max():.1f}°")
-    st.write(f"Distance range: {inplay['Distance'].min():.0f} to {inplay['Distance'].max():.0f} feet")
-    
     # Remove rows with missing Bearing or Distance
-    before_drop = len(inplay)
     inplay = inplay.dropna(subset=['Bearing', 'Distance'])
-    after_drop = len(inplay)
-    
-    if after_drop < before_drop:
-        st.warning(f"Dropped {before_drop - after_drop} balls with missing Bearing/Distance data")
     
     if inplay.empty:
         st.warning("No balls in play with valid Bearing and Distance data.")
@@ -1045,10 +1035,6 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
               for _, row in inplay.iterrows()]
     inplay['x'] = [c[0] for c in coords]
     inplay['y'] = [c[1] for c in coords]
-    
-    # Show coordinate info
-    st.write(f"X range: {inplay['x'].min():.1f} to {inplay['x'].max():.1f}")
-    st.write(f"Y range: {inplay['y'].min():.1f} to {inplay['y'].max():.1f}")
     
     # Create figure
     fig, ax = plt.subplots(figsize=(12, 12))
@@ -1386,8 +1372,170 @@ def create_hitter_report(df, batter_display_name, ncols=3):
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HITTER HEATMAPS — 3 panels (Contact, Whiffs, Damage)
+# PROFILE SPRAY CHART (color by hit type)
 # ──────────────────────────────────────────────────────────────────────────────
+def create_profile_spray_chart(df_profiles: pd.DataFrame, batter_display_name: str):
+    """
+    Create a spray chart for all balls in play from the filtered data.
+    Color-coded by hit type (GB, FB, LD, PU).
+    """
+    # Filter to balls in play with valid Bearing and Distance
+    inplay = df_profiles[df_profiles.get('PitchCall') == 'InPlay'].copy()
+    
+    if inplay.empty:
+        return None
+    
+    # Ensure we have the necessary columns
+    if 'Bearing' not in inplay.columns or 'Distance' not in inplay.columns:
+        return None
+    
+    inplay['Bearing'] = pd.to_numeric(inplay['Bearing'], errors='coerce')
+    inplay['Distance'] = pd.to_numeric(inplay['Distance'], errors='coerce')
+    
+    # Remove rows with missing Bearing or Distance
+    inplay = inplay.dropna(subset=['Bearing', 'Distance'])
+    
+    if inplay.empty:
+        return None
+    
+    # Convert bearing/distance to x,y coordinates
+    coords = [bearing_distance_to_xy(row['Bearing'], row['Distance']) 
+              for _, row in inplay.iterrows()]
+    inplay['x'] = [c[0] for c in coords]
+    inplay['y'] = [c[1] for c in coords]
+    
+    # Categorize hit types
+    def categorize_hit_type(hit_type):
+        if pd.isna(hit_type):
+            return 'Other'
+        ht = str(hit_type).lower()
+        if 'ground' in ht:
+            return 'GroundBall'
+        elif 'line' in ht:
+            return 'LineDrive'
+        elif 'fly' in ht:
+            return 'FlyBall'
+        elif 'popup' in ht or 'pop' in ht:
+            return 'Popup'
+        else:
+            return 'Other'
+    
+    inplay['HitCategory'] = inplay.get('TaggedHitType', pd.Series(dtype=object)).apply(categorize_hit_type)
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 12))
+    
+    # Create the custom wall distances matching Nebraska's fence
+    angles = np.linspace(45, 135, 100)
+    wall_data = []
+    for angle in angles:
+        if angle <= 90:
+            t = (angle - 45) / (90 - 45)
+            dist = 335 + t * (395 - 335)
+        else:
+            t = (angle - 90) / (135 - 90)
+            dist = 395 + t * (325 - 395)
+        wall_data.append((angle, dist))
+    
+    # Draw the dirt diamond field with custom outfield shape
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=100, custom_wall_distances=wall_data)
+    
+    # Draw outfield wall
+    wall_x = [dist * np.cos(np.radians(ang)) for ang, dist in wall_data]
+    wall_y = [dist * np.sin(np.radians(ang)) for ang, dist in wall_data]
+    ax.plot(wall_x, wall_y, 'k-', linewidth=3, zorder=10)
+    
+    # Add distance markers
+    for angle, dist, label in [(45, 335, '335'), (90, 395, '395'), (135, 325, '325')]:
+        rad = np.radians(angle)
+        x = dist * np.cos(rad)
+        y = dist * np.sin(rad)
+        ax.text(x, y, label, ha='center', va='center', fontsize=11, 
+                fontweight='bold', bbox=dict(boxstyle='round,pad=0.4', 
+                facecolor='yellow', edgecolor='black', linewidth=2, alpha=0.9), zorder=11)
+    
+    # Color mapping for hit types
+    hit_type_colors = {
+        'GroundBall': '#8B4513',  # Brown
+        'LineDrive': '#FF4500',   # Orange-red
+        'FlyBall': '#4169E1',     # Royal blue
+        'Popup': '#9370DB',       # Medium purple
+        'Other': '#808080'        # Gray
+    }
+    
+    # Plot each ball in play
+    for idx, row in inplay.iterrows():
+        hit_cat = row['HitCategory']
+        play_result = str(row.get('PlayResult', ''))
+        exit_speed = row.get('ExitSpeed', np.nan)
+        
+        # Marker size based on exit velocity
+        if pd.notna(exit_speed):
+            marker_size = max(150, min(exit_speed * 5, 600))
+        else:
+            marker_size = 250
+        
+        # Different edge colors for hits vs outs
+        if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
+            edgecolor = 'darkgreen'
+            linewidth = 3
+        else:
+            edgecolor = 'black'
+            linewidth = 2
+        
+        # Plot the marker
+        ax.scatter(row['x'], row['y'], 
+                  c=hit_type_colors.get(hit_cat, '#808080'), 
+                  s=marker_size, 
+                  marker='o',
+                  edgecolors=edgecolor, 
+                  linewidths=linewidth,
+                  alpha=0.8,
+                  zorder=20)
+    
+    # Create legend for hit types
+    legend_elements = []
+    
+    # Count each hit type
+    for hit_type in ['GroundBall', 'LineDrive', 'FlyBall', 'Popup']:
+        count = (inplay['HitCategory'] == hit_type).sum()
+        if count > 0:
+            label = hit_type.replace('GroundBall', 'Ground Ball').replace('LineDrive', 'Line Drive').replace('FlyBall', 'Fly Ball')
+            legend_elements.append(
+                Line2D([0], [0], marker='o', color='w', 
+                       markerfacecolor=hit_type_colors[hit_type], 
+                       markersize=12,
+                       markeredgecolor='black', 
+                       markeredgewidth=1.5,
+                       label=f'{label} ({count})')
+            )
+    
+    # Add hit vs out legend
+    legend_elements.extend([
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
+               markersize=12, markeredgecolor='darkgreen', markeredgewidth=3,
+               label='Hit (green edge)'),
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
+               markersize=12, markeredgecolor='black', markeredgewidth=2,
+               label='Out (black edge)')
+    ])
+    
+    ax.legend(handles=legend_elements, loc='upper left', 
+             bbox_to_anchor=(0.02, 0.98), frameon=True, 
+             fancybox=True, shadow=True, fontsize=10)
+    
+    # Set axis limits
+    max_dist = max(inplay['Distance'].max(), 400)
+    ax.set_xlim(-max_dist * 0.85, max_dist * 0.85)
+    ax.set_ylim(-30, max_dist * 1.1)
+    ax.set_aspect('equal')
+    
+    # Title
+    ax.set_title(f"{batter_display_name} - Spray Chart (All Batted Balls)", 
+                fontsize=16, fontweight='bold', pad=20)
+    
+    plt.tight_layout()
+    return fig
 def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter_key: str):
     sub = df_filtered_for_profiles[df_filtered_for_profiles.get('BatterKey') == batter_key].copy()
     if sub.empty:
@@ -1695,6 +1843,13 @@ elif view_mode == "Profiles & Heatmaps":
 
         st.markdown("**Batted Ball Distribution**")
         st.table(themed_styler(t3_batted, nowrap=True))
+
+        st.markdown("#### Spray Chart")
+        fig_spray = create_profile_spray_chart(df_profiles, display_name_by_key.get(batter_key, batter_key))
+        if fig_spray:
+            st.pyplot(fig_spray)
+        else:
+            st.info("No balls in play with valid location data for the selected filters.")
 
         st.markdown("#### Hitter Heatmaps")
         fig_hm = hitter_heatmaps(df_profiles, batter_key)

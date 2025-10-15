@@ -1022,11 +1022,11 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     # Create figure
     fig, ax = plt.subplots(figsize=(12, 12))
     
-    # Calculate the average fence distance to use for the grass outfield
-    avg_fence_dist = (335 + 395 + 325) / 3  # approximately 352
+    # Use the maximum fence distance (395 to CF) so grass reaches all distance markers
+    max_fence_dist = 395
     
-    # Draw the dirt diamond field with grass extending to the fence
-    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=100, custom_outfield_radius=avg_fence_dist)
+    # Draw the dirt diamond field with grass extending to the furthest fence point
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=100, custom_outfield_radius=max_fence_dist)
     
     # Draw outfield wall with actual dimensions: LF=335, CF=395, RF=325
     angles = np.linspace(45, 135, 100)

@@ -1454,13 +1454,13 @@ def create_profile_spray_chart(df_profiles: pd.DataFrame, batter_display_name: s
                 fontweight='bold', bbox=dict(boxstyle='round,pad=0.4', 
                 facecolor='yellow', edgecolor='black', linewidth=2, alpha=0.9), zorder=11)
     
-    # Color mapping for hit types
+    # Color mapping for hit types - bold, vibrant colors like Baseball Savant
     hit_type_colors = {
-        'GroundBall': '#8B4513',  # Brown
-        'LineDrive': '#FF4500',   # Orange-red
-        'FlyBall': '#4169E1',     # Royal blue
-        'Popup': '#9370DB',       # Medium purple
-        'Other': '#808080'        # Gray
+        'GroundBall': '#DC143C',  # Crimson red
+        'LineDrive': '#FFD700',   # Gold
+        'FlyBall': '#1E90FF',     # Dodger blue
+        'Popup': '#FF69B4',       # Hot pink
+        'Other': '#A9A9A9'        # Dark gray
     }
     
     # Plot each ball in play
@@ -1469,28 +1469,25 @@ def create_profile_spray_chart(df_profiles: pd.DataFrame, batter_display_name: s
         play_result = str(row.get('PlayResult', ''))
         exit_speed = row.get('ExitSpeed', np.nan)
         
-        # Marker size based on exit velocity
-        if pd.notna(exit_speed):
-            marker_size = max(150, min(exit_speed * 5, 600))
-        else:
-            marker_size = 250
+        # Smaller, more uniform marker sizes
+        marker_size = 120  # Fixed smaller size
         
         # Different edge colors for hits vs outs
         if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
-            edgecolor = 'darkgreen'
-            linewidth = 3
-        else:
             edgecolor = 'black'
             linewidth = 2
+        else:
+            edgecolor = 'black'
+            linewidth = 1.5
         
         # Plot the marker
         ax.scatter(row['x'], row['y'], 
-                  c=hit_type_colors.get(hit_cat, '#808080'), 
+                  c=hit_type_colors.get(hit_cat, '#A9A9A9'), 
                   s=marker_size, 
                   marker='o',
                   edgecolors=edgecolor, 
                   linewidths=linewidth,
-                  alpha=0.8,
+                  alpha=0.85,
                   zorder=20)
     
     # Create legend for hit types
@@ -1504,7 +1501,7 @@ def create_profile_spray_chart(df_profiles: pd.DataFrame, batter_display_name: s
             legend_elements.append(
                 Line2D([0], [0], marker='o', color='w', 
                        markerfacecolor=hit_type_colors[hit_type], 
-                       markersize=12,
+                       markersize=10,
                        markeredgecolor='black', 
                        markeredgewidth=1.5,
                        label=f'{label} ({count})')
@@ -1513,11 +1510,11 @@ def create_profile_spray_chart(df_profiles: pd.DataFrame, batter_display_name: s
     # Add hit vs out legend
     legend_elements.extend([
         Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
-               markersize=12, markeredgecolor='darkgreen', markeredgewidth=3,
-               label='Hit (green edge)'),
+               markersize=10, markeredgecolor='black', markeredgewidth=2,
+               label='Hit (thick edge)'),
         Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
-               markersize=12, markeredgecolor='black', markeredgewidth=2,
-               label='Out (black edge)')
+               markersize=10, markeredgecolor='black', markeredgewidth=1,
+               label='Out (thin edge)')
     ])
     
     ax.legend(handles=legend_elements, loc='upper left', 

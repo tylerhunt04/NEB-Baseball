@@ -1958,7 +1958,7 @@ elif view_mode == "Rankings":
 # MODE: FALL SUMMARY (individual player fall scrimmage performance)
 # ──────────────────────────────────────────────────────────────────────────────
 else:  # Fall Summary
-    st.markdown("### Fall Scrimmages Summary")
+    st.markdown("### 🍂 Fall Scrimmages Summary")
     
     # Only show if we're in the scrimmages period
     if period != "2025/26 Scrimmages":
@@ -1987,109 +1987,244 @@ else:  # Fall Summary
     
     player_display = display_name_by_key.get(batter_key, batter_key)
     
-    st.markdown(f"## {player_display} - Fall 2025 Performance")
-    
     # Compute player stats
     player_stats = _compute_split_core(df_player_fall)
     
-    # Main stat boxes
-    st.markdown("### Batting Statistics")
-    col1, col2, col3, col4 = st.columns(4)
+    # Big player name banner with Husker red background
+    st.markdown(f"""
+        <div style="background: linear-gradient(135deg, {HUSKER_RED} 0%, #c40020 100%); 
+                    padding: 30px; border-radius: 15px; margin-bottom: 30px; 
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h1 style="color: white; text-align: center; margin: 0; font-size: 48px; 
+                       text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">
+                {player_display}
+            </h1>
+            <p style="color: white; text-align: center; margin-top: 10px; font-size: 24px; 
+                      opacity: 0.9;">
+                Fall 2025 Performance Report
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Triple slash line in big bold numbers
+    st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); 
+                    padding: 25px; border-radius: 12px; margin-bottom: 25px;
+                    border-left: 5px solid {HUSKER_RED};">
+            <div style="display: flex; justify-content: space-around; text-align: center;">
+                <div>
+                    <p style="color: #6c757d; font-size: 14px; margin: 0; font-weight: 600;">BATTING AVG</p>
+                    <p style="font-size: 42px; font-weight: bold; margin: 5px 0; color: {HUSKER_RED};">
+                        {player_stats['AVG']:.3f}
+                    </p>
+                </div>
+                <div>
+                    <p style="color: #6c757d; font-size: 14px; margin: 0; font-weight: 600;">ON-BASE %</p>
+                    <p style="font-size: 42px; font-weight: bold; margin: 5px 0; color: {HUSKER_RED};">
+                        {player_stats['OBP']:.3f}
+                    </p>
+                </div>
+                <div>
+                    <p style="color: #6c757d; font-size: 14px; margin: 0; font-weight: 600;">SLUGGING %</p>
+                    <p style="font-size: 42px; font-weight: bold; margin: 5px 0; color: {HUSKER_RED};">
+                        {player_stats['SLG']:.3f}
+                    </p>
+                </div>
+                <div>
+                    <p style="color: #6c757d; font-size: 14px; margin: 0; font-weight: 600;">OPS</p>
+                    <p style="font-size: 42px; font-weight: bold; margin: 5px 0; color: #198754;">
+                        {player_stats['OPS']:.3f}
+                    </p>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Key counting stats in colored boxes
+    st.markdown("### 📊 Counting Stats")
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        st.metric("Plate Appearances", f"{player_stats['PA']}")
-        st.metric("At Bats", f"{player_stats['AB']}")
-        st.metric("Hits", f"{player_stats['Hits']}")
+        st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); 
+                        padding: 20px; border-radius: 10px; text-align: center; color: white;">
+                <p style="margin: 0; font-size: 14px; opacity: 0.9;">PLATE APP</p>
+                <p style="margin: 5px 0 0 0; font-size: 36px; font-weight: bold;">{player_stats['PA']}</p>
+            </div>
+        """, unsafe_allow_html=True)
     
     with col2:
-        st.metric("AVG", f"{player_stats['AVG']:.3f}")
-        st.metric("OBP", f"{player_stats['OBP']:.3f}")
-        st.metric("SLG", f"{player_stats['SLG']:.3f}")
+        st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); 
+                        padding: 20px; border-radius: 10px; text-align: center; color: white;">
+                <p style="margin: 0; font-size: 14px; opacity: 0.9;">HITS</p>
+                <p style="margin: 5px 0 0 0; font-size: 36px; font-weight: bold;">{player_stats['Hits']}</p>
+            </div>
+        """, unsafe_allow_html=True)
     
     with col3:
-        st.metric("OPS", f"{player_stats['OPS']:.3f}")
-        st.metric("wOBA", f"{player_stats['wOBA']:.3f}" if pd.notna(player_stats['wOBA']) else "—")
-        st.metric("xwOBA", f"{player_stats['xwOBA']:.3f}" if pd.notna(player_stats['xwOBA']) else "—")
+        st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%); 
+                        padding: 20px; border-radius: 10px; text-align: center; color: white;">
+                <p style="margin: 0; font-size: 14px; opacity: 0.9;">DOUBLES</p>
+                <p style="margin: 5px 0 0 0; font-size: 36px; font-weight: bold;">{player_stats['2B']}</p>
+            </div>
+        """, unsafe_allow_html=True)
     
     with col4:
-        st.metric("2B", f"{player_stats['2B']}")
-        st.metric("3B", f"{player_stats['3B']}")
-        st.metric("HR", f"{player_stats['HR']}")
-    
-    st.markdown("---")
-    st.markdown("### Batted Ball Metrics")
-    
-    col5, col6, col7, col8 = st.columns(4)
+        st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%); 
+                        padding: 20px; border-radius: 10px; text-align: center; color: white;">
+                <p style="margin: 0; font-size: 14px; opacity: 0.9;">TRIPLES</p>
+                <p style="margin: 5px 0 0 0; font-size: 36px; font-weight: bold;">{player_stats['3B']}</p>
+            </div>
+        """, unsafe_allow_html=True)
     
     with col5:
-        st.metric("Avg Exit Velo", f"{player_stats['Avg EV']:.1f} mph" if pd.notna(player_stats['Avg EV']) else "—")
-        st.metric("Max Exit Velo", f"{player_stats['Max EV']:.1f} mph" if pd.notna(player_stats['Max EV']) else "—")
+        st.markdown(f"""
+            <div style="background: linear-gradient(135deg, {HUSKER_RED} 0%, #c40020 100%); 
+                        padding: 20px; border-radius: 10px; text-align: center; color: white;">
+                <p style="margin: 0; font-size: 14px; opacity: 0.9;">HOME RUNS</p>
+                <p style="margin: 5px 0 0 0; font-size: 36px; font-weight: bold;">{player_stats['HR']}</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Batted Ball Quality section with progress bars
+    st.markdown("### ⚾ Batted Ball Quality")
+    
+    col6, col7 = st.columns(2)
     
     with col6:
-        st.metric("Avg Launch Angle", f"{player_stats['Avg LA']:.1f}°" if pd.notna(player_stats['Avg LA']) else "—")
-        st.metric("HardHit%", f"{player_stats['HardHit%']:.1f}%" if pd.notna(player_stats['HardHit%']) else "—")
+        avg_ev = player_stats['Avg EV'] if pd.notna(player_stats['Avg EV']) else 0
+        max_ev = player_stats['Max EV'] if pd.notna(player_stats['Max EV']) else 0
+        
+        st.markdown(f"""
+            <div style="background: white; padding: 20px; border-radius: 10px; 
+                        border: 2px solid #e9ecef; margin-bottom: 15px;">
+                <p style="font-weight: 600; color: #495057; margin-bottom: 10px;">
+                    🚀 Avg Exit Velocity: <span style="color: {HUSKER_RED}; font-size: 24px;">{avg_ev:.1f}</span> mph
+                </p>
+                <div style="background: #e9ecef; border-radius: 10px; height: 25px; overflow: hidden;">
+                    <div style="background: linear-gradient(90deg, {HUSKER_RED} 0%, #ff4d4d 100%); 
+                                height: 100%; width: {min(avg_ev/110*100, 100)}%; 
+                                border-radius: 10px; transition: width 0.3s;"></div>
+                </div>
+            </div>
+            
+            <div style="background: white; padding: 20px; border-radius: 10px; 
+                        border: 2px solid #e9ecef;">
+                <p style="font-weight: 600; color: #495057; margin-bottom: 10px;">
+                    💥 Max Exit Velocity: <span style="color: {HUSKER_RED}; font-size: 24px;">{max_ev:.1f}</span> mph
+                </p>
+                <div style="background: #e9ecef; border-radius: 10px; height: 25px; overflow: hidden;">
+                    <div style="background: linear-gradient(90deg, #FF9800 0%, #ffb74d 100%); 
+                                height: 100%; width: {min(max_ev/115*100, 100)}%; 
+                                border-radius: 10px; transition: width 0.3s;"></div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
     
     with col7:
-        st.metric("Barrel%", f"{player_stats['Barrel%']:.1f}%" if pd.notna(player_stats['Barrel%']) else "—")
-        st.metric("Strikeouts", f"{player_stats['SO']}")
+        hard_hit = player_stats['HardHit%'] if pd.notna(player_stats['HardHit%']) else 0
+        barrel = player_stats['Barrel%'] if pd.notna(player_stats['Barrel%']) else 0
+        
+        st.markdown(f"""
+            <div style="background: white; padding: 20px; border-radius: 10px; 
+                        border: 2px solid #e9ecef; margin-bottom: 15px;">
+                <p style="font-weight: 600; color: #495057; margin-bottom: 10px;">
+                    🔥 Hard Hit %: <span style="color: #4CAF50; font-size: 24px;">{hard_hit:.1f}</span>%
+                </p>
+                <div style="background: #e9ecef; border-radius: 10px; height: 25px; overflow: hidden;">
+                    <div style="background: linear-gradient(90deg, #4CAF50 0%, #66bb6a 100%); 
+                                height: 100%; width: {min(hard_hit, 100)}%; 
+                                border-radius: 10px; transition: width 0.3s;"></div>
+                </div>
+            </div>
+            
+            <div style="background: white; padding: 20px; border-radius: 10px; 
+                        border: 2px solid #e9ecef;">
+                <p style="font-weight: 600; color: #495057; margin-bottom: 10px;">
+                    🎯 Barrel %: <span style="color: #2196F3; font-size: 24px;">{barrel:.1f}</span>%
+                </p>
+                <div style="background: #e9ecef; border-radius: 10px; height: 25px; overflow: hidden;">
+                    <div style="background: linear-gradient(90deg, #2196F3 0%, #64b5f6 100%); 
+                                height: 100%; width: {min(barrel, 100)}%; 
+                                border-radius: 10px; transition: width 0.3s;"></div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Plate discipline with compact layout
+    st.markdown("### 👁️ Plate Discipline")
+    
+    col8, col9, col10, col11 = st.columns(4)
+    
+    k_pct = (player_stats['SO']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
+    bb_pct = (player_stats['BB']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
+    whiff = player_stats['Whiff%'] if pd.notna(player_stats['Whiff%']) else 0
+    chase = player_stats['Chase%'] if pd.notna(player_stats['Chase%']) else 0
     
     with col8:
-        st.metric("Walks", f"{player_stats['BB']}")
-        st.metric("K%", f"{(player_stats['SO']/player_stats['PA']*100):.1f}%" if player_stats['PA'] > 0 else "—")
-        st.metric("BB%", f"{(player_stats['BB']/player_stats['PA']*100):.1f}%" if player_stats['PA'] > 0 else "—")
-    
-    st.markdown("---")
-    st.markdown("### Plate Discipline")
-    
-    col9, col10, col11, col12 = st.columns(4)
-    
+        st.metric("K%", f"{k_pct:.1f}%", delta=None)
     with col9:
-        st.metric("Swing%", f"{player_stats['Swing%']:.1f}%" if pd.notna(player_stats['Swing%']) else "—")
-        st.metric("Whiff%", f"{player_stats['Whiff%']:.1f}%" if pd.notna(player_stats['Whiff%']) else "—")
-    
+        st.metric("BB%", f"{bb_pct:.1f}%", delta=None)
     with col10:
-        st.metric("Chase%", f"{player_stats['Chase%']:.1f}%" if pd.notna(player_stats['Chase%']) else "—")
-        st.metric("Z-Swing%", f"{player_stats['ZSwing%']:.1f}%" if pd.notna(player_stats['ZSwing%']) else "—")
-    
+        st.metric("Whiff%", f"{whiff:.1f}%", delta=None)
     with col11:
-        st.metric("Z-Contact%", f"{player_stats['ZContact%']:.1f}%" if pd.notna(player_stats['ZContact%']) else "—")
-        st.metric("Z-Whiff%", f"{player_stats['ZWhiff%']:.1f}%" if pd.notna(player_stats['ZWhiff%']) else "—")
+        st.metric("Chase%", f"{chase:.1f}%", delta=None)
     
-    # Batted ball distribution
+    # Batted ball distribution with emojis
     st.markdown("---")
-    st.markdown("### Batted Ball Distribution")
+    st.markdown("### 🎯 Batted Ball Distribution")
     
     bb_profile = create_batted_ball_profile(df_player_fall)
     
-    col13, col14, col15, col16, col17, col18 = st.columns(6)
+    col12, col13, col14 = st.columns(3)
+    
+    ld_pct = bb_profile['LD%'].iloc[0] if not bb_profile.empty else 0
+    gb_pct = bb_profile['GB%'].iloc[0] if not bb_profile.empty else 0
+    fb_pct = bb_profile['FB%'].iloc[0] if not bb_profile.empty else 0
+    
+    with col12:
+        st.markdown(f"""
+            <div style="text-align: center; padding: 20px; background: #fff3cd; 
+                        border-radius: 10px; border: 2px solid #ffc107;">
+                <p style="font-size: 14px; margin: 0; color: #856404;">LINE DRIVES</p>
+                <p style="font-size: 48px; margin: 10px 0; font-weight: bold; color: #856404;">
+                    {ld_pct:.1f}%
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
     
     with col13:
-        ld_pct = bb_profile['LD%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("LD%", f"{ld_pct:.1f}%")
+        st.markdown(f"""
+            <div style="text-align: center; padding: 20px; background: #f8d7da; 
+                        border-radius: 10px; border: 2px solid #dc3545;">
+                <p style="font-size: 14px; margin: 0; color: #721c24;">GROUND BALLS</p>
+                <p style="font-size: 48px; margin: 10px 0; font-weight: bold; color: #721c24;">
+                    {gb_pct:.1f}%
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
     
     with col14:
-        gb_pct = bb_profile['GB%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("GB%", f"{gb_pct:.1f}%")
-    
-    with col15:
-        fb_pct = bb_profile['FB%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("FB%", f"{fb_pct:.1f}%")
-    
-    with col16:
-        pull_pct = bb_profile['Pull%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("Pull%", f"{pull_pct:.1f}%")
-    
-    with col17:
-        mid_pct = bb_profile['Middle%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("Middle%", f"{mid_pct:.1f}%")
-    
-    with col18:
-        oppo_pct = bb_profile['Oppo%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("Oppo%", f"{oppo_pct:.1f}%")
+        st.markdown(f"""
+            <div style="text-align: center; padding: 20px; background: #d1ecf1; 
+                        border-radius: 10px; border: 2px solid #17a2b8;">
+                <p style="font-size: 14px; margin: 0; color: #0c5460;">FLY BALLS</p>
+                <p style="font-size: 48px; margin: 10px 0; font-weight: bold; color: #0c5460;">
+                    {fb_pct:.1f}%
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
     
     # Add spray chart
     st.markdown("---")
-    st.markdown("### Fall Spray Chart")
+    st.markdown("### 🗺️ Fall Spray Chart")
     fig_spray = create_profile_spray_chart(df_player_fall, player_display)
     if fig_spray:
         st.pyplot(fig_spray)
@@ -2098,7 +2233,7 @@ else:  # Fall Summary
     
     # Add heatmaps
     st.markdown("---")
-    st.markdown("### Fall Heatmaps")
+    st.markdown("### 🔥 Fall Heatmaps")
     fig_hm = hitter_heatmaps(df_player_fall, batter_key)
     if fig_hm:
         st.pyplot(fig_hm)

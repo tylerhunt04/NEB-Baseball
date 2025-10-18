@@ -24,7 +24,7 @@ st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")  # w
 
 # Default data paths per period (you can change these in the expander)
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
-DATA_PATH_SCRIM  = "Scrimmage(28).csv"  # file, directory, or glob pattern
+DATA_PATH_SCRIM  = "Scrimmage(27).csv"  # file, directory, or glob pattern
 DATA_PATH_2026   = "B10C26_hitter_app_columns.csv"  # placeholder; update when ready
 
 # Optional EV×LA probability lookup (used for xwOBA).
@@ -1697,9 +1697,9 @@ display_name_by_key = (
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Top section selector (includes "Rankings")
+# Top section selector (includes "Rankings" and "Fall Summary")
 # ──────────────────────────────────────────────────────────────────────────────
-view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings"], horizontal=True)
+view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary"], horizontal=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # MODE: STANDARD HITTER REPORT
@@ -1869,7 +1869,7 @@ elif view_mode == "Profiles & Heatmaps":
 # ──────────────────────────────────────────────────────────────────────────────
 # MODE: RANKINGS (team-wide, click-to-sort, red headers, leader/last coloring)
 # ──────────────────────────────────────────────────────────────────────────────
-else:
+elif view_mode == "Rankings":
     st.markdown("### Rankings")
 
     st.markdown("#### Filters")
@@ -1934,3 +1934,173 @@ else:
         hide_index=True,
         height=520
     )
+    
+    # Show complete fall stats table if in scrimmage period
+    if period == "2025/26 Scrimmages":
+        st.markdown("---")
+        st.markdown("#### Complete Fall Scrimmage Statistics")
+        st.markdown("*Full season stats for all players during fall scrimmages*")
+        
+        min_pa_complete = int(st.number_input("Min PA for Complete Table", min_value=0, value=10, step=1, key="complete_min_pa"))
+        complete_rankings = rankings_df.copy()
+        if min_pa_complete > 0:
+            complete_rankings = complete_rankings[complete_rankings["PA"] >= min_pa_complete]
+        
+        styled_complete = style_rankings(complete_rankings)
+        st.dataframe(
+            styled_complete,
+            use_container_width=True,
+            hide_index=True,
+            height=520
+        )
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MODE: FALL SUMMARY (individual player fall scrimmage performance)
+# ──────────────────────────────────────────────────────────────────────────────
+else:  # Fall Summary
+    st.markdown("### Fall Scrimmages Summary")
+    
+    # Only show if we're in the scrimmages period
+    if period != "2025/26 Scrimmages":
+        st.info("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")
+        st.stop()
+    
+    # Player selector
+    batter_key = st.selectbox(
+        "Player",
+        options=batters_keys,
+        index=0,
+        format_func=lambda k: display_name_by_key.get(k, k),
+        key="fall_player"
+    )
+    
+    if not batter_key:
+        st.info("Select a player to view their fall summary.")
+        st.stop()
+    
+    # Get player's fall data
+    df_player_fall = df_neb_bat[df_neb_bat["BatterKey"] == batter_key].copy()
+    
+    if df_player_fall.empty:
+        st.warning(f"No fall scrimmage data found for {display_name_by_key.get(batter_key, batter_key)}.")
+        st.stop()
+    
+    player_display = display_name_by_key.get(batter_key, batter_key)
+    
+    st.markdown(f"## {player_display} - Fall 2025 Performance")
+    
+    # Compute player stats
+    player_stats = _compute_split_core(df_player_fall)
+    
+    # Main stat boxes
+    st.markdown("### Batting Statistics")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Plate Appearances", f"{player_stats['PA']}")
+        st.metric("At Bats", f"{player_stats['AB']}")
+        st.metric("Hits", f"{player_stats['Hits']}")
+    
+    with col2:
+        st.metric("AVG", f"{player_stats['AVG']:.3f}")
+        st.metric("OBP", f"{player_stats['OBP']:.3f}")
+        st.metric("SLG", f"{player_stats['SLG']:.3f}")
+    
+    with col3:
+        st.metric("OPS", f"{player_stats['OPS']:.3f}")
+        st.metric("wOBA", f"{player_stats['wOBA']:.3f}" if pd.notna(player_stats['wOBA']) else "—")
+        st.metric("xwOBA", f"{player_stats['xwOBA']:.3f}" if pd.notna(player_stats['xwOBA']) else "—")
+    
+    with col4:
+        st.metric("2B", f"{player_stats['2B']}")
+        st.metric("3B", f"{player_stats['3B']}")
+        st.metric("HR", f"{player_stats['HR']}")
+    
+    st.markdown("---")
+    st.markdown("### Batted Ball Metrics")
+    
+    col5, col6, col7, col8 = st.columns(4)
+    
+    with col5:
+        st.metric("Avg Exit Velo", f"{player_stats['Avg EV']:.1f} mph" if pd.notna(player_stats['Avg EV']) else "—")
+        st.metric("Max Exit Velo", f"{player_stats['Max EV']:.1f} mph" if pd.notna(player_stats['Max EV']) else "—")
+    
+    with col6:
+        st.metric("Avg Launch Angle", f"{player_stats['Avg LA']:.1f}°" if pd.notna(player_stats['Avg LA']) else "—")
+        st.metric("HardHit%", f"{player_stats['HardHit%']:.1f}%" if pd.notna(player_stats['HardHit%']) else "—")
+    
+    with col7:
+        st.metric("Barrel%", f"{player_stats['Barrel%']:.1f}%" if pd.notna(player_stats['Barrel%']) else "—")
+        st.metric("Strikeouts", f"{player_stats['SO']}")
+    
+    with col8:
+        st.metric("Walks", f"{player_stats['BB']}")
+        st.metric("K%", f"{(player_stats['SO']/player_stats['PA']*100):.1f}%" if player_stats['PA'] > 0 else "—")
+        st.metric("BB%", f"{(player_stats['BB']/player_stats['PA']*100):.1f}%" if player_stats['PA'] > 0 else "—")
+    
+    st.markdown("---")
+    st.markdown("### Plate Discipline")
+    
+    col9, col10, col11, col12 = st.columns(4)
+    
+    with col9:
+        st.metric("Swing%", f"{player_stats['Swing%']:.1f}%" if pd.notna(player_stats['Swing%']) else "—")
+        st.metric("Whiff%", f"{player_stats['Whiff%']:.1f}%" if pd.notna(player_stats['Whiff%']) else "—")
+    
+    with col10:
+        st.metric("Chase%", f"{player_stats['Chase%']:.1f}%" if pd.notna(player_stats['Chase%']) else "—")
+        st.metric("Z-Swing%", f"{player_stats['ZSwing%']:.1f}%" if pd.notna(player_stats['ZSwing%']) else "—")
+    
+    with col11:
+        st.metric("Z-Contact%", f"{player_stats['ZContact%']:.1f}%" if pd.notna(player_stats['ZContact%']) else "—")
+        st.metric("Z-Whiff%", f"{player_stats['ZWhiff%']:.1f}%" if pd.notna(player_stats['ZWhiff%']) else "—")
+    
+    # Batted ball distribution
+    st.markdown("---")
+    st.markdown("### Batted Ball Distribution")
+    
+    bb_profile = create_batted_ball_profile(df_player_fall)
+    
+    col13, col14, col15, col16, col17, col18 = st.columns(6)
+    
+    with col13:
+        ld_pct = bb_profile['LD%'].iloc[0] if not bb_profile.empty else 0
+        st.metric("LD%", f"{ld_pct:.1f}%")
+    
+    with col14:
+        gb_pct = bb_profile['GB%'].iloc[0] if not bb_profile.empty else 0
+        st.metric("GB%", f"{gb_pct:.1f}%")
+    
+    with col15:
+        fb_pct = bb_profile['FB%'].iloc[0] if not bb_profile.empty else 0
+        st.metric("FB%", f"{fb_pct:.1f}%")
+    
+    with col16:
+        pull_pct = bb_profile['Pull%'].iloc[0] if not bb_profile.empty else 0
+        st.metric("Pull%", f"{pull_pct:.1f}%")
+    
+    with col17:
+        mid_pct = bb_profile['Middle%'].iloc[0] if not bb_profile.empty else 0
+        st.metric("Middle%", f"{mid_pct:.1f}%")
+    
+    with col18:
+        oppo_pct = bb_profile['Oppo%'].iloc[0] if not bb_profile.empty else 0
+        st.metric("Oppo%", f"{oppo_pct:.1f}%")
+    
+    # Add spray chart
+    st.markdown("---")
+    st.markdown("### Fall Spray Chart")
+    fig_spray = create_profile_spray_chart(df_player_fall, player_display)
+    if fig_spray:
+        st.pyplot(fig_spray)
+    else:
+        st.info("No balls in play with valid location data for fall scrimmages.")
+    
+    # Add heatmaps
+    st.markdown("---")
+    st.markdown("### Fall Heatmaps")
+    fig_hm = hitter_heatmaps(df_player_fall, batter_key)
+    if fig_hm:
+        st.pyplot(fig_hm)
+    else:
+        st.info("Not enough data for heatmaps.")

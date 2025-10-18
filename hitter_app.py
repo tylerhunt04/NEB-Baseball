@@ -1958,7 +1958,336 @@ elif view_mode == "Rankings":
 # MODE: FALL SUMMARY (individual player fall scrimmage performance)
 # ──────────────────────────────────────────────────────────────────────────────
 else:  # Fall Summary
-    st.markdown("### 🍂 Fall Scrimmages Summary")
+    st.markdown("### Fall Scrimmages Summary")
+    
+    # Only show if we're in the scrimmages period
+    if period != "2025/26 Scrimmages":
+        st.info("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")
+        st.stop()
+    
+    # Player selector
+    batter_key = st.selectbox(
+        "Player",
+        options=batters_keys,
+        index=0,
+        format_func=lambda k: display_name_by_key.get(k, k),
+        key="fall_player"
+    )
+    
+    if not batter_key:
+        st.info("Select a player to view their fall summary.")
+        st.stop()
+    
+    # Get player's fall data
+    df_player_fall = df_neb_bat[df_neb_bat["BatterKey"] == batter_key].copy()
+    
+    if df_player_fall.empty:
+        st.warning(f"No fall scrimmage data found for {display_name_by_key.get(batter_key, batter_key)}.")
+        st.stop()
+    
+    player_display = display_name_by_key.get(batter_key, batter_key)
+    
+    # Compute player stats
+    player_stats = _compute_split_core(df_player_fall)
+    
+    # Player name banner with Husker red
+    st.markdown(f"""
+        <div style="background: linear-gradient(135deg, {HUSKER_RED} 0%, #a00018 100%); 
+                    padding: 40px 30px; border-radius: 12px; margin-bottom: 30px; 
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+            <h1 style="color: white; text-align: center; margin: 0; font-size: 48px; 
+                       font-weight: 700; letter-spacing: -1px;">
+                {player_display}
+            </h1>
+            <p style="color: rgba(255,255,255,0.9); text-align: center; margin-top: 12px; 
+                      font-size: 20px; font-weight: 400; letter-spacing: 0.5px;">
+                Fall 2025 Performance Report
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Slash line with wOBA
+    woba_val = player_stats['wOBA'] if pd.notna(player_stats['wOBA']) else 0.0
+    st.markdown(f"""
+        <div style="background: white; padding: 30px; border-radius: 12px; margin-bottom: 30px;
+                    border: 2px solid {HUSKER_RED}; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+            <div style="display: flex; justify-content: space-around; text-align: center;">
+                <div style="flex: 1;">
+                    <p style="color: #6c757d; font-size: 13px; margin: 0; font-weight: 600; 
+                              text-transform: uppercase; letter-spacing: 1px;">Batting Avg</p>
+                    <p style="font-size: 48px; font-weight: 700; margin: 8px 0; color: {HUSKER_RED};">
+                        {player_stats['AVG']:.3f}
+                    </p>
+                </div>
+                <div style="flex: 1;">
+                    <p style="color: #6c757d; font-size: 13px; margin: 0; font-weight: 600; 
+                              text-transform: uppercase; letter-spacing: 1px;">On-Base %</p>
+                    <p style="font-size: 48px; font-weight: 700; margin: 8px 0; color: {HUSKER_RED};">
+                        {player_stats['OBP']:.3f}
+                    </p>
+                </div>
+                <div style="flex: 1;">
+                    <p style="color: #6c757d; font-size: 13px; margin: 0; font-weight: 600; 
+                              text-transform: uppercase; letter-spacing: 1px;">Slugging %</p>
+                    <p style="font-size: 48px; font-weight: 700; margin: 8px 0; color: {HUSKER_RED};">
+                        {player_stats['SLG']:.3f}
+                    </p>
+                </div>
+                <div style="flex: 1;">
+                    <p style="color: #6c757d; font-size: 13px; margin: 0; font-weight: 600; 
+                              text-transform: uppercase; letter-spacing: 1px;">wOBA</p>
+                    <p style="font-size: 48px; font-weight: 700; margin: 8px 0; color: {HUSKER_RED};">
+                        {woba_val:.3f}
+                    </p>
+                </div>
+                <div style="flex: 1;">
+                    <p style="color: #6c757d; font-size: 13px; margin: 0; font-weight: 600; 
+                              text-transform: uppercase; letter-spacing: 1px;">OPS</p>
+                    <p style="font-size: 48px; font-weight: 700; margin: 8px 0; color: #333;">
+                        {player_stats['OPS']:.3f}
+                    </p>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Counting stats section
+    st.markdown("#### Counting Stats")
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        st.markdown(f"""
+            <div style="background: white; padding: 24px; border-radius: 10px; text-align: center; 
+                        border: 2px solid #e9ecef; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <p style="margin: 0; font-size: 13px; color: #6c757d; font-weight: 600; 
+                          text-transform: uppercase;">Plate App</p>
+                <p style="margin: 8px 0 0 0; font-size: 40px; font-weight: 700; color: {HUSKER_RED};">
+                    {player_stats['PA']}
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div style="background: white; padding: 24px; border-radius: 10px; text-align: center; 
+                        border: 2px solid #e9ecef; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <p style="margin: 0; font-size: 13px; color: #6c757d; font-weight: 600; 
+                          text-transform: uppercase;">Hits</p>
+                <p style="margin: 8px 0 0 0; font-size: 40px; font-weight: 700; color: {HUSKER_RED};">
+                    {player_stats['Hits']}
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+            <div style="background: white; padding: 24px; border-radius: 10px; text-align: center; 
+                        border: 2px solid #e9ecef; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <p style="margin: 0; font-size: 13px; color: #6c757d; font-weight: 600; 
+                          text-transform: uppercase;">Doubles</p>
+                <p style="margin: 8px 0 0 0; font-size: 40px; font-weight: 700; color: {HUSKER_RED};">
+                    {player_stats['2B']}
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(f"""
+            <div style="background: white; padding: 24px; border-radius: 10px; text-align: center; 
+                        border: 2px solid #e9ecef; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <p style="margin: 0; font-size: 13px; color: #6c757d; font-weight: 600; 
+                          text-transform: uppercase;">Triples</p>
+                <p style="margin: 8px 0 0 0; font-size: 40px; font-weight: 700; color: {HUSKER_RED};">
+                    {player_stats['3B']}
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col5:
+        st.markdown(f"""
+            <div style="background: white; padding: 24px; border-radius: 10px; text-align: center; 
+                        border: 2px solid #e9ecef; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <p style="margin: 0; font-size: 13px; color: #6c757d; font-weight: 600; 
+                          text-transform: uppercase;">Home Runs</p>
+                <p style="margin: 8px 0 0 0; font-size: 40px; font-weight: 700; color: {HUSKER_RED};">
+                    {player_stats['HR']}
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Batted Ball Quality
+    st.markdown("#### Batted Ball Quality")
+    
+    col6, col7 = st.columns(2)
+    
+    with col6:
+        avg_ev = player_stats['Avg EV'] if pd.notna(player_stats['Avg EV']) else 0
+        max_ev = player_stats['Max EV'] if pd.notna(player_stats['Max EV']) else 0
+        
+        st.markdown(f"""
+            <div style="background: white; padding: 24px; border-radius: 10px; 
+                        border: 2px solid #e9ecef; margin-bottom: 15px; 
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <p style="font-weight: 600; color: #495057; margin-bottom: 12px; font-size: 15px;">
+                    Avg Exit Velocity
+                </p>
+                <p style="font-size: 36px; font-weight: 700; color: {HUSKER_RED}; margin: 0;">
+                    {avg_ev:.1f} <span style="font-size: 20px; color: #6c757d;">mph</span>
+                </p>
+                <div style="background: #f1f3f5; border-radius: 8px; height: 8px; margin-top: 12px; overflow: hidden;">
+                    <div style="background: {HUSKER_RED}; height: 100%; width: {min(avg_ev/110*100, 100)}%; 
+                                border-radius: 8px;"></div>
+                </div>
+            </div>
+            
+            <div style="background: white; padding: 24px; border-radius: 10px; 
+                        border: 2px solid #e9ecef; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <p style="font-weight: 600; color: #495057; margin-bottom: 12px; font-size: 15px;">
+                    Max Exit Velocity
+                </p>
+                <p style="font-size: 36px; font-weight: 700; color: {HUSKER_RED}; margin: 0;">
+                    {max_ev:.1f} <span style="font-size: 20px; color: #6c757d;">mph</span>
+                </p>
+                <div style="background: #f1f3f5; border-radius: 8px; height: 8px; margin-top: 12px; overflow: hidden;">
+                    <div style="background: {HUSKER_RED}; height: 100%; width: {min(max_ev/115*100, 100)}%; 
+                                border-radius: 8px;"></div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col7:
+        hard_hit = player_stats['HardHit%'] if pd.notna(player_stats['HardHit%']) else 0
+        barrel = player_stats['Barrel%'] if pd.notna(player_stats['Barrel%']) else 0
+        
+        st.markdown(f"""
+            <div style="background: white; padding: 24px; border-radius: 10px; 
+                        border: 2px solid #e9ecef; margin-bottom: 15px; 
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <p style="font-weight: 600; color: #495057; margin-bottom: 12px; font-size: 15px;">
+                    Hard Hit %
+                </p>
+                <p style="font-size: 36px; font-weight: 700; color: {HUSKER_RED}; margin: 0;">
+                    {hard_hit:.1f}<span style="font-size: 20px;">%</span>
+                </p>
+                <div style="background: #f1f3f5; border-radius: 8px; height: 8px; margin-top: 12px; overflow: hidden;">
+                    <div style="background: {HUSKER_RED}; height: 100%; width: {min(hard_hit, 100)}%; 
+                                border-radius: 8px;"></div>
+                </div>
+            </div>
+            
+            <div style="background: white; padding: 24px; border-radius: 10px; 
+                        border: 2px solid #e9ecef; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <p style="font-weight: 600; color: #495057; margin-bottom: 12px; font-size: 15px;">
+                    Barrel %
+                </p>
+                <p style="font-size: 36px; font-weight: 700; color: {HUSKER_RED}; margin: 0;">
+                    {barrel:.1f}<span style="font-size: 20px;">%</span>
+                </p>
+                <div style="background: #f1f3f5; border-radius: 8px; height: 8px; margin-top: 12px; overflow: hidden;">
+                    <div style="background: {HUSKER_RED}; height: 100%; width: {min(barrel, 100)}%; 
+                                border-radius: 8px;"></div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Plate Discipline & Batted Ball Distribution side by side
+    col8, col9 = st.columns(2)
+    
+    with col8:
+        st.markdown("#### Plate Discipline")
+        
+        k_pct = (player_stats['SO']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
+        bb_pct = (player_stats['BB']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
+        whiff = player_stats['Whiff%'] if pd.notna(player_stats['Whiff%']) else 0
+        chase = player_stats['Chase%'] if pd.notna(player_stats['Chase%']) else 0
+        
+        st.markdown(f"""
+            <div style="background: white; padding: 20px; border-radius: 10px; 
+                        border: 2px solid #e9ecef; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <p style="color: #6c757d; font-size: 12px; margin: 0; text-transform: uppercase;">K%</p>
+                        <p style="color: {HUSKER_RED}; font-size: 28px; font-weight: 700; margin: 4px 0;">
+                            {k_pct:.1f}%
+                        </p>
+                    </div>
+                    <div>
+                        <p style="color: #6c757d; font-size: 12px; margin: 0; text-transform: uppercase;">BB%</p>
+                        <p style="color: {HUSKER_RED}; font-size: 28px; font-weight: 700; margin: 4px 0;">
+                            {bb_pct:.1f}%
+                        </p>
+                    </div>
+                    <div>
+                        <p style="color: #6c757d; font-size: 12px; margin: 0; text-transform: uppercase;">Whiff%</p>
+                        <p style="color: {HUSKER_RED}; font-size: 28px; font-weight: 700; margin: 4px 0;">
+                            {whiff:.1f}%
+                        </p>
+                    </div>
+                    <div>
+                        <p style="color: #6c757d; font-size: 12px; margin: 0; text-transform: uppercase;">Chase%</p>
+                        <p style="color: {HUSKER_RED}; font-size: 28px; font-weight: 700; margin: 4px 0;">
+                            {chase:.1f}%
+                        </p>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col9:
+        st.markdown("#### Batted Ball Type")
+        
+        bb_profile = create_batted_ball_profile(df_player_fall)
+        
+        ld_pct = bb_profile['LD%'].iloc[0] if not bb_profile.empty else 0
+        gb_pct = bb_profile['GB%'].iloc[0] if not bb_profile.empty else 0
+        fb_pct = bb_profile['FB%'].iloc[0] if not bb_profile.empty else 0
+        
+        st.markdown(f"""
+            <div style="background: white; padding: 20px; border-radius: 10px; 
+                        border: 2px solid #e9ecef; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; text-align: center;">
+                    <div>
+                        <p style="color: #6c757d; font-size: 12px; margin: 0; text-transform: uppercase;">Line Drive</p>
+                        <p style="color: {HUSKER_RED}; font-size: 32px; font-weight: 700; margin: 4px 0;">
+                            {ld_pct:.1f}%
+                        </p>
+                    </div>
+                    <div>
+                        <p style="color: #6c757d; font-size: 12px; margin: 0; text-transform: uppercase;">Ground Ball</p>
+                        <p style="color: {HUSKER_RED}; font-size: 32px; font-weight: 700; margin: 4px 0;">
+                            {gb_pct:.1f}%
+                        </p>
+                    </div>
+                    <div>
+                        <p style="color: #6c757d; font-size: 12px; margin: 0; text-transform: uppercase;">Fly Ball</p>
+                        <p style="color: {HUSKER_RED}; font-size: 32px; font-weight: 700; margin: 4px 0;">
+                            {fb_pct:.1f}%
+                        </p>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    # Spray chart and heatmaps
+    st.markdown("---")
+    st.markdown("#### Fall Spray Chart")
+    fig_spray = create_profile_spray_chart(df_player_fall, player_display)
+    if fig_spray:
+        st.pyplot(fig_spray)
+    else:
+        st.info("No balls in play with valid location data for fall scrimmages.")
+    
+    st.markdown("---")
+    st.markdown("#### Fall Heatmaps")
+    fig_hm = hitter_heatmaps(df_player_fall, batter_key)
+    if fig_hm:
+        st.pyplot(fig_hm)
+    else:
+        st.info("Not enough data for heatmaps.")
     
     # Only show if we're in the scrimmages period
     if period != "2025/26 Scrimmages":

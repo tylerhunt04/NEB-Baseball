@@ -1971,7 +1971,7 @@ else:  # Fall Summary
         options=batters_keys,
         index=0,
         format_func=lambda k: display_name_by_key.get(k, k),
-        key="fall_player"
+        key="fall_summary_player_selector"
     )
     
     if not batter_key:

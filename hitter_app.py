@@ -1,4 +1,1231 @@
-# hitter_app.py
+if not dfs:
+        return pd.DataFrame()
+    out = pd.concat(dfs, ignore_index=True)
+    return ensure_date_column(out)
+
+@st.cache_data(show_spinner=True)
+def load_single_csv(path: str) -> pd.DataFrame:
+    try:
+        df = pd.read_csv(path, low_memory=False)
+    except UnicodeDecodeError:
+        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
+    return ensure_date_column(df)
+
+def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_2026: str) -> pd.DataFrame:
+    if period_label == "2025 season":
+        return load_single_csv(path_2025)
+    elif period_label == "2025/26 Scrimmages":
+        paths = _expand_paths(path_scrim)
+        if not paths:
+            return pd.DataFrame()
+        return load_many_csv(paths)
+    elif period_label == "2026 season":
+        paths = _expand_paths(path_2026)
+        if not paths:
+            try:
+                return load_single_csv(path_2026)
+            except Exception:
+                return pd.DataFrame()
+        return load_many_csv(paths)
+    else:
+        return pd.DataFrame()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# UI: BANNER + PERIOD SELECTOR + PATHS
+# ──────────────────────────────────────────────────────────────────────────────
+render_nb_banner(title="Nebraska Baseball")
+
+period = st.selectbox(
+    "Time Period",
+    options=["2025 season", "2025/26 Scrimmages", "2026 season"],
+    index=0
+)
+
+with st.expander("Data paths (optional quick edit)"):
+    st.caption("Paste a CSV path, a directory path, or a glob pattern (e.g., `/mnt/data/scrims/*.csv`).")
+    path_2025  = st.text_input("2025 season path", value=DATA_PATH_2025,  key="path_2025")
+    path_scrim = st.text_input("2025/26 Scrimmages path/pattern", value=DATA_PATH_SCRIM, key="path_scrim")
+    path_2026  = st.text_input("2026 season path/pattern", value=DATA_PATH_2026,  key="path_2026")
+
+path_2025  = st.session_state.get("path_2025", DATA_PATH_2025)
+path_scrim = st.session_state.get("path_scrim", DATA_PATH_SCRIM)
+path_2026  = st.session_state.get("path_2026", DATA_PATH_2026)
+
+df_all = load_for_period(period, path_2025, path_scrim, path_2026)
+if df_all.empty:
+    st.error(f"No data loaded for '{period}'. Check the path(s) above.")
+    st.stop()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BUILD HITTER KEYSPACE (NEB hitters with real PAs; dedup names)
+# ──────────────────────────────────────────────────────────────────────────────
+for col in ["Batter", "BatterTeam", "PitchofPA", "PitcherThrows", "PitcherTeam",
+            "PlayResult", "KorBB", "PitchCall", "AutoPitchType", "ExitSpeed", "Angle",
+            "PlateLocSide", "PlateLocHeight", "TaggedHitType", "Bearing", "BatterSide",
+            "Distance"]:
+    if col not in df_all.columns:
+        df_all[col] = pd.NA
+
+df_all = ensure_date_column(df_all)
+
+df_neb_bat = df_all[df_all["BatterTeam"].astype(str).str.upper().eq("NEB")].copy()
+df_neb_bat["PitchofPA"] = pd.to_numeric(df_neb_bat["PitchofPA"], errors="coerce")
+df_neb_bat["BatterKey"]  = df_neb_bat["Batter"].map(normalize_name)
+df_neb_bat["BatterDisp"] = df_neb_bat["BatterKey"]
+
+df_neb_bat = _bin_ev_la(df_neb_bat)
+df_neb_bat = merge_probabilities(df_neb_bat)
+
+has_pa = df_neb_bat[(df_neb_bat["PitchofPA"] == 1) & df_neb_bat["BatterKey"].ne("")]
+if has_pa.empty:
+    st.error(f"No Nebraska hitters with plate appearances found for '{period}'.")
+    st.stop()
+
+batters_keys = sorted(has_pa["BatterKey"].dropna().unique().tolist())
+display_name_by_key = (
+    df_neb_bat.groupby("BatterKey")["BatterDisp"]
+    .agg(lambda s: s.dropna().value_counts().index[0] if not s.dropna().empty else "")
+    .to_dict()
+)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Top section selector (includes "Rankings" and "Fall Summary")
+# ──────────────────────────────────────────────────────────────────────────────
+view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary"], horizontal=True)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MODE: STANDARD HITTER REPORT
+# ──────────────────────────────────────────────────────────────────────────────
+if view_mode == "Standard Hitter Report":
+    st.markdown("### Nebraska Hitter Reports")
+    colB, colD = st.columns([1, 1])
+
+    batter_key_std = colB.selectbox(
+        "Player",
+        options=batters_keys,
+        index=0,
+        format_func=lambda k: display_name_by_key.get(k, k)
+    )
+
+    if batter_key_std:
+        df_b_all = df_neb_bat[df_neb_bat["BatterKey"] == batter_key_std].copy()
+        df_b_all["DateOnly"] = pd.to_datetime(df_b_all["Date"], errors="coerce").dt.date
+        date_groups = df_b_all.groupby("DateOnly")["PitcherTeam"].agg(
+            lambda s: sorted(set([TEAM_NAME_MAP.get(str(x), str(x)) for x in s if pd.notna(x)]))
+        )
+        date_opts, date_labels = [], {}
+        for d, teams in date_groups.items():
+            if pd.isna(d):
+                continue
+            label = f"{format_date_long(d)}"
+            if teams:
+                label += f" ({'/'.join(teams)})"
+            date_opts.append(d)
+            date_labels[d] = label
+        date_opts = sorted(date_opts)
+    else:
+        df_b_all = df_neb_bat.iloc[0:0].copy()
+        date_opts, date_labels = [], {}
+
+    selected_date = colD.selectbox(
+        "Game Date",
+        options=date_opts,
+        format_func=lambda d: date_labels.get(d, format_date_long(d)),
+        index=len(date_opts)-1 if date_opts else 0
+    ) if date_opts else None
+
+    if batter_key_std and selected_date:
+        df_date = df_b_all[df_b_all["DateOnly"] == selected_date].copy()
+    else:
+        df_date = df_b_all.iloc[0:0].copy()
+
+    batter_display = display_name_by_key.get(batter_key_std, batter_key_std)
+
+    if df_date.empty:
+        st.info("Select a player and game date to see the Standard Hitter Report.")
+    else:
+        st.markdown("### Standard Hitter Report")
+        fig_std = create_hitter_report(df_date, batter_display, ncols=3)
+        if fig_std:
+            st.pyplot(fig_std)
+        
+        # Add spray chart
+        st.markdown("### Spray Chart")
+        fig_spray = create_spray_chart(df_date, batter_display)
+        if fig_spray:
+            st.pyplot(fig_spray)
+        else:
+            st.info("No balls in play with valid location data for this game.")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MODE: PROFILES & HEATMAPS (3 tables + heatmaps)
+# ──────────────────────────────────────────────────────────────────────────────
+elif view_mode == "Profiles & Heatmaps":
+    st.markdown("### Profiles & Heatmaps")
+
+    batter_key = st.selectbox(
+        "Player",
+        options=batters_keys,
+        index=0,
+        format_func=lambda k: display_name_by_key.get(k, k)
+    )
+
+    st.markdown("#### Filters")
+    colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
+
+    if batter_key:
+        df_b_all = df_neb_bat[df_neb_bat["BatterKey"] == batter_key].copy()
+        df_player_all = df_b_all.copy()
+        dates_all = pd.to_datetime(df_b_all["Date"], errors="coerce").dropna().dt.date
+        present_months = sorted(pd.Series(dates_all).map(lambda d: d.month).unique().tolist())
+    else:
+        df_b_all = df_neb_bat.iloc[0:0].copy()
+        df_player_all = df_b_all.copy()
+        present_months = []
+
+    sel_months = colM.multiselect(
+        "Months",
+        options=present_months,
+        format_func=lambda n: MONTH_NAME_BY_NUM.get(n, str(n)),
+        default=[],
+        key="prof_months",
+    )
+
+    if batter_key:
+        dser = pd.to_datetime(df_player_all["Date"], errors="coerce").dt.date
+        if sel_months:
+            dser = dser[pd.Series(dser).map(lambda d: d.month if pd.notna(d) else None).isin(sel_months)]
+        present_days = sorted(pd.Series(dser).dropna().map(lambda d: d.day).unique().tolist())
+    else:
+        present_days = []
+
+    sel_days = colD2.multiselect("Days", options=present_days, default=[], key="prof_days")
+
+    lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
+    hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
+
+    if sel_months:
+        mask_m = pd.to_datetime(df_player_all["Date"], errors="coerce").dt.month.isin(sel_months)
+    else:
+        mask_m = pd.Series(True, index=df_player_all.index)
+    if sel_days:
+        mask_d = pd.to_datetime(df_player_all["Date"], errors="coerce").dt.day.isin(sel_days)
+    else:
+        mask_d = pd.Series(True, index=df_player_all.index)
+    df_profiles = df_player_all[mask_m & mask_d].copy()
+
+    if lastN and not df_profiles.empty:
+        uniq_dates = pd.to_datetime(df_profiles["Date"], errors="coerce").dt.date.dropna().unique()
+        uniq_dates = sorted(uniq_dates)
+        last_dates = set(uniq_dates[-lastN:])
+        df_profiles = df_profiles[pd.to_datetime(df_profiles["Date"], errors="coerce").dt.date.isin(last_dates)].copy()
+
+    if hand_choice == "LHP":
+        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
+    elif hand_choice == "RHP":
+        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
+
+    if batter_key and df_profiles.empty:
+        st.info("No rows for the selected filters.")
+    elif batter_key:
+        season_label = {
+            "2025 season": "2025",
+            "2025/26 Scrimmages": "2025/26 Scrimmages",
+            "2026 season": "2026",
+        }.get(period, "—")
+        st.markdown(f"#### Split Profiles — {display_name_by_key.get(batter_key,batter_key)} ({season_label})")
+
+        t1_counts, t2_rates, t3_batted = build_profile_tables(df_profiles)
+
+        st.markdown("**Summary**")
+        st.table(themed_styler(t1_counts, nowrap=True))
+
+        st.markdown("**Plate Discipline**")
+        st.table(themed_styler(t2_rates, nowrap=True))
+
+        st.markdown("**Batted Ball Distribution**")
+        st.table(themed_styler(t3_batted, nowrap=True))
+
+        st.markdown("#### Spray Chart")
+        fig_spray = create_profile_spray_chart(df_profiles, display_name_by_key.get(batter_key, batter_key))
+        if fig_spray:
+            st.pyplot(fig_spray)
+        else:
+            st.info("No balls in play with valid location data for the selected filters.")
+
+        st.markdown("#### Hitter Heatmaps")
+        fig_hm = hitter_heatmaps(df_profiles, batter_key)
+        if fig_hm:
+            st.pyplot(fig_hm)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MODE: RANKINGS (team-wide, click-to-sort, red headers, leader/last coloring)
+# ──────────────────────────────────────────────────────────────────────────────
+elif view_mode == "Rankings":
+    st.markdown("### Rankings")
+
+    st.markdown("#### Filters")
+    colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
+
+    df_scope = df_neb_bat.copy()
+
+    dates_all = pd.to_datetime(df_scope["Date"], errors="coerce").dropna().dt.date
+    present_months = sorted(pd.Series(dates_all).map(lambda d: d.month).unique().tolist())
+    sel_months = colM.multiselect(
+        "Months",
+        options=present_months,
+        format_func=lambda n: MONTH_NAME_BY_NUM.get(n, str(n)),
+        default=[],
+        key="rk_months",
+    )
+
+    dser = pd.to_datetime(df_scope["Date"], errors="coerce").dt.date
+    if sel_months:
+        dser = dser[pd.Series(dser).map(lambda d: d.month if pd.notna(d) else None).isin(sel_months)]
+    present_days = sorted(pd.Series(dser).dropna().map(lambda d: d.day).unique().tolist())
+    sel_days = colD2.multiselect("Days", options=present_days, default=[], key="rk_days")
+
+    lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="rk_lastn"))
+    hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="rk_hand")
+
+    if sel_months:
+        mask_m = pd.to_datetime(df_scope["Date"], errors="coerce").dt.month.isin(sel_months)
+    else:
+        mask_m = pd.Series(True, index=df_scope.index)
+    if sel_days:
+        mask_d = pd.to_datetime(df_scope["Date"], errors="coerce").dt.day.isin(sel_days)
+    else:
+        mask_d = pd.Series(True, index=df_scope.index)
+    df_scope = df_scope[mask_m & mask_d].copy()
+
+    if lastN and not df_scope.empty:
+        uniq_dates = pd.to_datetime(df_scope["Date"], errors="coerce").dt.date.dropna().unique()
+        uniq_dates = sorted(uniq_dates)
+        last_dates = set(uniq_dates[-lastN:])
+        df_scope = df_scope[pd.to_datetime(df_scope["Date"], errors="coerce").dt.date.isin(last_dates)].copy()
+
+    if hand_choice == "LHP":
+        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
+    elif hand_choice == "RHP":
+        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
+
+    if df_scope.empty:
+        st.info("No rows for the selected filters.")
+        st.stop()
+
+    rankings_df = build_rankings_numeric(df_scope, display_name_by_key)
+    min_pa = int(st.number_input("Min PA", min_value=0, value=0, step=1, key="rk_min_pa"))
+    if min_pa > 0:
+        rankings_df = rankings_df[rankings_df["PA"] >= min_pa]
+
+    styled = style_rankings(rankings_df)
+
+    st.dataframe(
+        styled,
+        use_container_width=True,
+        hide_index=True,
+        height=520
+    )
+    
+    # Show complete fall stats table if in scrimmage period
+    if period == "2025/26 Scrimmages":
+        st.markdown("---")
+        st.markdown("#### Complete Fall Scrimmage Statistics")
+        st.markdown("*Full season stats for all players during fall scrimmages*")
+        
+        min_pa_complete = int(st.number_input("Min PA for Complete Table", min_value=0, value=10, step=1, key="complete_min_pa"))
+        complete_rankings = rankings_df.copy()
+        if min_pa_complete > 0:
+            complete_rankings = complete_rankings[complete_rankings["PA"] >= min_pa_complete]
+        
+        styled_complete = style_rankings(complete_rankings)
+        st.dataframe(
+            styled_complete,
+            use_container_width=True,
+            hide_index=True,
+            height=520
+        )
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MODE: FALL SUMMARY (individual player fall scrimmage performance) - PROFESSIONAL
+# ──────────────────────────────────────────────────────────────────────────────
+else:  # Fall Summary
+    st.markdown("### Fall Scrimmages Summary")
+    
+    # Only show if we're in the scrimmages period
+    if period != "2025/26 Scrimmages":
+        st.info("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")
+        st.stop()
+    
+    # Player selector
+    batter_key = st.selectbox(
+        "Player",
+        options=batters_keys,
+        index=0,
+        format_func=lambda k: display_name_by_key.get(k, k),
+        key="fall_player"
+    )
+    
+    if not batter_key:
+        st.info("Select a player to view their fall summary.")
+        st.stop()
+    
+    # Get player's fall data
+    df_player_fall = df_neb_bat[df_neb_bat["BatterKey"] == batter_key].copy()
+    
+    if df_player_fall.empty:
+        st.warning(f"No fall scrimmage data found for {display_name_by_key.get(batter_key, batter_key)}.")
+        st.stop()
+    
+    player_display = display_name_by_key.get(batter_key, batter_key)
+    
+    # Compute player stats
+    player_stats = _compute_split_core(df_player_fall)
+    
+    # Professional header - clean and minimal
+    st.markdown(f"""
+        <div style="background: {HUSKER_RED}; 
+                    padding: 40px 20px; 
+                    border-radius: 8px; 
+                    margin-bottom: 30px; 
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h1 style="color: white; 
+                       text-align: center; 
+                       margin: 0; 
+                       font-size: 36px; 
+                       font-weight: 600;
+                       letter-spacing: 0.5px;">
+                {player_display}
+            </h1>
+            <p style="color: white; 
+                      text-align: center; 
+                      margin-top: 12px; 
+                      font-size: 18px; 
+                      opacity: 0.95;
+                      font-weight: 400;">
+                Fall 2025 Performance Report
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # === SECTION 1: SLASH LINE ===
+    st.markdown("#### Batting Line")
+    st.markdown(f"""
+        <div style="background: white; 
+                    padding: 30px; 
+                    border-radius: 6px; 
+                    margin-bottom: 25px;
+                    border: 1px solid #dee2e6;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-around; text-align: center;">
+                <div style="flex: 1;">
+                    <p style="color: #6c757d; 
+                              font-size: 12px; 
+                              margin: 0; 
+                              font-weight: 600;
+                              text-transform: uppercase;
+                              letter-spacing: 0.5px;">Average</p>
+                    <p style="font-size: 48px; 
+                              font-weight: 600; 
+                              margin: 8px 0 0 0; 
+                              color: #212529;
+                              font-family: 'SF Mono', 'Consolas', monospace;">
+                        {player_stats['AVG']:.3f}
+                    </p>
+                </div>
+                <div style="width: 1px; background: #dee2e6; margin: 0 20px;"></div>
+                <div style="flex: 1;">
+                    <p style="color: #6c757d; 
+                              font-size: 12px; 
+                              margin: 0; 
+                              font-weight: 600;
+                              text-transform: uppercase;
+                              letter-spacing: 0.5px;">On-Base</p>
+                    <p style="font-size: 48px; 
+                              font-weight: 600; 
+                              margin: 8px 0 0 0; 
+                              color: #212529;
+                              font-family: 'SF Mono', 'Consolas', monospace;">
+                        {player_stats['OBP']:.3f}
+                    </p>
+                </div>
+                <div style="width: 1px; background: #dee2e6; margin: 0 20px;"></div>
+                <div style="flex: 1;">
+                    <p style="color: #6c757d; 
+                              font-size: 12px; 
+                              margin: 0; 
+                              font-weight: 600;
+                              text-transform: uppercase;
+                              letter-spacing: 0.5px;">Slugging</p>
+                    <p style="font-size: 48px; 
+                              font-weight: 600; 
+                              margin: 8px 0 0 0; 
+                              color: #212529;
+                              font-family: 'SF Mono', 'Consolas', monospace;">
+                        {player_stats['SLG']:.3f}
+                    </p>
+                </div>
+                <div style="width: 1px; background: #dee2e6; margin: 0 20px;"></div>
+                <div style="flex: 1;">
+                    <p style="color: #6c757d; 
+                              font-size: 12px; 
+                              margin: 0; 
+                              font-weight: 600;
+                              text-transform: uppercase;
+                              letter-spacing: 0.5px;">OPS</p>
+                    <p style="font-size: 48px; 
+                              font-weight: 600; 
+                              margin: 8px 0 0 0; 
+                              color: {HUSKER_RED};
+                              font-family: 'SF Mono', 'Consolas', monospace;">
+                        {player_stats['OPS']:.3f}
+                    </p>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # === SECTION 2: COUNTING STATS ===
+    st.markdown("#### Counting Statistics")
+    
+    # Create clean table for counting stats
+    counting_stats = pd.DataFrame([{
+        "PA": player_stats['PA'],
+        "AB": player_stats['AB'],
+        "H": player_stats['Hits'],
+        "2B": player_stats['2B'],
+        "3B": player_stats['3B'],
+        "HR": player_stats['HR'],
+        "BB": player_stats['BB'],
+        "SO": player_stats['SO'],
+    }])
+    
+    st.dataframe(
+        counting_stats.style
+            .hide(axis="index")
+            .set_table_styles([
+                {'selector': 'thead th', 
+                 'props': f'background-color: {HUSKER_RED}; color: white; font-weight: 600; padding: 12px; text-align: center;'},
+                {'selector': 'td', 
+                 'props': 'text-align: center; padding: 12px; font-size: 16px; font-weight: 500;'}
+            ]),
+        use_container_width=True
+    )
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # === SECTION 3: BATTED BALL METRICS ===
+    st.markdown("#### Batted Ball Metrics")
+    
+    avg_ev = player_stats['Avg EV'] if pd.notna(player_stats['Avg EV']) else 0
+    max_ev = player_stats['Max EV'] if pd.notna(player_stats['Max EV']) else 0
+    hard_hit = player_stats['HardHit%'] if pd.notna(player_stats['HardHit%']) else 0
+    barrel = player_stats['Barrel%'] if pd.notna(player_stats['Barrel%']) else 0
+    
+    batted_ball_stats = pd.DataFrame([{
+        "Avg Exit Velo": f"{avg_ev:.1f} mph",
+        "Max Exit Velo": f"{max_ev:.1f} mph",
+        "Hard Hit %": f"{hard_hit:.1f}%",
+        "Barrel %": f"{barrel:.1f}%"
+    }])
+    
+    st.dataframe(
+        batted_ball_stats.style
+            .hide(axis="index")
+            .set_table_styles([
+                {'selector': 'thead th', 
+                 'props': f'background-color: {HUSKER_RED}; color: white; font-weight: 600; padding: 12px; text-align: center;'},
+                {'selector': 'td', 
+                 'props': 'text-align: center; padding: 12px; font-size: 16px; font-weight: 500;'}
+            ]),
+        use_container_width=True
+    )
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # === SECTION 4: PLATE DISCIPLINE ===
+    st.markdown("#### Plate Discipline")
+    
+    k_pct = (player_stats['SO']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
+    bb_pct = (player_stats['BB']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
+    whiff = player_stats['Whiff%'] if pd.notna(player_stats['Whiff%']) else 0
+    chase = player_stats['Chase%'] if pd.notna(player_stats['Chase%']) else 0
+    z_swing = player_stats['ZSwing%'] if pd.notna(player_stats['ZSwing%']) else 0
+    z_contact = player_stats['ZContact%'] if pd.notna(player_stats['ZContact%']) else 0
+    
+    discipline_stats = pd.DataFrame([{
+        "K %": f"{k_pct:.1f}%",
+        "BB %": f"{bb_pct:.1f}%",
+        "Whiff %": f"{whiff:.1f}%",
+        "Chase %": f"{chase:.1f}%",
+        "Z-Swing %": f"{z_swing:.1f}%",
+        "Z-Contact %": f"{z_contact:.1f}%"
+    }])
+    
+    st.dataframe(
+        discipline_stats.style
+            .hide(axis="index")
+            .set_table_styles([
+                {'selector': 'thead th', 
+                 'props': f'background-color: {HUSKER_RED}; color: white; font-weight: 600; padding: 12px; text-align: center;'},
+                {'selector': 'td', 
+                 'props': 'text-align: center; padding: 12px; font-size: 16px; font-weight: 500;'}
+            ]),
+        use_container_width=True
+    )
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # === SECTION 5: BATTED BALL DISTRIBUTION ===
+    st.markdown("#### Batted Ball Distribution")
+    
+    bb_profile = create_batted_ball_profile(df_player_fall)
+    
+    if not bb_profile.empty:
+        distribution_stats = pd.DataFrame([{
+            "Line Drive %": f"{bb_profile['LD%'].iloc[0]:.1f}%",
+            "Ground Ball %": f"{bb_profile['GB%'].iloc[0]:.1f}%",
+            "Fly Ball %": f"{bb_profile['FB%'].iloc[0]:.1f}%",
+            "Pull %": f"{bb_profile['Pull%'].iloc[0]:.1f}%",
+            "Middle %": f"{bb_profile['Middle%'].iloc[0]:.1f}%",
+            "Opposite %": f"{bb_profile['Oppo%'].iloc[0]:.1f}%"
+        }])
+        
+        st.dataframe(
+            distribution_stats.style
+                .hide(axis="index")
+                .set_table_styles([
+                    {'selector': 'thead th', 
+                     'props': f'background-color: {HUSKER_RED}; color: white; font-weight: 600; padding: 12px; text-align: center;'},
+                    {'selector': 'td', 
+                     'props': 'text-align: center; padding: 12px; font-size: 16px; font-weight: 500;'}
+                ]),
+            use_container_width=True
+        )
+    
+    st.markdown("---")
+    
+    # === SECTION 6: SPRAY CHART ===
+    st.markdown("#### Spray Chart")
+    fig_spray = create_profile_spray_chart(df_player_fall, player_display)
+    if fig_spray:
+        st.pyplot(fig_spray)
+    else:
+        st.info("No balls in play with valid location data for fall scrimmages.")
+    
+    st.markdown("---")
+    
+    # === SECTION 7: HEATMAPS ===
+    st.markdown("#### Contact & Damage Zones")
+    fig_hm = hitter_heatmaps(df_player_fall, batter_key)
+    if fig_hm:
+        st.pyplot(fig_hm)
+    else:
+        st.info("Not enough data for heatmaps.")
+]:.1f}%",
+            "Ground Ball %": f"{bb_profile['GB%'].iloc[0    return sty
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SPRAY CHART FUNCTION (NEW)
+# ──────────────────────────────────────────────────────────────────────────────
+def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
+    """
+    Create a spray chart for balls in play from the selected game.
+    Color-coded by PA number. Uses actual field dimensions: 335-395-325.
+    """
+    # Filter to balls in play with valid Bearing and Distance
+    inplay = df_game[df_game.get('PitchCall') == 'InPlay'].copy()
+    
+    if inplay.empty:
+        st.warning("No balls in play found for this game.")
+        return None
+    
+    # Ensure we have the necessary columns
+    if 'Bearing' not in inplay.columns or 'Distance' not in inplay.columns:
+        st.warning("Missing 'Bearing' or 'Distance' columns in data.")
+        return None
+    
+    inplay['Bearing'] = pd.to_numeric(inplay['Bearing'], errors='coerce')
+    inplay['Distance'] = pd.to_numeric(inplay['Distance'], errors='coerce')
+    
+    # Remove rows with missing Bearing or Distance
+    inplay = inplay.dropna(subset=['Bearing', 'Distance'])
+    
+    if inplay.empty:
+        st.warning("No balls in play with valid Bearing and Distance data.")
+        return None
+    
+    # Create PA number column based on GameID, Inning, Top/Bottom, PAofInning
+    inplay = inplay.sort_values(['GameID', 'Inning', 'Top/Bottom', 'PAofInning', 'PitchofPA'])
+    inplay['PA_num'] = inplay.groupby(['GameID', 'Inning', 'Top/Bottom', 'PAofInning']).ngroup() + 1
+    
+    # Convert bearing/distance to x,y coordinates
+    coords = [bearing_distance_to_xy(row['Bearing'], row['Distance']) 
+              for _, row in inplay.iterrows()]
+    inplay['x'] = [c[0] for c in coords]
+    inplay['y'] = [c[1] for c in coords]
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 12))
+    
+    # Create the custom wall distances matching Nebraska's fence
+    # Generate many points along the fence for a smooth curve
+    angles = np.linspace(45, 135, 100)
+    wall_data = []
+    for angle in angles:
+        if angle <= 90:  # Left field to center
+            t = (angle - 45) / (90 - 45)
+            dist = 335 + t * (395 - 335)
+        else:  # Center to right field
+            t = (angle - 90) / (135 - 90)
+            dist = 395 + t * (325 - 395)
+        wall_data.append((angle, dist))
+    
+    # Draw the dirt diamond field with custom outfield shape
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=140, custom_wall_distances=wall_data)
+    
+    # Draw outfield wall with actual dimensions: LF=335, CF=395, RF=325
+    angles = np.linspace(45, 135, 100)
+    wall_distances = []
+    for angle in angles:
+        if angle <= 90:  # Left field to center
+            t = (angle - 45) / (90 - 45)
+            dist = 335 + t * (395 - 335)
+        else:  # Center to right field
+            t = (angle - 90) / (135 - 90)
+            dist = 395 + t * (325 - 395)
+        wall_distances.append(dist)
+    
+    # Plot outfield wall
+    wall_x = [dist * np.cos(np.radians(ang)) for ang, dist in zip(angles, wall_distances)]
+    wall_y = [dist * np.sin(np.radians(ang)) for ang, dist in zip(angles, wall_distances)]
+    ax.plot(wall_x, wall_y, 'k-', linewidth=3, zorder=10, label='Outfield Wall')
+    
+    # Add distance markers
+    for angle, dist, label in [(45, 335, '335'), (90, 395, '395'), (135, 325, '325')]:
+        rad = np.radians(angle)
+        x = dist * np.cos(rad)
+        y = dist * np.sin(rad)
+        ax.text(x, y, label, ha='center', va='center', fontsize=11, 
+                fontweight='bold', bbox=dict(boxstyle='round,pad=0.4', 
+                facecolor='yellow', edgecolor='black', linewidth=2, alpha=0.9), zorder=11)
+    
+    # Color palette for PAs
+    n_pas = inplay['PA_num'].nunique()
+    colors_list = plt.cm.tab20(np.linspace(0, 1, min(n_pas, 20)))
+    pa_colors = {pa: colors_list[i % 20] for i, pa in enumerate(sorted(inplay['PA_num'].unique()))}
+    
+    # Plot each ball in play
+    for idx, row in inplay.iterrows():
+        pa_num = row['PA_num']
+        play_result = str(row.get('PlayResult', ''))
+        exit_speed = row.get('ExitSpeed', np.nan)
+        
+        # Marker size based on exit velocity
+        if pd.notna(exit_speed):
+            marker_size = max(150, min(exit_speed * 5, 600))
+        else:
+            marker_size = 250
+        
+        # Different markers for different outcomes
+        if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
+            marker = 'o'
+            edgecolor = 'darkgreen'
+            linewidth = 3
+        else:
+            marker = 'X'
+            edgecolor = 'darkred'
+            linewidth = 3
+        
+        # Plot the marker
+        ax.scatter(row['x'], row['y'], 
+                  c=[pa_colors[pa_num]], 
+                  s=marker_size, 
+                  marker=marker,
+                  edgecolors=edgecolor, 
+                  linewidths=linewidth,
+                  alpha=0.95,
+                  zorder=20)
+        
+        # Label with PA number (larger font, with background)
+        ax.text(row['x'], row['y'], str(pa_num), 
+               ha='center', va='center', 
+               fontsize=11, fontweight='bold',
+               color='white',
+               bbox=dict(boxstyle='circle,pad=0.1', facecolor='black', alpha=0.5),
+               zorder=21)
+    
+    # Create legend for PA numbers with detailed info
+    legend_elements = []
+    for pa in sorted(pa_colors.keys()):
+        # Get all rows for this PA
+        pa_rows = inplay[inplay['PA_num'] == pa]
+        if pa_rows.empty:
+            continue
+        
+        # Use the last row (the actual batted ball)
+        row = pa_rows.iloc[-1]
+        
+        # Gather info
+        ev = row.get('ExitSpeed', np.nan)
+        ev_str = f"{ev:.1f}" if pd.notna(ev) else "—"
+        
+        la = row.get('Angle', np.nan)
+        la_str = f"{la:.1f}°" if pd.notna(la) else "—"
+        
+        dist = row.get('Distance', np.nan)
+        dist_str = f"{dist:.0f}'" if pd.notna(dist) else "—"
+        
+        hit_type = row.get('TaggedHitType', '')
+        if pd.notna(hit_type) and str(hit_type):
+            ht = str(hit_type).replace('GroundBall', 'GB').replace('LineDrive', 'LD').replace('FlyBall', 'FB').replace('Popup', 'PU')
+        else:
+            ht = "—"
+        
+        outcome = row.get('PlayResult', '')
+        outcome_str = str(outcome) if pd.notna(outcome) and str(outcome) else "Out"
+        
+        # Create label with all info
+        label = f"PA {pa}: {outcome_str} | {ev_str} mph, {la_str}, {dist_str} | {ht}"
+        
+        legend_elements.append(
+            Line2D([0], [0], marker='o', color='w', 
+                   markerfacecolor=pa_colors[pa], markersize=10,
+                   markeredgecolor='black', markeredgewidth=1.5,
+                   label=label)
+        )
+    
+    # Add outcome type legend
+    legend_elements.extend([
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
+               markersize=10, markeredgecolor='darkgreen', markeredgewidth=2.5,
+               label='Hit'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='gray',
+               markersize=10, markeredgecolor='darkred', markeredgewidth=2.5,
+               label='Out')
+    ])
+    
+    ax.legend(handles=legend_elements, loc='upper left', 
+             bbox_to_anchor=(0.02, 0.98), frameon=True, 
+             fancybox=True, shadow=True, fontsize=9)
+    
+    # Set axis limits to ensure all data is visible
+    max_dist = max(inplay['Distance'].max(), 400)
+    ax.set_xlim(-max_dist * 0.85, max_dist * 0.85)
+    ax.set_ylim(-30, max_dist * 1.1)
+    ax.set_aspect('equal')
+    
+    # Title
+    date_str = format_date_long(inplay['Date'].iloc[0]) if 'Date' in inplay.columns else ""
+    ax.set_title(f"{batter_display_name} - Spray Chart\n{date_str}", 
+                fontsize=16, fontweight='bold', pad=20)
+    
+    plt.tight_layout()
+    return fig
+
+# ──────────────────────────────────────────────────────────────────────────────
+# STANDARD HITTER REPORT (single game) — with boxed legends bottom
+# ──────────────────────────────────────────────────────────────────────────────
+def create_hitter_report(df, batter_display_name, ncols=3):
+    bdf = df.copy()
+    if "PitchofPA" in bdf.columns:
+        bdf = bdf.sort_values(["GameID","Inning","Top/Bottom","PAofInning","PitchofPA"]).copy()
+
+    pa_groups = list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning']))
+    n_pa = len(pa_groups)
+    nrows = max(1, math.ceil(n_pa / ncols))
+
+    def _pretty_hit_type(s):
+        if pd.isna(s) or s is None:
+            return None
+        t = str(s)
+        t = t.replace("_", " ")
+        t = re.sub(r"([a-z])([A-Z])", r"\1 \2", t)
+        return t.strip().title()
+
+    def adjudicate_pa(pa_df: pd.DataFrame) -> dict:
+        """Return {'label': str, 'klass': 'Walk'|'K'|'InPlay'|'Other', 'k_type': 'Swinging'|'Looking'|'Unknown'|None,
+                   'res': PlayResult or None, 'ev': float or None, 'tag': str or None}"""
+        s_call = pa_df.get('PitchCall')
+        play   = pa_df.get('PlayResult')
+        korbb  = pa_df.get('KorBB')
+
+        kor = str(korbb.iloc[-1]) if not korbb.empty else ""
+        if kor == "Walk":
+            return {"label": "▶ PA Result: Walk 🚶", "klass": "Walk", "k_type": None, "res": None, "ev": None, "tag": None}
+        if kor == "Strikeout":
+            last_call = str(s_call.iloc[-1]) if not s_call.empty else ""
+            if last_call == "StrikeSwinging":
+                k_type = "Swinging"
+            elif last_call == "StrikeCalled":
+                k_type = "Looking"
+            else:
+                k_type = "Unknown"
+            return {"label": f"▶ PA Result: Strikeout ({k_type}) 💥", "klass": "K", "k_type": k_type, "res": None, "ev": None, "tag": None}
+
+        strikes = 0
+        balls = 0
+        k_type = None
+        for _, p in pa_df.iterrows():
+            call = str(p.get('PitchCall'))
+            if call in ("StrikeCalled","StrikeSwinging"):
+                strikes += 1
+                if strikes == 3:
+                    k_type = "Swinging" if call == "StrikeSwinging" else "Looking"
+                    break
+            elif call in ("FoulBallNotFieldable","FoulBallFieldable"):
+                if strikes < 2:
+                    strikes += 1
+            elif call == "BallCalled":
+                balls += 1
+                if balls == 4:
+                    return {"label": "▶ PA Result: Walk 🚶", "klass": "Walk", "k_type": None, "res": None, "ev": None, "tag": None}
+            elif call == "HitByPitch":
+                return {"label": "▶ PA Result: HBP", "klass": "Other", "k_type": None, "res": None, "ev": None, "tag": None}
+
+        if strikes >= 3:
+            return {"label": f"▶ PA Result: Strikeout ({k_type or 'Unknown'}) 💥", "klass": "K", "k_type": k_type or "Unknown",
+                    "res": None, "ev": None, "tag": None}
+
+        inplay = pa_df[s_call == 'InPlay']
+        if not inplay.empty:
+            last = inplay.iloc[-1]
+            res  = last.get('PlayResult', 'InPlay') or 'InPlay'
+            es   = last.get('ExitSpeed', np.nan)
+            tag  = _pretty_hit_type(last.get('TaggedHitType'))
+            bits = [str(res)]
+            if pd.notna(es):
+                bits[-1] = f"{bits[-1]} ({float(es):.1f} MPH)"
+            if tag:
+                bits.append(f"— {tag}")
+            return {"label": f"▶ PA Result: {' '.join(bits)}", "klass": "InPlay", "k_type": None,
+                    "res": res, "ev": float(es) if pd.notna(es) else None, "tag": tag}
+
+        return {"label": "▶ PA Result: —", "klass": "Other", "k_type": None, "res": None, "ev": None, "tag": None}
+
+    descriptions = []
+    for _, pa_df in pa_groups:
+        lines = []
+        for _, p in pa_df.iterrows():
+            velo = p.get('EffectiveVelo', np.nan)
+            velo_str = f"{float(velo):.1f}" if pd.notna(velo) else "—"
+            lines.append(f"{int(p.get('PitchofPA', 0))} / {p.get('AutoPitchType', '—')}  {velo_str} MPH / {p.get('PitchCall', '—')}")
+        verdict = adjudicate_pa(pa_df)
+        lines.append("  " + verdict["label"])
+        descriptions.append(lines)
+
+    fig = plt.figure(figsize=(3 + 4*ncols + 1, 4*nrows))
+    gs = GridSpec(nrows, ncols+1, width_ratios=[0.8] + [1]*ncols, wspace=0.15, hspace=0.55)
+
+    date_str = ""
+    if pa_groups:
+        d0 = pa_groups[0][1].get('Date').iloc[0]
+        date_str = format_date_long(d0)
+    if batter_display_name or date_str:
+        fig.text(0.985, 0.985, f"{batter_display_name} — {date_str}".strip(" —"),
+                 ha='right', va='top', fontsize=9, fontweight='normal')
+
+    gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
+    whiffs = (gd.get('PitchCall')=='StrikeSwinging').sum() if not gd.empty else 0
+    hardhits = (pd.to_numeric(gd.get('ExitSpeed'), errors="coerce") > 95).sum() if not gd.empty else 0
+    chases = 0
+    if not gd.empty:
+        pls = pd.to_numeric(gd.get('PlateLocSide'), errors='coerce')
+        plh = pd.to_numeric(gd.get('PlateLocHeight'), errors='coerce')
+        is_swing = gd.get('PitchCall').isin(['StrikeSwinging'])
+        chases = (is_swing & ((pls<-0.83)|(pls>0.83)|(plh<1.5)|(plh>3.5))).sum()
+    fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
+             ha='center', va='top', fontsize=12)
+
+    for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
+        row, col = divmod(idx, ncols)
+        ax = fig.add_subplot(gs[row, col+1])
+        draw_strikezone(ax)
+        hand_lbl = "RHP"
+        thr = str(pa_df.get('PitcherThrows').iloc[0]) if not pa_df.empty else ""
+        if thr.upper().startswith('L'): hand_lbl = "LHP"
+        pitcher = str(pa_df.get('Pitcher').iloc[0]) if not pa_df.empty else "—"
+
+        for _, p in pa_df.iterrows():
+            mk = {'Fastball':'o', 'Curveball':'s', 'Slider':'^', 'Changeup':'D'}.get(str(p.get('AutoPitchType')), 'o')
+            clr = {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
+                   'FoulBallFieldable':'tan','InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
+            sz = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
+            x = p.get('PlateLocSide'); y = p.get('PlateLocHeight')
+            if pd.notna(x) and pd.notna(y):
+                ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', linewidth=1, zorder=2)
+                yoff = -0.05 if str(p.get('AutoPitchType'))=='Slider' else 0
+                ax.text(x, y + yoff, str(int(p.get('PitchofPA', 0))), ha='center', va='center',
+                        fontsize=6, fontweight='bold', zorder=3)
+
+        ax.set_xlim(*X_LIM); ax.set_ylim(*Y_LIM)
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_title(f"PA {idx+1} | Inning {inn} {tb}", fontsize=10, fontweight='bold', pad=6)
+        ax.text(0.5, 0.1, f"vs {pitcher} ({hand_lbl})", transform=ax.transAxes,
+                ha='center', va='top', fontsize=9, style='italic')
+
+    axd = fig.add_subplot(gs[:, 0]); axd.axis('off')
+    y0 = 1.0; dy = 1.0 / (max(1, n_pa) * 5.0)
+    for i, lines in enumerate(descriptions, start=1):
+        axd.hlines(y0 - dy*0.1, 0, 1, transform=axd.transAxes, color='black', linewidth=1)
+        axd.text(0.02, y0, f"PA {i}", fontsize=6, fontweight='bold', transform=axd.transAxes)
+        yln = y0 - dy
+        for ln in lines:
+            axd.text(0.02, yln, ln, fontsize=6, transform=axd.transAxes)
+            yln -= dy
+        y0 = yln - dy*0.05
+
+    res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
+                          markerfacecolor=v, markersize=10, markeredgecolor='k')
+                   for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green',
+                               'FoulBallNotFieldable':'tan','FoulBallFieldable':'tan',
+                               'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.items()]
+    pitch_handles = [Line2D([0],[0], marker=m, color='w', label=k,
+                             markerfacecolor='gray', markersize=10, markeredgecolor='k')
+                     for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
+
+    fig.legend(
+        res_handles, [h.get_label() for h in res_handles], title='Result',
+        loc='upper center', bbox_to_anchor=(0.42, 0.035), bbox_transform=fig.transFigure,
+        ncol=3, frameon=True, fancybox=True, framealpha=0.95, edgecolor='black',
+        borderpad=0.8, columnspacing=1.6, handlelength=1.6, handletextpad=0.6, labelspacing=0.7
+    )
+    fig.legend(
+        pitch_handles, [h.get_label() for h in pitch_handles], title='Pitches',
+        loc='upper center', bbox_to_anchor=(0.72, 0.035), bbox_transform=fig.transFigure,
+        ncol=4, frameon=True, fancybox=True, framealpha=0.95, edgecolor='black',
+        borderpad=0.8, columnspacing=1.6, handlelength=1.6, handletextpad=0.6, labelspacing=0.7
+    )
+
+    plt.tight_layout(rect=[0.12, 0.08, 1, 0.94])
+    return fig
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PROFILE SPRAY CHART (color by hit type)
+# ──────────────────────────────────────────────────────────────────────────────
+def create_profile_spray_chart(df_profiles: pd.DataFrame, batter_display_name: str):
+    """
+    Create a spray chart for all balls in play from the filtered data.
+    Color-coded by hit type (GB, FB, LD, PU).
+    """
+    # Filter to balls in play with valid Bearing and Distance
+    inplay = df_profiles[df_profiles.get('PitchCall') == 'InPlay'].copy()
+    
+    if inplay.empty:
+        return None
+    
+    # Ensure we have the necessary columns
+    if 'Bearing' not in inplay.columns or 'Distance' not in inplay.columns:
+        return None
+    
+    inplay['Bearing'] = pd.to_numeric(inplay['Bearing'], errors='coerce')
+    inplay['Distance'] = pd.to_numeric(inplay['Distance'], errors='coerce')
+    
+    # Remove rows with missing Bearing or Distance
+    inplay = inplay.dropna(subset=['Bearing', 'Distance'])
+    
+    if inplay.empty:
+        return None
+    
+    # Convert bearing/distance to x,y coordinates
+    coords = [bearing_distance_to_xy(row['Bearing'], row['Distance']) 
+              for _, row in inplay.iterrows()]
+    inplay['x'] = [c[0] for c in coords]
+    inplay['y'] = [c[1] for c in coords]
+    
+    # Categorize hit types
+    def categorize_hit_type(hit_type):
+        if pd.isna(hit_type):
+            return 'Other'
+        ht = str(hit_type).lower()
+        if 'ground' in ht:
+            return 'GroundBall'
+        elif 'line' in ht:
+            return 'LineDrive'
+        elif 'fly' in ht:
+            return 'FlyBall'
+        elif 'popup' in ht or 'pop' in ht:
+            return 'Popup'
+        else:
+            return 'Other'
+    
+    inplay['HitCategory'] = inplay.get('TaggedHitType', pd.Series(dtype=object)).apply(categorize_hit_type)
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 12))
+    
+    # Create the custom wall distances matching Nebraska's fence
+    angles = np.linspace(45, 135, 100)
+    wall_data = []
+    for angle in angles:
+        if angle <= 90:
+            t = (angle - 45) / (90 - 45)
+            dist = 335 + t * (395 - 335)
+        else:
+            t = (angle - 90) / (135 - 90)
+            dist = 395 + t * (325 - 395)
+        wall_data.append((angle, dist))
+    
+    # Draw the dirt diamond field with custom outfield shape
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=100, custom_wall_distances=wall_data)
+    
+    # Draw outfield wall
+    wall_x = [dist * np.cos(np.radians(ang)) for ang, dist in wall_data]
+    wall_y = [dist * np.sin(np.radians(ang)) for ang, dist in wall_data]
+    ax.plot(wall_x, wall_y, 'k-', linewidth=3, zorder=10)
+    
+    # Add distance markers
+    for angle, dist, label in [(45, 335, '335'), (90, 395, '395'), (135, 325, '325')]:
+        rad = np.radians(angle)
+        x = dist * np.cos(rad)
+        y = dist * np.sin(rad)
+        ax.text(x, y, label, ha='center', va='center', fontsize=11, 
+                fontweight='bold', bbox=dict(boxstyle='round,pad=0.4', 
+                facecolor='yellow', edgecolor='black', linewidth=2, alpha=0.9), zorder=11)
+    
+    # Color mapping for hit types - bold, vibrant colors like Baseball Savant
+    hit_type_colors = {
+        'GroundBall': '#DC143C',  # Crimson red
+        'LineDrive': '#FFD700',   # Gold
+        'FlyBall': '#1E90FF',     # Dodger blue
+        'Popup': '#FF69B4',       # Hot pink
+        'Other': '#A9A9A9'        # Dark gray
+    }
+    
+    # Plot each ball in play
+    for idx, row in inplay.iterrows():
+        hit_cat = row['HitCategory']
+        play_result = str(row.get('PlayResult', ''))
+        exit_speed = row.get('ExitSpeed', np.nan)
+        
+        # Smaller, more uniform marker sizes
+        marker_size = 120  # Fixed smaller size
+        
+        # Different edge colors for hits vs outs
+        if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
+            edgecolor = 'black'
+            linewidth = 2
+        else:
+            edgecolor = 'black'
+            linewidth = 1.5
+        
+        # Plot the marker
+        ax.scatter(row['x'], row['y'], 
+                  c=hit_type_colors.get(hit_cat, '#A9A9A9'), 
+                  s=marker_size, 
+                  marker='o',
+                  edgecolors=edgecolor, 
+                  linewidths=linewidth,
+                  alpha=0.85,
+                  zorder=20)
+    
+    # Create legend for hit types
+    legend_elements = []
+    
+    # Count each hit type
+    for hit_type in ['GroundBall', 'LineDrive', 'FlyBall', 'Popup']:
+        count = (inplay['HitCategory'] == hit_type).sum()
+        if count > 0:
+            label = hit_type.replace('GroundBall', 'Ground Ball').replace('LineDrive', 'Line Drive').replace('FlyBall', 'Fly Ball')
+            legend_elements.append(
+                Line2D([0], [0], marker='o', color='w', 
+                       markerfacecolor=hit_type_colors[hit_type], 
+                       markersize=10,
+                       markeredgecolor='black', 
+                       markeredgewidth=1.5,
+                       label=f'{label} ({count})')
+            )
+    
+    # Add hit vs out legend
+    legend_elements.extend([
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
+               markersize=10, markeredgecolor='black', markeredgewidth=2,
+               label='Hit (thick edge)'),
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
+               markersize=10, markeredgecolor='black', markeredgewidth=1,
+               label='Out (thin edge)')
+    ])
+    
+    ax.legend(handles=legend_elements, loc='upper left', 
+             bbox_to_anchor=(0.02, 0.98), frameon=True, 
+             fancybox=True, shadow=True, fontsize=10)
+    
+    # Set axis limits
+    max_dist = max(inplay['Distance'].max(), 400)
+    ax.set_xlim(-max_dist * 0.85, max_dist * 0.85)
+    ax.set_ylim(-30, max_dist * 1.1)
+    ax.set_aspect('equal')
+    
+    # Title
+    ax.set_title(f"{batter_display_name} - Spray Chart (All Batted Balls)", 
+                fontsize=16, fontweight='bold', pad=20)
+    
+    plt.tight_layout()
+    return fig
+
+def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter_key: str):
+    sub = df_filtered_for_profiles[df_filtered_for_profiles.get('BatterKey') == batter_key].copy()
+    if sub.empty:
+        return None
+
+    sub['iscontact'] = sub.get('PitchCall').isin(['InPlay','FoulBallFieldable','FoulBallNotFieldable'])
+    sub['iswhiff']   = sub.get('PitchCall').eq('StrikeSwinging')
+    sub['is95plus']  = pd.to_numeric(sub.get('ExitSpeed'), errors="coerce") >= 95
+
+    fig = plt.figure(figsize=(18, 6))
+    gs = GridSpec(1, 3, figure=fig, wspace=0.25, hspace=0.15)
+
+    def _panel(ax, title, frame):
+        draw_strikezone(ax)
+        x = pd.to_numeric(frame.get('PlateLocSide'), errors='coerce').to_numpy()
+        y = pd.to_numeric(frame.get('PlateLocHeight'), errors='coerce').to_numpy()
+        mask = np.isfinite(x) & np.isfinite(y); x, y = x[mask], y[mask]
+        if len(x) < 10:
+            ax.plot(x, y, 'o', color='deepskyblue', alpha=0.8, markersize=6)
+        else:
+            xi = np.linspace(*X_LIM, 200)
+            yi = np.linspace(*Y_LIM, 200)
+            xi_m, yi_m = np.meshgrid(xi, yi)
+            zi = compute_density_hitter(x, y, xi_m, yi_m)
+            ax.imshow(zi, origin='lower', extent=[*X_LIM, *Y_LIM], aspect='equal', cmap=custom_cmap)
+            draw_strikezone(ax)
+        ax.set_xlim(*X_LIM); ax.set_ylim(*Y_LIM)
+        ax.set_aspect('equal', 'box'); ax.set_title(title, fontsize=10, pad=6, fontweight='bold')
+        ax.set_xticks([]); ax.set_yticks([])
+
+    ax1 = fig.add_subplot(gs[0, 0]); _panel(ax1, "Contact", sub[sub['iscontact']])
+    ax2 = fig.add_subplot(gs[0, 1]); _panel(ax2, "Whiffs",  sub[sub['iswhiff']])
+    ax3 = fig.add_subplot(gs[0, 2]); _panel(ax3, "Damage (95+ EV)", sub[sub['is95plus']])
+
+    plt.tight_layout()
+    return fig
+
+# ──────────────────────────────────────────────────────────────────────────────
+# LOADERS (single CSV or multi-CSV via directory/glob)
+# ──────────────────────────────────────────────────────────────────────────────
+def _expand_paths(path_like: str):
+    if not path_like:
+        return []
+    if os.path.isdir(path_like):
+        files = sorted(glob.glob(os.path.join(path_like, "*.csv")))
+        return files
+    if os.path.isfile(path_like):
+        return [path_like]
+    files = sorted(glob.glob(path_like))
+    return files
+
+@st.cache_data(show_spinner=True)
+def load_many_csv(paths: list) -> pd.DataFrame:
+    dfs = []
+    for p in paths:
+        try:
+            df = pd.read_csv(p, low_memory=False)
+        except UnicodeDecodeError:
+            df = pd.read_csv(p, low_memory=False, encoding="latin-1")
+        dfs.append(df)
+    if not dfs:
+        return pd.DataFrame()
+    out =# hitter_app.py
 
 import os
 import re
@@ -613,7 +1840,7 @@ def _derive_ev_counts(df: pd.DataFrame):
     bb      = int((korbb == 'Walk').sum())
     ibb     = 0  # set if you track IBB separately
     hbp     = int((s_call == 'HitByPitch').sum())
-    sf_mask = play.astype(str).str.contains(r'(?i)sacrifice\s*fly|^SF$', na=False)
+    sf_mask = play.astype(str).str.contains(r'(?i)sacrifice\s*fly|^SF, na=False)
     sf      = int(sf_mask.sum())
 
     # AB and PA (same AB logic as elsewhere for consistency)
@@ -1008,1234 +2235,3 @@ def style_rankings(df: pd.DataFrame):
           }, na_rep="—")
     )
     return sty
-
-# ──────────────────────────────────────────────────────────────────────────────
-# SPRAY CHART FUNCTION (NEW)
-# ──────────────────────────────────────────────────────────────────────────────
-def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
-    """
-    Create a spray chart for balls in play from the selected game.
-    Color-coded by PA number. Uses actual field dimensions: 335-395-325.
-    """
-    # Filter to balls in play with valid Bearing and Distance
-    inplay = df_game[df_game.get('PitchCall') == 'InPlay'].copy()
-    
-    if inplay.empty:
-        st.warning("No balls in play found for this game.")
-        return None
-    
-    # Ensure we have the necessary columns
-    if 'Bearing' not in inplay.columns or 'Distance' not in inplay.columns:
-        st.warning("Missing 'Bearing' or 'Distance' columns in data.")
-        return None
-    
-    inplay['Bearing'] = pd.to_numeric(inplay['Bearing'], errors='coerce')
-    inplay['Distance'] = pd.to_numeric(inplay['Distance'], errors='coerce')
-    
-    # Remove rows with missing Bearing or Distance
-    inplay = inplay.dropna(subset=['Bearing', 'Distance'])
-    
-    if inplay.empty:
-        st.warning("No balls in play with valid Bearing and Distance data.")
-        return None
-    
-    # Create PA number column based on GameID, Inning, Top/Bottom, PAofInning
-    inplay = inplay.sort_values(['GameID', 'Inning', 'Top/Bottom', 'PAofInning', 'PitchofPA'])
-    inplay['PA_num'] = inplay.groupby(['GameID', 'Inning', 'Top/Bottom', 'PAofInning']).ngroup() + 1
-    
-    # Convert bearing/distance to x,y coordinates
-    coords = [bearing_distance_to_xy(row['Bearing'], row['Distance']) 
-              for _, row in inplay.iterrows()]
-    inplay['x'] = [c[0] for c in coords]
-    inplay['y'] = [c[1] for c in coords]
-    
-    # Create figure
-    fig, ax = plt.subplots(figsize=(12, 12))
-    
-    # Create the custom wall distances matching Nebraska's fence
-    # Generate many points along the fence for a smooth curve
-    angles = np.linspace(45, 135, 100)
-    wall_data = []
-    for angle in angles:
-        if angle <= 90:  # Left field to center
-            t = (angle - 45) / (90 - 45)
-            dist = 335 + t * (395 - 335)
-        else:  # Center to right field
-            t = (angle - 90) / (135 - 90)
-            dist = 395 + t * (325 - 395)
-        wall_data.append((angle, dist))
-    
-    # Draw the dirt diamond field with custom outfield shape
-    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=140, custom_wall_distances=wall_data)
-    
-    # Draw outfield wall with actual dimensions: LF=335, CF=395, RF=325
-    angles = np.linspace(45, 135, 100)
-    wall_distances = []
-    for angle in angles:
-        if angle <= 90:  # Left field to center
-            t = (angle - 45) / (90 - 45)
-            dist = 335 + t * (395 - 335)
-        else:  # Center to right field
-            t = (angle - 90) / (135 - 90)
-            dist = 395 + t * (325 - 395)
-        wall_distances.append(dist)
-    
-    # Plot outfield wall
-    wall_x = [dist * np.cos(np.radians(ang)) for ang, dist in zip(angles, wall_distances)]
-    wall_y = [dist * np.sin(np.radians(ang)) for ang, dist in zip(angles, wall_distances)]
-    ax.plot(wall_x, wall_y, 'k-', linewidth=3, zorder=10, label='Outfield Wall')
-    
-    # Add distance markers
-    for angle, dist, label in [(45, 335, '335'), (90, 395, '395'), (135, 325, '325')]:
-        rad = np.radians(angle)
-        x = dist * np.cos(rad)
-        y = dist * np.sin(rad)
-        ax.text(x, y, label, ha='center', va='center', fontsize=11, 
-                fontweight='bold', bbox=dict(boxstyle='round,pad=0.4', 
-                facecolor='yellow', edgecolor='black', linewidth=2, alpha=0.9), zorder=11)
-    
-    # Color palette for PAs
-    n_pas = inplay['PA_num'].nunique()
-    colors_list = plt.cm.tab20(np.linspace(0, 1, min(n_pas, 20)))
-    pa_colors = {pa: colors_list[i % 20] for i, pa in enumerate(sorted(inplay['PA_num'].unique()))}
-    
-    # Plot each ball in play
-    for idx, row in inplay.iterrows():
-        pa_num = row['PA_num']
-        play_result = str(row.get('PlayResult', ''))
-        exit_speed = row.get('ExitSpeed', np.nan)
-        
-        # Marker size based on exit velocity
-        if pd.notna(exit_speed):
-            marker_size = max(150, min(exit_speed * 5, 600))
-        else:
-            marker_size = 250
-        
-        # Different markers for different outcomes
-        if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
-            marker = 'o'
-            edgecolor = 'darkgreen'
-            linewidth = 3
-        else:
-            marker = 'X'
-            edgecolor = 'darkred'
-            linewidth = 3
-        
-        # Plot the marker
-        ax.scatter(row['x'], row['y'], 
-                  c=[pa_colors[pa_num]], 
-                  s=marker_size, 
-                  marker=marker,
-                  edgecolors=edgecolor, 
-                  linewidths=linewidth,
-                  alpha=0.95,
-                  zorder=20)
-        
-        # Label with PA number (larger font, with background)
-        ax.text(row['x'], row['y'], str(pa_num), 
-               ha='center', va='center', 
-               fontsize=11, fontweight='bold',
-               color='white',
-               bbox=dict(boxstyle='circle,pad=0.1', facecolor='black', alpha=0.5),
-               zorder=21)
-    
-    # Create legend for PA numbers with detailed info
-    legend_elements = []
-    for pa in sorted(pa_colors.keys()):
-        # Get all rows for this PA
-        pa_rows = inplay[inplay['PA_num'] == pa]
-        if pa_rows.empty:
-            continue
-        
-        # Use the last row (the actual batted ball)
-        row = pa_rows.iloc[-1]
-        
-        # Gather info
-        ev = row.get('ExitSpeed', np.nan)
-        ev_str = f"{ev:.1f}" if pd.notna(ev) else "—"
-        
-        la = row.get('Angle', np.nan)
-        la_str = f"{la:.1f}°" if pd.notna(la) else "—"
-        
-        dist = row.get('Distance', np.nan)
-        dist_str = f"{dist:.0f}'" if pd.notna(dist) else "—"
-        
-        hit_type = row.get('TaggedHitType', '')
-        if pd.notna(hit_type) and str(hit_type):
-            ht = str(hit_type).replace('GroundBall', 'GB').replace('LineDrive', 'LD').replace('FlyBall', 'FB').replace('Popup', 'PU')
-        else:
-            ht = "—"
-        
-        outcome = row.get('PlayResult', '')
-        outcome_str = str(outcome) if pd.notna(outcome) and str(outcome) else "Out"
-        
-        # Create label with all info
-        label = f"PA {pa}: {outcome_str} | {ev_str} mph, {la_str}, {dist_str} | {ht}"
-        
-        legend_elements.append(
-            Line2D([0], [0], marker='o', color='w', 
-                   markerfacecolor=pa_colors[pa], markersize=10,
-                   markeredgecolor='black', markeredgewidth=1.5,
-                   label=label)
-        )
-    
-    # Add outcome type legend
-    legend_elements.extend([
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
-               markersize=10, markeredgecolor='darkgreen', markeredgewidth=2.5,
-               label='Hit'),
-        Line2D([0], [0], marker='X', color='w', markerfacecolor='gray',
-               markersize=10, markeredgecolor='darkred', markeredgewidth=2.5,
-               label='Out')
-    ])
-    
-    ax.legend(handles=legend_elements, loc='upper left', 
-             bbox_to_anchor=(0.02, 0.98), frameon=True, 
-             fancybox=True, shadow=True, fontsize=9)
-    
-    # Set axis limits to ensure all data is visible
-    max_dist = max(inplay['Distance'].max(), 400)
-    ax.set_xlim(-max_dist * 0.85, max_dist * 0.85)
-    ax.set_ylim(-30, max_dist * 1.1)
-    ax.set_aspect('equal')
-    
-    # Title
-    date_str = format_date_long(inplay['Date'].iloc[0]) if 'Date' in inplay.columns else ""
-    ax.set_title(f"{batter_display_name} - Spray Chart\n{date_str}", 
-                fontsize=16, fontweight='bold', pad=20)
-    
-    plt.tight_layout()
-    return fig
-
-# ──────────────────────────────────────────────────────────────────────────────
-# STANDARD HITTER REPORT (single game) — with boxed legends bottom
-# ──────────────────────────────────────────────────────────────────────────────
-def create_hitter_report(df, batter_display_name, ncols=3):
-    bdf = df.copy()
-    if "PitchofPA" in bdf.columns:
-        bdf = bdf.sort_values(["GameID","Inning","Top/Bottom","PAofInning","PitchofPA"]).copy()
-
-    pa_groups = list(bdf.groupby(['GameID','Inning','Top/Bottom','PAofInning']))
-    n_pa = len(pa_groups)
-    nrows = max(1, math.ceil(n_pa / ncols))
-
-    def _pretty_hit_type(s):
-        if pd.isna(s) or s is None:
-            return None
-        t = str(s)
-        t = t.replace("_", " ")
-        t = re.sub(r"([a-z])([A-Z])", r"\1 \2", t)
-        return t.strip().title()
-
-    def adjudicate_pa(pa_df: pd.DataFrame) -> dict:
-        """Return {'label': str, 'klass': 'Walk'|'K'|'InPlay'|'Other', 'k_type': 'Swinging'|'Looking'|'Unknown'|None,
-                   'res': PlayResult or None, 'ev': float or None, 'tag': str or None}"""
-        s_call = pa_df.get('PitchCall')
-        play   = pa_df.get('PlayResult')
-        korbb  = pa_df.get('KorBB')
-
-        kor = str(korbb.iloc[-1]) if not korbb.empty else ""
-        if kor == "Walk":
-            return {"label": "▶ PA Result: Walk 🚶", "klass": "Walk", "k_type": None, "res": None, "ev": None, "tag": None}
-        if kor == "Strikeout":
-            last_call = str(s_call.iloc[-1]) if not s_call.empty else ""
-            if last_call == "StrikeSwinging":
-                k_type = "Swinging"
-            elif last_call == "StrikeCalled":
-                k_type = "Looking"
-            else:
-                k_type = "Unknown"
-            return {"label": f"▶ PA Result: Strikeout ({k_type}) 💥", "klass": "K", "k_type": k_type, "res": None, "ev": None, "tag": None}
-
-        strikes = 0
-        balls = 0
-        k_type = None
-        for _, p in pa_df.iterrows():
-            call = str(p.get('PitchCall'))
-            if call in ("StrikeCalled","StrikeSwinging"):
-                strikes += 1
-                if strikes == 3:
-                    k_type = "Swinging" if call == "StrikeSwinging" else "Looking"
-                    break
-            elif call in ("FoulBallNotFieldable","FoulBallFieldable"):
-                if strikes < 2:
-                    strikes += 1
-            elif call == "BallCalled":
-                balls += 1
-                if balls == 4:
-                    return {"label": "▶ PA Result: Walk 🚶", "klass": "Walk", "k_type": None, "res": None, "ev": None, "tag": None}
-            elif call == "HitByPitch":
-                return {"label": "▶ PA Result: HBP", "klass": "Other", "k_type": None, "res": None, "ev": None, "tag": None}
-
-        if strikes >= 3:
-            return {"label": f"▶ PA Result: Strikeout ({k_type or 'Unknown'}) 💥", "klass": "K", "k_type": k_type or "Unknown",
-                    "res": None, "ev": None, "tag": None}
-
-        inplay = pa_df[s_call == 'InPlay']
-        if not inplay.empty:
-            last = inplay.iloc[-1]
-            res  = last.get('PlayResult', 'InPlay') or 'InPlay'
-            es   = last.get('ExitSpeed', np.nan)
-            tag  = _pretty_hit_type(last.get('TaggedHitType'))
-            bits = [str(res)]
-            if pd.notna(es):
-                bits[-1] = f"{bits[-1]} ({float(es):.1f} MPH)"
-            if tag:
-                bits.append(f"— {tag}")
-            return {"label": f"▶ PA Result: {' '.join(bits)}", "klass": "InPlay", "k_type": None,
-                    "res": res, "ev": float(es) if pd.notna(es) else None, "tag": tag}
-
-        return {"label": "▶ PA Result: —", "klass": "Other", "k_type": None, "res": None, "ev": None, "tag": None}
-
-    descriptions = []
-    for _, pa_df in pa_groups:
-        lines = []
-        for _, p in pa_df.iterrows():
-            velo = p.get('EffectiveVelo', np.nan)
-            velo_str = f"{float(velo):.1f}" if pd.notna(velo) else "—"
-            lines.append(f"{int(p.get('PitchofPA', 0))} / {p.get('AutoPitchType', '—')}  {velo_str} MPH / {p.get('PitchCall', '—')}")
-        verdict = adjudicate_pa(pa_df)
-        lines.append("  " + verdict["label"])
-        descriptions.append(lines)
-
-    fig = plt.figure(figsize=(3 + 4*ncols + 1, 4*nrows))
-    gs = GridSpec(nrows, ncols+1, width_ratios=[0.8] + [1]*ncols, wspace=0.15, hspace=0.55)
-
-    date_str = ""
-    if pa_groups:
-        d0 = pa_groups[0][1].get('Date').iloc[0]
-        date_str = format_date_long(d0)
-    if batter_display_name or date_str:
-        fig.text(0.985, 0.985, f"{batter_display_name} — {date_str}".strip(" —"),
-                 ha='right', va='top', fontsize=9, fontweight='normal')
-
-    gd = pd.concat([grp for _, grp in pa_groups]) if pa_groups else pd.DataFrame()
-    whiffs = (gd.get('PitchCall')=='StrikeSwinging').sum() if not gd.empty else 0
-    hardhits = (pd.to_numeric(gd.get('ExitSpeed'), errors="coerce") > 95).sum() if not gd.empty else 0
-    chases = 0
-    if not gd.empty:
-        pls = pd.to_numeric(gd.get('PlateLocSide'), errors='coerce')
-        plh = pd.to_numeric(gd.get('PlateLocHeight'), errors='coerce')
-        is_swing = gd.get('PitchCall').isin(['StrikeSwinging'])
-        chases = (is_swing & ((pls<-0.83)|(pls>0.83)|(plh<1.5)|(plh>3.5))).sum()
-    fig.text(0.55, 0.965, f"Whiffs: {whiffs}   Hard Hits: {hardhits}   Chases: {chases}",
-             ha='center', va='top', fontsize=12)
-
-    for idx, ((_, inn, tb, _), pa_df) in enumerate(pa_groups):
-        row, col = divmod(idx, ncols)
-        ax = fig.add_subplot(gs[row, col+1])
-        draw_strikezone(ax)
-        hand_lbl = "RHP"
-        thr = str(pa_df.get('PitcherThrows').iloc[0]) if not pa_df.empty else ""
-        if thr.upper().startswith('L'): hand_lbl = "LHP"
-        pitcher = str(pa_df.get('Pitcher').iloc[0]) if not pa_df.empty else "—"
-
-        for _, p in pa_df.iterrows():
-            mk = {'Fastball':'o', 'Curveball':'s', 'Slider':'^', 'Changeup':'D'}.get(str(p.get('AutoPitchType')), 'o')
-            clr = {'StrikeCalled':'#CCCC00','BallCalled':'green','FoulBallNotFieldable':'tan',
-                   'FoulBallFieldable':'tan','InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.get(str(p.get('PitchCall')), 'black')
-            sz = 200 if str(p.get('AutoPitchType'))=='Slider' else 150
-            x = p.get('PlateLocSide'); y = p.get('PlateLocHeight')
-            if pd.notna(x) and pd.notna(y):
-                ax.scatter(x, y, marker=mk, c=clr, s=sz, edgecolor='white', linewidth=1, zorder=2)
-                yoff = -0.05 if str(p.get('AutoPitchType'))=='Slider' else 0
-                ax.text(x, y + yoff, str(int(p.get('PitchofPA', 0))), ha='center', va='center',
-                        fontsize=6, fontweight='bold', zorder=3)
-
-        ax.set_xlim(*X_LIM); ax.set_ylim(*Y_LIM)
-        ax.set_xticks([]); ax.set_yticks([])
-        ax.set_title(f"PA {idx+1} | Inning {inn} {tb}", fontsize=10, fontweight='bold', pad=6)
-        ax.text(0.5, 0.1, f"vs {pitcher} ({hand_lbl})", transform=ax.transAxes,
-                ha='center', va='top', fontsize=9, style='italic')
-
-    axd = fig.add_subplot(gs[:, 0]); axd.axis('off')
-    y0 = 1.0; dy = 1.0 / (max(1, n_pa) * 5.0)
-    for i, lines in enumerate(descriptions, start=1):
-        axd.hlines(y0 - dy*0.1, 0, 1, transform=axd.transAxes, color='black', linewidth=1)
-        axd.text(0.02, y0, f"PA {i}", fontsize=6, fontweight='bold', transform=axd.transAxes)
-        yln = y0 - dy
-        for ln in lines:
-            axd.text(0.02, yln, ln, fontsize=6, transform=axd.transAxes)
-            yln -= dy
-        y0 = yln - dy*0.05
-
-    res_handles = [Line2D([0],[0], marker='o', color='w', label=k,
-                          markerfacecolor=v, markersize=10, markeredgecolor='k')
-                   for k,v in {'StrikeCalled':'#CCCC00','BallCalled':'green',
-                               'FoulBallNotFieldable':'tan','FoulBallFieldable':'tan',
-                               'InPlay':'#6699CC','StrikeSwinging':'red','HitByPitch':'lime'}.items()]
-    pitch_handles = [Line2D([0],[0], marker=m, color='w', label=k,
-                             markerfacecolor='gray', markersize=10, markeredgecolor='k')
-                     for k,m in {'Fastball':'o','Curveball':'s','Slider':'^','Changeup':'D'}.items()]
-
-    fig.legend(
-        res_handles, [h.get_label() for h in res_handles], title='Result',
-        loc='upper center', bbox_to_anchor=(0.42, 0.035), bbox_transform=fig.transFigure,
-        ncol=3, frameon=True, fancybox=True, framealpha=0.95, edgecolor='black',
-        borderpad=0.8, columnspacing=1.6, handlelength=1.6, handletextpad=0.6, labelspacing=0.7
-    )
-    fig.legend(
-        pitch_handles, [h.get_label() for h in pitch_handles], title='Pitches',
-        loc='upper center', bbox_to_anchor=(0.72, 0.035), bbox_transform=fig.transFigure,
-        ncol=4, frameon=True, fancybox=True, framealpha=0.95, edgecolor='black',
-        borderpad=0.8, columnspacing=1.6, handlelength=1.6, handletextpad=0.6, labelspacing=0.7
-    )
-
-    plt.tight_layout(rect=[0.12, 0.08, 1, 0.94])
-    return fig
-
-# ──────────────────────────────────────────────────────────────────────────────
-# PROFILE SPRAY CHART (color by hit type)
-# ──────────────────────────────────────────────────────────────────────────────
-def create_profile_spray_chart(df_profiles: pd.DataFrame, batter_display_name: str):
-    """
-    Create a spray chart for all balls in play from the filtered data.
-    Color-coded by hit type (GB, FB, LD, PU).
-    """
-    # Filter to balls in play with valid Bearing and Distance
-    inplay = df_profiles[df_profiles.get('PitchCall') == 'InPlay'].copy()
-    
-    if inplay.empty:
-        return None
-    
-    # Ensure we have the necessary columns
-    if 'Bearing' not in inplay.columns or 'Distance' not in inplay.columns:
-        return None
-    
-    inplay['Bearing'] = pd.to_numeric(inplay['Bearing'], errors='coerce')
-    inplay['Distance'] = pd.to_numeric(inplay['Distance'], errors='coerce')
-    
-    # Remove rows with missing Bearing or Distance
-    inplay = inplay.dropna(subset=['Bearing', 'Distance'])
-    
-    if inplay.empty:
-        return None
-    
-    # Convert bearing/distance to x,y coordinates
-    coords = [bearing_distance_to_xy(row['Bearing'], row['Distance']) 
-              for _, row in inplay.iterrows()]
-    inplay['x'] = [c[0] for c in coords]
-    inplay['y'] = [c[1] for c in coords]
-    
-    # Categorize hit types
-    def categorize_hit_type(hit_type):
-        if pd.isna(hit_type):
-            return 'Other'
-        ht = str(hit_type).lower()
-        if 'ground' in ht:
-            return 'GroundBall'
-        elif 'line' in ht:
-            return 'LineDrive'
-        elif 'fly' in ht:
-            return 'FlyBall'
-        elif 'popup' in ht or 'pop' in ht:
-            return 'Popup'
-        else:
-            return 'Other'
-    
-    inplay['HitCategory'] = inplay.get('TaggedHitType', pd.Series(dtype=object)).apply(categorize_hit_type)
-    
-    # Create figure
-    fig, ax = plt.subplots(figsize=(12, 12))
-    
-    # Create the custom wall distances matching Nebraska's fence
-    angles = np.linspace(45, 135, 100)
-    wall_data = []
-    for angle in angles:
-        if angle <= 90:
-            t = (angle - 45) / (90 - 45)
-            dist = 335 + t * (395 - 335)
-        else:
-            t = (angle - 90) / (135 - 90)
-            dist = 395 + t * (325 - 395)
-        wall_data.append((angle, dist))
-    
-    # Draw the dirt diamond field with custom outfield shape
-    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=100, custom_wall_distances=wall_data)
-    
-    # Draw outfield wall
-    wall_x = [dist * np.cos(np.radians(ang)) for ang, dist in wall_data]
-    wall_y = [dist * np.sin(np.radians(ang)) for ang, dist in wall_data]
-    ax.plot(wall_x, wall_y, 'k-', linewidth=3, zorder=10)
-    
-    # Add distance markers
-    for angle, dist, label in [(45, 335, '335'), (90, 395, '395'), (135, 325, '325')]:
-        rad = np.radians(angle)
-        x = dist * np.cos(rad)
-        y = dist * np.sin(rad)
-        ax.text(x, y, label, ha='center', va='center', fontsize=11, 
-                fontweight='bold', bbox=dict(boxstyle='round,pad=0.4', 
-                facecolor='yellow', edgecolor='black', linewidth=2, alpha=0.9), zorder=11)
-    
-    # Color mapping for hit types - bold, vibrant colors like Baseball Savant
-    hit_type_colors = {
-        'GroundBall': '#DC143C',  # Crimson red
-        'LineDrive': '#FFD700',   # Gold
-        'FlyBall': '#1E90FF',     # Dodger blue
-        'Popup': '#FF69B4',       # Hot pink
-        'Other': '#A9A9A9'        # Dark gray
-    }
-    
-    # Plot each ball in play
-    for idx, row in inplay.iterrows():
-        hit_cat = row['HitCategory']
-        play_result = str(row.get('PlayResult', ''))
-        exit_speed = row.get('ExitSpeed', np.nan)
-        
-        # Smaller, more uniform marker sizes
-        marker_size = 120  # Fixed smaller size
-        
-        # Different edge colors for hits vs outs
-        if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
-            edgecolor = 'black'
-            linewidth = 2
-        else:
-            edgecolor = 'black'
-            linewidth = 1.5
-        
-        # Plot the marker
-        ax.scatter(row['x'], row['y'], 
-                  c=hit_type_colors.get(hit_cat, '#A9A9A9'), 
-                  s=marker_size, 
-                  marker='o',
-                  edgecolors=edgecolor, 
-                  linewidths=linewidth,
-                  alpha=0.85,
-                  zorder=20)
-    
-    # Create legend for hit types
-    legend_elements = []
-    
-    # Count each hit type
-    for hit_type in ['GroundBall', 'LineDrive', 'FlyBall', 'Popup']:
-        count = (inplay['HitCategory'] == hit_type).sum()
-        if count > 0:
-            label = hit_type.replace('GroundBall', 'Ground Ball').replace('LineDrive', 'Line Drive').replace('FlyBall', 'Fly Ball')
-            legend_elements.append(
-                Line2D([0], [0], marker='o', color='w', 
-                       markerfacecolor=hit_type_colors[hit_type], 
-                       markersize=10,
-                       markeredgecolor='black', 
-                       markeredgewidth=1.5,
-                       label=f'{label} ({count})')
-            )
-    
-    # Add hit vs out legend
-    legend_elements.extend([
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
-               markersize=10, markeredgecolor='black', markeredgewidth=2,
-               label='Hit (thick edge)'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
-               markersize=10, markeredgecolor='black', markeredgewidth=1,
-               label='Out (thin edge)')
-    ])
-    
-    ax.legend(handles=legend_elements, loc='upper left', 
-             bbox_to_anchor=(0.02, 0.98), frameon=True, 
-             fancybox=True, shadow=True, fontsize=10)
-    
-    # Set axis limits
-    max_dist = max(inplay['Distance'].max(), 400)
-    ax.set_xlim(-max_dist * 0.85, max_dist * 0.85)
-    ax.set_ylim(-30, max_dist * 1.1)
-    ax.set_aspect('equal')
-    
-    # Title
-    ax.set_title(f"{batter_display_name} - Spray Chart (All Batted Balls)", 
-                fontsize=16, fontweight='bold', pad=20)
-    
-    plt.tight_layout()
-    return fig
-def hitter_heatmaps(df_filtered_for_profiles: pd.DataFrame, batter_key: str):
-    sub = df_filtered_for_profiles[df_filtered_for_profiles.get('BatterKey') == batter_key].copy()
-    if sub.empty:
-        return None
-
-    sub['iscontact'] = sub.get('PitchCall').isin(['InPlay','FoulBallFieldable','FoulBallNotFieldable'])
-    sub['iswhiff']   = sub.get('PitchCall').eq('StrikeSwinging')
-    sub['is95plus']  = pd.to_numeric(sub.get('ExitSpeed'), errors="coerce") >= 95
-
-    fig = plt.figure(figsize=(18, 6))
-    gs = GridSpec(1, 3, figure=fig, wspace=0.25, hspace=0.15)
-
-    def _panel(ax, title, frame):
-        draw_strikezone(ax)
-        x = pd.to_numeric(frame.get('PlateLocSide'), errors='coerce').to_numpy()
-        y = pd.to_numeric(frame.get('PlateLocHeight'), errors='coerce').to_numpy()
-        mask = np.isfinite(x) & np.isfinite(y); x, y = x[mask], y[mask]
-        if len(x) < 10:
-            ax.plot(x, y, 'o', color='deepskyblue', alpha=0.8, markersize=6)
-        else:
-            xi = np.linspace(*X_LIM, 200)
-            yi = np.linspace(*Y_LIM, 200)
-            xi_m, yi_m = np.meshgrid(xi, yi)
-            zi = compute_density_hitter(x, y, xi_m, yi_m)
-            ax.imshow(zi, origin='lower', extent=[*X_LIM, *Y_LIM], aspect='equal', cmap=custom_cmap)
-            draw_strikezone(ax)
-        ax.set_xlim(*X_LIM); ax.set_ylim(*Y_LIM)
-        ax.set_aspect('equal', 'box'); ax.set_title(title, fontsize=10, pad=6, fontweight='bold')
-        ax.set_xticks([]); ax.set_yticks([])
-
-    ax1 = fig.add_subplot(gs[0, 0]); _panel(ax1, "Contact", sub[sub['iscontact']])
-    ax2 = fig.add_subplot(gs[0, 1]); _panel(ax2, "Whiffs",  sub[sub['iswhiff']])
-    ax3 = fig.add_subplot(gs[0, 2]); _panel(ax3, "Damage (95+ EV)", sub[sub['is95plus']])
-
-    plt.tight_layout()
-    return fig
-
-# ──────────────────────────────────────────────────────────────────────────────
-# LOADERS (single CSV or multi-CSV via directory/glob)
-# ──────────────────────────────────────────────────────────────────────────────
-def _expand_paths(path_like: str):
-    if not path_like:
-        return []
-    if os.path.isdir(path_like):
-        files = sorted(glob.glob(os.path.join(path_like, "*.csv")))
-        return files
-    if os.path.isfile(path_like):
-        return [path_like]
-    files = sorted(glob.glob(path_like))
-    return files
-
-@st.cache_data(show_spinner=True)
-def load_many_csv(paths: list) -> pd.DataFrame:
-    dfs = []
-    for p in paths:
-        try:
-            df = pd.read_csv(p, low_memory=False)
-        except UnicodeDecodeError:
-            df = pd.read_csv(p, low_memory=False, encoding="latin-1")
-        dfs.append(df)
-    if not dfs:
-        return pd.DataFrame()
-    out = pd.concat(dfs, ignore_index=True)
-    return ensure_date_column(out)
-
-@st.cache_data(show_spinner=True)
-def load_single_csv(path: str) -> pd.DataFrame:
-    try:
-        df = pd.read_csv(path, low_memory=False)
-    except UnicodeDecodeError:
-        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
-    return ensure_date_column(df)
-
-def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_2026: str) -> pd.DataFrame:
-    if period_label == "2025 season":
-        return load_single_csv(path_2025)
-    elif period_label == "2025/26 Scrimmages":
-        paths = _expand_paths(path_scrim)
-        if not paths:
-            return pd.DataFrame()
-        return load_many_csv(paths)
-    elif period_label == "2026 season":
-        paths = _expand_paths(path_2026)
-        if not paths:
-            try:
-                return load_single_csv(path_2026)
-            except Exception:
-                return pd.DataFrame()
-        return load_many_csv(paths)
-    else:
-        return pd.DataFrame()
-
-# ──────────────────────────────────────────────────────────────────────────────
-# UI: BANNER + PERIOD SELECTOR + PATHS
-# ──────────────────────────────────────────────────────────────────────────────
-render_nb_banner(title="Nebraska Baseball")
-
-period = st.selectbox(
-    "Time Period",
-    options=["2025 season", "2025/26 Scrimmages", "2026 season"],
-    index=0
-)
-
-with st.expander("Data paths (optional quick edit)"):
-    st.caption("Paste a CSV path, a directory path, or a glob pattern (e.g., `/mnt/data/scrims/*.csv`).")
-    path_2025  = st.text_input("2025 season path", value=DATA_PATH_2025,  key="path_2025")
-    path_scrim = st.text_input("2025/26 Scrimmages path/pattern", value=DATA_PATH_SCRIM, key="path_scrim")
-    path_2026  = st.text_input("2026 season path/pattern", value=DATA_PATH_2026,  key="path_2026")
-
-path_2025  = st.session_state.get("path_2025", DATA_PATH_2025)
-path_scrim = st.session_state.get("path_scrim", DATA_PATH_SCRIM)
-path_2026  = st.session_state.get("path_2026", DATA_PATH_2026)
-
-df_all = load_for_period(period, path_2025, path_scrim, path_2026)
-if df_all.empty:
-    st.error(f"No data loaded for '{period}'. Check the path(s) above.")
-    st.stop()
-
-# ──────────────────────────────────────────────────────────────────────────────
-# BUILD HITTER KEYSPACE (NEB hitters with real PAs; dedup names)
-# ──────────────────────────────────────────────────────────────────────────────
-for col in ["Batter", "BatterTeam", "PitchofPA", "PitcherThrows", "PitcherTeam",
-            "PlayResult", "KorBB", "PitchCall", "AutoPitchType", "ExitSpeed", "Angle",
-            "PlateLocSide", "PlateLocHeight", "TaggedHitType", "Bearing", "BatterSide",
-            "Distance"]:
-    if col not in df_all.columns:
-        df_all[col] = pd.NA
-
-df_all = ensure_date_column(df_all)
-
-df_neb_bat = df_all[df_all["BatterTeam"].astype(str).str.upper().eq("NEB")].copy()
-df_neb_bat["PitchofPA"] = pd.to_numeric(df_neb_bat["PitchofPA"], errors="coerce")
-df_neb_bat["BatterKey"]  = df_neb_bat["Batter"].map(normalize_name)
-df_neb_bat["BatterDisp"] = df_neb_bat["BatterKey"]
-
-df_neb_bat = _bin_ev_la(df_neb_bat)
-df_neb_bat = merge_probabilities(df_neb_bat)
-
-has_pa = df_neb_bat[(df_neb_bat["PitchofPA"] == 1) & df_neb_bat["BatterKey"].ne("")]
-if has_pa.empty:
-    st.error(f"No Nebraska hitters with plate appearances found for '{period}'.")
-    st.stop()
-
-batters_keys = sorted(has_pa["BatterKey"].dropna().unique().tolist())
-display_name_by_key = (
-    df_neb_bat.groupby("BatterKey")["BatterDisp"]
-    .agg(lambda s: s.dropna().value_counts().index[0] if not s.dropna().empty else "")
-    .to_dict()
-)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Top section selector (includes "Rankings" and "Fall Summary")
-# ──────────────────────────────────────────────────────────────────────────────
-view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary"], horizontal=True)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# MODE: STANDARD HITTER REPORT
-# ──────────────────────────────────────────────────────────────────────────────
-if view_mode == "Standard Hitter Report":
-    st.markdown("### Nebraska Hitter Reports")
-    colB, colD = st.columns([1, 1])
-
-    batter_key_std = colB.selectbox(
-        "Player",
-        options=batters_keys,
-        index=0,
-        format_func=lambda k: display_name_by_key.get(k, k)
-    )
-
-    if batter_key_std:
-        df_b_all = df_neb_bat[df_neb_bat["BatterKey"] == batter_key_std].copy()
-        df_b_all["DateOnly"] = pd.to_datetime(df_b_all["Date"], errors="coerce").dt.date
-        date_groups = df_b_all.groupby("DateOnly")["PitcherTeam"].agg(
-            lambda s: sorted(set([TEAM_NAME_MAP.get(str(x), str(x)) for x in s if pd.notna(x)]))
-        )
-        date_opts, date_labels = [], {}
-        for d, teams in date_groups.items():
-            if pd.isna(d):
-                continue
-            label = f"{format_date_long(d)}"
-            if teams:
-                label += f" ({'/'.join(teams)})"
-            date_opts.append(d)
-            date_labels[d] = label
-        date_opts = sorted(date_opts)
-    else:
-        df_b_all = df_neb_bat.iloc[0:0].copy()
-        date_opts, date_labels = [], {}
-
-    selected_date = colD.selectbox(
-        "Game Date",
-        options=date_opts,
-        format_func=lambda d: date_labels.get(d, format_date_long(d)),
-        index=len(date_opts)-1 if date_opts else 0
-    ) if date_opts else None
-
-    if batter_key_std and selected_date:
-        df_date = df_b_all[df_b_all["DateOnly"] == selected_date].copy()
-    else:
-        df_date = df_b_all.iloc[0:0].copy()
-
-    batter_display = display_name_by_key.get(batter_key_std, batter_key_std)
-
-    if df_date.empty:
-        st.info("Select a player and game date to see the Standard Hitter Report.")
-    else:
-        st.markdown("### Standard Hitter Report")
-        fig_std = create_hitter_report(df_date, batter_display, ncols=3)
-        if fig_std:
-            st.pyplot(fig_std)
-        
-        # Add spray chart
-        st.markdown("### Spray Chart")
-        fig_spray = create_spray_chart(df_date, batter_display)
-        if fig_spray:
-            st.pyplot(fig_spray)
-        else:
-            st.info("No balls in play with valid location data for this game.")
-
-# ──────────────────────────────────────────────────────────────────────────────
-# MODE: PROFILES & HEATMAPS (3 tables + heatmaps)
-# ──────────────────────────────────────────────────────────────────────────────
-elif view_mode == "Profiles & Heatmaps":
-    st.markdown("### Profiles & Heatmaps")
-
-    batter_key = st.selectbox(
-        "Player",
-        options=batters_keys,
-        index=0,
-        format_func=lambda k: display_name_by_key.get(k, k)
-    )
-
-    st.markdown("#### Filters")
-    colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
-
-    if batter_key:
-        df_b_all = df_neb_bat[df_neb_bat["BatterKey"] == batter_key].copy()
-        df_player_all = df_b_all.copy()
-        dates_all = pd.to_datetime(df_b_all["Date"], errors="coerce").dropna().dt.date
-        present_months = sorted(pd.Series(dates_all).map(lambda d: d.month).unique().tolist())
-    else:
-        df_b_all = df_neb_bat.iloc[0:0].copy()
-        df_player_all = df_b_all.copy()
-        present_months = []
-
-    sel_months = colM.multiselect(
-        "Months",
-        options=present_months,
-        format_func=lambda n: MONTH_NAME_BY_NUM.get(n, str(n)),
-        default=[],
-        key="prof_months",
-    )
-
-    if batter_key:
-        dser = pd.to_datetime(df_player_all["Date"], errors="coerce").dt.date
-        if sel_months:
-            dser = dser[pd.Series(dser).map(lambda d: d.month if pd.notna(d) else None).isin(sel_months)]
-        present_days = sorted(pd.Series(dser).dropna().map(lambda d: d.day).unique().tolist())
-    else:
-        present_days = []
-
-    sel_days = colD2.multiselect("Days", options=present_days, default=[], key="prof_days")
-
-    lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
-    hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
-
-    if sel_months:
-        mask_m = pd.to_datetime(df_player_all["Date"], errors="coerce").dt.month.isin(sel_months)
-    else:
-        mask_m = pd.Series(True, index=df_player_all.index)
-    if sel_days:
-        mask_d = pd.to_datetime(df_player_all["Date"], errors="coerce").dt.day.isin(sel_days)
-    else:
-        mask_d = pd.Series(True, index=df_player_all.index)
-    df_profiles = df_player_all[mask_m & mask_d].copy()
-
-    if lastN and not df_profiles.empty:
-        uniq_dates = pd.to_datetime(df_profiles["Date"], errors="coerce").dt.date.dropna().unique()
-        uniq_dates = sorted(uniq_dates)
-        last_dates = set(uniq_dates[-lastN:])
-        df_profiles = df_profiles[pd.to_datetime(df_profiles["Date"], errors="coerce").dt.date.isin(last_dates)].copy()
-
-    if hand_choice == "LHP":
-        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
-    elif hand_choice == "RHP":
-        df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
-
-    if batter_key and df_profiles.empty:
-        st.info("No rows for the selected filters.")
-    elif batter_key:
-        season_label = {
-            "2025 season": "2025",
-            "2025/26 Scrimmages": "2025/26 Scrimmages",
-            "2026 season": "2026",
-        }.get(period, "—")
-        st.markdown(f"#### Split Profiles — {display_name_by_key.get(batter_key,batter_key)} ({season_label})")
-
-        t1_counts, t2_rates, t3_batted = build_profile_tables(df_profiles)
-
-        st.markdown("**Summary**")
-        st.table(themed_styler(t1_counts, nowrap=True))
-
-        st.markdown("**Plate Discipline**")
-        st.table(themed_styler(t2_rates, nowrap=True))
-
-        st.markdown("**Batted Ball Distribution**")
-        st.table(themed_styler(t3_batted, nowrap=True))
-
-        st.markdown("#### Spray Chart")
-        fig_spray = create_profile_spray_chart(df_profiles, display_name_by_key.get(batter_key, batter_key))
-        if fig_spray:
-            st.pyplot(fig_spray)
-        else:
-            st.info("No balls in play with valid location data for the selected filters.")
-
-        st.markdown("#### Hitter Heatmaps")
-        fig_hm = hitter_heatmaps(df_profiles, batter_key)
-        if fig_hm:
-            st.pyplot(fig_hm)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# MODE: RANKINGS (team-wide, click-to-sort, red headers, leader/last coloring)
-# ──────────────────────────────────────────────────────────────────────────────
-elif view_mode == "Rankings":
-    st.markdown("### Rankings")
-
-    st.markdown("#### Filters")
-    colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
-
-    df_scope = df_neb_bat.copy()
-
-    dates_all = pd.to_datetime(df_scope["Date"], errors="coerce").dropna().dt.date
-    present_months = sorted(pd.Series(dates_all).map(lambda d: d.month).unique().tolist())
-    sel_months = colM.multiselect(
-        "Months",
-        options=present_months,
-        format_func=lambda n: MONTH_NAME_BY_NUM.get(n, str(n)),
-        default=[],
-        key="rk_months",
-    )
-
-    dser = pd.to_datetime(df_scope["Date"], errors="coerce").dt.date
-    if sel_months:
-        dser = dser[pd.Series(dser).map(lambda d: d.month if pd.notna(d) else None).isin(sel_months)]
-    present_days = sorted(pd.Series(dser).dropna().map(lambda d: d.day).unique().tolist())
-    sel_days = colD2.multiselect("Days", options=present_days, default=[], key="rk_days")
-
-    lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="rk_lastn"))
-    hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="rk_hand")
-
-    if sel_months:
-        mask_m = pd.to_datetime(df_scope["Date"], errors="coerce").dt.month.isin(sel_months)
-    else:
-        mask_m = pd.Series(True, index=df_scope.index)
-    if sel_days:
-        mask_d = pd.to_datetime(df_scope["Date"], errors="coerce").dt.day.isin(sel_days)
-    else:
-        mask_d = pd.Series(True, index=df_scope.index)
-    df_scope = df_scope[mask_m & mask_d].copy()
-
-    if lastN and not df_scope.empty:
-        uniq_dates = pd.to_datetime(df_scope["Date"], errors="coerce").dt.date.dropna().unique()
-        uniq_dates = sorted(uniq_dates)
-        last_dates = set(uniq_dates[-lastN:])
-        df_scope = df_scope[pd.to_datetime(df_scope["Date"], errors="coerce").dt.date.isin(last_dates)].copy()
-
-    if hand_choice == "LHP":
-        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('L')].copy()
-    elif hand_choice == "RHP":
-        df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
-
-    if df_scope.empty:
-        st.info("No rows for the selected filters.")
-        st.stop()
-
-    rankings_df = build_rankings_numeric(df_scope, display_name_by_key)
-    min_pa = int(st.number_input("Min PA", min_value=0, value=0, step=1, key="rk_min_pa"))
-    if min_pa > 0:
-        rankings_df = rankings_df[rankings_df["PA"] >= min_pa]
-
-    styled = style_rankings(rankings_df)
-
-    st.dataframe(
-        styled,
-        use_container_width=True,
-        hide_index=True,
-        height=520
-    )
-    
-    # Show complete fall stats table if in scrimmage period
-    if period == "2025/26 Scrimmages":
-        st.markdown("---")
-        st.markdown("#### Complete Fall Scrimmage Statistics")
-        st.markdown("*Full season stats for all players during fall scrimmages*")
-        
-        min_pa_complete = int(st.number_input("Min PA for Complete Table", min_value=0, value=10, step=1, key="complete_min_pa"))
-        complete_rankings = rankings_df.copy()
-        if min_pa_complete > 0:
-            complete_rankings = complete_rankings[complete_rankings["PA"] >= min_pa_complete]
-        
-        styled_complete = style_rankings(complete_rankings)
-        st.dataframe(
-            styled_complete,
-            use_container_width=True,
-            hide_index=True,
-            height=520
-        )
-
-# ──────────────────────────────────────────────────────────────────────────────
-# MODE: FALL SUMMARY (individual player fall scrimmage performance)
-# ──────────────────────────────────────────────────────────────────────────────
-else:  # Fall Summary
-    st.markdown("### 🍂 Fall Scrimmages Summary")
-    
-    # Only show if we're in the scrimmages period
-    if period != "2025/26 Scrimmages":
-        st.info("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")
-        st.stop()
-    
-    # Player selector
-    batter_key = st.selectbox(
-        "Player",
-        options=batters_keys,
-        index=0,
-        format_func=lambda k: display_name_by_key.get(k, k),
-        key="fall_player"
-    )
-    
-    if not batter_key:
-        st.info("Select a player to view their fall summary.")
-        st.stop()
-    
-    # Get player's fall data
-    df_player_fall = df_neb_bat[df_neb_bat["BatterKey"] == batter_key].copy()
-    
-    if df_player_fall.empty:
-        st.warning(f"No fall scrimmage data found for {display_name_by_key.get(batter_key, batter_key)}.")
-        st.stop()
-    
-    player_display = display_name_by_key.get(batter_key, batter_key)
-    
-    # Compute player stats
-    player_stats = _compute_split_core(df_player_fall)
-    
-    # Big player name banner with Husker red background
-    st.markdown(f"""
-        <div style="background: linear-gradient(135deg, {HUSKER_RED} 0%, #c40020 100%); 
-                    padding: 30px; border-radius: 15px; margin-bottom: 30px; 
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            <h1 style="color: white; text-align: center; margin: 0; font-size: 48px; 
-                       text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">
-                {player_display}
-            </h1>
-            <p style="color: white; text-align: center; margin-top: 10px; font-size: 24px; 
-                      opacity: 0.9;">
-                Fall 2025 Performance Report
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Triple slash line in big bold numbers
-    st.markdown(f"""
-        <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); 
-                    padding: 25px; border-radius: 12px; margin-bottom: 25px;
-                    border-left: 5px solid {HUSKER_RED};">
-            <div style="display: flex; justify-content: space-around; text-align: center;">
-                <div>
-                    <p style="color: #6c757d; font-size: 14px; margin: 0; font-weight: 600;">BATTING AVG</p>
-                    <p style="font-size: 42px; font-weight: bold; margin: 5px 0; color: {HUSKER_RED};">
-                        {player_stats['AVG']:.3f}
-                    </p>
-                </div>
-                <div>
-                    <p style="color: #6c757d; font-size: 14px; margin: 0; font-weight: 600;">ON-BASE %</p>
-                    <p style="font-size: 42px; font-weight: bold; margin: 5px 0; color: {HUSKER_RED};">
-                        {player_stats['OBP']:.3f}
-                    </p>
-                </div>
-                <div>
-                    <p style="color: #6c757d; font-size: 14px; margin: 0; font-weight: 600;">SLUGGING %</p>
-                    <p style="font-size: 42px; font-weight: bold; margin: 5px 0; color: {HUSKER_RED};">
-                        {player_stats['SLG']:.3f}
-                    </p>
-                </div>
-                <div>
-                    <p style="color: #6c757d; font-size: 14px; margin: 0; font-weight: 600;">OPS</p>
-                    <p style="font-size: 42px; font-weight: bold; margin: 5px 0; color: #198754;">
-                        {player_stats['OPS']:.3f}
-                    </p>
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Key counting stats in colored boxes
-    st.markdown("### 📊 Counting Stats")
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    with col1:
-        st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); 
-                        padding: 20px; border-radius: 10px; text-align: center; color: white;">
-                <p style="margin: 0; font-size: 14px; opacity: 0.9;">PLATE APP</p>
-                <p style="margin: 5px 0 0 0; font-size: 36px; font-weight: bold;">{player_stats['PA']}</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); 
-                        padding: 20px; border-radius: 10px; text-align: center; color: white;">
-                <p style="margin: 0; font-size: 14px; opacity: 0.9;">HITS</p>
-                <p style="margin: 5px 0 0 0; font-size: 36px; font-weight: bold;">{player_stats['Hits']}</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%); 
-                        padding: 20px; border-radius: 10px; text-align: center; color: white;">
-                <p style="margin: 0; font-size: 14px; opacity: 0.9;">DOUBLES</p>
-                <p style="margin: 5px 0 0 0; font-size: 36px; font-weight: bold;">{player_stats['2B']}</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        st.markdown(f"""
-            <div style="background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%); 
-                        padding: 20px; border-radius: 10px; text-align: center; color: white;">
-                <p style="margin: 0; font-size: 14px; opacity: 0.9;">TRIPLES</p>
-                <p style="margin: 5px 0 0 0; font-size: 36px; font-weight: bold;">{player_stats['3B']}</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col5:
-        st.markdown(f"""
-            <div style="background: linear-gradient(135deg, {HUSKER_RED} 0%, #c40020 100%); 
-                        padding: 20px; border-radius: 10px; text-align: center; color: white;">
-                <p style="margin: 0; font-size: 14px; opacity: 0.9;">HOME RUNS</p>
-                <p style="margin: 5px 0 0 0; font-size: 36px; font-weight: bold;">{player_stats['HR']}</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Batted Ball Quality section with progress bars
-    st.markdown("### ⚾ Batted Ball Quality")
-    
-    col6, col7 = st.columns(2)
-    
-    with col6:
-        avg_ev = player_stats['Avg EV'] if pd.notna(player_stats['Avg EV']) else 0
-        max_ev = player_stats['Max EV'] if pd.notna(player_stats['Max EV']) else 0
-        
-        st.markdown(f"""
-            <div style="background: white; padding: 20px; border-radius: 10px; 
-                        border: 2px solid #e9ecef; margin-bottom: 15px;">
-                <p style="font-weight: 600; color: #495057; margin-bottom: 10px;">
-                    🚀 Avg Exit Velocity: <span style="color: {HUSKER_RED}; font-size: 24px;">{avg_ev:.1f}</span> mph
-                </p>
-                <div style="background: #e9ecef; border-radius: 10px; height: 25px; overflow: hidden;">
-                    <div style="background: linear-gradient(90deg, {HUSKER_RED} 0%, #ff4d4d 100%); 
-                                height: 100%; width: {min(avg_ev/110*100, 100)}%; 
-                                border-radius: 10px; transition: width 0.3s;"></div>
-                </div>
-            </div>
-            
-            <div style="background: white; padding: 20px; border-radius: 10px; 
-                        border: 2px solid #e9ecef;">
-                <p style="font-weight: 600; color: #495057; margin-bottom: 10px;">
-                    💥 Max Exit Velocity: <span style="color: {HUSKER_RED}; font-size: 24px;">{max_ev:.1f}</span> mph
-                </p>
-                <div style="background: #e9ecef; border-radius: 10px; height: 25px; overflow: hidden;">
-                    <div style="background: linear-gradient(90deg, #FF9800 0%, #ffb74d 100%); 
-                                height: 100%; width: {min(max_ev/115*100, 100)}%; 
-                                border-radius: 10px; transition: width 0.3s;"></div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col7:
-        hard_hit = player_stats['HardHit%'] if pd.notna(player_stats['HardHit%']) else 0
-        barrel = player_stats['Barrel%'] if pd.notna(player_stats['Barrel%']) else 0
-        
-        st.markdown(f"""
-            <div style="background: white; padding: 20px; border-radius: 10px; 
-                        border: 2px solid #e9ecef; margin-bottom: 15px;">
-                <p style="font-weight: 600; color: #495057; margin-bottom: 10px;">
-                    🔥 Hard Hit %: <span style="color: #4CAF50; font-size: 24px;">{hard_hit:.1f}</span>%
-                </p>
-                <div style="background: #e9ecef; border-radius: 10px; height: 25px; overflow: hidden;">
-                    <div style="background: linear-gradient(90deg, #4CAF50 0%, #66bb6a 100%); 
-                                height: 100%; width: {min(hard_hit, 100)}%; 
-                                border-radius: 10px; transition: width 0.3s;"></div>
-                </div>
-            </div>
-            
-            <div style="background: white; padding: 20px; border-radius: 10px; 
-                        border: 2px solid #e9ecef;">
-                <p style="font-weight: 600; color: #495057; margin-bottom: 10px;">
-                    🎯 Barrel %: <span style="color: #2196F3; font-size: 24px;">{barrel:.1f}</span>%
-                </p>
-                <div style="background: #e9ecef; border-radius: 10px; height: 25px; overflow: hidden;">
-                    <div style="background: linear-gradient(90deg, #2196F3 0%, #64b5f6 100%); 
-                                height: 100%; width: {min(barrel, 100)}%; 
-                                border-radius: 10px; transition: width 0.3s;"></div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Plate discipline with compact layout
-    st.markdown("### 👁️ Plate Discipline")
-    
-    col8, col9, col10, col11 = st.columns(4)
-    
-    k_pct = (player_stats['SO']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
-    bb_pct = (player_stats['BB']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
-    whiff = player_stats['Whiff%'] if pd.notna(player_stats['Whiff%']) else 0
-    chase = player_stats['Chase%'] if pd.notna(player_stats['Chase%']) else 0
-    
-    with col8:
-        st.metric("K%", f"{k_pct:.1f}%", delta=None)
-    with col9:
-        st.metric("BB%", f"{bb_pct:.1f}%", delta=None)
-    with col10:
-        st.metric("Whiff%", f"{whiff:.1f}%", delta=None)
-    with col11:
-        st.metric("Chase%", f"{chase:.1f}%", delta=None)
-    
-    # Batted ball distribution with emojis
-    st.markdown("---")
-    st.markdown("### 🎯 Batted Ball Distribution")
-    
-    bb_profile = create_batted_ball_profile(df_player_fall)
-    
-    col12, col13, col14 = st.columns(3)
-    
-    ld_pct = bb_profile['LD%'].iloc[0] if not bb_profile.empty else 0
-    gb_pct = bb_profile['GB%'].iloc[0] if not bb_profile.empty else 0
-    fb_pct = bb_profile['FB%'].iloc[0] if not bb_profile.empty else 0
-    
-    with col12:
-        st.markdown(f"""
-            <div style="text-align: center; padding: 20px; background: #fff3cd; 
-                        border-radius: 10px; border: 2px solid #ffc107;">
-                <p style="font-size: 14px; margin: 0; color: #856404;">LINE DRIVES</p>
-                <p style="font-size: 48px; margin: 10px 0; font-weight: bold; color: #856404;">
-                    {ld_pct:.1f}%
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col13:
-        st.markdown(f"""
-            <div style="text-align: center; padding: 20px; background: #f8d7da; 
-                        border-radius: 10px; border: 2px solid #dc3545;">
-                <p style="font-size: 14px; margin: 0; color: #721c24;">GROUND BALLS</p>
-                <p style="font-size: 48px; margin: 10px 0; font-weight: bold; color: #721c24;">
-                    {gb_pct:.1f}%
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col14:
-        st.markdown(f"""
-            <div style="text-align: center; padding: 20px; background: #d1ecf1; 
-                        border-radius: 10px; border: 2px solid #17a2b8;">
-                <p style="font-size: 14px; margin: 0; color: #0c5460;">FLY BALLS</p>
-                <p style="font-size: 48px; margin: 10px 0; font-weight: bold; color: #0c5460;">
-                    {fb_pct:.1f}%
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # Add spray chart
-    st.markdown("---")
-    st.markdown("### 🗺️ Fall Spray Chart")
-    fig_spray = create_profile_spray_chart(df_player_fall, player_display)
-    if fig_spray:
-        st.pyplot(fig_spray)
-    else:
-        st.info("No balls in play with valid location data for fall scrimmages.")
-    
-    # Add heatmaps
-    st.markdown("---")
-    st.markdown("### 🔥 Fall Heatmaps")
-    fig_hm = hitter_heatmaps(df_player_fall, batter_key)
-    if fig_hm:
-        st.pyplot(fig_hm)
-    else:
-        st.info("Not enough data for heatmaps.")

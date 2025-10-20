@@ -1957,9 +1957,6 @@ else:
 # ──────────────────────────────────────────────────────────────────────────────
 # MODE: FALL SUMMARY (individual player fall scrimmage performance)
 # ──────────────────────────────────────────────────────────────────────────────
-else:  # Fall Summary
-    st.markdown("### Fall Scrimmages Summary")
-    
     # Only show if we're in the scrimmages period
     if period != "2025/26 Scrimmages":
         st.info("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")

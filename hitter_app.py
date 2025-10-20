@@ -2109,12 +2109,6 @@ else:  # Fall Summary
                 </div>
             </div>
         """, unsafe_allow_html=True)
-                <div style="background: #f1f3f5; border-radius: 8px; height: 8px; margin-top: 12px; overflow: hidden;">
-                    <div style="background: {HUSKER_RED}; height: 100%; width: {min(max_ev/115*100, 100)}%; 
-                                border-radius: 8px;"></div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
     
     with c7:
         st.markdown(f"""

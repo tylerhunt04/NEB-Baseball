@@ -904,10 +904,12 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
     if len(dates) < 2:
         return None
     
+    # Calculate cumulative stats up to each date
     stats_by_date = []
-    for date in dates:
-        game_df = df[df['DateOnly'] == date]
-        stats = _compute_split_core(game_df)
+    for i, date in enumerate(dates):
+        # Get all games up to and including this date
+        cumulative_df = df[df['DateOnly'].isin(dates[:i+1])]
+        stats = _compute_split_core(cumulative_df)
         stats_by_date.append({
             'Date': date,
             'OPS': stats['OPS'],
@@ -928,9 +930,10 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
     ax.plot(dates_plot, metric_values, marker='o', linewidth=2.5, 
             markersize=8, color=HUSKER_RED, label=metric)
     
-    avg_val = np.mean([v for v in metric_values if pd.notna(v)])
-    ax.axhline(y=avg_val, color='gray', linestyle='--', linewidth=1.5, 
-               alpha=0.7, label=f'Fall Avg: {avg_val:.3f}')
+    # Final value line
+    final_val = metric_values[-1]
+    ax.axhline(y=final_val, color='gray', linestyle='--', linewidth=1.5, 
+               alpha=0.7, label=f'Final: {final_val:.3f}')
     
     ax.set_xlabel('Game', fontsize=12, fontweight='bold')
     ax.set_ylabel(metric, fontsize=12, fontweight='bold')
@@ -2042,143 +2045,108 @@ else:
     player_stats = _compute_split_core(df_player_fall)
     
     # SECTION 1: OVERALL PERFORMANCE
-    st.markdown("### 📊 Overall Performance")
+    st.markdown("### Overall Performance")
+    st.markdown("---")
     
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
+    # Row 1: Primary Stats
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("PA", f"{player_stats['PA']}")
-        st.metric("AB", f"{player_stats['AB']}")
-    
+        st.metric("Plate Appearances", f"{player_stats['PA']}")
     with col2:
-        st.metric("AVG", f"{player_stats['AVG']:.3f}")
-        st.metric("Hits", f"{player_stats['Hits']}")
-    
+        st.metric("Batting Average", f"{player_stats['AVG']:.3f}")
     with col3:
-        st.metric("OBP", f"{player_stats['OBP']:.3f}")
-        st.metric("BB", f"{player_stats['BB']}")
-    
+        st.metric("On-Base Percentage", f"{player_stats['OBP']:.3f}")
     with col4:
-        st.metric("SLG", f"{player_stats['SLG']:.3f}")
-        st.metric("2B/3B/HR", f"{player_stats['2B']}/{player_stats['3B']}/{player_stats['HR']}")
+        st.metric("Slugging Percentage", f"{player_stats['SLG']:.3f}")
     
-    with col5:
+    # Row 2: Advanced Stats
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
         st.metric("OPS", f"{player_stats['OPS']:.3f}")
+    with col2:
         st.metric("wOBA", f"{player_stats['wOBA']:.3f}" if pd.notna(player_stats['wOBA']) else "—")
-    
-    with col6:
+    with col3:
         k_pct = (player_stats['SO']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
+        st.metric("Strikeout Rate", f"{k_pct:.1f}%")
+    with col4:
         bb_pct = (player_stats['BB']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
-        st.metric("K%", f"{k_pct:.1f}%")
-        st.metric("BB%", f"{bb_pct:.1f}%")
+        st.metric("Walk Rate", f"{bb_pct:.1f}%")
+    
+    # Row 3: Counting Stats
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Hits", f"{player_stats['Hits']}")
+    with col2:
+        st.metric("Doubles", f"{player_stats['2B']}")
+    with col3:
+        st.metric("Triples", f"{player_stats['3B']}")
+    with col4:
+        st.metric("Home Runs", f"{player_stats['HR']}")
     
     st.markdown("---")
     
     # SECTION 2: BATTED BALL QUALITY
-    st.markdown("### ⚾ Batted Ball Metrics")
+    st.markdown("### Batted Ball Quality")
+    st.markdown("---")
     
     col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        st.metric("Avg Exit Velo", 
+        st.metric("Average Exit Velocity", 
                  f"{player_stats['Avg EV']:.1f} mph" if pd.notna(player_stats['Avg EV']) else "—")
     
     with col2:
-        st.metric("Max Exit Velo", 
+        st.metric("Max Exit Velocity", 
                  f"{player_stats['Max EV']:.1f} mph" if pd.notna(player_stats['Max EV']) else "—")
     
     with col3:
-        st.metric("Avg Launch Angle", 
+        st.metric("Average Launch Angle", 
                  f"{player_stats['Avg LA']:.1f}°" if pd.notna(player_stats['Avg LA']) else "—")
     
     with col4:
-        st.metric("HardHit%", 
+        st.metric("Hard Hit Rate", 
                  f"{player_stats['HardHit%']:.1f}%" if pd.notna(player_stats['HardHit%']) else "—")
     
     with col5:
-        st.metric("Barrel%", 
+        st.metric("Barrel Rate", 
                  f"{player_stats['Barrel%']:.1f}%" if pd.notna(player_stats['Barrel%']) else "—")
-    
-    bb_profile = create_batted_ball_profile(df_player_fall)
-    
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    with col1:
-        ld_pct = bb_profile['LD%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("LD%", f"{ld_pct:.1f}%")
-    
-    with col2:
-        gb_pct = bb_profile['GB%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("GB%", f"{gb_pct:.1f}%")
-    
-    with col3:
-        fb_pct = bb_profile['FB%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("FB%", f"{fb_pct:.1f}%")
-    
-    with col4:
-        pull_pct = bb_profile['Pull%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("Pull%", f"{pull_pct:.1f}%")
-    
-    with col5:
-        mid_pct = bb_profile['Middle%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("Middle%", f"{mid_pct:.1f}%")
-    
-    with col6:
-        oppo_pct = bb_profile['Oppo%'].iloc[0] if not bb_profile.empty else 0
-        st.metric("Oppo%", f"{oppo_pct:.1f}%")
     
     st.markdown("---")
     
     # SECTION 3: PLATE DISCIPLINE
-    st.markdown("### 🎯 Plate Discipline")
+    st.markdown("### Plate Discipline")
+    st.markdown("---")
     
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
-        st.metric("Swing%", 
+        st.metric("Swing Rate", 
                  f"{player_stats['Swing%']:.1f}%" if pd.notna(player_stats['Swing%']) else "—")
     
     with col2:
-        st.metric("Whiff%", 
+        st.metric("Whiff Rate", 
                  f"{player_stats['Whiff%']:.1f}%" if pd.notna(player_stats['Whiff%']) else "—")
     
     with col3:
-        st.metric("Chase%", 
+        st.metric("Chase Rate", 
                  f"{player_stats['Chase%']:.1f}%" if pd.notna(player_stats['Chase%']) else "—")
     
     with col4:
-        st.metric("Z-Swing%", 
+        st.metric("Zone Swing Rate", 
                  f"{player_stats['ZSwing%']:.1f}%" if pd.notna(player_stats['ZSwing%']) else "—")
     
     with col5:
-        st.metric("Z-Contact%", 
+        st.metric("Zone Contact Rate", 
                  f"{player_stats['ZContact%']:.1f}%" if pd.notna(player_stats['ZContact%']) else "—")
     
     with col6:
-        st.metric("Z-Whiff%", 
+        st.metric("Zone Whiff Rate", 
                  f"{player_stats['ZWhiff%']:.1f}%" if pd.notna(player_stats['ZWhiff%']) else "—")
     
     st.markdown("---")
     
-    # SECTION 4: PROGRESS TRACKER
-    st.markdown("### 📈 Progress Tracker")
-    
-    metric_choice = st.selectbox(
-        "Select Metric to Track",
-        options=['OPS', 'AVG', 'wOBA', 'HardHit%', 'Barrel%', 'Whiff%'],
-        index=0
-    )
-    
-    fig_progress = create_progress_chart(df_player_fall, metric=metric_choice)
-    if fig_progress:
-        st.pyplot(fig_progress)
-    else:
-        st.info("Not enough games to show progression chart.")
-    
-    st.markdown("---")
-    
-    # SECTION 5: GAME-BY-GAME PERFORMANCE
-    st.markdown("### 📅 Game-by-Game Performance")
+    # SECTION 4: GAME-BY-GAME PERFORMANCE
+    st.markdown("### Game-by-Game Performance")
     
     game_table = create_game_by_game_table(df_player_fall)
     if not game_table.empty:
@@ -2192,50 +2160,36 @@ else:
     
     st.markdown("---")
     
-    # SECTION 6: SPLIT STATS
-    st.markdown("### 🔀 Performance Splits")
+    # SECTION 5: PERFORMANCE SPLITS
+    st.markdown("### Performance Splits")
     
-    col_left, col_right = st.columns(2)
+    # Filter selector
+    split_type = st.selectbox(
+        "Select Split Type",
+        options=["vs Pitch Type", "vs Pitcher Handedness", "By Count Situation"],
+        index=0
+    )
     
-    with col_left:
-        st.markdown("#### vs Pitch Type")
-        pitch_splits = create_pitch_type_splits(df_player_fall)
-        if not pitch_splits.empty:
-            st.dataframe(
-                themed_styler(pitch_splits, nowrap=False),
-                use_container_width=True,
-                height=200
-            )
-        else:
-            st.info("No pitch type split data available.")
-        
-        st.markdown("#### vs Pitcher Handedness")
-        hand_splits = create_handedness_splits(df_player_fall)
-        if not hand_splits.empty:
-            st.dataframe(
-                themed_styler(hand_splits, nowrap=False),
-                use_container_width=True,
-                height=150
-            )
-        else:
-            st.info("No handedness split data available.")
+    if split_type == "vs Pitch Type":
+        splits_table = create_pitch_type_splits(df_player_fall)
+    elif split_type == "vs Pitcher Handedness":
+        splits_table = create_handedness_splits(df_player_fall)
+    else:
+        splits_table = create_count_splits(df_player_fall)
     
-    with col_right:
-        st.markdown("#### By Count Situation")
-        count_splits = create_count_splits(df_player_fall)
-        if not count_splits.empty:
-            st.dataframe(
-                themed_styler(count_splits, nowrap=False),
-                use_container_width=True,
-                height=250
-            )
-        else:
-            st.info("No count situation data available.")
+    if not splits_table.empty:
+        st.dataframe(
+            themed_styler(splits_table, nowrap=False),
+            use_container_width=True,
+            height=300
+        )
+    else:
+        st.info("No split data available.")
     
     st.markdown("---")
     
-    # SECTION 7: VISUALIZATIONS
-    st.markdown("### 🎯 Visualizations")
+    # SECTION 6: VISUALIZATIONS
+    st.markdown("### Visualizations")
     
     tab1, tab2 = st.tabs(["Spray Chart", "Heatmaps"])
     
@@ -2252,3 +2206,20 @@ else:
             st.pyplot(fig_hm)
         else:
             st.info("Not enough data for heatmaps.")
+    
+    st.markdown("---")
+    
+    # SECTION 7: PROGRESS TRACKER (AT THE BOTTOM)
+    st.markdown("### Progress Tracker")
+    
+    metric_choice = st.selectbox(
+        "Select Metric to Track",
+        options=['OPS', 'AVG', 'wOBA', 'HardHit%', 'Barrel%', 'Whiff%'],
+        index=0
+    )
+    
+    fig_progress = create_progress_chart(df_player_fall, metric=metric_choice)
+    if fig_progress:
+        st.pyplot(fig_progress)
+    else:
+        st.info("Not enough games to show progression chart.")

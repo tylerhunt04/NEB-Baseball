@@ -19,6 +19,9 @@ D1_AVERAGES = {
     "OBP": 0.385,
     "SLG": 0.442,
     "OPS": 0.827,
+    "HardHit%": 36.0,
+    "Avg Exit Velocity": 86.2,
+    "Max Exit Velocity": 103.1,
 }
 # hitter_app.py
 
@@ -2148,6 +2151,21 @@ else:
     st.markdown("---")
     
     player_stats = _compute_split_core(df_player_fall)
+    
+    # Add color key at the top
+    st.markdown("""
+    <div style='background-color: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #E60026;'>
+        <p style='margin: 0; font-size: 14px; color: #666;'>
+            <strong>Color Guide:</strong> 
+            <span style='background-color: #28a745; color: white; padding: 2px 8px; border-radius: 3px; margin: 0 4px;'>Green</span> 
+            = Above D1 Average | 
+            <span style='background-color: #ffffff; color: black; padding: 2px 8px; border-radius: 3px; border: 1px solid #ddd; margin: 0 4px;'>White</span> 
+            = Near D1 Average | 
+            <span style='background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 3px; margin: 0 4px;'>Red</span> 
+            = Below D1 Average
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
     
     # SECTION 1: OVERALL PERFORMANCE - Clean Table Layout with Color Gradient
     st.markdown("### Overall Performance")

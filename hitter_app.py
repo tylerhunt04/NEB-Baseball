@@ -137,6 +137,30 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
         stat_name = row[stat_name_col]
         value_str = row['Value']
         
+        # Map display names to D1_AVERAGES keys
+        stat_mapping = {
+            'Avg Exit Velocity': 'Avg Exit Velocity',
+            'Max Exit Velocity': 'Max Exit Velocity',
+            'Hard Hit%': 'HardHit%',
+            'Barrel%': 'Barrel%',
+            'AVG': 'AVG',
+            'OBP': 'OBP',
+            'SLG': 'SLG',
+            'OPS': 'OPS',
+            'wOBA': 'wOBA',
+            'K%': 'K%',
+            'BB%': 'BB%',
+            'Swing%': 'Swing%',
+            'Whiff%': 'Whiff%',
+            'Chase%': 'Chase%',
+            'Z-Swing%': 'ZSwing%',
+            'Z-Contact%': 'ZContact%',
+            'Z-Whiff%': 'ZWhiff%'
+        }
+        
+        # Get the correct key for D1_AVERAGES lookup
+        d1_key = stat_mapping.get(stat_name, stat_name)
+        
         # Extract numeric value from string
         try:
             if '%' in value_str:
@@ -152,7 +176,7 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
         except:
             return [''] * len(row)
         
-        bg_color = get_performance_color_gradient(stat_name, value)
+        bg_color = get_performance_color_gradient(d1_key, value)
         
         # Make text white if background is dark
         if bg_color in ["#28a745", "#dc3545"]:

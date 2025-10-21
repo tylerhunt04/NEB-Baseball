@@ -9,6 +9,7 @@ WOBAC_2025 = {
 # D1 AVERAGES FOR COMPARISON
 D1_AVERAGES = {
     "ZWhiff%": 15.7,
+    "ZContact%": 84.3,  # Derived from 100 - ZWhiff%
     "Whiff%": 22.9,
     "Barrel%": 17.4,
     "wOBA": 0.364,
@@ -111,7 +112,7 @@ def get_performance_color_gradient(stat_name: str, value: float) -> str:
     # For stats where LOWER is better (strikeouts, whiffs, chase)
     if stat_name in ["K%", "Whiff%", "Chase%", "ZWhiff%"]:
         diff_pct = (avg - value) / avg  # Positive if player is better (lower)
-    # For stats where HIGHER is better
+    # For stats where HIGHER is better (including ZContact%)
     else:
         diff_pct = (value - avg) / avg  # Positive if player is better (higher)
     
@@ -2179,7 +2180,7 @@ else:
     # Add color key at the top
     st.markdown("""
     <div style='background-color: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #E60026;'>
-        <p style='margin: 0; font-size: 14px; color: #666;'>
+        <p style='margin: 0 0 5px 0; font-size: 14px; color: #666;'>
             <strong>Color Guide:</strong> 
             <span style='background-color: #28a745; color: white; padding: 2px 8px; border-radius: 3px; margin: 0 4px;'>Green</span> 
             = Above D1 Average | 
@@ -2187,6 +2188,9 @@ else:
             = Near D1 Average | 
             <span style='background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 3px; margin: 0 4px;'>Red</span> 
             = Below D1 Average
+        </p>
+        <p style='margin: 5px 0 0 0; font-size: 12px; color: #888; font-style: italic;'>
+            Note: PA, Hits, Doubles, Triples, Home Runs, Avg Launch Angle, Swing%, and Z-Swing% are not color-coded
         </p>
     </div>
     """, unsafe_allow_html=True)

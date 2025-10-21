@@ -2117,219 +2117,203 @@ else:
     
     player_stats = _compute_split_core(df_player_fall)
     
-    # Helper function for creating stat cards with D1 comparison
-    def create_stat_card(stat_value, stat_name, d1_avg_key=None, format_type="pct"):
-        """Create a formatted stat display with D1 comparison."""
-        if pd.isna(stat_value):
-            return "—", None
-        
-        # Format the value
-        if format_type == "pct":
-            formatted = f"{stat_value:.1f}%"
-        elif format_type == "avg":
-            formatted = f"{stat_value:.3f}"
-        elif format_type == "int":
-            formatted = f"{int(stat_value)}"
-        elif format_type == "mph":
-            formatted = f"{stat_value:.1f}"
-        elif format_type == "deg":
-            formatted = f"{stat_value:.1f}°"
-        else:
-            formatted = f"{stat_value:.3f}"
-        
-        # Get comparison if D1 average exists
-        if d1_avg_key and d1_avg_key in D1_AVERAGES:
-            color = get_performance_color(d1_avg_key, stat_value)
-            return formatted, color
-        
-        return formatted, None
-    
-    # SECTION 1: OVERALL PERFORMANCE - Card Style Layout
+    # SECTION 1: OVERALL PERFORMANCE - Clean Table Layout
     st.markdown("### Overall Performance")
-    st.markdown("---")
     
-    # Create three main stat boxes
-    col1, col2, col3 = st.columns(3)
+    # Create structured data for display
+    perf_data = {
+        'Metric': ['AVG', 'OBP', 'SLG', 'OPS', 'wOBA', 'K%', 'BB%', 'PA'],
+        'Value': [
+            f"{player_stats['AVG']:.3f}",
+            f"{player_stats['OBP']:.3f}",
+            f"{player_stats['SLG']:.3f}",
+            f"{player_stats['OPS']:.3f}",
+            f"{player_stats['wOBA']:.3f}" if pd.notna(player_stats['wOBA']) else "—",
+            f"{(player_stats['SO']/player_stats['PA']*100):.1f}%" if player_stats['PA'] > 0 else "—",
+            f"{(player_stats['BB']/player_stats['PA']*100):.1f}%" if player_stats['PA'] > 0 else "—",
+            f"{player_stats['PA']}"
+        ],
+        'vs D1 Avg': []
+    }
+    
+    # Add D1 comparison indicators
+    for metric in ['AVG', 'OBP', 'SLG', 'OPS', 'wOBA', 'K%', 'BB%']:
+        if metric == 'K%':
+            val = (player_stats['SO']/player_stats['PA']*100) if player_stats['PA'] > 0 else None
+        elif metric == 'BB%':
+            val = (player_stats['BB']/player_stats['PA']*100) if player_stats['PA'] > 0 else None
+        else:
+            val = player_stats.get(metric)
+        
+        if val is not None and not pd.isna(val):
+            color = get_performance_color(metric, val)
+            if color == "green":
+                perf_data['vs D1 Avg'].append("↑ Above")
+            elif color == "yellow":
+                perf_data['vs D1 Avg'].append("≈ Average")
+            elif color == "red":
+                perf_data['vs D1 Avg'].append("↓ Below")
+            else:
+                perf_data['vs D1 Avg'].append("—")
+        else:
+            perf_data['vs D1 Avg'].append("—")
+    perf_data['vs D1 Avg'].append("—")  # For PA
+    
+    df_perf = pd.DataFrame(perf_data)
+    
+    # Display in two columns for better organization
+    col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("""
-        <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #E60026;'>
-            <h4 style='margin: 0; color: #333;'>Batting Line</h4>
+        <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
+            <h4 style='margin: 0; color: white; text-align: center;'>Batting Statistics</h4>
         </div>
         """, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
         
-        avg_val, avg_color = create_stat_card(player_stats['AVG'], "AVG", "AVG", "avg")
-        obp_val, obp_color = create_stat_card(player_stats['OBP'], "OBP", "OBP", "avg")
-        slg_val, slg_color = create_stat_card(player_stats['SLG'], "SLG", "SLG", "avg")
-        ops_val, ops_color = create_stat_card(player_stats['OPS'], "OPS", "OPS", "avg")
-        
-        subcol1, subcol2 = st.columns(2)
-        with subcol1:
-            st.metric("AVG", avg_val, 
-                     delta="↑" if avg_color == "green" else ("≈" if avg_color == "yellow" else ("↓" if avg_color == "red" else None)),
-                     delta_color="normal" if avg_color == "green" else ("off" if avg_color == "yellow" else "inverse"))
-            st.metric("SLG", slg_val,
-                     delta="↑" if slg_color == "green" else ("≈" if slg_color == "yellow" else ("↓" if slg_color == "red" else None)),
-                     delta_color="normal" if slg_color == "green" else ("off" if slg_color == "yellow" else "inverse"))
-        with subcol2:
-            st.metric("OBP", obp_val,
-                     delta="↑" if obp_color == "green" else ("≈" if obp_color == "yellow" else ("↓" if obp_color == "red" else None)),
-                     delta_color="normal" if obp_color == "green" else ("off" if obp_color == "yellow" else "inverse"))
-            st.metric("OPS", ops_val,
-                     delta="↑" if ops_color == "green" else ("≈" if ops_color == "yellow" else ("↓" if ops_color == "red" else None)),
-                     delta_color="normal" if ops_color == "green" else ("off" if ops_color == "yellow" else "inverse"))
+        # Display first 4 rows
+        st.dataframe(
+            themed_styler(df_perf.iloc[:4], nowrap=True),
+            use_container_width=True,
+            height=180
+        )
     
     with col2:
         st.markdown("""
-        <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #E60026;'>
-            <h4 style='margin: 0; color: #333;'>Advanced Metrics</h4>
+        <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
+            <h4 style='margin: 0; color: white; text-align: center;'>Advanced Metrics</h4>
         </div>
         """, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
         
-        woba_val, woba_color = create_stat_card(player_stats['wOBA'], "wOBA", "wOBA", "avg")
-        k_pct = (player_stats['SO']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
-        k_val, k_color = create_stat_card(k_pct, "K%", "K%", "pct")
-        bb_pct = (player_stats['BB']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
-        bb_val, bb_color = create_stat_card(bb_pct, "BB%", "BB%", "pct")
-        
-        subcol1, subcol2 = st.columns(2)
-        with subcol1:
-            st.metric("wOBA", woba_val,
-                     delta="↑" if woba_color == "green" else ("≈" if woba_color == "yellow" else ("↓" if woba_color == "red" else None)),
-                     delta_color="normal" if woba_color == "green" else ("off" if woba_color == "yellow" else "inverse"))
-            st.metric("BB%", bb_val,
-                     delta="↑" if bb_color == "green" else ("≈" if bb_color == "yellow" else ("↓" if bb_color == "red" else None)),
-                     delta_color="normal" if bb_color == "green" else ("off" if bb_color == "yellow" else "inverse"))
-        with subcol2:
-            st.metric("K%", k_val,
-                     delta="↓" if k_color == "green" else ("≈" if k_color == "yellow" else ("↑" if k_color == "red" else None)),
-                     delta_color="normal" if k_color == "green" else ("off" if k_color == "yellow" else "inverse"))
-            st.metric("PA", f"{player_stats['PA']}")
+        # Display last 4 rows
+        st.dataframe(
+            themed_styler(df_perf.iloc[4:], nowrap=True),
+            use_container_width=True,
+            height=180
+        )
     
-    with col3:
-        st.markdown("""
-        <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #E60026;'>
-            <h4 style='margin: 0; color: #333;'>Extra Base Hits</h4>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        subcol1, subcol2 = st.columns(2)
-        with subcol1:
-            st.metric("Hits", f"{player_stats['Hits']}")
-            st.metric("Triples", f"{player_stats['3B']}")
-        with subcol2:
-            st.metric("Doubles", f"{player_stats['2B']}")
-            st.metric("Home Runs", f"{player_stats['HR']}")
+    # Extra Base Hits in a single row below
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; margin-top: 15px;'>
+        <h4 style='margin: 0; color: white; text-align: center;'>Extra Base Hits</h4>
+    </div>
+    """, unsafe_allow_html=True)
     
-    st.markdown("<br>", unsafe_allow_html=True)
+    xbh_data = pd.DataFrame({
+        'Metric': ['Hits', 'Doubles', 'Triples', 'Home Runs'],
+        'Value': [
+            f"{player_stats['Hits']}",
+            f"{player_stats['2B']}",
+            f"{player_stats['3B']}",
+            f"{player_stats['HR']}"
+        ]
+    })
+    
+    st.dataframe(
+        themed_styler(xbh_data, nowrap=True),
+        use_container_width=True,
+        height=100
+    )
+    
     st.markdown("---")
     
-    # SECTION 2: BATTED BALL QUALITY - Cleaner Layout
+    # SECTION 2: BATTED BALL QUALITY - Clean Table Layout
     st.markdown("### Batted Ball Quality")
+    
+    bb_data = pd.DataFrame({
+        'Metric': ['Avg Exit Velocity', 'Max Exit Velocity', 'Avg Launch Angle', 'Hard Hit%', 'Barrel%'],
+        'Value': [
+            f"{player_stats['Avg EV']:.1f} mph" if pd.notna(player_stats['Avg EV']) else "—",
+            f"{player_stats['Max EV']:.1f} mph" if pd.notna(player_stats['Max EV']) else "—",
+            f"{player_stats['Avg LA']:.1f}°" if pd.notna(player_stats['Avg LA']) else "—",
+            f"{player_stats['HardHit%']:.1f}%" if pd.notna(player_stats['HardHit%']) else "—",
+            f"{player_stats['Barrel%']:.1f}%" if pd.notna(player_stats['Barrel%']) else "—"
+        ],
+        'vs D1 Avg': [
+            "—",
+            "—",
+            "—",
+            "—",
+            "↑ Above" if get_performance_color("Barrel%", player_stats['Barrel%']) == "green" 
+            else ("≈ Average" if get_performance_color("Barrel%", player_stats['Barrel%']) == "yellow" 
+                  else ("↓ Below" if get_performance_color("Barrel%", player_stats['Barrel%']) == "red" else "—"))
+        ]
+    })
+    
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
+        <h4 style='margin: 0; color: white; text-align: center;'>Contact Quality Metrics</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.dataframe(
+        themed_styler(bb_data, nowrap=True),
+        use_container_width=True,
+        height=230
+    )
+    
     st.markdown("---")
     
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-        <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #E60026;'>
-            <h4 style='margin: 0; color: #333;'>Exit Velocity</h4>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        avg_ev = f"{player_stats['Avg EV']:.1f}" if pd.notna(player_stats['Avg EV']) else "—"
-        max_ev = f"{player_stats['Max EV']:.1f}" if pd.notna(player_stats['Max EV']) else "—"
-        
-        st.metric("Average", f"{avg_ev} mph")
-        st.metric("Maximum", f"{max_ev} mph")
-    
-    with col2:
-        st.markdown("""
-        <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #E60026;'>
-            <h4 style='margin: 0; color: #333;'>Quality of Contact</h4>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        barrel_val, barrel_color = create_stat_card(player_stats['Barrel%'], "Barrel%", "Barrel%", "pct")
-        hard_val = f"{player_stats['HardHit%']:.1f}%" if pd.notna(player_stats['HardHit%']) else "—"
-        
-        st.metric("Barrel%", barrel_val,
-                 delta="↑" if barrel_color == "green" else ("≈" if barrel_color == "yellow" else ("↓" if barrel_color == "red" else None)),
-                 delta_color="normal" if barrel_color == "green" else ("off" if barrel_color == "yellow" else "inverse"))
-        st.metric("Hard Hit%", hard_val)
-    
-    with col3:
-        st.markdown("""
-        <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #E60026;'>
-            <h4 style='margin: 0; color: #333;'>Launch Angle</h4>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        avg_la = f"{player_stats['Avg LA']:.1f}°" if pd.notna(player_stats['Avg LA']) else "—"
-        st.metric("Average", avg_la)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("---")
-    
-    # SECTION 3: PLATE DISCIPLINE - Organized Layout
+    # SECTION 3: PLATE DISCIPLINE - Clean Table Layout
     st.markdown("### Plate Discipline")
-    st.markdown("---")
     
-    col1, col2, col3 = st.columns(3)
+    pd_data = {
+        'Metric': ['Swing%', 'Whiff%', 'Chase%', 'Z-Swing%', 'Z-Contact%', 'Z-Whiff%'],
+        'Value': [
+            f"{player_stats['Swing%']:.1f}%" if pd.notna(player_stats['Swing%']) else "—",
+            f"{player_stats['Whiff%']:.1f}%" if pd.notna(player_stats['Whiff%']) else "—",
+            f"{player_stats['Chase%']:.1f}%" if pd.notna(player_stats['Chase%']) else "—",
+            f"{player_stats['ZSwing%']:.1f}%" if pd.notna(player_stats['ZSwing%']) else "—",
+            f"{player_stats['ZContact%']:.1f}%" if pd.notna(player_stats['ZContact%']) else "—",
+            f"{player_stats['ZWhiff%']:.1f}%" if pd.notna(player_stats['ZWhiff%']) else "—"
+        ],
+        'vs D1 Avg': []
+    }
     
-    with col1:
-        st.markdown("""
-        <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #E60026;'>
-            <h4 style='margin: 0; color: #333;'>Swing Decisions</h4>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        chase_val, chase_color = create_stat_card(player_stats['Chase%'], "Chase%", "Chase%", "pct")
-        swing_val = f"{player_stats['Swing%']:.1f}%" if pd.notna(player_stats['Swing%']) else "—"
-        
-        st.metric("Chase%", chase_val,
-                 delta="↓" if chase_color == "green" else ("≈" if chase_color == "yellow" else ("↑" if chase_color == "red" else None)),
-                 delta_color="normal" if chase_color == "green" else ("off" if chase_color == "yellow" else "inverse"))
-        st.metric("Swing%", swing_val)
+    # Add D1 comparisons for discipline metrics
+    for metric, stat_key in [('Swing%', None), ('Whiff%', 'Whiff%'), ('Chase%', 'Chase%'), 
+                              ('Z-Swing%', None), ('Z-Contact%', None), ('Z-Whiff%', 'ZWhiff%')]:
+        if stat_key:
+            val = player_stats.get(stat_key.replace('-', ''))
+            if val is not None and not pd.isna(val):
+                color = get_performance_color(stat_key, val)
+                # For whiff and chase, lower is better so flip the indicators
+                if stat_key in ['Whiff%', 'Chase%', 'ZWhiff%']:
+                    if color == "green":
+                        pd_data['vs D1 Avg'].append("↓ Below")
+                    elif color == "yellow":
+                        pd_data['vs D1 Avg'].append("≈ Average")
+                    elif color == "red":
+                        pd_data['vs D1 Avg'].append("↑ Above")
+                    else:
+                        pd_data['vs D1 Avg'].append("—")
+                else:
+                    if color == "green":
+                        pd_data['vs D1 Avg'].append("↑ Above")
+                    elif color == "yellow":
+                        pd_data['vs D1 Avg'].append("≈ Average")
+                    elif color == "red":
+                        pd_data['vs D1 Avg'].append("↓ Below")
+                    else:
+                        pd_data['vs D1 Avg'].append("—")
+            else:
+                pd_data['vs D1 Avg'].append("—")
+        else:
+            pd_data['vs D1 Avg'].append("—")
     
-    with col2:
-        st.markdown("""
-        <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #E60026;'>
-            <h4 style='margin: 0; color: #333;'>Contact Quality</h4>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        whiff_val, whiff_color = create_stat_card(player_stats['Whiff%'], "Whiff%", "Whiff%", "pct")
-        zwhiff_val, zwhiff_color = create_stat_card(player_stats['ZWhiff%'], "ZWhiff%", "ZWhiff%", "pct")
-        
-        st.metric("Whiff%", whiff_val,
-                 delta="↓" if whiff_color == "green" else ("≈" if whiff_color == "yellow" else ("↑" if whiff_color == "red" else None)),
-                 delta_color="normal" if whiff_color == "green" else ("off" if whiff_color == "yellow" else "inverse"))
-        st.metric("Z-Whiff%", zwhiff_val,
-                 delta="↓" if zwhiff_color == "green" else ("≈" if zwhiff_color == "yellow" else ("↑" if zwhiff_color == "red" else None)),
-                 delta_color="normal" if zwhiff_color == "green" else ("off" if zwhiff_color == "yellow" else "inverse"))
+    df_pd = pd.DataFrame(pd_data)
     
-    with col3:
-        st.markdown("""
-        <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #E60026;'>
-            <h4 style='margin: 0; color: #333;'>Zone Metrics</h4>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        zswing_val = f"{player_stats['ZSwing%']:.1f}%" if pd.notna(player_stats['ZSwing%']) else "—"
-        zcontact_val = f"{player_stats['ZContact%']:.1f}%" if pd.notna(player_stats['ZContact%']) else "—"
-        
-        st.metric("Z-Swing%", zswing_val)
-        st.metric("Z-Contact%", zcontact_val)
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
+        <h4 style='margin: 0; color: white; text-align: center;'>Discipline Metrics</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.dataframe(
+        themed_styler(df_pd, nowrap=True),
+        use_container_width=True,
+        height=260
+    )
     
     st.markdown("---")
     

@@ -112,7 +112,7 @@ def get_performance_color_gradient(stat_name: str, value: float) -> str:
     # For stats where LOWER is better (strikeouts, whiffs, chase)
     if stat_name in ["K%", "Whiff%", "Chase%", "ZWhiff%"]:
         diff_pct = (avg - value) / avg  # Positive if player is better (lower)
-    # For stats where HIGHER is better (including ZContact%)
+    # For stats where HIGHER is better (including HardHit%, exit velocities, ZContact%)
     else:
         diff_pct = (value - avg) / avg  # Positive if player is better (higher)
     

@@ -95,50 +95,82 @@ D1_AVERAGES = {
     "OPS": 0.827,
 }
 
-def get_performance_color(stat_name: str, value: float) -> str:
+def get_performance_color_gradient(stat_name: str, value: float) -> str:
     """
-    Return a color based on how the value compares to D1 average.
-    Green = significantly better, Yellow = close to average, Red = significantly worse
+    Return a background color based on how the value compares to D1 average.
+    Returns a hex color - greener for better, redder for worse, white for average
     """
     if pd.isna(value) or stat_name not in D1_AVERAGES:
-        return "normal"
+        return "#ffffff"  # white for no comparison
     
     avg = D1_AVERAGES[stat_name]
     
     # For stats where LOWER is better (strikeouts, whiffs, chase)
     if stat_name in ["K%", "Whiff%", "Chase%", "ZWhiff%"]:
-        if value <= avg * 0.85:  # 15% better
-            return "green"
-        elif value <= avg * 1.15:  # Within 15%
-            return "yellow"
-        else:
-            return "red"
+        diff_pct = (avg - value) / avg  # Positive if player is better (lower)
     # For stats where HIGHER is better
     else:
-        if value >= avg * 1.15:  # 15% better
-            return "green"
-        elif value >= avg * 0.85:  # Within 15%
-            return "yellow"
-        else:
-            return "red"
+        diff_pct = (value - avg) / avg  # Positive if player is better (higher)
+    
+    # Create gradient based on difference
+    if diff_pct >= 0.20:  # 20%+ better - darkest green
+        return "#28a745"
+    elif diff_pct >= 0.10:  # 10-20% better - medium green
+        return "#5cb85c"
+    elif diff_pct >= 0.05:  # 5-10% better - light green
+        return "#90ee90"
+    elif diff_pct >= -0.05:  # Within 5% - white/neutral
+        return "#ffffff"
+    elif diff_pct >= -0.10:  # 5-10% worse - light red
+        return "#ffb3b3"
+    elif diff_pct >= -0.20:  # 10-20% worse - medium red
+        return "#ff8080"
+    else:  # 20%+ worse - darkest red
+        return "#dc3545"
 
-def colored_metric(label: str, value_str: str, stat_name: str = None, raw_value: float = None):
-    """Display a metric with color coding based on D1 average comparison."""
-    if stat_name and raw_value is not None:
-        color = get_performance_color(stat_name, raw_value)
-        if color == "green":
-            delta_color = "normal"
-            st.metric(label, value_str, delta="Above D1 Avg", delta_color="normal")
-            st.markdown(f"<style>div[data-testid='stMetricValue'] {{color: #28a745;}}</style>", unsafe_allow_html=True)
-        elif color == "yellow":
-            st.metric(label, value_str, delta="Near D1 Avg", delta_color="off")
-        elif color == "red":
-            delta_color = "inverse"
-            st.metric(label, value_str, delta="Below D1 Avg", delta_color="inverse")
+def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.DataFrame:
+    """Apply color gradient styling to performance tables based on D1 averages."""
+    def apply_color(row):
+        stat_name = row[stat_name_col]
+        value_str = row['Value']
+        
+        # Extract numeric value from string
+        try:
+            if '%' in value_str:
+                value = float(value_str.replace('%', ''))
+            elif 'mph' in value_str:
+                value = float(value_str.replace('mph', '').strip())
+            elif '°' in value_str:
+                value = float(value_str.replace('°', '').strip())
+            elif value_str == "—":
+                return [''] * len(row)
+            else:
+                value = float(value_str)
+        except:
+            return [''] * len(row)
+        
+        bg_color = get_performance_color_gradient(stat_name, value)
+        
+        # Make text white if background is dark
+        if bg_color in ["#28a745", "#dc3545"]:
+            text_color = "white"
         else:
-            st.metric(label, value_str)
-    else:
-        st.metric(label, value_str)
+            text_color = "black"
+        
+        return [f'background-color: {bg_color}; color: {text_color}' if col == 'Value' else '' 
+                for col in row.index]
+    
+    styled = df.style.apply(apply_color, axis=1)
+    
+    # Apply Husker Red header
+    header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
+    styled = styled.set_table_styles([
+        {'selector': 'thead th', 'props': header_props},
+        {'selector': 'th.col_heading', 'props': header_props},
+        {'selector': 'th', 'props': header_props},
+    ]).hide(axis="index")
+    
+    return styled
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DATE & NAME HELPERS
@@ -1213,6 +1245,7 @@ def style_rankings(df: pd.DataFrame):
 # SPRAY CHARTS
 # ──────────────────────────────────────────────────────────────────────────────
 def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
+    def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     inplay = df_game[df_game.get('PitchCall') == 'InPlay'].copy()
     
     if inplay.empty:
@@ -2117,51 +2150,31 @@ else:
     
     player_stats = _compute_split_core(df_player_fall)
     
-    # SECTION 1: OVERALL PERFORMANCE - Clean Table Layout
+    # SECTION 1: OVERALL PERFORMANCE - Clean Table Layout with Color Gradient
     st.markdown("### Overall Performance")
     
-    # Create structured data for display
-    perf_data = {
-        'Metric': ['AVG', 'OBP', 'SLG', 'OPS', 'wOBA', 'K%', 'BB%', 'PA'],
+    # Create structured data for display (without D1 Avg column)
+    perf_data_1 = pd.DataFrame({
+        'Metric': ['AVG', 'OBP', 'SLG', 'OPS'],
         'Value': [
             f"{player_stats['AVG']:.3f}",
             f"{player_stats['OBP']:.3f}",
             f"{player_stats['SLG']:.3f}",
-            f"{player_stats['OPS']:.3f}",
+            f"{player_stats['OPS']:.3f}"
+        ]
+    })
+    
+    perf_data_2 = pd.DataFrame({
+        'Metric': ['wOBA', 'K%', 'BB%', 'PA'],
+        'Value': [
             f"{player_stats['wOBA']:.3f}" if pd.notna(player_stats['wOBA']) else "—",
             f"{(player_stats['SO']/player_stats['PA']*100):.1f}%" if player_stats['PA'] > 0 else "—",
             f"{(player_stats['BB']/player_stats['PA']*100):.1f}%" if player_stats['PA'] > 0 else "—",
             f"{player_stats['PA']}"
-        ],
-        'vs D1 Avg': []
-    }
+        ]
+    })
     
-    # Add D1 comparison indicators
-    for metric in ['AVG', 'OBP', 'SLG', 'OPS', 'wOBA', 'K%', 'BB%']:
-        if metric == 'K%':
-            val = (player_stats['SO']/player_stats['PA']*100) if player_stats['PA'] > 0 else None
-        elif metric == 'BB%':
-            val = (player_stats['BB']/player_stats['PA']*100) if player_stats['PA'] > 0 else None
-        else:
-            val = player_stats.get(metric)
-        
-        if val is not None and not pd.isna(val):
-            color = get_performance_color(metric, val)
-            if color == "green":
-                perf_data['vs D1 Avg'].append("↑ Above")
-            elif color == "yellow":
-                perf_data['vs D1 Avg'].append("≈ Average")
-            elif color == "red":
-                perf_data['vs D1 Avg'].append("↓ Below")
-            else:
-                perf_data['vs D1 Avg'].append("—")
-        else:
-            perf_data['vs D1 Avg'].append("—")
-    perf_data['vs D1 Avg'].append("—")  # For PA
-    
-    df_perf = pd.DataFrame(perf_data)
-    
-    # Display in two columns for better organization
+    # Display in two columns
     col1, col2 = st.columns(2)
     
     with col1:
@@ -2171,11 +2184,10 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
-        # Display first 4 rows
         st.dataframe(
-            themed_styler(df_perf.iloc[:4], nowrap=True),
+            style_performance_table(perf_data_1),
             use_container_width=True,
-            height=180
+            height=200
         )
     
     with col2:
@@ -2185,14 +2197,13 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
-        # Display last 4 rows
         st.dataframe(
-            themed_styler(df_perf.iloc[4:], nowrap=True),
+            style_performance_table(perf_data_2),
             use_container_width=True,
-            height=180
+            height=200
         )
     
-    # Extra Base Hits in a single row below
+    # Extra Base Hits - no scrolling
     st.markdown("""
     <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; margin-top: 15px;'>
         <h4 style='margin: 0; color: white; text-align: center;'>Extra Base Hits</h4>
@@ -2209,15 +2220,24 @@ else:
         ]
     })
     
+    # Style without color gradient (counting stats don't have D1 averages)
+    header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
+    xbh_styled = xbh_data.style.set_table_styles([
+        {'selector': 'thead th', 'props': header_props},
+        {'selector': 'th.col_heading', 'props': header_props},
+        {'selector': 'th', 'props': header_props},
+        {'selector': 'td', 'props': 'white-space: nowrap;'}
+    ]).hide(axis="index")
+    
     st.dataframe(
-        themed_styler(xbh_data, nowrap=True),
+        xbh_styled,
         use_container_width=True,
-        height=100
+        height=200
     )
     
     st.markdown("---")
     
-    # SECTION 2: BATTED BALL QUALITY - Clean Table Layout
+    # SECTION 2: BATTED BALL QUALITY - Clean Table Layout with Color Gradient
     st.markdown("### Batted Ball Quality")
     
     bb_data = pd.DataFrame({
@@ -2228,15 +2248,6 @@ else:
             f"{player_stats['Avg LA']:.1f}°" if pd.notna(player_stats['Avg LA']) else "—",
             f"{player_stats['HardHit%']:.1f}%" if pd.notna(player_stats['HardHit%']) else "—",
             f"{player_stats['Barrel%']:.1f}%" if pd.notna(player_stats['Barrel%']) else "—"
-        ],
-        'vs D1 Avg': [
-            "—",
-            "—",
-            "—",
-            "—",
-            "↑ Above" if get_performance_color("Barrel%", player_stats['Barrel%']) == "green" 
-            else ("≈ Average" if get_performance_color("Barrel%", player_stats['Barrel%']) == "yellow" 
-                  else ("↓ Below" if get_performance_color("Barrel%", player_stats['Barrel%']) == "red" else "—"))
         ]
     })
     
@@ -2247,17 +2258,17 @@ else:
     """, unsafe_allow_html=True)
     
     st.dataframe(
-        themed_styler(bb_data, nowrap=True),
+        style_performance_table(bb_data),
         use_container_width=True,
         height=230
     )
     
     st.markdown("---")
     
-    # SECTION 3: PLATE DISCIPLINE - Clean Table Layout
+    # SECTION 3: PLATE DISCIPLINE - Clean Table Layout with Color Gradient
     st.markdown("### Plate Discipline")
     
-    pd_data = {
+    pd_data = pd.DataFrame({
         'Metric': ['Swing%', 'Whiff%', 'Chase%', 'Z-Swing%', 'Z-Contact%', 'Z-Whiff%'],
         'Value': [
             f"{player_stats['Swing%']:.1f}%" if pd.notna(player_stats['Swing%']) else "—",
@@ -2266,42 +2277,8 @@ else:
             f"{player_stats['ZSwing%']:.1f}%" if pd.notna(player_stats['ZSwing%']) else "—",
             f"{player_stats['ZContact%']:.1f}%" if pd.notna(player_stats['ZContact%']) else "—",
             f"{player_stats['ZWhiff%']:.1f}%" if pd.notna(player_stats['ZWhiff%']) else "—"
-        ],
-        'vs D1 Avg': []
-    }
-    
-    # Add D1 comparisons for discipline metrics
-    for metric, stat_key in [('Swing%', None), ('Whiff%', 'Whiff%'), ('Chase%', 'Chase%'), 
-                              ('Z-Swing%', None), ('Z-Contact%', None), ('Z-Whiff%', 'ZWhiff%')]:
-        if stat_key:
-            val = player_stats.get(stat_key.replace('-', ''))
-            if val is not None and not pd.isna(val):
-                color = get_performance_color(stat_key, val)
-                # For whiff and chase, lower is better so flip the indicators
-                if stat_key in ['Whiff%', 'Chase%', 'ZWhiff%']:
-                    if color == "green":
-                        pd_data['vs D1 Avg'].append("↓ Below")
-                    elif color == "yellow":
-                        pd_data['vs D1 Avg'].append("≈ Average")
-                    elif color == "red":
-                        pd_data['vs D1 Avg'].append("↑ Above")
-                    else:
-                        pd_data['vs D1 Avg'].append("—")
-                else:
-                    if color == "green":
-                        pd_data['vs D1 Avg'].append("↑ Above")
-                    elif color == "yellow":
-                        pd_data['vs D1 Avg'].append("≈ Average")
-                    elif color == "red":
-                        pd_data['vs D1 Avg'].append("↓ Below")
-                    else:
-                        pd_data['vs D1 Avg'].append("—")
-            else:
-                pd_data['vs D1 Avg'].append("—")
-        else:
-            pd_data['vs D1 Avg'].append("—")
-    
-    df_pd = pd.DataFrame(pd_data)
+        ]
+    })
     
     st.markdown("""
     <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
@@ -2310,7 +2287,7 @@ else:
     """, unsafe_allow_html=True)
     
     st.dataframe(
-        themed_styler(df_pd, nowrap=True),
+        style_performance_table(pd_data),
         use_container_width=True,
         height=260
     )

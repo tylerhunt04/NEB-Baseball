@@ -1,4 +1,25 @@
+# wOBA CONSTANTS (FanGraphs 2025)
+WOBAC_2025 = {
+    "wBB": 0.693, "wHBP": 0.723,
+    "w1B": 0.883, "w2B": 1.253, "w3B": 1.585, "wHR": 2.037,
+    "wOBAScale": 1.23,
+    "lg_wOBA": 0.314,
+}
 
+# D1 AVERAGES FOR COMPARISON
+D1_AVERAGES = {
+    "ZWhiff%": 15.7,
+    "Whiff%": 22.9,
+    "Barrel%": 17.4,
+    "wOBA": 0.364,
+    "K%": 19.2,
+    "BB%": 11.4,
+    "Chase%": 24.2,
+    "AVG": 0.280,
+    "OBP": 0.385,
+    "SLG": 0.442,
+    "OPS": 0.827,
+}
 # hitter_app.py
 
 import os
@@ -59,13 +80,65 @@ TEAM_NAME_MAP = {
     "WIC_SHO": "Wichita State",
 }
 
-# wOBA CONSTANTS (FanGraphs 2025)
-WOBAC_2025 = {
-    "wBB": 0.693, "wHBP": 0.723,
-    "w1B": 0.883, "w2B": 1.253, "w3B": 1.585, "wHR": 2.037,
-    "wOBAScale": 1.23,
-    "lg_wOBA": 0.314,
+# D1 AVERAGES FOR COMPARISON
+D1_AVERAGES = {
+    "ZWhiff%": 15.7,
+    "Whiff%": 22.9,
+    "Barrel%": 17.4,
+    "wOBA": 0.364,
+    "K%": 19.2,
+    "BB%": 11.4,
+    "Chase%": 24.2,
+    "AVG": 0.280,
+    "OBP": 0.385,
+    "SLG": 0.442,
+    "OPS": 0.827,
 }
+
+def get_performance_color(stat_name: str, value: float) -> str:
+    """
+    Return a color based on how the value compares to D1 average.
+    Green = significantly better, Yellow = close to average, Red = significantly worse
+    """
+    if pd.isna(value) or stat_name not in D1_AVERAGES:
+        return "normal"
+    
+    avg = D1_AVERAGES[stat_name]
+    
+    # For stats where LOWER is better (strikeouts, whiffs, chase)
+    if stat_name in ["K%", "Whiff%", "Chase%", "ZWhiff%"]:
+        if value <= avg * 0.85:  # 15% better
+            return "green"
+        elif value <= avg * 1.15:  # Within 15%
+            return "yellow"
+        else:
+            return "red"
+    # For stats where HIGHER is better
+    else:
+        if value >= avg * 1.15:  # 15% better
+            return "green"
+        elif value >= avg * 0.85:  # Within 15%
+            return "yellow"
+        else:
+            return "red"
+
+def colored_metric(label: str, value_str: str, stat_name: str = None, raw_value: float = None):
+    """Display a metric with color coding based on D1 average comparison."""
+    if stat_name and raw_value is not None:
+        color = get_performance_color(stat_name, raw_value)
+        if color == "green":
+            delta_color = "normal"
+            st.metric(label, value_str, delta="Above D1 Avg", delta_color="normal")
+            st.markdown(f"<style>div[data-testid='stMetricValue'] {{color: #28a745;}}</style>", unsafe_allow_html=True)
+        elif color == "yellow":
+            st.metric(label, value_str, delta="Near D1 Avg", delta_color="off")
+        elif color == "red":
+            delta_color = "inverse"
+            st.metric(label, value_str, delta="Below D1 Avg", delta_color="inverse")
+        else:
+            st.metric(label, value_str)
+    else:
+        st.metric(label, value_str)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # DATE & NAME HELPERS
@@ -1140,6 +1213,7 @@ def style_rankings(df: pd.DataFrame):
 # SPRAY CHARTS
 # ──────────────────────────────────────────────────────────────────────────────
 def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
+def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     inplay = df_game[df_game.get('PitchCall') == 'InPlay'].copy()
     
     if inplay.empty:
@@ -2053,24 +2127,88 @@ else:
     with col1:
         st.metric("Plate Appearances", f"{player_stats['PA']}")
     with col2:
-        st.metric("Batting Average", f"{player_stats['AVG']:.3f}")
+        avg_val = player_stats['AVG']
+        avg_color = get_performance_color("AVG", avg_val)
+        if avg_color == "green":
+            st.metric("Batting Average", f"{avg_val:.3f}", delta="↑ Above D1 Avg")
+        elif avg_color == "yellow":
+            st.metric("Batting Average", f"{avg_val:.3f}", delta="≈ D1 Avg", delta_color="off")
+        elif avg_color == "red":
+            st.metric("Batting Average", f"{avg_val:.3f}", delta="↓ Below D1 Avg", delta_color="inverse")
+        else:
+            st.metric("Batting Average", f"{avg_val:.3f}")
     with col3:
-        st.metric("On-Base Percentage", f"{player_stats['OBP']:.3f}")
+        obp_val = player_stats['OBP']
+        obp_color = get_performance_color("OBP", obp_val)
+        if obp_color == "green":
+            st.metric("On-Base Percentage", f"{obp_val:.3f}", delta="↑ Above D1 Avg")
+        elif obp_color == "yellow":
+            st.metric("On-Base Percentage", f"{obp_val:.3f}", delta="≈ D1 Avg", delta_color="off")
+        elif obp_color == "red":
+            st.metric("On-Base Percentage", f"{obp_val:.3f}", delta="↓ Below D1 Avg", delta_color="inverse")
+        else:
+            st.metric("On-Base Percentage", f"{obp_val:.3f}")
     with col4:
-        st.metric("Slugging Percentage", f"{player_stats['SLG']:.3f}")
+        slg_val = player_stats['SLG']
+        slg_color = get_performance_color("SLG", slg_val)
+        if slg_color == "green":
+            st.metric("Slugging Percentage", f"{slg_val:.3f}", delta="↑ Above D1 Avg")
+        elif slg_color == "yellow":
+            st.metric("Slugging Percentage", f"{slg_val:.3f}", delta="≈ D1 Avg", delta_color="off")
+        elif slg_color == "red":
+            st.metric("Slugging Percentage", f"{slg_val:.3f}", delta="↓ Below D1 Avg", delta_color="inverse")
+        else:
+            st.metric("Slugging Percentage", f"{slg_val:.3f}")
     
     # Row 2: Advanced Stats
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("OPS", f"{player_stats['OPS']:.3f}")
+        ops_val = player_stats['OPS']
+        ops_color = get_performance_color("OPS", ops_val)
+        if ops_color == "green":
+            st.metric("OPS", f"{ops_val:.3f}", delta="↑ Above D1 Avg")
+        elif ops_color == "yellow":
+            st.metric("OPS", f"{ops_val:.3f}", delta="≈ D1 Avg", delta_color="off")
+        elif ops_color == "red":
+            st.metric("OPS", f"{ops_val:.3f}", delta="↓ Below D1 Avg", delta_color="inverse")
+        else:
+            st.metric("OPS", f"{ops_val:.3f}")
     with col2:
-        st.metric("wOBA", f"{player_stats['wOBA']:.3f}" if pd.notna(player_stats['wOBA']) else "—")
+        woba_val = player_stats['wOBA']
+        if pd.notna(woba_val):
+            woba_color = get_performance_color("wOBA", woba_val)
+            if woba_color == "green":
+                st.metric("wOBA", f"{woba_val:.3f}", delta="↑ Above D1 Avg")
+            elif woba_color == "yellow":
+                st.metric("wOBA", f"{woba_val:.3f}", delta="≈ D1 Avg", delta_color="off")
+            elif woba_color == "red":
+                st.metric("wOBA", f"{woba_val:.3f}", delta="↓ Below D1 Avg", delta_color="inverse")
+            else:
+                st.metric("wOBA", f"{woba_val:.3f}")
+        else:
+            st.metric("wOBA", "—")
     with col3:
         k_pct = (player_stats['SO']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
-        st.metric("Strikeout Rate", f"{k_pct:.1f}%")
+        k_color = get_performance_color("K%", k_pct)
+        if k_color == "green":
+            st.metric("Strikeout Rate", f"{k_pct:.1f}%", delta="↓ Below D1 Avg")
+        elif k_color == "yellow":
+            st.metric("Strikeout Rate", f"{k_pct:.1f}%", delta="≈ D1 Avg", delta_color="off")
+        elif k_color == "red":
+            st.metric("Strikeout Rate", f"{k_pct:.1f}%", delta="↑ Above D1 Avg", delta_color="inverse")
+        else:
+            st.metric("Strikeout Rate", f"{k_pct:.1f}%")
     with col4:
         bb_pct = (player_stats['BB']/player_stats['PA']*100) if player_stats['PA'] > 0 else 0
-        st.metric("Walk Rate", f"{bb_pct:.1f}%")
+        bb_color = get_performance_color("BB%", bb_pct)
+        if bb_color == "green":
+            st.metric("Walk Rate", f"{bb_pct:.1f}%", delta="↑ Above D1 Avg")
+        elif bb_color == "yellow":
+            st.metric("Walk Rate", f"{bb_pct:.1f}%", delta="≈ D1 Avg", delta_color="off")
+        elif bb_color == "red":
+            st.metric("Walk Rate", f"{bb_pct:.1f}%", delta="↓ Below D1 Avg", delta_color="inverse")
+        else:
+            st.metric("Walk Rate", f"{bb_pct:.1f}%")
     
     # Row 3: Counting Stats
     col1, col2, col3, col4 = st.columns(4)
@@ -2108,8 +2246,19 @@ else:
                  f"{player_stats['HardHit%']:.1f}%" if pd.notna(player_stats['HardHit%']) else "—")
     
     with col5:
-        st.metric("Barrel Rate", 
-                 f"{player_stats['Barrel%']:.1f}%" if pd.notna(player_stats['Barrel%']) else "—")
+        barrel_val = player_stats['Barrel%']
+        if pd.notna(barrel_val):
+            barrel_color = get_performance_color("Barrel%", barrel_val)
+            if barrel_color == "green":
+                st.metric("Barrel Rate", f"{barrel_val:.1f}%", delta="↑ Above D1 Avg")
+            elif barrel_color == "yellow":
+                st.metric("Barrel Rate", f"{barrel_val:.1f}%", delta="≈ D1 Avg", delta_color="off")
+            elif barrel_color == "red":
+                st.metric("Barrel Rate", f"{barrel_val:.1f}%", delta="↓ Below D1 Avg", delta_color="inverse")
+            else:
+                st.metric("Barrel Rate", f"{barrel_val:.1f}%")
+        else:
+            st.metric("Barrel Rate", "—")
     
     st.markdown("---")
     
@@ -2124,12 +2273,34 @@ else:
                  f"{player_stats['Swing%']:.1f}%" if pd.notna(player_stats['Swing%']) else "—")
     
     with col2:
-        st.metric("Whiff Rate", 
-                 f"{player_stats['Whiff%']:.1f}%" if pd.notna(player_stats['Whiff%']) else "—")
+        whiff_val = player_stats['Whiff%']
+        if pd.notna(whiff_val):
+            whiff_color = get_performance_color("Whiff%", whiff_val)
+            if whiff_color == "green":
+                st.metric("Whiff Rate", f"{whiff_val:.1f}%", delta="↓ Below D1 Avg")
+            elif whiff_color == "yellow":
+                st.metric("Whiff Rate", f"{whiff_val:.1f}%", delta="≈ D1 Avg", delta_color="off")
+            elif whiff_color == "red":
+                st.metric("Whiff Rate", f"{whiff_val:.1f}%", delta="↑ Above D1 Avg", delta_color="inverse")
+            else:
+                st.metric("Whiff Rate", f"{whiff_val:.1f}%")
+        else:
+            st.metric("Whiff Rate", "—")
     
     with col3:
-        st.metric("Chase Rate", 
-                 f"{player_stats['Chase%']:.1f}%" if pd.notna(player_stats['Chase%']) else "—")
+        chase_val = player_stats['Chase%']
+        if pd.notna(chase_val):
+            chase_color = get_performance_color("Chase%", chase_val)
+            if chase_color == "green":
+                st.metric("Chase Rate", f"{chase_val:.1f}%", delta="↓ Below D1 Avg")
+            elif chase_color == "yellow":
+                st.metric("Chase Rate", f"{chase_val:.1f}%", delta="≈ D1 Avg", delta_color="off")
+            elif chase_color == "red":
+                st.metric("Chase Rate", f"{chase_val:.1f}%", delta="↑ Above D1 Avg", delta_color="inverse")
+            else:
+                st.metric("Chase Rate", f"{chase_val:.1f}%")
+        else:
+            st.metric("Chase Rate", "—")
     
     with col4:
         st.metric("Zone Swing Rate", 
@@ -2140,8 +2311,19 @@ else:
                  f"{player_stats['ZContact%']:.1f}%" if pd.notna(player_stats['ZContact%']) else "—")
     
     with col6:
-        st.metric("Zone Whiff Rate", 
-                 f"{player_stats['ZWhiff%']:.1f}%" if pd.notna(player_stats['ZWhiff%']) else "—")
+        zwhiff_val = player_stats['ZWhiff%']
+        if pd.notna(zwhiff_val):
+            zwhiff_color = get_performance_color("ZWhiff%", zwhiff_val)
+            if zwhiff_color == "green":
+                st.metric("Zone Whiff Rate", f"{zwhiff_val:.1f}%", delta="↓ Below D1 Avg")
+            elif zwhiff_color == "yellow":
+                st.metric("Zone Whiff Rate", f"{zwhiff_val:.1f}%", delta="≈ D1 Avg", delta_color="off")
+            elif zwhiff_color == "red":
+                st.metric("Zone Whiff Rate", f"{zwhiff_val:.1f}%", delta="↑ Above D1 Avg", delta_color="inverse")
+            else:
+                st.metric("Zone Whiff Rate", f"{zwhiff_val:.1f}%")
+        else:
+            st.metric("Zone Whiff Rate", "—")
     
     st.markdown("---")
     

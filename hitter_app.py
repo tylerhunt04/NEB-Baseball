@@ -1213,7 +1213,6 @@ def style_rankings(df: pd.DataFrame):
 # SPRAY CHARTS
 # ──────────────────────────────────────────────────────────────────────────────
 def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
-def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     inplay = df_game[df_game.get('PitchCall') == 'InPlay'].copy()
     
     if inplay.empty:

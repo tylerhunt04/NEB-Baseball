@@ -1450,7 +1450,7 @@ with tabs[0]:
             season_label=season_label
         )
         if fig_top3_std:
-            st.plotly_chart(fig_top3_std, use_container_width=True)
+            st.plotly_chart(fig_top3_std, use_container_width=True, key="standard_top3_pitches")
         else:
             st.caption("No plate-location data available to plot top 3 pitches.")
 
@@ -2480,7 +2480,7 @@ with tabs[2]:
                 season_label=season_label_prof
             )
             if fig_top3:
-                st.plotly_chart(fig_top3, use_container_width=True)
+                st.plotly_chart(fig_top3, use_container_width=True, key="profiles_top3_pitches")
 # ──────────────────────────────────────────────────────────────────────────────
 # UI — Rankings tab  (click headers to sort; no sort dropdown)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -3200,7 +3200,7 @@ with tabs[4]:  # This assumes you added "Fall Summary" as the 5th tab (index 4)
                 showlegend=False
             )
             
-            st.plotly_chart(fig_zones, use_container_width=True)
+            st.plotly_chart(fig_zones, use_container_width=True, key="fall_summary_strike_zones")
         else:
             st.warning("Plate location data not available for strike zone visualization.")
         

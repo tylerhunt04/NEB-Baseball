@@ -2708,6 +2708,16 @@ with tabs[3]:
 # ══════════════════════════════════════════════════════════════════════════════
 # FALL SUMMARY TAB
 # ══════════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
+# Helper function: Categorize pitch types into Fastball, Offspeed, Breaking Ball
+# ──────────────────────────────────────────────────────────────────────────────
+def categorize_pitch_type(pitch_type_str):
+    """
+    Categorize a pitch type into one of: Fastball, Offspeed, Breaking Ball
+    """
+    if pd.isna(pitch_type_str):
+        return "Unknown"
+    
     ptype = str(pitch_type_str).lower().strip()
     
     # Fastballs

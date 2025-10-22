@@ -2706,8 +2706,9 @@ with tabs[3]:
         )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FALL SUMMARY TAB
+# FALL SUMMARY TAB - Professional D1 Version
 # ══════════════════════════════════════════════════════════════════════════════
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Helper function: Categorize pitch types into Fastball, Offspeed, Breaking Ball
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2735,144 +2736,99 @@ def categorize_pitch_type(pitch_type_str):
     return "Unknown"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Helper function: Create filterable interactive strike zones (3 panels)
+# Helper function: Create average release points only (for Fall Summary)
 # ──────────────────────────────────────────────────────────────────────────────
-def create_filterable_strikezones(df, pitcher_name, season_label="Fall Season"):
+def average_release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=None, figsize=(7.0, 7.0)):
     """
-    Create 3 interactive strike zones with filtering by count and batter handedness
-    Returns a Plotly figure with 3 subplots
+    Create a single-panel figure showing only average release points.
+    Designed to match the size and style of the movement plot for professional presentation.
     """
-    if df.empty:
+    sub_all = subset_by_pitcher_if_possible(df, pitcher_name)
+    x_col = pick_col(sub_all, "Relside","RelSide","ReleaseSide","Release_Side","release_pos_x")
+    y_col = pick_col(sub_all, "Relheight","RelHeight","ReleaseHeight","Release_Height","release_pos_z")
+    type_col = type_col_in_df(sub_all)
+    speed_col = pick_col(sub_all, "Relspeed","RelSpeed","ReleaseSpeed","RelSpeedMPH","release_speed")
+
+    missing = [lbl for lbl, col in [("Relside",x_col), ("Relheight",y_col)] if col is None]
+    if missing:
         return None
-    
-    # Get necessary columns
-    type_col = type_col_in_df(df)
-    x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
-    y_col = pick_col(df, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
-    speed_col = pick_col(df, "RelSpeed", "Relspeed", "ReleaseSpeed", "RelSpeedMPH", "release_speed")
-    ivb_col = pick_col(df, "InducedVertBreak", "IVB", "Induced Vert Break", "IndVertBreak")
-    hb_col = pick_col(df, "HorzBreak", "HorizontalBreak", "HB", "HorizBreak")
-    exit_col = pick_col(df, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", "ExitVel", "EV", "LaunchSpeed", "Launch_Speed")
-    call_col = pick_col(df, "PitchCall", "Pitch Call", "Call")
-    
-    if not x_col or not y_col:
-        st.warning("Plate location data not available for strike zones.")
+
+    sub = sub_all.copy()
+    if sub.empty:
         return None
-    
-    xs = pd.to_numeric(df.get(x_col, pd.Series(dtype=float)), errors='coerce')
-    ys = pd.to_numeric(df.get(y_col, pd.Series(dtype=float)), errors='coerce')
-    
-    if xs.isna().all() or ys.isna().all():
-        st.warning("No valid plate location data.")
+
+    sub[x_col] = pd.to_numeric(sub[x_col], errors="coerce")
+    sub[y_col] = pd.to_numeric(sub[y_col], errors="coerce")
+    if speed_col: sub[speed_col] = pd.to_numeric(sub[speed_col], errors="coerce")
+    sub = sub.dropna(subset=[x_col, y_col])
+
+    sub["_type_canon"] = sub[type_col].apply(canonicalize_type)
+    sub = sub[sub["_type_canon"] != "Unknown"].copy()
+
+    if include_types is not None and len(include_types) > 0:
+        sub = sub[sub["_type_canon"].isin(include_types)]
+    if sub.empty:
         return None
+
+    sub["_color"] = sub["_type_canon"].apply(color_for_release)
+
+    agg = {"mean_x": (x_col, "mean"), "mean_y": (y_col, "mean")}
+    if speed_col: agg["mean_speed"] = (speed_col, "mean")
+    means = sub.groupby("_type_canon", as_index=False).agg(**agg)
+    means["color"] = means["_type_canon"].apply(color_for_release)
+    if "mean_speed" in means.columns:
+        means = means.sort_values("mean_speed", ascending=False, na_position="last").reset_index(drop=True)
+
+    # Create single panel figure
+    fig, ax = plt.subplots(figsize=figsize)
     
-    x_min, x_max, y_min, y_max = get_view_bounds()
+    # Draw average release points with arm visualization
+    ARM_BASE_HALF_WIDTH = 0.15
+    ARM_TIP_HALF_WIDTH = 0.05
+    ARM_FILL_COLOR = "#4a4a4a"
     
-    # Create figure with 3 subplots
-    fig = make_subplots(
-        rows=1, cols=3, 
-        shared_yaxes=True, 
-        shared_xaxes=True,
-        subplot_titles=["All Pitches", "Filtered by Count", "Filtered by Batter Side"],
-        horizontal_spacing=0.05
-    )
-    
-    # Prepare customdata
-    cd = np.column_stack([
-        df[type_col].astype(str).values if type_col else np.array([""]*len(df)),
-        pd.to_numeric(df.get(speed_col, pd.Series(dtype=float)), errors='coerce').values if speed_col else np.full(len(df), np.nan),
-        pd.to_numeric(df.get(ivb_col, pd.Series(dtype=float)), errors='coerce').values if ivb_col else np.full(len(df), np.nan),
-        pd.to_numeric(df.get(hb_col, pd.Series(dtype=float)), errors='coerce').values if hb_col else np.full(len(df), np.nan),
-        df.get(call_col, pd.Series(dtype=object)).astype(str).values if call_col else np.array([""]*len(df)),
-        pd.to_numeric(df.get(exit_col, pd.Series(dtype=float)), errors='coerce').values if exit_col else np.full(len(df), np.nan),
-    ])
-    
-    # Get colors for each pitch
-    colors_pts = [get_pitch_color(t) for t in df[type_col].astype(str).tolist()] if type_col else [HUSKER_RED] * len(df)
-    
-    # Panel 1: All Pitches
-    for col in range(1, 4):
-        for shp in _zone_shapes_for_subplot():
-            fig.add_shape(shp, row=1, col=col)
-    
-    fig.add_trace(
-        go.Scattergl(
-            x=xs, y=ys,
-            mode="markers",
-            marker=dict(size=8, line=dict(width=0.5, color="black"), color=colors_pts),
-            customdata=cd,
-            hovertemplate=(
-                "Pitch Type: %{customdata[0]}<br>"
-                "Velo: %{customdata[1]:.1f} mph<br>"
-                "IVB: %{customdata[2]:.1f}\"<br>"
-                "HB: %{customdata[3]:.1f}\"<br>"
-                "Result: %{customdata[4]}<br>"
-                "Exit Velo: %{customdata[5]:.1f} mph<br>"
-                "x: %{x:.2f}  y: %{y:.2f}<extra></extra>"
-            ),
-            showlegend=False,
-            name="All Pitches"
-        ),
-        row=1, col=1
-    )
-    
-    # Note: Panels 2 and 3 will be populated based on filters in the UI
-    # For now, we'll show the same data but with transparency
-    fig.add_trace(
-        go.Scattergl(
-            x=xs, y=ys,
-            mode="markers",
-            marker=dict(size=8, line=dict(width=0.5, color="black"), color=colors_pts, opacity=0.3),
-            customdata=cd,
-            hovertemplate=(
-                "Pitch Type: %{customdata[0]}<br>"
-                "Velo: %{customdata[1]:.1f} mph<br>"
-                "IVB: %{customdata[2]:.1f}\"<br>"
-                "HB: %{customdata[3]:.1f}\"<br>"
-                "Result: %{customdata[4]}<br>"
-                "Exit Velo: %{customdata[5]:.1f} mph<br>"
-                "<i>Use filters above to update</i><extra></extra>"
-            ),
-            showlegend=False,
-            name="Count Filter"
-        ),
-        row=1, col=2
-    )
-    
-    fig.add_trace(
-        go.Scattergl(
-            x=xs, y=ys,
-            mode="markers",
-            marker=dict(size=8, line=dict(width=0.5, color="black"), color=colors_pts, opacity=0.3),
-            customdata=cd,
-            hovertemplate=(
-                "Pitch Type: %{customdata[0]}<br>"
-                "Velo: %{customdata[1]:.1f} mph<br>"
-                "IVB: %{customdata[2]:.1f}\"<br>"
-                "HB: %{customdata[3]:.1f}\"<br>"
-                "Result: %{customdata[4]}<br>"
-                "Exit Velo: %{customdata[5]:.1f} mph<br>"
-                "<i>Use filters above to update</i><extra></extra>"
-            ),
-            showlegend=False,
-            name="Batter Side"
-        ),
-        row=1, col=3
-    )
-    
-    # Update axes for all subplots
-    for col in range(1, 4):
-        fig.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col)
-        fig.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col)
-    
-    fig.update_layout(
-        height=500,
-        title_text=f"{canonicalize_person_name(pitcher_name)} — Strike Zones ({season_label})",
-        title_x=0.5,
-        margin=dict(l=10, r=10, t=80, b=10),
-        showlegend=False
-    )
-    
+    for _, row in means.iterrows():
+        x0, y0 = 0.0, 0.0
+        x1, y1 = float(row["mean_x"]), float(row["mean_y"])
+        dx, dy = x1 - x0, y1 - y0
+        L = float(np.hypot(dx, dy))
+        if L <= 1e-6: continue
+        ux, uy = dx / L, dy / L
+        px, py = -uy, ux
+        sLx, sLy = x0 + px*ARM_BASE_HALF_WIDTH, y0 + py*ARM_BASE_HALF_WIDTH
+        sRx, sRy = x0 - px*ARM_BASE_HALF_WIDTH, y0 - py*ARM_BASE_HALF_WIDTH
+        eLx, eLy = x1 + px*ARM_TIP_HALF_WIDTH, y1 + py*ARM_TIP_HALF_WIDTH
+        eRx, eRy = x1 - px*ARM_TIP_HALF_WIDTH, y1 - py*ARM_TIP_HALF_WIDTH
+        arm_poly = Polygon([(sLx, sLy), (eLx, eLy), (eRx, eRy), (sRx, sRy)], closed=True,
+                           facecolor=ARM_FILL_COLOR, edgecolor=ARM_FILL_COLOR, zorder=1)
+        ax.add_patch(arm_poly)
+        ax.add_patch(Circle((x0, y0), radius=0.20, facecolor="#0d0d0d", edgecolor="#0d0d0d", zorder=2))
+        outer = Circle((x1, y1), radius=0.26, facecolor=row["color"], edgecolor=row["color"], zorder=4)
+        ax.add_patch(outer)
+        inner_face = ax.get_facecolor()
+        inner = Circle((x1, y1), radius=0.15, facecolor=inner_face, edgecolor=inner_face, zorder=5)
+        ax.add_patch(inner)
+
+    ax.set_xlim(-5, 5)
+    ax.set_ylim(0, 8)
+    ax.set_aspect("equal")
+    ax.axhline(0, color="black", linewidth=1)
+    ax.axvline(0, color="black", linewidth=1)
+    ax.set_xlabel("Release Side (ft)", fontsize=10)
+    ax.set_ylabel("Release Height (ft)", fontsize=10)
+    ax.set_title("Average Release Points", fontweight="bold", fontsize=12)
+
+    # Legend
+    handles = []
+    for _, row in means.iterrows():
+        label = row["_type_canon"]
+        if "mean_speed" in means.columns and not pd.isna(row.get("mean_speed", None)):
+            label = f"{label} ({row['mean_speed']:.1f})"
+        handles.append(Line2D([0],[0], marker="o", linestyle="none", markersize=8, label=label, color=row["color"]))
+    if handles:
+        ax.legend(handles=handles, title="Pitch Type", loc="upper right", framealpha=0.9)
+
+    fig.tight_layout()
     return fig
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2982,28 +2938,26 @@ def create_pitch_category_summary(df):
 # ──────────────────────────────────────────────────────────────────────────────
 # UI — Fall Summary tab
 # ──────────────────────────────────────────────────────────────────────────────
-with tabs[4]:  # This assumes you added "Fall Summary" as the 5th tab (index 4)
-    st.markdown("#### Fall Summary Report")
-    st.markdown("Complete overview of fall season performance with all pitches thrown.")
+with tabs[4]:
+    st.markdown("### Fall Season Summary")
     
-    # Use all fall data (from the segment filter - typically "2025/26 Scrimmages")
+    # Use all fall data
     df_fall = df_pitcher_all.copy()
     
     if df_fall.empty:
         st.info("No fall data available for this pitcher.")
     else:
         # Determine season label
-        fall_label = f"{segment_choice} — All Appearances"
+        fall_label = f"{segment_choice}"
         
         # ═══════════════════════════════════════════════════════════════════════
-        # TOP SECTION: Overall Metrics Graph + Release Points
+        # TOP SECTION: Overall Metrics + Average Release Points (side by side)
         # ═══════════════════════════════════════════════════════════════════════
-        st.markdown("### Performance Overview")
+        st.markdown("#### Performance Overview")
         
-        col_metrics, col_release = st.columns([1.2, 1])
+        col_metrics, col_release = st.columns([1, 1])
         
         with col_metrics:
-            st.markdown("**Overall Metrics**")
             logo_img = load_logo_img()
             out_metrics = combined_pitcher_report(
                 df_fall, player_disp, logo_img, coverage=0.8, season_label=fall_label
@@ -3015,7 +2969,6 @@ with tabs[4]:  # This assumes you added "Fall Summary" as the 5th tab (index 4)
                 st.info("Metrics visualization not available.")
         
         with col_release:
-            st.markdown("**Release Points**")
             # Get available pitch types for release points
             type_col_fall = type_col_in_df(df_fall)
             types_avail_fall = []
@@ -3026,8 +2979,8 @@ with tabs[4]:  # This assumes you added "Fall Summary" as the 5th tab (index 4)
                     .replace("Unknown", np.nan).dropna().unique().tolist()
                 )
             
-            fig_release = release_points_figure(
-                df_fall, player_disp, include_types=types_avail_fall
+            fig_release = average_release_points_figure(
+                df_fall, player_disp, include_types=types_avail_fall, figsize=(7.0, 7.0)
             )
             if fig_release:
                 show_and_close(fig_release, use_container_width=True)
@@ -3037,180 +2990,180 @@ with tabs[4]:  # This assumes you added "Fall Summary" as the 5th tab (index 4)
         st.markdown("---")
         
         # ═══════════════════════════════════════════════════════════════════════
-        # MIDDLE SECTION: 3 Interactive Strike Zones with Filters
+        # MIDDLE SECTION: Top 3 Pitch Type Strike Zones with Filters
         # ═══════════════════════════════════════════════════════════════════════
-        st.markdown("### Strike Zone Analysis")
-        st.caption("Interactive strike zones showing all pitches thrown. Use filters to analyze specific situations.")
+        st.markdown("#### Strike Zone Analysis — Top 3 Pitches")
         
-        # Create filter controls
-        filter_col1, filter_col2, filter_col3 = st.columns(3)
-        
-        with filter_col1:
-            st.markdown("**Panel 1: All Pitches**")
-            st.caption(f"Total: {len(df_fall)} pitches")
-        
-        with filter_col2:
-            st.markdown("**Panel 2: Filter by Count**")
-            count_options = ["All Counts", "0-0 (First Pitch)", "0-1, 1-0, 1-1 (Even)", 
-                           "0-2, 1-2, 2-2 (Two Strikes)", "2-0, 3-0, 3-1, 2-1, 3-2 (Hitter's)"]
-            count_filter = st.selectbox(
-                "Select count situation:",
-                options=count_options,
-                key="fall_count_filter"
-            )
-        
-        with filter_col3:
-            st.markdown("**Panel 3: Filter by Batter Side**")
-            side_filter = st.radio(
-                "Batter handedness:",
-                options=["Both", "LHH", "RHH"],
-                horizontal=True,
-                key="fall_side_filter"
-            )
-        
-        # Apply filters for panels 2 and 3
-        df_panel2 = df_fall.copy()
-        df_panel3 = df_fall.copy()
-        
-        # Filter Panel 2 by count
-        if "Balls" in df_fall.columns and "Strikes" in df_fall.columns and count_filter != "All Counts":
-            if count_filter == "0-0 (First Pitch)":
-                df_panel2 = df_panel2[(df_panel2["Balls"] == 0) & (df_panel2["Strikes"] == 0)]
-            elif count_filter == "0-1, 1-0, 1-1 (Even)":
-                df_panel2 = df_panel2[
-                    ((df_panel2["Balls"] == 0) & (df_panel2["Strikes"] == 1)) |
-                    ((df_panel2["Balls"] == 1) & (df_panel2["Strikes"] == 0)) |
-                    ((df_panel2["Balls"] == 1) & (df_panel2["Strikes"] == 1))
-                ]
-            elif count_filter == "0-2, 1-2, 2-2 (Two Strikes)":
-                df_panel2 = df_panel2[
-                    ((df_panel2["Balls"] == 0) & (df_panel2["Strikes"] == 2)) |
-                    ((df_panel2["Balls"] == 1) & (df_panel2["Strikes"] == 2)) |
-                    ((df_panel2["Balls"] == 2) & (df_panel2["Strikes"] == 2))
-                ]
-            elif count_filter == "2-0, 3-0, 3-1, 2-1, 3-2 (Hitter's)":
-                df_panel2 = df_panel2[
-                    ((df_panel2["Balls"] == 2) & (df_panel2["Strikes"] == 0)) |
-                    ((df_panel2["Balls"] == 3) & (df_panel2["Strikes"] == 0)) |
-                    ((df_panel2["Balls"] == 3) & (df_panel2["Strikes"] == 1)) |
-                    ((df_panel2["Balls"] == 2) & (df_panel2["Strikes"] == 1)) |
-                    ((df_panel2["Balls"] == 3) & (df_panel2["Strikes"] == 2))
-                ]
-        
-        # Filter Panel 3 by batter side
-        if side_filter != "Both":
-            side_col = find_batter_side_col(df_panel3)
-            if side_col:
-                sides = normalize_batter_side(df_panel3[side_col])
-                target_side = "L" if side_filter == "LHH" else "R"
-                df_panel3 = df_panel3[sides == target_side]
-        
-        # Create the interactive figure with all 3 panels
-        st.markdown("")  # spacing
-        
-        # Build separate figures for each panel so we can update them independently
-        x_col = pick_col(df_fall, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
-        y_col = pick_col(df_fall, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
-        
-        if x_col and y_col:
-            type_col = type_col_in_df(df_fall)
-            speed_col = pick_col(df_fall, "RelSpeed", "Relspeed", "ReleaseSpeed", "RelSpeedMPH", "release_speed")
-            ivb_col = pick_col(df_fall, "InducedVertBreak", "IVB", "Induced Vert Break", "IndVertBreak")
-            hb_col = pick_col(df_fall, "HorzBreak", "HorizontalBreak", "HB", "HorizBreak")
-            exit_col = pick_col(df_fall, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", "ExitVel", "EV", "LaunchSpeed", "Launch_Speed")
-            call_col = pick_col(df_fall, "PitchCall", "Pitch Call", "Call")
-            x_min, x_max, y_min, y_max = get_view_bounds()
-            
-            # Create 3-panel figure
-            fig_zones = make_subplots(
-                rows=1, cols=3,
-                shared_yaxes=True,
-                shared_xaxes=True,
-                subplot_titles=[
-                    f"All Pitches (n={len(df_fall)})",
-                    f"{count_filter} (n={len(df_panel2)})",
-                    f"vs {side_filter} (n={len(df_panel3)})"
-                ],
-                horizontal_spacing=0.05
-            )
-            
-            # Add zone shapes to all panels
-            for col_idx in range(1, 4):
-                for shp in _zone_shapes_for_subplot():
-                    fig_zones.add_shape(shp, row=1, col=col_idx)
-            
-            # Helper function to add scatter trace
-            def add_scatter_to_panel(df_data, col_idx, panel_name):
-                if df_data.empty:
-                    return
-                
-                xs = pd.to_numeric(df_data.get(x_col, pd.Series(dtype=float)), errors='coerce')
-                ys = pd.to_numeric(df_data.get(y_col, pd.Series(dtype=float)), errors='coerce')
-                
-                if xs.isna().all() or ys.isna().all():
-                    return
-                
-                cd = np.column_stack([
-                    df_data[type_col].astype(str).values if type_col else np.array([""]*len(df_data)),
-                    pd.to_numeric(df_data.get(speed_col, pd.Series(dtype=float)), errors='coerce').values if speed_col else np.full(len(df_data), np.nan),
-                    pd.to_numeric(df_data.get(ivb_col, pd.Series(dtype=float)), errors='coerce').values if ivb_col else np.full(len(df_data), np.nan),
-                    pd.to_numeric(df_data.get(hb_col, pd.Series(dtype=float)), errors='coerce').values if hb_col else np.full(len(df_data), np.nan),
-                    df_data.get(call_col, pd.Series(dtype=object)).astype(str).values if call_col else np.array([""]*len(df_data)),
-                    pd.to_numeric(df_data.get(exit_col, pd.Series(dtype=float)), errors='coerce').values if exit_col else np.full(len(df_data), np.nan),
-                ])
-                
-                colors_pts = [get_pitch_color(t) for t in df_data[type_col].astype(str).tolist()] if type_col else [HUSKER_RED] * len(df_data)
-                
-                fig_zones.add_trace(
-                    go.Scattergl(
-                        x=xs, y=ys,
-                        mode="markers",
-                        marker=dict(size=7, line=dict(width=0.5, color="black"), color=colors_pts),
-                        customdata=cd,
-                        hovertemplate=(
-                            "Pitch Type: %{customdata[0]}<br>"
-                            "Velo: %{customdata[1]:.1f} mph<br>"
-                            "IVB: %{customdata[2]:.1f}\"<br>"
-                            "HB: %{customdata[3]:.1f}\"<br>"
-                            "Result: %{customdata[4]}<br>"
-                            "Exit Velo: %{customdata[5]:.1f} mph<br>"
-                            "x: %{x:.2f}  y: %{y:.2f}<extra></extra>"
-                        ),
-                        showlegend=False,
-                        name=panel_name
-                    ),
-                    row=1, col=col_idx
-                )
-            
-            # Add data to each panel
-            add_scatter_to_panel(df_fall, 1, "All")
-            add_scatter_to_panel(df_panel2, 2, "Count Filter")
-            add_scatter_to_panel(df_panel3, 3, "Side Filter")
-            
-            # Update axes
-            for col_idx in range(1, 4):
-                fig_zones.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col_idx)
-                fig_zones.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col_idx)
-            
-            fig_zones.update_layout(
-                height=500,
-                title_text=f"{canonicalize_person_name(player_disp)} — Strike Zone Breakdown",
-                title_x=0.5,
-                margin=dict(l=10, r=10, t=80, b=10),
-                showlegend=False
-            )
-            
-            st.plotly_chart(fig_zones, use_container_width=True, key="fall_summary_strike_zones")
+        # Get top 3 pitch types
+        type_col = type_col_in_df(df_fall)
+        if not type_col or type_col not in df_fall.columns:
+            st.warning("Pitch type data not available for strike zone analysis.")
         else:
-            st.warning("Plate location data not available for strike zone visualization.")
+            top3_pitches = df_fall[type_col].value_counts().head(3).index.tolist()
+            
+            if len(top3_pitches) == 0:
+                st.warning("No pitch type data available.")
+            else:
+                # Filter controls - apply to ALL panels
+                st.markdown("**Filters** (apply to all panels below)")
+                filter_col1, filter_col2 = st.columns([1, 1])
+                
+                with filter_col1:
+                    count_options = ["All Counts", "0-0 (First Pitch)", "0-1, 1-0, 1-1 (Even)", 
+                                   "0-2, 1-2, 2-2 (Two Strikes)", "2-0, 3-0, 3-1, 2-1, 3-2 (Hitter's)"]
+                    count_filter = st.selectbox(
+                        "Count Situation:",
+                        options=count_options,
+                        key="fall_count_filter"
+                    )
+                
+                with filter_col2:
+                    side_filter = st.radio(
+                        "Batter Handedness:",
+                        options=["Both", "vs LHH", "vs RHH"],
+                        horizontal=True,
+                        key="fall_side_filter"
+                    )
+                
+                st.markdown("")  # spacing
+                
+                # Apply filters to the data
+                df_filtered = df_fall.copy()
+                
+                # Filter by count
+                if "Balls" in df_fall.columns and "Strikes" in df_fall.columns and count_filter != "All Counts":
+                    if count_filter == "0-0 (First Pitch)":
+                        df_filtered = df_filtered[(df_filtered["Balls"] == 0) & (df_filtered["Strikes"] == 0)]
+                    elif count_filter == "0-1, 1-0, 1-1 (Even)":
+                        df_filtered = df_filtered[
+                            ((df_filtered["Balls"] == 0) & (df_filtered["Strikes"] == 1)) |
+                            ((df_filtered["Balls"] == 1) & (df_filtered["Strikes"] == 0)) |
+                            ((df_filtered["Balls"] == 1) & (df_filtered["Strikes"] == 1))
+                        ]
+                    elif count_filter == "0-2, 1-2, 2-2 (Two Strikes)":
+                        df_filtered = df_filtered[
+                            ((df_filtered["Balls"] == 0) & (df_filtered["Strikes"] == 2)) |
+                            ((df_filtered["Balls"] == 1) & (df_filtered["Strikes"] == 2)) |
+                            ((df_filtered["Balls"] == 2) & (df_filtered["Strikes"] == 2))
+                        ]
+                    elif count_filter == "2-0, 3-0, 3-1, 2-1, 3-2 (Hitter's)":
+                        df_filtered = df_filtered[
+                            ((df_filtered["Balls"] == 2) & (df_filtered["Strikes"] == 0)) |
+                            ((df_filtered["Balls"] == 3) & (df_filtered["Strikes"] == 0)) |
+                            ((df_filtered["Balls"] == 3) & (df_filtered["Strikes"] == 1)) |
+                            ((df_filtered["Balls"] == 2) & (df_filtered["Strikes"] == 1)) |
+                            ((df_filtered["Balls"] == 3) & (df_filtered["Strikes"] == 2))
+                        ]
+                
+                # Filter by batter side
+                if side_filter != "Both":
+                    side_col = find_batter_side_col(df_filtered)
+                    if side_col:
+                        sides = normalize_batter_side(df_filtered[side_col])
+                        target_side = "L" if side_filter == "vs LHH" else "R"
+                        df_filtered = df_filtered[sides == target_side]
+                
+                # Get necessary columns
+                x_col = pick_col(df_filtered, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
+                y_col = pick_col(df_filtered, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
+                speed_col = pick_col(df_filtered, "RelSpeed", "Relspeed", "ReleaseSpeed", "RelSpeedMPH", "release_speed")
+                ivb_col = pick_col(df_filtered, "InducedVertBreak", "IVB", "Induced Vert Break", "IndVertBreak")
+                hb_col = pick_col(df_filtered, "HorzBreak", "HorizontalBreak", "HB", "HorizBreak")
+                exit_col = pick_col(df_filtered, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", "ExitVel", "EV", "LaunchSpeed", "Launch_Speed")
+                call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call")
+                
+                if not x_col or not y_col:
+                    st.warning("Plate location data not available for strike zone visualization.")
+                else:
+                    x_min, x_max, y_min, y_max = get_view_bounds()
+                    
+                    # Create 3-panel figure for top 3 pitch types
+                    fig_top3_zones = make_subplots(
+                        rows=1, cols=3,
+                        shared_yaxes=True,
+                        shared_xaxes=True,
+                        subplot_titles=[f"{pitch} (n={len(df_filtered[df_filtered[type_col]==pitch])})" 
+                                      for pitch in top3_pitches[:3]],
+                        horizontal_spacing=0.05
+                    )
+                    
+                    # Add zone shapes to all panels
+                    for col_idx in range(1, 4):
+                        for shp in _zone_shapes_for_subplot():
+                            fig_top3_zones.add_shape(shp, row=1, col=col_idx)
+                    
+                    # Add data for each pitch type
+                    for idx, pitch_type in enumerate(top3_pitches[:3]):
+                        col_idx = idx + 1
+                        df_pitch = df_filtered[df_filtered[type_col] == pitch_type].copy()
+                        
+                        if df_pitch.empty:
+                            continue
+                        
+                        xs = pd.to_numeric(df_pitch.get(x_col, pd.Series(dtype=float)), errors='coerce')
+                        ys = pd.to_numeric(df_pitch.get(y_col, pd.Series(dtype=float)), errors='coerce')
+                        
+                        if xs.isna().all() or ys.isna().all():
+                            continue
+                        
+                        cd = np.column_stack([
+                            df_pitch[type_col].astype(str).values,
+                            pd.to_numeric(df_pitch.get(speed_col, pd.Series(dtype=float)), errors='coerce').values if speed_col else np.full(len(df_pitch), np.nan),
+                            pd.to_numeric(df_pitch.get(ivb_col, pd.Series(dtype=float)), errors='coerce').values if ivb_col else np.full(len(df_pitch), np.nan),
+                            pd.to_numeric(df_pitch.get(hb_col, pd.Series(dtype=float)), errors='coerce').values if hb_col else np.full(len(df_pitch), np.nan),
+                            df_pitch.get(call_col, pd.Series(dtype=object)).astype(str).values if call_col else np.array([""]*len(df_pitch)),
+                            pd.to_numeric(df_pitch.get(exit_col, pd.Series(dtype=float)), errors='coerce').values if exit_col else np.full(len(df_pitch), np.nan),
+                        ])
+                        
+                        pitch_color = get_pitch_color(pitch_type)
+                        
+                        fig_top3_zones.add_trace(
+                            go.Scattergl(
+                                x=xs, y=ys,
+                                mode="markers",
+                                marker=dict(size=8, line=dict(width=0.5, color="black"), color=pitch_color),
+                                customdata=cd,
+                                hovertemplate=(
+                                    "Pitch Type: %{customdata[0]}<br>"
+                                    "Velo: %{customdata[1]:.1f} mph<br>"
+                                    "IVB: %{customdata[2]:.1f}\"<br>"
+                                    "HB: %{customdata[3]:.1f}\"<br>"
+                                    "Result: %{customdata[4]}<br>"
+                                    "Exit Velo: %{customdata[5]:.1f} mph<br>"
+                                    "x: %{x:.2f}  y: %{y:.2f}<extra></extra>"
+                                ),
+                                showlegend=False,
+                                name=pitch_type
+                            ),
+                            row=1, col=col_idx
+                        )
+                    
+                    # Update axes
+                    for col_idx in range(1, 4):
+                        fig_top3_zones.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col_idx)
+                        fig_top3_zones.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col_idx)
+                    
+                    filter_text = f"{count_filter}" if count_filter != "All Counts" else "All Counts"
+                    if side_filter != "Both":
+                        filter_text = f"{filter_text}, {side_filter}"
+                    
+                    fig_top3_zones.update_layout(
+                        height=500,
+                        title_text=f"{canonicalize_person_name(player_disp)} — {filter_text}",
+                        title_x=0.5,
+                        margin=dict(l=10, r=10, t=80, b=10),
+                        showlegend=False
+                    )
+                    
+                    st.plotly_chart(fig_top3_zones, use_container_width=True, key="fall_top3_strike_zones")
         
         st.markdown("---")
         
         # ═══════════════════════════════════════════════════════════════════════
         # BOTTOM SECTION: Pitch Profile Summary (Fastball, Offspeed, Breaking)
         # ═══════════════════════════════════════════════════════════════════════
-        st.markdown("### Pitch Arsenal Summary")
-        st.caption("Performance metrics grouped by pitch category: Fastball, Offspeed, and Breaking Ball")
+        st.markdown("#### Pitch Arsenal Summary")
+        st.caption("Performance metrics grouped by pitch category")
         
         category_summary = create_pitch_category_summary(df_fall)
         
@@ -3248,7 +3201,7 @@ with tabs[4]:  # This assumes you added "Fall Summary" as the 5th tab (index 4)
         # ═══════════════════════════════════════════════════════════════════════
         # ADDITIONAL: Outing-by-Outing Summary Table
         # ═══════════════════════════════════════════════════════════════════════
-        st.markdown("### Outing-by-Outing Performance")
+        st.markdown("#### Outing-by-Outing Performance")
         
         if 'Date' in df_fall.columns:
             df_fall_dated = df_fall.copy()

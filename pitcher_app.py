@@ -2134,7 +2134,15 @@ def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
             out[c] = pd.to_numeric(out[c], errors="coerce").astype("Int64")
 
     return out
-
+  
+# Debug info (optional - remove after testing)
+if st.checkbox("Show debug info", value=False, key="debug_heatmaps"):
+    st.write(f"**Pitch types available:** {pitch_types}")
+    st.write(f"**Selected metric:** {heatmap_metric}")
+    for pitch_type in pitch_types[:3]:  # First 3
+        df_pitch = df_prof[df_prof[type_col] == pitch_type].copy()
+        coords = calculate_heatmap_metric_values(df_pitch, heatmap_metric)
+        st.write(f"**{pitch_type}:** {len(coords[0]) if coords else 0} points")
 # ──────────────────────────────────────────────────────────────────────────────
 # UI — Profiles tab (now tabs[1]) - REDESIGNED WITH KDE HEATMAPS
 # ──────────────────────────────────────────────────────────────────────────────

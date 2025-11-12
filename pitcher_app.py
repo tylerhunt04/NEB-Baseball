@@ -2172,36 +2172,8 @@ with tabs[1]:
         if prof_hand in ("LHH", "RHH") and side_col is not None and not df_prof.empty:
             sides = normalize_batter_side(df_prof[side_col])
             target = "L" if prof_hand == "LHH" else "R"
-            df_prof = df_prof[sides == target].copy()
-        
-        # Apply base situation filter
-        if base_situation != "All Situations" and not df_prof.empty:
-            # Find base/out columns
-            base1_col = pick_col(df_prof, "1B", "First", "Runner1B", "RunnerOn1st")
-            base2_col = pick_col(df_prof, "2B", "Second", "Runner2B", "RunnerOn2nd")
-            base3_col = pick_col(df_prof, "3B", "Third", "Runner3B", "RunnerOn3rd")
-            
-            if base1_col and base2_col and base3_col:
-                # Convert to binary (runner present or not)
-                on1 = df_prof[base1_col].notna() & (df_prof[base1_col].astype(str).str.strip() != "")
-                on2 = df_prof[base2_col].notna() & (df_prof[base2_col].astype(str).str.strip() != "")
-                on3 = df_prof[base3_col].notna() & (df_prof[base3_col].astype(str).str.strip() != "")
-                
-                if base_situation == "Runner on 1st":
-                    df_prof = df_prof[on1 & ~on2 & ~on3]
-                elif base_situation == "Runner on 2nd":
-                    df_prof = df_prof[~on1 & on2 & ~on3]
-                elif base_situation == "Runner on 3rd":
-                    df_prof = df_prof[~on1 & ~on2 & on3]
-                elif base_situation == "Runners on 1st & 2nd":
-                    df_prof = df_prof[on1 & on2 & ~on3]
-                elif base_situation == "Runners on 1st & 3rd":
-                    df_prof = df_prof[on1 & ~on2 & on3]
-                elif base_situation == "RISP (Scoring Position)":
-                    df_prof = df_prof[on2 | on3]
-                elif base_situation == "Bases Loaded":
-                    df_prof = df_prof[on1 & on2 & on3]
-        
+            df_prof = df_prof[sides == target].copy(
+              
         if df_prof.empty:
             st.info("No rows for the selected profile filters.")
         else:

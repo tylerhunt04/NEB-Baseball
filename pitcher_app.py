@@ -2186,8 +2186,8 @@ with tabs[1]:
         # Row 2: Heatmap metric selection (moved up, removed base situation)
         st.markdown("---")
         st.markdown("**Heatmap Visualization**")
-        
-       heatmap_metric_options = [
+
+      heatmap_metric_options = [
     "Pitch Locations (All)",
     "Hits",
     "Hard Hits",

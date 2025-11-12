@@ -1538,8 +1538,8 @@ def compute_density_for_rate_metric(x_all, y_all, x_positive, y_positive, grid_c
 
 def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
     """
-    Calculate metric values for each pitch in the dataframe based on the selected metric.
-    Returns a Series with metric values for each pitch, or a tuple (x_all, y_all, x_positive, y_positive) for rate metrics.
+    Filter dataframe to specific events and return coordinates for density plotting.
+    Returns tuple of (x_coords, y_coords) for the filtered events.
     """
     if df.empty:
         return None
@@ -1557,40 +1557,110 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
     valid_loc = xs.notna() & ys.notna()
     
     if metric == "Pitch Locations (All)":
-        # Just return 1 for all pitches (simple density)
-        return "simple_density"
+        # All pitches
+        return xs[valid_loc].values, ys[valid_loc].values
     
     elif metric == "Batting Average":
-        # Only terminal pitches where ball was in play
+        # Terminal pitches that were hits
         df_with_ab = add_inning_and_ab(df.copy())
         pa_table = _terminal_pa_table(df_with_ab)
         
         if result_col:
-            # Get terminal pitches that were in play
-            inplay_terminal = pa_table[pa_table.get("_PitchCall", pd.Series(dtype=str)).astype(str).str.lower().eq("inplay")]
-            
-            # Determine which were hits
-            pr_low = inplay_terminal.get(result_col, pd.Series(dtype=str)).astype(str).str.lower()
+            pr_low = pa_table.get(result_col, pd.Series(dtype=str)).astype(str).str.lower()
             is_hit = (pr_low.str.contains(r"\bsingle\b", regex=True) | 
                      pr_low.str.contains(r"\bdouble\b", regex=True) | 
                      pr_low.str.contains(r"\btriple\b", regex=True) |
                      pr_low.str.contains(r"\bhome\s*run\b", regex=True) |
                      pr_low.eq("hr"))
             
-            # Get locations of all balls in play and hits
-            x_all = pd.to_numeric(inplay_terminal.get(x_col, pd.Series(dtype=float)), errors='coerce')
-            y_all = pd.to_numeric(inplay_terminal.get(y_col, pd.Series(dtype=float)), errors='coerce')
-            valid_all = x_all.notna() & y_all.notna()
-            
-            hits_only = inplay_terminal[is_hit.values]
+            hits_only = pa_table[is_hit.values]
             x_hits = pd.to_numeric(hits_only.get(x_col, pd.Series(dtype=float)), errors='coerce')
             y_hits = pd.to_numeric(hits_only.get(y_col, pd.Series(dtype=float)), errors='coerce')
             valid_hits = x_hits.notna() & y_hits.notna()
             
-            return ("rate_metric", 
-                    x_all[valid_all].values, y_all[valid_all].values,
-                    x_hits[valid_hits].values, y_hits[valid_hits].values)
+            return x_hits[valid_hits].values, y_hits[valid_hits].values
         return None
+    
+    elif metric == "BABIP":
+        # Same as BA (hits on balls in play)
+        return calculate_heatmap_metric_values(df, "Batting Average")
+    
+    elif metric == "Exit Velocity (Avg)":
+        # For now, skip EV avg (would need different approach)
+        return None
+    
+    elif metric == "Hard Hits":
+        # Pitches with EV >= 95 on balls in play
+        if ev_col and call_col:
+            ev = pd.to_numeric(df.get(ev_col, pd.Series(dtype=float)), errors='coerce')
+            inplay = df.get(call_col, pd.Series(dtype=str)).astype(str).eq("InPlay")
+            hard_hit = (ev >= 95.0) & inplay & valid_loc
+            
+            return xs[hard_hit].values, ys[hard_hit].values
+        return None
+    
+    elif metric == "Whiffs":
+        # Where whiffs occur
+        if call_col:
+            calls = df.get(call_col, pd.Series(dtype=str)).astype(str)
+            is_whiff = calls.eq('StrikeSwinging') & valid_loc
+            
+            return xs[is_whiff].values, ys[is_whiff].values
+        return None
+    
+    elif metric == "Chases":
+        # Where chases occur (swings outside zone)
+        if call_col and x_col and y_col:
+            calls = df.get(call_col, pd.Series(dtype=str)).astype(str)
+            is_swing = calls.isin(['StrikeSwinging', 'FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay'])
+            
+            z_left, z_bot, z_w, z_h = get_zone_bounds()
+            in_zone = xs.between(z_left, z_left+z_w) & ys.between(z_bot, z_bot+z_h)
+            
+            is_chase = is_swing & (~in_zone) & valid_loc
+            return xs[is_chase].values, ys[is_chase].values
+        return None
+    
+    elif metric == "Contact":
+        # Where contact occurs
+        if call_col:
+            calls = df.get(call_col, pd.Series(dtype=str)).astype(str)
+            is_contact = calls.isin(['InPlay', 'FoulBallNotFieldable', 'FoulBallFieldable']) & valid_loc
+            
+            return xs[is_contact].values, ys[is_contact].values
+        return None
+    
+    elif metric == "Ground Balls":
+        # Where ground balls occur
+        if hit_type_col and call_col:
+            hit_types = df.get(hit_type_col, pd.Series(dtype=str)).astype(str).str.lower()
+            inplay = df.get(call_col, pd.Series(dtype=str)).astype(str).eq("InPlay")
+            is_gb = hit_types.str.contains("ground", na=False) & inplay & valid_loc
+            
+            return xs[is_gb].values, ys[is_gb].values
+        return None
+    
+    elif metric == "Fly Balls":
+        # Where fly balls occur
+        if hit_type_col and call_col:
+            hit_types = df.get(hit_type_col, pd.Series(dtype=str)).astype(str).str.lower()
+            inplay = df.get(call_col, pd.Series(dtype=str)).astype(str).eq("InPlay")
+            is_fb = hit_types.str.contains("fly", na=False) & inplay & valid_loc
+            
+            return xs[is_fb].values, ys[is_fb].values
+        return None
+    
+    elif metric == "Line Drives":
+        # Where line drives occur
+        if hit_type_col and call_col:
+            hit_types = df.get(hit_type_col, pd.Series(dtype=str)).astype(str).str.lower()
+            inplay = df.get(call_col, pd.Series(dtype=str)).astype(str).eq("InPlay")
+            is_ld = hit_types.str.contains("line", na=False) & inplay & valid_loc
+            
+            return xs[is_ld].values, ys[is_ld].values
+        return None
+    
+    return None
     
     elif metric == "BABIP":
         # Same as BA but only for balls in play

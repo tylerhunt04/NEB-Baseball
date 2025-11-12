@@ -1815,13 +1815,15 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     if not x_col or not y_col:
         return None
     
-    xs = pd.to_numeric(df.get(x_col, pd.Series(dtype=float)), errors='coerce')
-    ys = pd.to_numeric(df.get(y_col, pd.Series(dtype=float)), errors='coerce')
+    # Calculate metric values (get filtered coordinates)
+    coords = calculate_heatmap_metric_values(df, metric)
     
-    # Calculate metric values
-    metric_data = calculate_heatmap_metric_values(df, metric)
+    if coords is None or len(coords) != 2:
+        return None
     
-    if metric_data is None:
+    x_vals, y_vals = coords
+    
+    if len(x_vals) == 0:
         return None
     
     # Get zone and view bounds
@@ -1835,19 +1837,35 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     xi_mesh, yi_mesh = np.meshgrid(xi, yi)
     grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
     
-    # Compute heatmap based on metric type
-    if metric_data == "simple_density":
-        # Simple density heatmap
-        valid = xs.notna() & ys.notna()
-        zi = compute_density_simple(xs[valid].values, ys[valid].values, grid_coords, xi_mesh.shape)
-        n_count = valid.sum()
-    elif isinstance(metric_data, tuple) and metric_data[0] == "rate_metric":
-        # Rate/percentage metric
-        _, x_all, y_all, x_positive, y_positive = metric_data
-        zi = compute_density_for_rate_metric(x_all, y_all, x_positive, y_positive, grid_coords, xi_mesh.shape)
-        n_count = len(x_all)
-    else:
-        return None
+    # Compute density
+    zi = compute_density_simple(x_vals, y_vals, grid_coords, xi_mesh.shape)
+    
+    # Create matplotlib figure
+    fig, ax = plt.subplots(figsize=(4, 4))
+    
+    # Plot heatmap with custom colormap
+    zi_masked = np.ma.array(zi, mask=np.isnan(zi))
+    
+    im = ax.imshow(zi_masked, origin='lower', extent=[x_min, x_max, y_min, y_max], 
+                   aspect='equal', cmap=custom_cmap, alpha=0.8)
+    
+    # Draw strike zone
+    draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
+    
+    # Formatting
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title(f"{pitch_type}\n(n={len(x_vals)})", 
+                 fontweight='bold', fontsize=10, pad=8)
+    
+    # Set background color to white so NaN areas are white
+    ax.set_facecolor('white')
+    
+    plt.tight_layout()
+    
+    return fig
     
     # Create matplotlib figure
     fig, ax = plt.subplots(figsize=(4, 4))

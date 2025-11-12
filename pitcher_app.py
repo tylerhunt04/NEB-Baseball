@@ -2183,21 +2183,24 @@ with tabs[1]:
         with filter_row1_col4:
             last_n_games = int(st.number_input("Last N games (0 = All)", min_value=0, max_value=100, value=0, step=1, format="%d", key="prof_lastn_new"))
         
-        # Row 2: Heatmap metric selection (moved up, removed base situation)
-        st.markdown("---")
+       st.markdown("---")
         st.markdown("**Heatmap Visualization**")
-
-      heatmap_metric_options = [
-    "Pitch Locations (All)",
-    "Hits",
-    "Hard Hits",
-    "Whiffs",
-    "Chases",
-    "Contact",
-    "Ground Balls",
-    "Fly Balls",
-    "Line Drives"
-]
+        
+        filter_row2_col1, filter_row2_col2 = st.columns([1, 3])
+        with filter_row2_col1:
+            heatmap_metric = st.selectbox("Metric to Display", [
+                "Pitch Locations (All)",
+                "Hits",
+                "Hard Hits",
+                "Whiffs",
+                "Chases",
+                "Contact",
+                "Ground Balls",
+                "Fly Balls",
+                "Line Drives"
+            ], index=0, key="prof_heatmap_metric")
+        
+        st.markdown("---")
         
         filter_row2_col1, filter_row2_col2 = st.columns([1, 3])
         with filter_row2_col1:

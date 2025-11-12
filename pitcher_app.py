@@ -2259,19 +2259,17 @@ with tabs[1]:
         st.markdown("---")
         st.markdown("**Heatmap Visualization**")
         
-        heatmap_metric_options = [
-            "Pitch Locations (All)",
-            "Batting Average",
-            "Exit Velocity (Avg)",
-            "BABIP",
-            "Hard Hit %",
-            "Whiffs",
-            "Chases",
-            "Contact",
-            "Ground Ball Rate",
-            "Fly Ball Rate",
-            "Line Drive Rate"
-        ]
+       heatmap_metric_options = [
+    "Pitch Locations (All)",
+    "Hits",
+    "Hard Hits",
+    "Whiffs",
+    "Chases",
+    "Contact",
+    "Ground Balls",
+    "Fly Balls",
+    "Line Drives"
+]
         
         filter_row2_col1, filter_row2_col2 = st.columns([1, 3])
         with filter_row2_col1:

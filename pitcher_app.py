@@ -1473,7 +1473,7 @@ def compute_density_for_rate_metric(x_all, y_all, x_positive, y_positive, grid_c
     Compute a rate/percentage metric heatmap by dividing:
     density of positive events / density of all events
     
-    This shows WHERE a metric (like hard hit %, whiff %, etc.) is highest.
+    CRITICAL: Mask out areas with low overall density (no actual pitches)
     """
     # Need at least 2 points for KDE
     if len(x_all) < 2:
@@ -1484,6 +1484,11 @@ def compute_density_for_rate_metric(x_all, y_all, x_positive, y_positive, grid_c
         kde_all = gaussian_kde(np.vstack([x_all, y_all]))
         density_all = kde_all(grid_coords).reshape(mesh_shape)
         
+        # Create a mask: only show data where we have actual pitch density
+        # Use a threshold based on the maximum density
+        density_threshold = 0.01 * density_all.max()  # Only show where density > 1% of max
+        mask = density_all > density_threshold
+        
         # If we have positive events, create their KDE
         if len(x_positive) >= 2:
             kde_positive = gaussian_kde(np.vstack([x_positive, y_positive]))
@@ -1492,33 +1497,26 @@ def compute_density_for_rate_metric(x_all, y_all, x_positive, y_positive, grid_c
             # Rate = positive density / all density
             with np.errstate(divide='ignore', invalid='ignore'):
                 rate = np.divide(density_positive, density_all)
-                # Set invalid values to 0 or nan
-                rate[~np.isfinite(rate)] = 0
+                # Set invalid values to nan
+                rate[~np.isfinite(rate)] = np.nan
+                # Apply mask - set areas with low density to nan
+                rate[~mask] = np.nan
                 # Clip to 0-1 range (it's a percentage)
                 rate = np.clip(rate, 0, 1)
             return rate
+        elif len(x_positive) == 1:
+            # Only one positive event - show it as a small hot spot
+            result = np.zeros(mesh_shape)
+            result[~mask] = np.nan
+            return result
         else:
-            # No positive events, return zeros
-            return np.zeros(mesh_shape)
+            # No positive events, return zeros where we have pitch density
+            result = np.zeros(mesh_shape)
+            result[~mask] = np.nan
+            return result
             
     except (LinAlgError, ValueError):
-        return np.zeros(mesh_shape)
-
-
-def compute_density_simple(x, y, grid_coords, mesh_shape):
-    """Simple KDE for density visualization (Pitch Locations All)"""
-    mask = np.isfinite(x) & np.isfinite(y)
-    x_clean, y_clean = x[mask], y[mask]
-    
-    if len(x_clean) < 2:
-        return np.zeros(mesh_shape)
-    
-    try:
-        kde = gaussian_kde(np.vstack([x_clean, y_clean]))
-        return kde(grid_coords).reshape(mesh_shape)
-    except (LinAlgError, ValueError):
-        return np.zeros(mesh_shape)
-
+        return np.full(mesh_shape, np.nan)
 
 def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
     """
@@ -1764,6 +1762,35 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
         n_count = len(x_all)
     else:
         return None
+    
+    # Create matplotlib figure
+    fig, ax = plt.subplots(figsize=(4, 4))
+    
+    # Plot heatmap with custom colormap
+    # Use a masked array to handle NaN values (won't plot them)
+    zi_masked = np.ma.array(zi, mask=np.isnan(zi))
+    
+    im = ax.imshow(zi_masked, origin='lower', extent=[x_min, x_max, y_min, y_max], 
+                   aspect='equal', cmap=custom_cmap, alpha=0.8,
+                   vmin=0, vmax=1 if isinstance(metric_data, tuple) else None)  # For rate metrics, scale 0-1
+    
+    # Draw strike zone
+    draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
+    
+    # Formatting
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title(f"{pitch_type}\n(n={n_count})", 
+                 fontweight='bold', fontsize=10, pad=8)
+    
+    # Set background color to white so NaN areas are white
+    ax.set_facecolor('white')
+    
+    plt.tight_layout()
+    
+    return fig
     
     # Create matplotlib figure
     fig, ax = plt.subplots(figsize=(4, 4))

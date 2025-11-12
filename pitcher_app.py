@@ -2151,7 +2151,7 @@ with tabs[1]:
     if "bullpen" in SEGMENT_DEFS.get(segment_choice, {}).get("types", []):
         st.info("Profiles are not available for **Bullpens** (no batting occurs).")
     else:
-        # ═══════════════════════════════════════════════════════════════════════
+       # ═══════════════════════════════════════════════════════════════════════
         # FILTERS SECTION
         # ═══════════════════════════════════════════════════════════════════════
         st.markdown("### Filters")
@@ -2183,7 +2183,7 @@ with tabs[1]:
         with filter_row1_col4:
             last_n_games = int(st.number_input("Last N games (0 = All)", min_value=0, max_value=100, value=0, step=1, format="%d", key="prof_lastn_new"))
         
-       st.markdown("---")
+        st.markdown("---")
         st.markdown("**Heatmap Visualization**")
         
         filter_row2_col1, filter_row2_col2 = st.columns([1, 3])
@@ -2199,12 +2199,6 @@ with tabs[1]:
                 "Fly Balls",
                 "Line Drives"
             ], index=0, key="prof_heatmap_metric")
-        
-        st.markdown("---")
-        
-        filter_row2_col1, filter_row2_col2 = st.columns([1, 3])
-        with filter_row2_col1:
-            heatmap_metric = st.selectbox("Metric to Display", heatmap_metric_options, index=0, key="prof_heatmap_metric")
         
         st.markdown("---")
         

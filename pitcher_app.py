@@ -2174,8 +2174,8 @@ with tabs[1]:
         if df_prof.empty:
             st.info("No rows for the selected profile filters.")
         else:
-            # ═══════════════════════════════════════════════════════════════════════
-            # HEATMAPS SECTION (KDE-based)
+           # ═══════════════════════════════════════════════════════════════════════
+            # HEATMAPS SECTION (3x3 grid layout)
             # ═══════════════════════════════════════════════════════════════════════
             st.markdown(f"### Heatmaps by Pitch Type — {heatmap_metric}")
             st.caption(f"Data: {season_label_prof} | {prof_hand}")
@@ -2188,26 +2188,36 @@ with tabs[1]:
                 if len(pitch_types) == 0:
                     st.warning("No pitch type data available.")
                 else:
-                    # Generate heatmap for each pitch type
-                    for pitch_type in pitch_types:
-                        df_pitch = df_prof[df_prof[type_col] == pitch_type].copy()
+                    # Display heatmaps in 3-column grid
+                    cols_per_row = 3
+                    
+                    for i in range(0, len(pitch_types), cols_per_row):
+                        # Create a row of 3 columns
+                        cols = st.columns(cols_per_row)
                         
-                        if df_pitch.empty:
-                            continue
-                        
-                        # Create heatmap figure (matplotlib with KDE)
-                        fig_heatmap = create_profile_heatmap(
-                            df_pitch, 
-                            pitch_type, 
-                            heatmap_metric,
-                            season_label_prof
-                        )
-                        
-                        if fig_heatmap:
-                            # Display matplotlib figure in Streamlit
-                            show_and_close(fig_heatmap, use_container_width=True)
-                        else:
-                            st.caption(f"No data available for {pitch_type} with selected metric.")
+                        # Fill each column in this row
+                        for j in range(cols_per_row):
+                            pitch_idx = i + j
+                            
+                            if pitch_idx < len(pitch_types):
+                                pitch_type = pitch_types[pitch_idx]
+                                df_pitch = df_prof[df_prof[type_col] == pitch_type].copy()
+                                
+                                if not df_pitch.empty:
+                                    # Create heatmap figure (matplotlib with KDE)
+                                    fig_heatmap = create_profile_heatmap(
+                                        df_pitch, 
+                                        pitch_type, 
+                                        heatmap_metric,
+                                        season_label_prof
+                                    )
+                                    
+                                    with cols[j]:
+                                        if fig_heatmap:
+                                            # Display matplotlib figure in Streamlit
+                                            show_and_close(fig_heatmap, use_container_width=True)
+                                        else:
+                                            st.caption(f"No data for {pitch_type}")
             else:
                 st.warning("Pitch type information not available.")
             

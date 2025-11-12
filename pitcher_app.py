@@ -1660,8 +1660,6 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
             return xs[is_ld].values, ys[is_ld].values
         return None
     
-    return None
-    
     elif metric == "BABIP":
         # Same as BA but only for balls in play
         return calculate_heatmap_metric_values(df, "Batting Average")

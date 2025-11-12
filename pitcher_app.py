@@ -1468,54 +1468,62 @@ with tabs[0]:
 # KDE HEATMAP HELPER FUNCTIONS FOR PROFILES TAB
 # ══════════════════════════════════════════════════════════════════════════════
 
-def compute_density_weighted(x, y, weights, grid_coords, mesh_shape):
+def compute_density_for_rate_metric(x_all, y_all, x_positive, y_positive, grid_coords, mesh_shape):
     """
-    Compute weighted KDE density; fallback to zeros on error; drop NaNs/infs.
-    For metrics, weights represent the metric value at each location.
+    Compute a rate/percentage metric heatmap by dividing:
+    density of positive events / density of all events
+    
+    This shows WHERE a metric (like hard hit %, whiff %, etc.) is highest.
     """
-    # Filter valid data
-    mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(weights)
-    x_clean = x[mask]
-    y_clean = y[mask]
-    w_clean = weights[mask]
+    # Need at least 2 points for KDE
+    if len(x_all) < 2:
+        return np.zeros(mesh_shape)
+    
+    try:
+        # KDE of all pitches in this category
+        kde_all = gaussian_kde(np.vstack([x_all, y_all]))
+        density_all = kde_all(grid_coords).reshape(mesh_shape)
+        
+        # If we have positive events, create their KDE
+        if len(x_positive) >= 2:
+            kde_positive = gaussian_kde(np.vstack([x_positive, y_positive]))
+            density_positive = kde_positive(grid_coords).reshape(mesh_shape)
+            
+            # Rate = positive density / all density
+            with np.errstate(divide='ignore', invalid='ignore'):
+                rate = np.divide(density_positive, density_all)
+                # Set invalid values to 0 or nan
+                rate[~np.isfinite(rate)] = 0
+                # Clip to 0-1 range (it's a percentage)
+                rate = np.clip(rate, 0, 1)
+            return rate
+        else:
+            # No positive events, return zeros
+            return np.zeros(mesh_shape)
+            
+    except (LinAlgError, ValueError):
+        return np.zeros(mesh_shape)
+
+
+def compute_density_simple(x, y, grid_coords, mesh_shape):
+    """Simple KDE for density visualization (Pitch Locations All)"""
+    mask = np.isfinite(x) & np.isfinite(y)
+    x_clean, y_clean = x[mask], y[mask]
     
     if len(x_clean) < 2:
         return np.zeros(mesh_shape)
     
     try:
-        # For simple density (all weights = 1), just use standard KDE
-        if len(np.unique(w_clean)) == 1:
-            kde = gaussian_kde(np.vstack([x_clean, y_clean]))
-            return kde(grid_coords).reshape(mesh_shape)
-        
-        # For weighted metrics, we compute two KDEs:
-        # 1. Location density
-        # 2. Weighted density (each point weighted by metric value)
-        # Then divide to get average metric value per location
-        
-        kde_density = gaussian_kde(np.vstack([x_clean, y_clean]))
-        density = kde_density(grid_coords).reshape(mesh_shape)
-        
-        # Weighted KDE: manually weight each point by its metric value
-        # We'll use sample_weight parameter if available, otherwise replicate points
-        kde_weighted = gaussian_kde(np.vstack([x_clean, y_clean]), weights=w_clean)
-        weighted_density = kde_weighted(grid_coords).reshape(mesh_shape)
-        
-        # Normalize by density to get average metric value
-        with np.errstate(divide='ignore', invalid='ignore'):
-            result = np.divide(weighted_density, density)
-            result[~np.isfinite(result)] = np.nan
-        
-        return result
-            
-    except (LinAlgError, ValueError) as e:
+        kde = gaussian_kde(np.vstack([x_clean, y_clean]))
+        return kde(grid_coords).reshape(mesh_shape)
+    except (LinAlgError, ValueError):
         return np.zeros(mesh_shape)
 
 
 def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
     """
     Calculate metric values for each pitch in the dataframe based on the selected metric.
-    Returns a Series with metric values for each pitch, or None if metric cannot be calculated.
+    Returns a Series with metric values for each pitch, or a tuple (x_all, y_all, x_positive, y_positive) for rate metrics.
     """
     if df.empty:
         return None
@@ -1527,155 +1535,190 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
     x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
     y_col = pick_col(df, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
     
-    # Create AB grouping for PA-level metrics
-    df_with_ab = add_inning_and_ab(df.copy())
+    # Get x, y coordinates
+    xs = pd.to_numeric(df.get(x_col, pd.Series(dtype=float)), errors='coerce')
+    ys = pd.to_numeric(df.get(y_col, pd.Series(dtype=float)), errors='coerce')
+    valid_loc = xs.notna() & ys.notna()
     
     if metric == "Pitch Locations (All)":
-        # Just return 1 for all pitches (density heatmap)
-        return pd.Series(1.0, index=df.index)
+        # Just return 1 for all pitches (simple density)
+        return "simple_density"
     
     elif metric == "Batting Average":
-        # Calculate BA for each AB, attribute to all pitches in that AB
-        if result_col and "AB #" in df_with_ab.columns:
-            # Get terminal rows (one per AB)
-            pa_table = _terminal_pa_table(df_with_ab)
+        # Only terminal pitches where ball was in play
+        df_with_ab = add_inning_and_ab(df.copy())
+        pa_table = _terminal_pa_table(df_with_ab)
+        
+        if result_col:
+            # Get terminal pitches that were in play
+            inplay_terminal = pa_table[pa_table.get("_PitchCall", pd.Series(dtype=str)).astype(str).str.lower().eq("inplay")]
             
-            # Determine hits
-            pr_low = pa_table.get(result_col, pd.Series(dtype=str)).astype(str).str.lower()
+            # Determine which were hits
+            pr_low = inplay_terminal.get(result_col, pd.Series(dtype=str)).astype(str).str.lower()
             is_hit = (pr_low.str.contains(r"\bsingle\b", regex=True) | 
                      pr_low.str.contains(r"\bdouble\b", regex=True) | 
                      pr_low.str.contains(r"\btriple\b", regex=True) |
                      pr_low.str.contains(r"\bhome\s*run\b", regex=True) |
                      pr_low.eq("hr"))
             
-            # Map to AB
-            ab_to_hit = pa_table.set_index("AB #")[is_hit.values]
-            return df_with_ab["AB #"].map(ab_to_hit).fillna(0).astype(float)
-        return None
-    
-    elif metric == "Exit Velocity (Avg)":
-        # Average EV for balls in play
-        if ev_col and call_col:
-            ev = pd.to_numeric(df.get(ev_col, pd.Series(dtype=float)), errors='coerce')
-            inplay = df.get(call_col, pd.Series(dtype=str)).astype(str).eq("InPlay")
-            # Return EV for balls in play, NaN otherwise
-            result = ev.copy()
-            result[~inplay] = np.nan
-            return result
+            # Get locations of all balls in play and hits
+            x_all = pd.to_numeric(inplay_terminal.get(x_col, pd.Series(dtype=float)), errors='coerce')
+            y_all = pd.to_numeric(inplay_terminal.get(y_col, pd.Series(dtype=float)), errors='coerce')
+            valid_all = x_all.notna() & y_all.notna()
+            
+            hits_only = inplay_terminal[is_hit.values]
+            x_hits = pd.to_numeric(hits_only.get(x_col, pd.Series(dtype=float)), errors='coerce')
+            y_hits = pd.to_numeric(hits_only.get(y_col, pd.Series(dtype=float)), errors='coerce')
+            valid_hits = x_hits.notna() & y_hits.notna()
+            
+            return ("rate_metric", 
+                    x_all[valid_all].values, y_all[valid_all].values,
+                    x_hits[valid_hits].values, y_hits[valid_hits].values)
         return None
     
     elif metric == "BABIP":
-        # Batting average on balls in play
-        if result_col and call_col and "AB #" in df_with_ab.columns:
-            pa_table = _terminal_pa_table(df_with_ab)
-            
-            # Get InPlay terminal events
-            pc = pa_table.get("_PitchCall", pd.Series(dtype=str)).astype(str)
-            inplay_abs = pa_table[pc.str.lower().eq("inplay")]["AB #"].tolist()
-            
-            # Of those, which were hits?
-            pr_low = pa_table.get(result_col, pd.Series(dtype=str)).astype(str).str.lower()
-            is_hit = (pr_low.str.contains(r"\bsingle\b", regex=True) | 
-                     pr_low.str.contains(r"\bdouble\b", regex=True) | 
-                     pr_low.str.contains(r"\btriple\b", regex=True) |
-                     pr_low.str.contains(r"\bhome\s*run\b", regex=True) |
-                     pr_low.eq("hr"))
-            
-            # Map to inplay ABs
-            babip_map = {}
-            for ab in inplay_abs:
-                hit_val = is_hit.loc[pa_table["AB #"] == ab]
-                if not hit_val.empty:
-                    babip_map[ab] = float(hit_val.iloc[0])
-            
-            # Map back to all pitches
-            result = df_with_ab["AB #"].map(babip_map)
-            # Only show for inplay ABs
-            inplay_pitch = df_with_ab["AB #"].isin(inplay_abs)
-            result[~inplay_pitch] = np.nan
-            return result
+        # Same as BA but only for balls in play
+        return calculate_heatmap_metric_values(df, "Batting Average")
+    
+    elif metric == "Exit Velocity (Avg)":
+        # For EV, we want to show average EV by location (not a rate)
+        # This is tricky with KDE... for now skip or handle differently
         return None
     
     elif metric == "Hard Hit %":
-        # Hard hit (EV >= 95) on balls in play
+        # Rate metric: hard hits / all balls in play
         if ev_col and call_col:
             ev = pd.to_numeric(df.get(ev_col, pd.Series(dtype=float)), errors='coerce')
             inplay = df.get(call_col, pd.Series(dtype=str)).astype(str).eq("InPlay")
-            hard_hit = (ev >= 95.0) & inplay
-            result = hard_hit.astype(float)
-            result[~inplay] = np.nan
-            return result
+            
+            # All balls in play
+            bip_df = df[inplay & valid_loc]
+            x_all = xs[inplay & valid_loc].values
+            y_all = ys[inplay & valid_loc].values
+            
+            # Hard hits only (EV >= 95)
+            hard_hit = (ev >= 95.0) & inplay & valid_loc
+            x_hard = xs[hard_hit].values
+            y_hard = ys[hard_hit].values
+            
+            return ("rate_metric", x_all, y_all, x_hard, y_hard)
         return None
     
     elif metric == "Whiffs":
-        # Whiff rate (strikeswinging)
+        # Rate metric: whiffs / all swings
         if call_col:
             calls = df.get(call_col, pd.Series(dtype=str)).astype(str)
-            is_whiff = calls.eq("StrikeSwinging")
-            return is_whiff.astype(float)
+            is_swing = calls.isin(['StrikeSwinging', 'FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay'])
+            is_whiff = calls.eq('StrikeSwinging')
+            
+            # All swings
+            swings_df = df[is_swing & valid_loc]
+            x_all = xs[is_swing & valid_loc].values
+            y_all = ys[is_swing & valid_loc].values
+            
+            # Whiffs only
+            x_whiff = xs[is_whiff & valid_loc].values
+            y_whiff = ys[is_whiff & valid_loc].values
+            
+            return ("rate_metric", x_all, y_all, x_whiff, y_whiff)
         return None
     
     elif metric == "Chases":
-        # Chase rate (swing outside zone)
+        # Rate metric: chases / all pitches outside zone
         if call_col and x_col and y_col:
             calls = df.get(call_col, pd.Series(dtype=str)).astype(str)
             is_swing = calls.isin(['StrikeSwinging', 'FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay'])
             
-            xs = pd.to_numeric(df.get(x_col, pd.Series(dtype=float)), errors='coerce')
-            ys = pd.to_numeric(df.get(y_col, pd.Series(dtype=float)), errors='coerce')
-            
             z_left, z_bot, z_w, z_h = get_zone_bounds()
             in_zone = xs.between(z_left, z_left+z_w) & ys.between(z_bot, z_bot+z_h)
             
-            is_chase = is_swing & (~in_zone)
-            return is_chase.astype(float)
+            # All pitches outside zone
+            outside = (~in_zone) & valid_loc
+            x_all = xs[outside].values
+            y_all = ys[outside].values
+            
+            # Chases (swings outside zone)
+            is_chase = is_swing & (~in_zone) & valid_loc
+            x_chase = xs[is_chase].values
+            y_chase = ys[is_chase].values
+            
+            return ("rate_metric", x_all, y_all, x_chase, y_chase)
         return None
     
     elif metric == "Contact":
-        # Contact made (foul or in play)
+        # Rate metric: contact / all swings
         if call_col:
             calls = df.get(call_col, pd.Series(dtype=str)).astype(str)
+            is_swing = calls.isin(['StrikeSwinging', 'FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay'])
             is_contact = calls.isin(['InPlay', 'FoulBallNotFieldable', 'FoulBallFieldable'])
-            return is_contact.astype(float)
+            
+            # All swings
+            x_all = xs[is_swing & valid_loc].values
+            y_all = ys[is_swing & valid_loc].values
+            
+            # Contact only
+            x_contact = xs[is_contact & valid_loc].values
+            y_contact = ys[is_contact & valid_loc].values
+            
+            return ("rate_metric", x_all, y_all, x_contact, y_contact)
         return None
     
     elif metric == "Ground Ball Rate":
-        # Ground balls on balls in play
+        # Rate metric: ground balls / all balls in play
         if hit_type_col and call_col:
             hit_types = df.get(hit_type_col, pd.Series(dtype=str)).astype(str).str.lower()
             inplay = df.get(call_col, pd.Series(dtype=str)).astype(str).eq("InPlay")
-            is_gb = hit_types.str.contains("ground", na=False) & inplay
-            result = is_gb.astype(float)
-            result[~inplay] = np.nan
-            return result
+            
+            # All balls in play
+            x_all = xs[inplay & valid_loc].values
+            y_all = ys[inplay & valid_loc].values
+            
+            # Ground balls only
+            is_gb = hit_types.str.contains("ground", na=False) & inplay & valid_loc
+            x_gb = xs[is_gb].values
+            y_gb = ys[is_gb].values
+            
+            return ("rate_metric", x_all, y_all, x_gb, y_gb)
         return None
     
     elif metric == "Fly Ball Rate":
-        # Fly balls on balls in play
+        # Rate metric: fly balls / all balls in play
         if hit_type_col and call_col:
             hit_types = df.get(hit_type_col, pd.Series(dtype=str)).astype(str).str.lower()
             inplay = df.get(call_col, pd.Series(dtype=str)).astype(str).eq("InPlay")
-            is_fb = hit_types.str.contains("fly", na=False) & inplay
-            result = is_fb.astype(float)
-            result[~inplay] = np.nan
-            return result
+            
+            # All balls in play
+            x_all = xs[inplay & valid_loc].values
+            y_all = ys[inplay & valid_loc].values
+            
+            # Fly balls only
+            is_fb = hit_types.str.contains("fly", na=False) & inplay & valid_loc
+            x_fb = xs[is_fb].values
+            y_fb = ys[is_fb].values
+            
+            return ("rate_metric", x_all, y_all, x_fb, y_fb)
         return None
     
     elif metric == "Line Drive Rate":
-        # Line drives on balls in play
+        # Rate metric: line drives / all balls in play
         if hit_type_col and call_col:
             hit_types = df.get(hit_type_col, pd.Series(dtype=str)).astype(str).str.lower()
             inplay = df.get(call_col, pd.Series(dtype=str)).astype(str).eq("InPlay")
-            is_ld = hit_types.str.contains("line", na=False) & inplay
-            result = is_ld.astype(float)
-            result[~inplay] = np.nan
-            return result
+            
+            # All balls in play
+            x_all = xs[inplay & valid_loc].values
+            y_all = ys[inplay & valid_loc].values
+            
+            # Line drives only
+            is_ld = hit_types.str.contains("line", na=False) & inplay & valid_loc
+            x_ld = xs[is_ld].values
+            y_ld = ys[is_ld].values
+            
+            return ("rate_metric", x_all, y_all, x_ld, y_ld)
         return None
     
     return None
 
-
-# First, update the heatmap function to make figures smaller
 def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, season_label: str):
     """
     Create a KDE-based heatmap for a specific pitch type based on the selected metric.
@@ -1691,29 +1734,11 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     xs = pd.to_numeric(df.get(x_col, pd.Series(dtype=float)), errors='coerce')
     ys = pd.to_numeric(df.get(y_col, pd.Series(dtype=float)), errors='coerce')
     
-    # Filter out NaN locations
-    valid_loc = xs.notna() & ys.notna()
-    if not valid_loc.any():
-        return None
-    
-    df_valid = df[valid_loc].copy()
-    xs_valid = xs[valid_loc].values
-    ys_valid = ys[valid_loc].values
-    
     # Calculate metric values
-    metric_values = calculate_heatmap_metric_values(df_valid, metric)
+    metric_data = calculate_heatmap_metric_values(df, metric)
     
-    if metric_values is None:
+    if metric_data is None:
         return None
-    
-    # Filter to only valid metric values
-    valid_metrics = metric_values.notna()
-    if not valid_metrics.any():
-        return None
-    
-    xs_plot = xs_valid[valid_metrics.values]
-    ys_plot = ys_valid[valid_metrics.values]
-    values_plot = metric_values[valid_metrics].values
     
     # Get zone and view bounds
     sz_left, sz_bottom, sz_width, sz_height = get_zone_bounds()
@@ -1726,11 +1751,22 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     xi_mesh, yi_mesh = np.meshgrid(xi, yi)
     grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
     
-    # Compute density heatmap
-    zi = compute_density_weighted(xs_plot, ys_plot, values_plot, grid_coords, xi_mesh.shape)
+    # Compute heatmap based on metric type
+    if metric_data == "simple_density":
+        # Simple density heatmap
+        valid = xs.notna() & ys.notna()
+        zi = compute_density_simple(xs[valid].values, ys[valid].values, grid_coords, xi_mesh.shape)
+        n_count = valid.sum()
+    elif isinstance(metric_data, tuple) and metric_data[0] == "rate_metric":
+        # Rate/percentage metric
+        _, x_all, y_all, x_positive, y_positive = metric_data
+        zi = compute_density_for_rate_metric(x_all, y_all, x_positive, y_positive, grid_coords, xi_mesh.shape)
+        n_count = len(x_all)
+    else:
+        return None
     
-    # Create matplotlib figure - SMALLER SIZE
-    fig, ax = plt.subplots(figsize=(4, 4))  # Changed from (6, 6) to (4, 4)
+    # Create matplotlib figure
+    fig, ax = plt.subplots(figsize=(4, 4))
     
     # Plot heatmap with custom colormap
     im = ax.imshow(zi, origin='lower', extent=[x_min, x_max, y_min, y_max], 
@@ -1744,8 +1780,8 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     ax.set_ylim(y_min, y_max)
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_title(f"{pitch_type}\n(n={len(df_valid)})", 
-                 fontweight='bold', fontsize=10, pad=8)  # Smaller font
+    ax.set_title(f"{pitch_type}\n(n={n_count})", 
+                 fontweight='bold', fontsize=10, pad=8)
     
     plt.tight_layout()
     
@@ -2088,27 +2124,9 @@ with tabs[1]:
         with filter_row1_col4:
             last_n_games = int(st.number_input("Last N games (0 = All)", min_value=0, max_value=100, value=0, step=1, format="%d", key="prof_lastn_new"))
         
-        # Row 2: Base-out situations
-        st.markdown("**Base-Out Situations** (optional)")
-        filter_row2_cols = st.columns(4)
-        
-        base_situation_options = [
-            "All Situations",
-            "Runner on 1st",
-            "Runner on 2nd", 
-            "Runner on 3rd",
-            "Runners on 1st & 2nd",
-            "Runners on 1st & 3rd",
-            "RISP (Scoring Position)",
-            "Bases Loaded"
-        ]
-        
-        with filter_row2_cols[0]:
-            base_situation = st.selectbox("Base Situation", base_situation_options, index=0, key="prof_base_sit")
-        
-        # Row 3: Heatmap metric selection
+        # Row 2: Heatmap metric selection (moved up, removed base situation)
         st.markdown("---")
-        st.markdown("**Heatmap Visualization** (applies to heatmaps only)")
+        st.markdown("**Heatmap Visualization**")
         
         heatmap_metric_options = [
             "Pitch Locations (All)",
@@ -2124,11 +2142,24 @@ with tabs[1]:
             "Line Drive Rate"
         ]
         
-        filter_row3_col1, filter_row3_col2 = st.columns([1, 3])
-        with filter_row3_col1:
+        filter_row2_col1, filter_row2_col2 = st.columns([1, 3])
+        with filter_row2_col1:
             heatmap_metric = st.selectbox("Metric to Display", heatmap_metric_options, index=0, key="prof_heatmap_metric")
         
         st.markdown("---")
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # APPLY FILTERS TO DATA (removed base situation logic)
+        # ═══════════════════════════════════════════════════════════════════════
+        df_prof, season_label_prof_base = apply_month_day_lastN(df_pitcher_all, prof_months, prof_days, last_n_games)
+        season_label_prof = f"{segment_choice} — {season_label_prof_base}" if season_label_prof_base else segment_choice
+        
+        # Apply handedness filter
+        side_col = find_batter_side_col(df_prof)
+        if prof_hand in ("LHH", "RHH") and side_col is not None and not df_prof.empty:
+            sides = normalize_batter_side(df_prof[side_col])
+            target = "L" if prof_hand == "LHH" else "R"
+            df_prof = df_prof[sides == target].copy()
         
         # ═══════════════════════════════════════════════════════════════════════
         # APPLY FILTERS TO DATA

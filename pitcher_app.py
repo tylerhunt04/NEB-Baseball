@@ -1,4 +1,4 @@
-# pitcher_app.py — FULL APP (Modified with Redesigned Profiles Tab)
+# pitcher_app.py — FULL APP (Modified with KDE Heatmaps in Profiles Tab)
 
 import os, gc, re, base64
 import numpy as np
@@ -29,6 +29,19 @@ LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
 HUSKER_RED  = "#E60026"
 EXT_VIS_WIDTH = 480
+
+# Custom colormap for heatmaps
+custom_cmap = colors.LinearSegmentedColormap.from_list(
+    'custom_cmap',
+    [
+        (0.0, 'white'),
+        (0.2, 'deepskyblue'),
+        (0.3, 'white'),
+        (0.7, 'red'),
+        (1.0, 'red'),
+    ],
+    N=256
+)
 
 # ─── Cached loaders ───────────────────────────────────────────────────────────
 @st.cache_resource
@@ -306,12 +319,6 @@ def type_col_in_df(df: pd.DataFrame) -> str:
     return get_type_col_for_segment(df, seg)
 
 # ─── Strike zone helpers ──────────────────────────────────────────────────────
-custom_cmap = colors.LinearSegmentedColormap.from_list(
-    "custom_cmap",
-    [(0.0, "white"), (0.2, "deepskyblue"), (0.3, "white"), (0.7, "red"), (1.0, "red")],
-    N=256,
-)
-
 def get_zone_bounds():       return -0.83, 1.17, 1.66, 2.75
 def get_view_bounds():
     l, b, w, h = get_zone_bounds(); mx, my = w*0.8, h*0.6
@@ -1186,6 +1193,7 @@ df_main = load_csv_norm(DATA_PATH_MAIN) if os.path.exists(DATA_PATH_MAIN) or os.
 _scrim_candidates = [DATA_PATH_SCRIM, "Fall_WinterScrimmages (3).csv", "Fall_WinterScrimmages.csv"]
 _scrim_resolved = resolve_existing_path(_scrim_candidates)
 df_scrim = load_csv_norm(_scrim_resolved) if _scrim_resolved else None
+
 def dedupe_pitches(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty: return df
     if "PitchUID" in df.columns: return df.drop_duplicates(subset=["PitchUID"]).copy()
@@ -1457,8 +1465,52 @@ with tabs[0]:
             st.caption("No plate-location data available to plot top 3 pitches.")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HEATMAP HELPER FUNCTIONS FOR PROFILES TAB
+# KDE HEATMAP HELPER FUNCTIONS FOR PROFILES TAB
 # ══════════════════════════════════════════════════════════════════════════════
+
+def compute_density_weighted(x, y, weights, grid_coords, mesh_shape):
+    """
+    Compute weighted KDE density; fallback to zeros on error; drop NaNs/infs.
+    For metrics, weights represent the metric value at each location.
+    """
+    # Filter valid data
+    mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(weights)
+    x_clean = x[mask]
+    y_clean = y[mask]
+    w_clean = weights[mask]
+    
+    if len(x_clean) < 2:
+        return np.zeros(mesh_shape)
+    
+    try:
+        # For simple density (all weights = 1), just use standard KDE
+        if len(np.unique(w_clean)) == 1:
+            kde = gaussian_kde(np.vstack([x_clean, y_clean]))
+            return kde(grid_coords).reshape(mesh_shape)
+        
+        # For weighted metrics, we compute two KDEs:
+        # 1. Location density
+        # 2. Weighted density (each point weighted by metric value)
+        # Then divide to get average metric value per location
+        
+        kde_density = gaussian_kde(np.vstack([x_clean, y_clean]))
+        density = kde_density(grid_coords).reshape(mesh_shape)
+        
+        # Weighted KDE: manually weight each point by its metric value
+        # We'll use sample_weight parameter if available, otherwise replicate points
+        kde_weighted = gaussian_kde(np.vstack([x_clean, y_clean]), weights=w_clean)
+        weighted_density = kde_weighted(grid_coords).reshape(mesh_shape)
+        
+        # Normalize by density to get average metric value
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.divide(weighted_density, density)
+            result[~np.isfinite(result)] = np.nan
+        
+        return result
+            
+    except (LinAlgError, ValueError) as e:
+        return np.zeros(mesh_shape)
+
 
 def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
     """
@@ -1625,7 +1677,8 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
 
 def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, season_label: str):
     """
-    Create a heatmap for a specific pitch type based on the selected metric.
+    Create a KDE-based heatmap for a specific pitch type based on the selected metric.
+    Uses matplotlib and displays in Streamlit.
     """
     # Get plate location columns
     x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
@@ -1662,62 +1715,41 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     values_plot = metric_values[valid_metrics].values
     
     # Get zone and view bounds
+    sz_left, sz_bottom, sz_width, sz_height = get_zone_bounds()
     x_min, x_max, y_min, y_max = get_view_bounds()
     
-    # Create 2D histogram for heatmap
-    grid_size = 20
-    x_bins = np.linspace(x_min, x_max, grid_size)
-    y_bins = np.linspace(y_min, y_max, grid_size)
+    # Create KDE grid
+    grid_size = 100
+    xi = np.linspace(x_min, x_max, grid_size)
+    yi = np.linspace(y_min, y_max, grid_size)
+    xi_mesh, yi_mesh = np.meshgrid(xi, yi)
+    grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
     
-    # Calculate heatmap values
-    heatmap, xedges, yedges = np.histogram2d(
-        xs_plot, ys_plot, bins=[x_bins, y_bins], weights=values_plot
-    )
+    # Compute density heatmap
+    zi = compute_density_weighted(xs_plot, ys_plot, values_plot, grid_coords, xi_mesh.shape)
     
-    # Count of pitches in each bin for averaging
-    counts, _, _ = np.histogram2d(xs_plot, ys_plot, bins=[x_bins, y_bins])
+    # Create matplotlib figure
+    fig, ax = plt.subplots(figsize=(6, 6))
     
-    # Average the values in each bin
-    with np.errstate(divide='ignore', invalid='ignore'):
-        heatmap = np.divide(heatmap, counts)
-        heatmap[~np.isfinite(heatmap)] = np.nan
+    # Plot heatmap with custom colormap
+    im = ax.imshow(zi, origin='lower', extent=[x_min, x_max, y_min, y_max], 
+                   aspect='equal', cmap=custom_cmap, alpha=0.8)
     
-    # Transpose for correct orientation
-    heatmap = heatmap.T
+    # Draw strike zone
+    draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
     
-    # Create figure
-    fig = make_subplots(rows=1, cols=1)
+    # Formatting
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title(f"{pitch_type} — {metric} (n={len(df_valid)})", 
+                 fontweight='bold', fontsize=12, pad=10)
     
-    # Add heatmap
-    fig.add_trace(
-        go.Heatmap(
-            x=xedges[:-1] + np.diff(xedges) / 2,
-            y=yedges[:-1] + np.diff(yedges) / 2,
-            z=heatmap,
-            colorscale='RdYlGn_r' if metric in ["Batting Average", "BABIP", "Hard Hit %", "Exit Velocity (Avg)", "Ground Ball Rate", "Fly Ball Rate", "Line Drive Rate"] else 'RdYlGn',
-            showscale=True,
-            hovertemplate='x: %{x:.2f}<br>y: %{y:.2f}<br>value: %{z:.2f}<extra></extra>',
-            colorbar=dict(title=metric)
-        ),
-        row=1, col=1
-    )
-    
-    # Add strike zone shapes
-    for shp in _zone_shapes_for_subplot():
-        fig.add_shape(shp, row=1, col=1)
-    
-    # Update layout
-    fig.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
-    fig.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
-    
-    fig.update_layout(
-        height=500,
-        title_text=f"{pitch_type} — {metric} (n={len(df_valid)})",
-        title_x=0.5,
-        margin=dict(l=10, r=10, t=60, b=10)
-    )
+    plt.tight_layout()
     
     return fig
+
 
 # ─── Profile tables (Batted Ball / Plate Discipline / Strike %) ==========
 def _assign_spray_category_row(row):
@@ -2017,7 +2049,7 @@ def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 # ──────────────────────────────────────────────────────────────────────────────
-# UI — Profiles tab (now tabs[1]) - REDESIGNED WITH HEATMAPS
+# UI — Profiles tab (now tabs[1]) - REDESIGNED WITH KDE HEATMAPS
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[1]:
     st.markdown("#### Pitcher Profiles")
@@ -2143,7 +2175,7 @@ with tabs[1]:
             st.info("No rows for the selected profile filters.")
         else:
             # ═══════════════════════════════════════════════════════════════════════
-            # HEATMAPS SECTION
+            # HEATMAPS SECTION (KDE-based)
             # ═══════════════════════════════════════════════════════════════════════
             st.markdown(f"### Heatmaps by Pitch Type — {heatmap_metric}")
             st.caption(f"Data: {season_label_prof} | {prof_hand}")
@@ -2163,7 +2195,7 @@ with tabs[1]:
                         if df_pitch.empty:
                             continue
                         
-                        # Create heatmap figure
+                        # Create heatmap figure (matplotlib with KDE)
                         fig_heatmap = create_profile_heatmap(
                             df_pitch, 
                             pitch_type, 
@@ -2172,7 +2204,8 @@ with tabs[1]:
                         )
                         
                         if fig_heatmap:
-                            st.plotly_chart(fig_heatmap, use_container_width=True, key=f"heatmap_{pitch_type}_{heatmap_metric}")
+                            # Display matplotlib figure in Streamlit
+                            show_and_close(fig_heatmap, use_container_width=True)
                         else:
                             st.caption(f"No data available for {pitch_type} with selected metric.")
             else:
@@ -2201,9 +2234,7 @@ with tabs[1]:
             st.markdown(f"### Plate Discipline Profile")
             st.table(themed_table(pd_df_typed))
 
-# (Continue with Rankings and Fall Summary tabs...)
-# Due to length, I'll stop here. The Rankings tab code from your original remains unchanged.
-# You can add it after the Profiles tab.# ──────────────────────────────────────────────────────────────────────────────
+# Continue with Rankings and Fall Summary tabs in next message...# ──────────────────────────────────────────────────────────────────────────────
 # UI — Rankings tab (now tabs[2])
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[2]:

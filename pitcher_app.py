@@ -1675,6 +1675,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
     return None
 
 
+# First, update the heatmap function to make figures smaller
 def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, season_label: str):
     """
     Create a KDE-based heatmap for a specific pitch type based on the selected metric.
@@ -1728,8 +1729,8 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     # Compute density heatmap
     zi = compute_density_weighted(xs_plot, ys_plot, values_plot, grid_coords, xi_mesh.shape)
     
-    # Create matplotlib figure
-    fig, ax = plt.subplots(figsize=(6, 6))
+    # Create matplotlib figure - SMALLER SIZE
+    fig, ax = plt.subplots(figsize=(4, 4))  # Changed from (6, 6) to (4, 4)
     
     # Plot heatmap with custom colormap
     im = ax.imshow(zi, origin='lower', extent=[x_min, x_max, y_min, y_max], 
@@ -1743,13 +1744,12 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     ax.set_ylim(y_min, y_max)
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_title(f"{pitch_type} — {metric} (n={len(df_valid)})", 
-                 fontweight='bold', fontsize=12, pad=10)
+    ax.set_title(f"{pitch_type}\n(n={len(df_valid)})", 
+                 fontweight='bold', fontsize=10, pad=8)  # Smaller font
     
     plt.tight_layout()
     
     return fig
-
 
 # ─── Profile tables (Batted Ball / Plate Discipline / Strike %) ==========
 def _assign_spray_category_row(row):

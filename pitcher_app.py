@@ -347,7 +347,25 @@ def format_name(name):
         last, first = [s.strip() for s in name.split(',', 1)]
         return f"{first} {last}"
     return str(name)
-
+def compute_density_simple(x_vals, y_vals, grid_coords, mesh_shape):
+    """
+    Simple density heatmap using KDE.
+    Returns density values reshaped to mesh_shape.
+    """
+    if len(x_vals) < 2:
+        return np.zeros(mesh_shape)
+    
+    try:
+        kde = gaussian_kde(np.vstack([x_vals, y_vals]))
+        density = kde(grid_coords).reshape(mesh_shape)
+        
+        # Mask out very low density areas (no actual pitches)
+        density_threshold = 0.01 * density.max()
+        density[density < density_threshold] = np.nan
+        
+        return density
+    except (LinAlgError, ValueError):
+        return np.full(mesh_shape, np.nan)
 # ─── Name normalization & subset ──────────────────────────────────────────────
 def _collapse_ws(s: str) -> str: return re.sub(r"\s+", " ", s).strip()
 

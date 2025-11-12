@@ -2173,7 +2173,7 @@ with tabs[1]:
             sides = normalize_batter_side(df_prof[side_col])
             target = "L" if prof_hand == "LHH" else "R"
             df_prof = df_prof[sides == target].copy(
-              
+  )
         if df_prof.empty:
             st.info("No rows for the selected profile filters.")
         else:

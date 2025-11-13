@@ -1726,6 +1726,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
 def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, season_label: str):
     """
     Create a KDE-based heatmap for a specific pitch type based on the selected metric.
+    If fewer than 5 points, shows scatter plot instead.
     Uses matplotlib and displays in Streamlit.
     """
     # Get plate location columns
@@ -1750,67 +1751,57 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     sz_left, sz_bottom, sz_width, sz_height = get_zone_bounds()
     x_min, x_max, y_min, y_max = get_view_bounds()
     
-    # Create KDE grid
-    grid_size = 100
-    xi = np.linspace(x_min, x_max, grid_size)
-    yi = np.linspace(y_min, y_max, grid_size)
-    xi_mesh, yi_mesh = np.meshgrid(xi, yi)
-    grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
-    
-    # Compute density
-    zi = compute_density_simple(x_vals, y_vals, grid_coords, xi_mesh.shape)
-    
     # Create matplotlib figure
     fig, ax = plt.subplots(figsize=(4, 4))
     
-    # Plot heatmap with custom colormap
-    zi_masked = np.ma.array(zi, mask=np.isnan(zi))
-    
-    im = ax.imshow(zi_masked, origin='lower', extent=[x_min, x_max, y_min, y_max], 
-                   aspect='equal', cmap=custom_cmap, alpha=0.8)
-    
-    # Draw strike zone
-    draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
-    
-    # Formatting
-    ax.set_xlim(x_min, x_max)
-    ax.set_ylim(y_min, y_max)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_title(f"{pitch_type}\n(n={len(x_vals)})", 
-                 fontweight='bold', fontsize=10, pad=8)
-    
-    # Set background color to white so NaN areas are white
-    ax.set_facecolor('white')
-    
-    plt.tight_layout()
-    
-    return fig
-    
-    # Create matplotlib figure
-    fig, ax = plt.subplots(figsize=(4, 4))
-    
-    # Plot heatmap with custom colormap
-    # Use a masked array to handle NaN values (won't plot them)
-    zi_masked = np.ma.array(zi, mask=np.isnan(zi))
-    
-    im = ax.imshow(zi_masked, origin='lower', extent=[x_min, x_max, y_min, y_max], 
-                   aspect='equal', cmap=custom_cmap, alpha=0.8,
-                   vmin=0, vmax=1 if isinstance(metric_data, tuple) else None)  # For rate metrics, scale 0-1
-    
-    # Draw strike zone
-    draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
-    
-    # Formatting
-    ax.set_xlim(x_min, x_max)
-    ax.set_ylim(y_min, y_max)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_title(f"{pitch_type}\n(n={n_count})", 
-                 fontweight='bold', fontsize=10, pad=8)
-    
-    # Set background color to white so NaN areas are white
-    ax.set_facecolor('white')
+    # If fewer than 5 points, show scatter plot instead of heatmap
+    if len(x_vals) < 5:
+        # Scatter plot for low sample sizes
+        pitch_color = get_pitch_color(pitch_type)
+        ax.scatter(x_vals, y_vals, c=pitch_color, s=100, alpha=0.7, 
+                  edgecolors='black', linewidth=1.5, zorder=10)
+        
+        # Draw strike zone
+        draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
+        
+        # Formatting
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(f"{pitch_type}\n(n={len(x_vals)} - scatter view)", 
+                     fontweight='bold', fontsize=10, pad=8)
+        ax.set_facecolor('white')
+        
+    else:
+        # KDE heatmap for 5+ points
+        # Create KDE grid
+        grid_size = 100
+        xi = np.linspace(x_min, x_max, grid_size)
+        yi = np.linspace(y_min, y_max, grid_size)
+        xi_mesh, yi_mesh = np.meshgrid(xi, yi)
+        grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
+        
+        # Compute density
+        zi = compute_density_simple(x_vals, y_vals, grid_coords, xi_mesh.shape)
+        
+        # Plot heatmap with custom colormap
+        zi_masked = np.ma.array(zi, mask=np.isnan(zi))
+        
+        im = ax.imshow(zi_masked, origin='lower', extent=[x_min, x_max, y_min, y_max], 
+                       aspect='equal', cmap=custom_cmap, alpha=0.8)
+        
+        # Draw strike zone
+        draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
+        
+        # Formatting
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(f"{pitch_type}\n(n={len(x_vals)})", 
+                     fontweight='bold', fontsize=10, pad=8)
+        ax.set_facecolor('white')
     
     plt.tight_layout()
     

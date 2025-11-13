@@ -1540,6 +1540,10 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
     """
     Filter dataframe to specific events and return coordinates for density plotting.
     Returns tuple of (x_coords, y_coords) for the filtered events.
+    
+    IMPORTANT: df should be the FULL dataset for the pitcher (all pitch types),
+    NOT pre-filtered by pitch type. We handle pitch type filtering internally
+    after identifying terminal pitches.
     """
     if df.empty:
         return None
@@ -1551,7 +1555,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
     if not x_col or not y_col:
         return None
     
-    # Get x, y coordinates
+    # Get x, y coordinates from FULL dataset
     xs = pd.to_numeric(df.get(x_col, pd.Series(dtype=float)), errors='coerce')
     ys = pd.to_numeric(df.get(y_col, pd.Series(dtype=float)), errors='coerce')
     valid_loc = xs.notna() & ys.notna()
@@ -1560,16 +1564,16 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
         return None
     
     if metric == "Pitch Locations (All)":
-        # All pitches with valid locations
+        # All pitches with valid locations (for this pitch type)
         return xs[valid_loc].values, ys[valid_loc].values
     
     elif metric == "Hits":
-        # Terminal pitches that were hits
+        # For outcome-based metrics, we need to work with the FULL AB structure
+        # Build AB structure on complete data
         df_with_ab = add_inning_and_ab(df.copy())
         pa_table = _terminal_pa_table(df_with_ab)
         
-        # CRITICAL: Use _PlayResult specifically (created by _terminal_pa_table)
-        # This matches what Rankings uses in _box_counts_from_PA
+        # CRITICAL: Use _PlayResult specifically (matches Rankings logic)
         if "_PlayResult" not in pa_table.columns:
             return None
         
@@ -1583,15 +1587,10 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
         if not is_hit.any():
             return None
         
-        hits_only = pa_table[is_hit.values]
+        # Get terminal pitches that were hits
+        hits_only = pa_table[is_hit.values].copy()
         
-        # Now get the plate locations
-        x_col = pick_col(hits_only, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
-        y_col = pick_col(hits_only, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
-        
-        if not x_col or not y_col:
-            return None
-        
+        # Now get the plate locations from these terminal pitches
         x_hits = pd.to_numeric(hits_only.get(x_col, pd.Series(dtype=float)), errors='coerce')
         y_hits = pd.to_numeric(hits_only.get(y_col, pd.Series(dtype=float)), errors='coerce')
         valid_hits = x_hits.notna() & y_hits.notna()
@@ -1736,22 +1735,51 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     """
     Create a KDE-based heatmap for a specific pitch type based on the selected metric.
     If fewer than 5 points, shows scatter plot instead.
-    Uses matplotlib and displays in Streamlit.
     """
     # Get plate location columns
     x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
     y_col = pick_col(df, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
+    type_col = type_col_in_df(df)
     
-    if not x_col or not y_col:
+    if not x_col or not y_col or not type_col:
         return None
     
+    # For "Pitch Locations (All)", filter by pitch type FIRST
+    # For outcome metrics (Hits, etc.), we need the full dataset to build ABs correctly
+    if metric == "Pitch Locations (All)":
+        df_filtered = df[df[type_col] == pitch_type].copy()
+    else:
+        # Pass full dataset - filtering happens after terminal pitch identification
+        df_filtered = df.copy()
+    
     # Calculate metric values (get filtered coordinates)
-    coords = calculate_heatmap_metric_values(df, metric)
+    coords = calculate_heatmap_metric_values(df_filtered, metric)
     
     if coords is None or len(coords) != 2:
         return None
     
     x_vals, y_vals = coords
+    
+    # For outcome metrics, NOW filter by pitch type from the results
+    if metric != "Pitch Locations (All)" and type_col in df.columns:
+        # Build AB structure to get pitch types of events
+        df_with_ab = add_inning_and_ab(df.copy())
+        pa_table = _terminal_pa_table(df_with_ab)
+        
+        # Filter terminal pitches to this pitch type only
+        type_mask = pa_table[type_col].astype(str) == pitch_type
+        pa_filtered = pa_table[type_mask]
+        
+        if pa_filtered.empty:
+            return None
+        
+        # Re-extract coordinates for just this pitch type's terminal events
+        x_filtered = pd.to_numeric(pa_filtered.get(x_col, pd.Series(dtype=float)), errors='coerce')
+        y_filtered = pd.to_numeric(pa_filtered.get(y_col, pd.Series(dtype=float)), errors='coerce')
+        valid = x_filtered.notna() & y_filtered.notna()
+        
+        x_vals = x_filtered[valid].values
+        y_vals = y_filtered[valid].values
     
     if len(x_vals) == 0:
         return None
@@ -1765,15 +1793,12 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     
     # If fewer than 5 points, show scatter plot instead of heatmap
     if len(x_vals) < 5:
-        # Scatter plot for low sample sizes
         pitch_color = get_pitch_color(pitch_type)
         ax.scatter(x_vals, y_vals, c=pitch_color, s=100, alpha=0.7, 
                   edgecolors='black', linewidth=1.5, zorder=10)
         
-        # Draw strike zone
         draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
         
-        # Formatting
         ax.set_xlim(x_min, x_max)
         ax.set_ylim(y_min, y_max)
         ax.set_xticks([])
@@ -1784,26 +1809,20 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
         
     else:
         # KDE heatmap for 5+ points
-        # Create KDE grid
         grid_size = 100
         xi = np.linspace(x_min, x_max, grid_size)
         yi = np.linspace(y_min, y_max, grid_size)
         xi_mesh, yi_mesh = np.meshgrid(xi, yi)
         grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
         
-        # Compute density
         zi = compute_density_simple(x_vals, y_vals, grid_coords, xi_mesh.shape)
-        
-        # Plot heatmap with custom colormap
         zi_masked = np.ma.array(zi, mask=np.isnan(zi))
         
         im = ax.imshow(zi_masked, origin='lower', extent=[x_min, x_max, y_min, y_max], 
                        aspect='equal', cmap=custom_cmap, alpha=0.8)
         
-        # Draw strike zone
         draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
         
-        # Formatting
         ax.set_xlim(x_min, x_max)
         ax.set_ylim(y_min, y_max)
         ax.set_xticks([])
@@ -1813,31 +1832,8 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
         ax.set_facecolor('white')
     
     plt.tight_layout()
-    
     return fig
-    
-    # Create matplotlib figure
-    fig, ax = plt.subplots(figsize=(4, 4))
-    
-    # Plot heatmap with custom colormap
-    im = ax.imshow(zi, origin='lower', extent=[x_min, x_max, y_min, y_max], 
-                   aspect='equal', cmap=custom_cmap, alpha=0.8)
-    
-    # Draw strike zone
-    draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
-    
-    # Formatting
-    ax.set_xlim(x_min, x_max)
-    ax.set_ylim(y_min, y_max)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_title(f"{pitch_type}\n(n={n_count})", 
-                 fontweight='bold', fontsize=10, pad=8)
-    
-    plt.tight_layout()
-    
-    return fig
-
+  
 # ─── Profile tables (Batted Ball / Plate Discipline / Strike %) ==========
 def _assign_spray_category_row(row):
     ang = row.get('Bearing', np.nan)

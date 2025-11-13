@@ -347,6 +347,7 @@ def format_name(name):
         last, first = [s.strip() for s in name.split(',', 1)]
         return f"{first} {last}"
     return str(name)
+
 def compute_density_simple(x_vals, y_vals, grid_coords, mesh_shape):
     """
     Simple density heatmap using KDE.
@@ -366,6 +367,7 @@ def compute_density_simple(x_vals, y_vals, grid_coords, mesh_shape):
         return density
     except (LinAlgError, ValueError):
         return np.full(mesh_shape, np.nan)
+
 # ─── Name normalization & subset ──────────────────────────────────────────────
 def _collapse_ws(s: str) -> str: return re.sub(r"\s+", " ", s).strip()
 
@@ -1486,56 +1488,6 @@ with tabs[0]:
 # KDE HEATMAP HELPER FUNCTIONS FOR PROFILES TAB
 # ══════════════════════════════════════════════════════════════════════════════
 
-def compute_density_for_rate_metric(x_all, y_all, x_positive, y_positive, grid_coords, mesh_shape):
-    """
-    Compute a rate/percentage metric heatmap by dividing:
-    density of positive events / density of all events
-    
-    CRITICAL: Mask out areas with low overall density (no actual pitches)
-    """
-    # Need at least 2 points for KDE
-    if len(x_all) < 2:
-        return np.zeros(mesh_shape)
-    
-    try:
-        # KDE of all pitches in this category
-        kde_all = gaussian_kde(np.vstack([x_all, y_all]))
-        density_all = kde_all(grid_coords).reshape(mesh_shape)
-        
-        # Create a mask: only show data where we have actual pitch density
-        # Use a threshold based on the maximum density
-        density_threshold = 0.01 * density_all.max()  # Only show where density > 1% of max
-        mask = density_all > density_threshold
-        
-        # If we have positive events, create their KDE
-        if len(x_positive) >= 2:
-            kde_positive = gaussian_kde(np.vstack([x_positive, y_positive]))
-            density_positive = kde_positive(grid_coords).reshape(mesh_shape)
-            
-            # Rate = positive density / all density
-            with np.errstate(divide='ignore', invalid='ignore'):
-                rate = np.divide(density_positive, density_all)
-                # Set invalid values to nan
-                rate[~np.isfinite(rate)] = np.nan
-                # Apply mask - set areas with low density to nan
-                rate[~mask] = np.nan
-                # Clip to 0-1 range (it's a percentage)
-                rate = np.clip(rate, 0, 1)
-            return rate
-        elif len(x_positive) == 1:
-            # Only one positive event - show it as a small hot spot
-            result = np.zeros(mesh_shape)
-            result[~mask] = np.nan
-            return result
-        else:
-            # No positive events, return zeros where we have pitch density
-            result = np.zeros(mesh_shape)
-            result[~mask] = np.nan
-            return result
-            
-    except (LinAlgError, ValueError):
-        return np.full(mesh_shape, np.nan)
-
 def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
     """
     Filter dataframe to specific events and return coordinates for density plotting.
@@ -1833,7 +1785,7 @@ def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, seaso
     
     plt.tight_layout()
     return fig
-  
+
 # ─── Profile tables (Batted Ball / Plate Discipline / Strike %) ==========
 def _assign_spray_category_row(row):
     ang = row.get('Bearing', np.nan)
@@ -2130,15 +2082,7 @@ def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
             out[c] = pd.to_numeric(out[c], errors="coerce").astype("Int64")
 
     return out
-  
-# Debug info (optional - remove after testing)
-if st.checkbox("Show debug info", value=False, key="debug_heatmaps"):
-    st.write(f"**Pitch types available:** {pitch_types}")
-    st.write(f"**Selected metric:** {heatmap_metric}")
-    for pitch_type in pitch_types[:3]:  # First 3
-        df_pitch = df_prof[df_prof[type_col] == pitch_type].copy()
-        coords = calculate_heatmap_metric_values(df_pitch, heatmap_metric)
-        st.write(f"**{pitch_type}:** {len(coords[0]) if coords else 0} points")
+
 # ──────────────────────────────────────────────────────────────────────────────
 # UI — Profiles tab (now tabs[1]) - REDESIGNED WITH KDE HEATMAPS
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2147,7 +2091,7 @@ with tabs[1]:
     if "bullpen" in SEGMENT_DEFS.get(segment_choice, {}).get("types", []):
         st.info("Profiles are not available for **Bullpens** (no batting occurs).")
     else:
-       # ═══════════════════════════════════════════════════════════════════════
+        # ═══════════════════════════════════════════════════════════════════════
         # FILTERS SECTION
         # ═══════════════════════════════════════════════════════════════════════
         st.markdown("### Filters")
@@ -2199,7 +2143,7 @@ with tabs[1]:
         st.markdown("---")
         
         # ═══════════════════════════════════════════════════════════════════════
-        # APPLY FILTERS TO DATA (removed base situation logic)
+        # APPLY FILTERS TO DATA
         # ═══════════════════════════════════════════════════════════════════════
         df_prof, season_label_prof_base = apply_month_day_lastN(df_pitcher_all, prof_months, prof_days, last_n_games)
         season_label_prof = f"{segment_choice} — {season_label_prof_base}" if season_label_prof_base else segment_choice
@@ -2211,20 +2155,7 @@ with tabs[1]:
             target = "L" if prof_hand == "LHH" else "R"
             df_prof = df_prof[sides == target].copy()
         
-        # ═══════════════════════════════════════════════════════════════════════
-        # APPLY FILTERS TO DATA
-        # ═══════════════════════════════════════════════════════════════════════
-        df_prof, season_label_prof_base = apply_month_day_lastN(df_pitcher_all, prof_months, prof_days, last_n_games)
-        season_label_prof = f"{segment_choice} — {season_label_prof_base}" if season_label_prof_base else segment_choice
-        
-        # Apply handedness filter
-        side_col = find_batter_side_col(df_prof)
-        if prof_hand in ("LHH", "RHH") and side_col is not None and not df_prof.empty:
-            sides = normalize_batter_side(df_prof[side_col])
-            target = "L" if prof_hand == "LHH" else "R"
-            df_prof = df_prof[sides == target].copy(
-  )
-       if df_prof.empty:
+        if df_prof.empty:
             st.info("No rows for the selected profile filters.")
         else:
             # ═══════════════════════════════════════════════════════════════════════
@@ -2298,7 +2229,8 @@ with tabs[1]:
             st.markdown(f"### Plate Discipline Profile")
             st.table(themed_table(pd_df_typed))
 
-# Continue with Rankings and Fall Summary tabs in next message...# ──────────────────────────────────────────────────────────────────────────────
+# Continue with Rankings tab...
+# ──────────────────────────────────────────────────────────────────────────────
 # UI — Rankings tab (now tabs[2])
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[2]:
@@ -2435,7 +2367,7 @@ with tabs[2]:
             "WHIP","H9","BB%","SO%","Strike%","HH%","Barrel%","Zone%","Zwhiff%","Whiff%","Chase%"
         ]
         present_show_cols = [c for c in show_cols if c in display_df.columns]
-        display_df = display_df[present_show_cols + (["IP_outs"] if "IP_outs" in display_df.columns else [])]
+        display_df = display_df[present_show_cols]
 
         # ---------- League-avg color styles ON NUMERICS ----------
         import numpy as np

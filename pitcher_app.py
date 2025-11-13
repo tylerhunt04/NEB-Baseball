@@ -1563,35 +1563,43 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
         # All pitches with valid locations
         return xs[valid_loc].values, ys[valid_loc].values
     
-    elif metric == "Hits":
+ elif metric == "Hits":
         # Terminal pitches that were hits
         df_with_ab = add_inning_and_ab(df.copy())
         pa_table = _terminal_pa_table(df_with_ab)
         
-        result_col = pick_col(pa_table, "PlayResult", "Result", "Event", "PAResult", "Outcome", "_PlayResult")
+        # CRITICAL: Use _PlayResult specifically (created by _terminal_pa_table)
+        # This matches what Rankings uses in _box_counts_from_PA
+        if "_PlayResult" not in pa_table.columns:
+            return None
         
-        if result_col and result_col in pa_table.columns:
-            pr_low = pa_table[result_col].astype(str).str.lower()
-            is_hit = (pr_low.str.contains(r"\bsingle\b", regex=True) | 
-                     pr_low.str.contains(r"\bdouble\b", regex=True) | 
-                     pr_low.str.contains(r"\btriple\b", regex=True) |
-                     pr_low.str.contains(r"\bhome\s*run\b", regex=True) |
-                     pr_low.eq("hr"))
-            
-            if not is_hit.any():
-                return None
-            
-            hits_only = pa_table[is_hit.values]
-            x_hits = pd.to_numeric(hits_only.get(x_col, pd.Series(dtype=float)), errors='coerce')
-            y_hits = pd.to_numeric(hits_only.get(y_col, pd.Series(dtype=float)), errors='coerce')
-            valid_hits = x_hits.notna() & y_hits.notna()
-            
-            if not valid_hits.any():
-                return None
-            
-            return x_hits[valid_hits].values, y_hits[valid_hits].values
-        return None
-    
+        pr_low = pa_table["_PlayResult"].astype(str).str.lower()
+        is_hit = (pr_low.str.contains(r"\bsingle\b", regex=True) | 
+                 pr_low.str.contains(r"\bdouble\b", regex=True) | 
+                 pr_low.str.contains(r"\btriple\b", regex=True) |
+                 pr_low.str.contains(r"\bhome\s*run\b", regex=True) |
+                 pr_low.eq("hr"))
+        
+        if not is_hit.any():
+            return None
+        
+        hits_only = pa_table[is_hit.values]
+        
+        # Now get the plate locations
+        x_col = pick_col(hits_only, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
+        y_col = pick_col(hits_only, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
+        
+        if not x_col or not y_col:
+            return None
+        
+        x_hits = pd.to_numeric(hits_only.get(x_col, pd.Series(dtype=float)), errors='coerce')
+        y_hits = pd.to_numeric(hits_only.get(y_col, pd.Series(dtype=float)), errors='coerce')
+        valid_hits = x_hits.notna() & y_hits.notna()
+        
+        if not valid_hits.any():
+            return None
+        
+        return x_hits[valid_hits].values, y_hits[valid_hits].values
     elif metric == "Hard Hits":
         # Pitches with EV >= 95 on balls in play
         ev_col = pick_col(df, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", 

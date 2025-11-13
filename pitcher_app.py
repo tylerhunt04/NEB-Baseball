@@ -1556,14 +1556,14 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
     ys = pd.to_numeric(df.get(y_col, pd.Series(dtype=float)), errors='coerce')
     valid_loc = xs.notna() & ys.notna()
     
-   if not valid_loc.any():
+    if not valid_loc.any():
         return None
     
     if metric == "Pitch Locations (All)":
         # All pitches with valid locations
         return xs[valid_loc].values, ys[valid_loc].values
     
-    elif metric == "Hits":  # ← FIXED: Now properly indented
+    elif metric == "Hits":
         # Terminal pitches that were hits
         df_with_ab = add_inning_and_ab(df.copy())
         pa_table = _terminal_pa_table(df_with_ab)
@@ -1600,7 +1600,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
             return None
         
         return x_hits[valid_hits].values, y_hits[valid_hits].values
-      
+    
     elif metric == "Hard Hits":
         # Pitches with EV >= 95 on balls in play
         ev_col = pick_col(df, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", 
@@ -1659,7 +1659,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
         
         return xs[is_chase].values, ys[is_chase].values
     
-      elif metric == "Contact":
+    elif metric == "Contact":
         # Where contact occurs
         call_col = pick_col(df, "PitchCall", "Pitch Call", "Call", "call")
         
@@ -1676,7 +1676,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
         
         return xs[is_contact].values, ys[is_contact].values
     
-      elif metric == "Ground Balls":
+    elif metric == "Ground Balls":
         # Where ground balls occur
         hit_type_col = pick_col(df, "TaggedHitType", "HitType", "Hit Type", "tagged_hit_type")
         call_col = pick_col(df, "PitchCall", "Pitch Call", "Call", "call")
@@ -1694,7 +1694,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
         
         return xs[is_gb].values, ys[is_gb].values
     
-      elif metric == "Fly Balls":
+    elif metric == "Fly Balls":
         # Where fly balls occur
         hit_type_col = pick_col(df, "TaggedHitType", "HitType", "Hit Type", "tagged_hit_type")
         call_col = pick_col(df, "PitchCall", "Pitch Call", "Call", "call")
@@ -1712,7 +1712,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
         
         return xs[is_fb].values, ys[is_fb].values
     
-      elif metric == "Line Drives":
+    elif metric == "Line Drives":
         # Where line drives occur
         hit_type_col = pick_col(df, "TaggedHitType", "HitType", "Hit Type", "tagged_hit_type")
         call_col = pick_col(df, "PitchCall", "Pitch Call", "Call", "call")

@@ -2228,55 +2228,54 @@ with tabs[1]:
             st.info("No rows for the selected profile filters.")
         else:
            # ═══════════════════════════════════════════════════════════════════════
-            # HEATMAPS SECTION (3x3 grid layout)
-            # ═══════════════════════════════════════════════════════════════════════
-            st.markdown(f"### Heatmaps by Pitch Type — {heatmap_metric}")
-            st.caption(f"Data: {season_label_prof} | {prof_hand}")
-            
-            # Get pitch types
-            type_col = type_col_in_df(df_prof)
-            if type_col and type_col in df_prof.columns:
-                pitch_types = df_prof[type_col].value_counts().index.tolist()
-                
-                if len(pitch_types) == 0:
-                    st.warning("No pitch type data available.")
-                else:
-                    # Display heatmaps in 3-column grid
-                    cols_per_row = 3
-                    
-                    for i in range(0, len(pitch_types), cols_per_row):
-                        # Create a row of 3 columns
-                        cols = st.columns(cols_per_row)
-                        
-                        # Fill each column in this row
-                        for j in range(cols_per_row):
-                            pitch_idx = i + j
-                            
-                          # INSIDE the loop where you create heatmaps
-                          if pitch_idx < len(pitch_types):
-                              pitch_type = pitch_types[pitch_idx]
-                              # DON'T filter here - pass full dataset and filter will happen inside
-                              df_pitch = df_prof.copy()  # ← CHANGED: was df_prof[df_prof[type_col] == pitch_type]
+# HEATMAPS SECTION (3x3 grid layout)
+# ═══════════════════════════════════════════════════════════════════════
+st.markdown(f"### Heatmaps by Pitch Type — {heatmap_metric}")
+st.caption(f"Data: {season_label_prof} | {prof_hand}")
+
+# Get pitch types
+type_col = type_col_in_df(df_prof)
+if type_col and type_col in df_prof.columns:
+    pitch_types = df_prof[type_col].value_counts().index.tolist()
     
-                              if not df_pitch.empty:
-                                  # The function will handle filtering internally for terminal pitch attribution
-                                  fig_heatmap = create_profile_heatmap(
-                                      df_pitch, 
-                                      pitch_type, 
-                                      heatmap_metric,
-                                      season_label_prof
-                                  )
-                                    
-                                    with cols[j]:
-                                        if fig_heatmap:
-                                            # Display matplotlib figure in Streamlit
-                                            show_and_close(fig_heatmap, use_container_width=True)
-                                        else:
-                                            st.caption(f"No data for {pitch_type}")
-            else:
-                st.warning("Pitch type information not available.")
+    if len(pitch_types) == 0:
+        st.warning("No pitch type data available.")
+    else:
+        # Display heatmaps in 3-column grid
+        cols_per_row = 3
+        
+        for i in range(0, len(pitch_types), cols_per_row):
+            # Create a row of 3 columns
+            cols = st.columns(cols_per_row)
             
-            st.markdown("---")
+            # Fill each column in this row
+            for j in range(cols_per_row):
+                pitch_idx = i + j
+                
+                if pitch_idx < len(pitch_types):
+                    pitch_type = pitch_types[pitch_idx]
+                    # DON'T filter here - pass full dataset and filter will happen inside
+                    df_pitch = df_prof.copy()
+                    
+                    if not df_pitch.empty:
+                        # The function will handle filtering internally for terminal pitch attribution
+                        fig_heatmap = create_profile_heatmap(
+                            df_pitch, 
+                            pitch_type, 
+                            heatmap_metric,
+                            season_label_prof
+                        )
+                        
+                        with cols[j]:
+                            if fig_heatmap:
+                                # Display matplotlib figure in Streamlit
+                                show_and_close(fig_heatmap, use_container_width=True)
+                            else:
+                                st.caption(f"No data for {pitch_type}")
+else:
+    st.warning("Pitch type information not available.")
+
+st.markdown("---")
             
             # ═══════════════════════════════════════════════════════════════════════
             # TABLES SECTION (existing tables remain)

@@ -1496,7 +1496,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
     Args:
         df: Full dataset for the pitcher
         metric: The metric to calculate
-        pitch_type: Optional pitch type to filter by (for outcome metrics)
+        pitch_type: Optional pitch type to filter by
     """
     if df.empty:
         return None
@@ -1509,23 +1509,30 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
     if not x_col or not y_col:
         return None
     
+    # Start with full dataset
+    df_filtered = df.copy()
+    
+    # Filter by pitch type FIRST (for all metrics)
+    if pitch_type and type_col and type_col in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered[type_col].astype(str) == pitch_type].copy()
+    
+    if df_filtered.empty:
+        return None
+    
+    # Get coordinates
+    xs = pd.to_numeric(df_filtered.get(x_col, pd.Series(dtype=float)), errors='coerce')
+    ys = pd.to_numeric(df_filtered.get(y_col, pd.Series(dtype=float)), errors='coerce')
+    
     if metric == "Pitch Locations (All)":
-        # For pitch locations, filter by pitch type first
-        if pitch_type and type_col and type_col in df.columns:
-            df = df[df[type_col] == pitch_type].copy()
-        
-        xs = pd.to_numeric(df.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys = pd.to_numeric(df.get(y_col, pd.Series(dtype=float)), errors='coerce')
+        # All pitches of this type with valid locations
         valid_loc = xs.notna() & ys.notna()
-        
         if not valid_loc.any():
             return None
-        
         return xs[valid_loc].values, ys[valid_loc].values
     
     elif metric == "Hits":
-        # Build AB structure from full dataset
-        df_with_ab = add_inning_and_ab(df.copy())
+        # This is the only metric that needs AB structure because "hit" is a PA-level outcome
+        df_with_ab = add_inning_and_ab(df_filtered)
         pa_table = _terminal_pa_table(df_with_ab)
         
         if "_PlayResult" not in pa_table.columns:
@@ -1545,7 +1552,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         # Get AB numbers that resulted in hits
         hit_ab_nums = pa_table[is_hit.values]["AB #"].unique()
         
-        # Get ALL pitches from those ABs that were put in play
+        # Get all pitches from those ABs (already filtered by pitch type above)
         df_hit_abs = df_with_ab[df_with_ab["AB #"].isin(hit_ab_nums)].copy()
         
         # Filter to only balls in play
@@ -1555,205 +1562,114 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         
         calls = df_hit_abs.get(call_col, pd.Series(dtype=str)).astype(str)
         inplay = calls.str.lower().isin(['inplay', 'in play'])
-        df_hit_abs = df_hit_abs[inplay].copy()
         
-        # Now filter by pitch type if specified
-        if pitch_type and type_col and type_col in df_hit_abs.columns:
-            df_hit_abs = df_hit_abs[df_hit_abs[type_col].astype(str) == pitch_type].copy()
+        xs_hits = pd.to_numeric(df_hit_abs.get(x_col, pd.Series(dtype=float)), errors='coerce')
+        ys_hits = pd.to_numeric(df_hit_abs.get(y_col, pd.Series(dtype=float)), errors='coerce')
         
-        if df_hit_abs.empty:
+        valid = inplay & xs_hits.notna() & ys_hits.notna()
+        if not valid.any():
             return None
         
-        # Get coordinates
-        x_hits = pd.to_numeric(df_hit_abs.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        y_hits = pd.to_numeric(df_hit_abs.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        valid_hits = x_hits.notna() & y_hits.notna()
-        
-        if not valid_hits.any():
-            return None
-        
-        return x_hits[valid_hits].values, y_hits[valid_hits].values
+        return xs_hits[valid].values, ys_hits[valid].values
     
-    # [Rest of the metrics remain the same as before]
     elif metric == "Hard Hits":
-        # Get all pitches for balls in play with pitch type filter
-        df_with_ab = add_inning_and_ab(df.copy())
-        pa_table = _terminal_pa_table(df_with_ab)
-        
-        # Filter by pitch type at PA level
-        if pitch_type and type_col and type_col in pa_table.columns:
-            pa_table = pa_table[pa_table[type_col].astype(str) == pitch_type].copy()
-        
-        if pa_table.empty:
-            return None
-        
-        # Get all pitches from these ABs
-        ab_nums = pa_table["AB #"].unique()
-        df_abs = df_with_ab[df_with_ab["AB #"].isin(ab_nums)].copy()
-        
-        ev_col = pick_col(df_abs, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", 
+        # Pitches with EV >= 95 on balls in play (already filtered by pitch type)
+        ev_col = pick_col(df_filtered, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", 
                          "ExitVel", "EV", "LaunchSpeed", "Launch_Speed", "exit_speed")
-        call_col = pick_col(df_abs, "PitchCall", "Pitch Call", "Call", "call")
+        call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
         
         if not ev_col or not call_col:
             return None
         
-        ev = pd.to_numeric(df_abs.get(ev_col, pd.Series(dtype=float)), errors='coerce')
-        calls = df_abs.get(call_col, pd.Series(dtype=str)).astype(str)
+        ev = pd.to_numeric(df_filtered.get(ev_col, pd.Series(dtype=float)), errors='coerce')
+        calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str)
         inplay = calls.str.lower().isin(['inplay', 'in play'])
         
-        xs_all = pd.to_numeric(df_abs.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys_all = pd.to_numeric(df_abs.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        
-        hard_hit = (ev >= 95.0) & inplay & xs_all.notna() & ys_all.notna() & ev.notna()
+        hard_hit = (ev >= 95.0) & inplay & xs.notna() & ys.notna() & ev.notna()
         
         if not hard_hit.any():
             return None
         
-        return xs_all[hard_hit].values, ys_all[hard_hit].values
+        return xs[hard_hit].values, ys[hard_hit].values
     
     elif metric == "Whiffs":
-        df_with_ab = add_inning_and_ab(df.copy())
-        pa_table = _terminal_pa_table(df_with_ab)
-        
-        # Filter by pitch type at PA level
-        if pitch_type and type_col and type_col in pa_table.columns:
-            pa_table = pa_table[pa_table[type_col].astype(str) == pitch_type].copy()
-        
-        if pa_table.empty:
-            return None
-        
-        # Get all pitches from these ABs
-        ab_nums = pa_table["AB #"].unique()
-        df_abs = df_with_ab[df_with_ab["AB #"].isin(ab_nums)].copy()
-        
-        call_col = pick_col(df_abs, "PitchCall", "Pitch Call", "Call", "call")
+        # Swinging strikes (already filtered by pitch type)
+        call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
         
         if not call_col:
             return None
         
-        calls = df_abs.get(call_col, pd.Series(dtype=str)).astype(str)
-        xs_all = pd.to_numeric(df_abs.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys_all = pd.to_numeric(df_abs.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        
-        is_whiff = calls.str.lower().isin(['strikeswinging', 'strike swinging', 'swinging strike']) & xs_all.notna() & ys_all.notna()
+        calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str)
+        is_whiff = calls.str.lower().isin(['strikeswinging', 'strike swinging', 'swinging strike']) & xs.notna() & ys.notna()
         
         if not is_whiff.any():
             return None
         
-        return xs_all[is_whiff].values, ys_all[is_whiff].values
+        return xs[is_whiff].values, ys[is_whiff].values
     
     elif metric == "Chases":
-        df_with_ab = add_inning_and_ab(df.copy())
-        pa_table = _terminal_pa_table(df_with_ab)
-        
-        # Filter by pitch type at PA level
-        if pitch_type and type_col and type_col in pa_table.columns:
-            pa_table = pa_table[pa_table[type_col].astype(str) == pitch_type].copy()
-        
-        if pa_table.empty:
-            return None
-        
-        # Get all pitches from these ABs
-        ab_nums = pa_table["AB #"].unique()
-        df_abs = df_with_ab[df_with_ab["AB #"].isin(ab_nums)].copy()
-        
-        call_col = pick_col(df_abs, "PitchCall", "Pitch Call", "Call", "call")
+        # Swings outside zone (already filtered by pitch type)
+        call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
         
         if not call_col:
             return None
         
-        calls = df_abs.get(call_col, pd.Series(dtype=str)).astype(str).str.lower()
+        calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str).str.lower()
         is_swing = calls.isin(['strikeswinging', 'strike swinging', 'swinging strike',
                                'foulballnotfieldable', 'foul ball not fieldable', 'foul',
                                'foulballfieldable', 'foul ball fieldable',
                                'inplay', 'in play'])
         
-        xs_all = pd.to_numeric(df_abs.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys_all = pd.to_numeric(df_abs.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        
         z_left, z_bot, z_w, z_h = get_zone_bounds()
-        in_zone = xs_all.between(z_left, z_left+z_w) & ys_all.between(z_bot, z_bot+z_h)
+        in_zone = xs.between(z_left, z_left+z_w) & ys.between(z_bot, z_bot+z_h)
         
-        is_chase = is_swing & (~in_zone) & xs_all.notna() & ys_all.notna()
+        is_chase = is_swing & (~in_zone) & xs.notna() & ys.notna()
         
         if not is_chase.any():
             return None
         
-        return xs_all[is_chase].values, ys_all[is_chase].values
+        return xs[is_chase].values, ys[is_chase].values
     
     elif metric == "Contact":
-        df_with_ab = add_inning_and_ab(df.copy())
-        pa_table = _terminal_pa_table(df_with_ab)
-        
-        # Filter by pitch type at PA level
-        if pitch_type and type_col and type_col in pa_table.columns:
-            pa_table = pa_table[pa_table[type_col].astype(str) == pitch_type].copy()
-        
-        if pa_table.empty:
-            return None
-        
-        # Get all pitches from these ABs
-        ab_nums = pa_table["AB #"].unique()
-        df_abs = df_with_ab[df_with_ab["AB #"].isin(ab_nums)].copy()
-        
-        call_col = pick_col(df_abs, "PitchCall", "Pitch Call", "Call", "call")
+        # Foul balls or balls in play (already filtered by pitch type)
+        call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
         
         if not call_col:
             return None
         
-        calls = df_abs.get(call_col, pd.Series(dtype=str)).astype(str).str.lower()
-        xs_all = pd.to_numeric(df_abs.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys_all = pd.to_numeric(df_abs.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        
+        calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str).str.lower()
         is_contact = calls.isin(['inplay', 'in play',
                                  'foulballnotfieldable', 'foul ball not fieldable', 'foul',
-                                 'foulballfieldable', 'foul ball fieldable']) & xs_all.notna() & ys_all.notna()
+                                 'foulballfieldable', 'foul ball fieldable']) & xs.notna() & ys.notna()
         
         if not is_contact.any():
             return None
         
-        return xs_all[is_contact].values, ys_all[is_contact].values
+        return xs[is_contact].values, ys[is_contact].values
     
     elif metric in ["Ground Balls", "Fly Balls", "Line Drives"]:
-        df_with_ab = add_inning_and_ab(df.copy())
-        pa_table = _terminal_pa_table(df_with_ab)
-        
-        # Filter by pitch type at PA level
-        if pitch_type and type_col and type_col in pa_table.columns:
-            pa_table = pa_table[pa_table[type_col].astype(str) == pitch_type].copy()
-        
-        if pa_table.empty:
-            return None
-        
-        # Get all pitches from these ABs
-        ab_nums = pa_table["AB #"].unique()
-        df_abs = df_with_ab[df_with_ab["AB #"].isin(ab_nums)].copy()
-        
-        hit_type_col = pick_col(df_abs, "TaggedHitType", "HitType", "Hit Type", "tagged_hit_type")
-        call_col = pick_col(df_abs, "PitchCall", "Pitch Call", "Call", "call")
+        # Batted ball types (already filtered by pitch type)
+        hit_type_col = pick_col(df_filtered, "TaggedHitType", "HitType", "Hit Type", "tagged_hit_type")
+        call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
         
         if not hit_type_col or not call_col:
             return None
         
-        hit_types = df_abs.get(hit_type_col, pd.Series(dtype=str)).astype(str).str.lower()
-        calls = df_abs.get(call_col, pd.Series(dtype=str)).astype(str).str.lower()
+        hit_types = df_filtered.get(hit_type_col, pd.Series(dtype=str)).astype(str).str.lower()
+        calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str).str.lower()
         inplay = calls.isin(['inplay', 'in play'])
         
-        xs_all = pd.to_numeric(df_abs.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys_all = pd.to_numeric(df_abs.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        
         if metric == "Ground Balls":
-            is_type = hit_types.str.contains("ground", na=False) & inplay & xs_all.notna() & ys_all.notna()
+            is_type = hit_types.str.contains("ground", na=False) & inplay & xs.notna() & ys.notna()
         elif metric == "Fly Balls":
-            is_type = hit_types.str.contains("fly", na=False) & inplay & xs_all.notna() & ys_all.notna()
+            is_type = hit_types.str.contains("fly", na=False) & inplay & xs.notna() & ys.notna()
         else:  # Line Drives
-            is_type = hit_types.str.contains("line", na=False) & inplay & xs_all.notna() & ys_all.notna()
+            is_type = hit_types.str.contains("line", na=False) & inplay & xs.notna() & ys.notna()
         
         if not is_type.any():
             return None
         
-        return xs_all[is_type].values, ys_all[is_type].values
+        return xs[is_type].values, ys[is_type].values
     
     return None
 

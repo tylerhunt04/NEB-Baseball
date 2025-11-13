@@ -2252,18 +2252,20 @@ with tabs[1]:
                         for j in range(cols_per_row):
                             pitch_idx = i + j
                             
-                            if pitch_idx < len(pitch_types):
-                                pitch_type = pitch_types[pitch_idx]
-                                df_pitch = df_prof[df_prof[type_col] == pitch_type].copy()
-                                
-                                if not df_pitch.empty:
-                                    # Create heatmap figure (matplotlib with KDE)
-                                    fig_heatmap = create_profile_heatmap(
-                                        df_pitch, 
-                                        pitch_type, 
-                                        heatmap_metric,
-                                        season_label_prof
-                                    )
+                          # INSIDE the loop where you create heatmaps
+                          if pitch_idx < len(pitch_types):
+                              pitch_type = pitch_types[pitch_idx]
+                              # DON'T filter here - pass full dataset and filter will happen inside
+                              df_pitch = df_prof.copy()  # ← CHANGED: was df_prof[df_prof[type_col] == pitch_type]
+    
+                              if not df_pitch.empty:
+                                  # The function will handle filtering internally for terminal pitch attribution
+                                  fig_heatmap = create_profile_heatmap(
+                                      df_pitch, 
+                                      pitch_type, 
+                                      heatmap_metric,
+                                      season_label_prof
+                                  )
                                     
                                     with cols[j]:
                                         if fig_heatmap:

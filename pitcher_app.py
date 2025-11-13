@@ -1563,7 +1563,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
         # All pitches with valid locations
         return xs[valid_loc].values, ys[valid_loc].values
     
- elif metric == "Hits":
+elif metric == "Hits":
         # Terminal pitches that were hits
         df_with_ab = add_inning_and_ab(df.copy())
         pa_table = _terminal_pa_table(df_with_ab)
@@ -1599,7 +1599,7 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str):
         if not valid_hits.any():
             return None
         
-        return x_hits[valid_hits].values, y_hits[valid_hits].values
+        return x_hits[valid_hits].values, y_hits[valid_hits].values                          
     elif metric == "Hard Hits":
         # Pitches with EV >= 95 on balls in play
         ev_col = pick_col(df, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", 

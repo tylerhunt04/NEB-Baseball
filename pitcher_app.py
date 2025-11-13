@@ -1519,26 +1519,24 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
     if df_filtered.empty:
         return None
     
-    # Get coordinates
-    xs = pd.to_numeric(df_filtered.get(x_col, pd.Series(dtype=float)), errors='coerce')
-    ys = pd.to_numeric(df_filtered.get(y_col, pd.Series(dtype=float)), errors='coerce')
-    
     if metric == "Pitch Locations (All)":
-        # All pitches of this type with valid locations
-        valid_loc = xs.notna() & ys.notna()
-        if not valid_loc.any():
+        # All pitches of this type
+        xs = pd.to_numeric(df_filtered.get(x_col, pd.Series(dtype=float)), errors='coerce')
+        ys = pd.to_numeric(df_filtered.get(y_col, pd.Series(dtype=float)), errors='coerce')
+        valid = xs.notna() & ys.notna()
+        if not valid.any():
             return None
-        return xs[valid_loc].values, ys[valid_loc].values
+        return xs[valid].values, ys[valid].values
     
     elif metric == "Hits":
-        # This is the only metric that needs AB structure because "hit" is a PA-level outcome
+        # For hits, we need PA-level outcome, then get in-play balls from those PAs
         df_with_ab = add_inning_and_ab(df_filtered)
         pa_table = _terminal_pa_table(df_with_ab)
         
         if "_PlayResult" not in pa_table.columns:
             return None
         
-        # Identify ABs that resulted in hits
+        # Find ABs that resulted in hits
         pr_low = pa_table["_PlayResult"].astype(str).str.lower()
         is_hit = (pr_low.str.contains(r"\bsingle\b", regex=True) | 
                  pr_low.str.contains(r"\bdouble\b", regex=True) | 
@@ -1549,31 +1547,25 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         if not is_hit.any():
             return None
         
-        # Get AB numbers that resulted in hits
         hit_ab_nums = pa_table[is_hit.values]["AB #"].unique()
         
-        # Get all pitches from those ABs (already filtered by pitch type above)
+        # Get ALL pitches from hit ABs that were put in play
         df_hit_abs = df_with_ab[df_with_ab["AB #"].isin(hit_ab_nums)].copy()
         
-        # Filter to only balls in play
         call_col = pick_col(df_hit_abs, "PitchCall", "Pitch Call", "Call", "call")
-        if not call_col:
-            return None
+        if call_col:
+            calls = df_hit_abs.get(call_col, pd.Series(dtype=str)).astype(str)
+            df_hit_abs = df_hit_abs[calls.str.lower().isin(['inplay', 'in play'])].copy()
         
-        calls = df_hit_abs.get(call_col, pd.Series(dtype=str)).astype(str)
-        inplay = calls.str.lower().isin(['inplay', 'in play'])
-        
-        xs_hits = pd.to_numeric(df_hit_abs.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys_hits = pd.to_numeric(df_hit_abs.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        
-        valid = inplay & xs_hits.notna() & ys_hits.notna()
+        xs = pd.to_numeric(df_hit_abs.get(x_col, pd.Series(dtype=float)), errors='coerce')
+        ys = pd.to_numeric(df_hit_abs.get(y_col, pd.Series(dtype=float)), errors='coerce')
+        valid = xs.notna() & ys.notna()
         if not valid.any():
             return None
-        
-        return xs_hits[valid].values, ys_hits[valid].values
+        return xs[valid].values, ys[valid].values
     
     elif metric == "Hard Hits":
-        # Pitches with EV >= 95 on balls in play (already filtered by pitch type)
+        # Direct filter: ExitSpeed >= 95 and InPlay
         ev_col = pick_col(df_filtered, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", 
                          "ExitVel", "EV", "LaunchSpeed", "Launch_Speed", "exit_speed")
         call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
@@ -1583,34 +1575,36 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         
         ev = pd.to_numeric(df_filtered.get(ev_col, pd.Series(dtype=float)), errors='coerce')
         calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str)
-        inplay = calls.str.lower().isin(['inplay', 'in play'])
         
-        hard_hit = (ev >= 95.0) & inplay & xs.notna() & ys.notna() & ev.notna()
+        mask = (ev >= 95.0) & calls.str.lower().isin(['inplay', 'in play']) & ev.notna()
+        df_hard = df_filtered[mask].copy()
         
-        if not hard_hit.any():
+        xs = pd.to_numeric(df_hard.get(x_col, pd.Series(dtype=float)), errors='coerce')
+        ys = pd.to_numeric(df_hard.get(y_col, pd.Series(dtype=float)), errors='coerce')
+        valid = xs.notna() & ys.notna()
+        if not valid.any():
             return None
-        
-        return xs[hard_hit].values, ys[hard_hit].values
+        return xs[valid].values, ys[valid].values
     
     elif metric == "Whiffs":
-        # Swinging strikes (already filtered by pitch type)
+        # Direct filter: PitchCall == StrikeSwinging
         call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
-        
         if not call_col:
             return None
         
         calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str)
-        is_whiff = calls.str.lower().isin(['strikeswinging', 'strike swinging', 'swinging strike']) & xs.notna() & ys.notna()
+        df_whiff = df_filtered[calls.str.lower().isin(['strikeswinging', 'strike swinging', 'swinging strike'])].copy()
         
-        if not is_whiff.any():
+        xs = pd.to_numeric(df_whiff.get(x_col, pd.Series(dtype=float)), errors='coerce')
+        ys = pd.to_numeric(df_whiff.get(y_col, pd.Series(dtype=float)), errors='coerce')
+        valid = xs.notna() & ys.notna()
+        if not valid.any():
             return None
-        
-        return xs[is_whiff].values, ys[is_whiff].values
+        return xs[valid].values, ys[valid].values
     
     elif metric == "Chases":
-        # Swings outside zone (already filtered by pitch type)
+        # Direct filter: Swings outside the zone
         call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
-        
         if not call_col:
             return None
         
@@ -1620,6 +1614,9 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
                                'foulballfieldable', 'foul ball fieldable',
                                'inplay', 'in play'])
         
+        xs = pd.to_numeric(df_filtered.get(x_col, pd.Series(dtype=float)), errors='coerce')
+        ys = pd.to_numeric(df_filtered.get(y_col, pd.Series(dtype=float)), errors='coerce')
+        
         z_left, z_bot, z_w, z_h = get_zone_bounds()
         in_zone = xs.between(z_left, z_left+z_w) & ys.between(z_bot, z_bot+z_h)
         
@@ -1627,28 +1624,28 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         
         if not is_chase.any():
             return None
-        
         return xs[is_chase].values, ys[is_chase].values
     
     elif metric == "Contact":
-        # Foul balls or balls in play (already filtered by pitch type)
+        # Direct filter: Fouls or InPlay
         call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
-        
         if not call_col:
             return None
         
         calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str).str.lower()
-        is_contact = calls.isin(['inplay', 'in play',
-                                 'foulballnotfieldable', 'foul ball not fieldable', 'foul',
-                                 'foulballfieldable', 'foul ball fieldable']) & xs.notna() & ys.notna()
+        df_contact = df_filtered[calls.isin(['inplay', 'in play',
+                                             'foulballnotfieldable', 'foul ball not fieldable', 'foul',
+                                             'foulballfieldable', 'foul ball fieldable'])].copy()
         
-        if not is_contact.any():
+        xs = pd.to_numeric(df_contact.get(x_col, pd.Series(dtype=float)), errors='coerce')
+        ys = pd.to_numeric(df_contact.get(y_col, pd.Series(dtype=float)), errors='coerce')
+        valid = xs.notna() & ys.notna()
+        if not valid.any():
             return None
-        
-        return xs[is_contact].values, ys[is_contact].values
+        return xs[valid].values, ys[valid].values
     
     elif metric in ["Ground Balls", "Fly Balls", "Line Drives"]:
-        # Batted ball types (already filtered by pitch type)
+        # Direct filter: HitType and InPlay
         hit_type_col = pick_col(df_filtered, "TaggedHitType", "HitType", "Hit Type", "tagged_hit_type")
         call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
         
@@ -1660,16 +1657,20 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         inplay = calls.isin(['inplay', 'in play'])
         
         if metric == "Ground Balls":
-            is_type = hit_types.str.contains("ground", na=False) & inplay & xs.notna() & ys.notna()
+            mask = hit_types.str.contains("ground", na=False) & inplay
         elif metric == "Fly Balls":
-            is_type = hit_types.str.contains("fly", na=False) & inplay & xs.notna() & ys.notna()
+            mask = hit_types.str.contains("fly", na=False) & inplay
         else:  # Line Drives
-            is_type = hit_types.str.contains("line", na=False) & inplay & xs.notna() & ys.notna()
+            mask = hit_types.str.contains("line", na=False) & inplay
         
-        if not is_type.any():
+        df_batted = df_filtered[mask].copy()
+        
+        xs = pd.to_numeric(df_batted.get(x_col, pd.Series(dtype=float)), errors='coerce')
+        ys = pd.to_numeric(df_batted.get(y_col, pd.Series(dtype=float)), errors='coerce')
+        valid = xs.notna() & ys.notna()
+        if not valid.any():
             return None
-        
-        return xs[is_type].values, ys[is_type].values
+        return xs[valid].values, ys[valid].values
     
     return None
 

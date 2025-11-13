@@ -2227,7 +2227,7 @@ with tabs[1]:
         if df_prof.empty:
             st.info("No rows for the selected profile filters.")
         else:
-           # ═══════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
 # HEATMAPS SECTION (3x3 grid layout)
 # ═══════════════════════════════════════════════════════════════════════
 st.markdown(f"### Heatmaps by Pitch Type — {heatmap_metric}")

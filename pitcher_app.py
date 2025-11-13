@@ -1491,7 +1491,7 @@ with tabs[0]:
 def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: str = None):
     """
     Filter dataframe to specific events and return coordinates for density plotting.
-    Returns tuple of (x_coords, y_coords) for the filtered events.
+    Returns tuple of (x_coords, y_vals) for the filtered events.
     
     Args:
         df: Full dataset for the pitcher
@@ -1523,21 +1523,15 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         
         return xs[valid_loc].values, ys[valid_loc].values
     
-    # For outcome-based metrics, build AB structure from FULL dataset
-    df_with_ab = add_inning_and_ab(df.copy())
-    pa_table = _terminal_pa_table(df_with_ab)
-    
-    # Now filter by pitch type if specified
-    if pitch_type and type_col and type_col in pa_table.columns:
-        pa_table = pa_table[pa_table[type_col].astype(str) == pitch_type].copy()
-    
-    if pa_table.empty:
-        return None
-    
-    if metric == "Hits":
+    elif metric == "Hits":
+        # Build AB structure from full dataset
+        df_with_ab = add_inning_and_ab(df.copy())
+        pa_table = _terminal_pa_table(df_with_ab)
+        
         if "_PlayResult" not in pa_table.columns:
             return None
         
+        # Identify ABs that resulted in hits
         pr_low = pa_table["_PlayResult"].astype(str).str.lower()
         is_hit = (pr_low.str.contains(r"\bsingle\b", regex=True) | 
                  pr_low.str.contains(r"\bdouble\b", regex=True) | 
@@ -1548,9 +1542,31 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         if not is_hit.any():
             return None
         
-        hits_only = pa_table[is_hit.values].copy()
-        x_hits = pd.to_numeric(hits_only.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        y_hits = pd.to_numeric(hits_only.get(y_col, pd.Series(dtype=float)), errors='coerce')
+        # Get AB numbers that resulted in hits
+        hit_ab_nums = pa_table[is_hit.values]["AB #"].unique()
+        
+        # Get ALL pitches from those ABs that were put in play
+        df_hit_abs = df_with_ab[df_with_ab["AB #"].isin(hit_ab_nums)].copy()
+        
+        # Filter to only balls in play
+        call_col = pick_col(df_hit_abs, "PitchCall", "Pitch Call", "Call", "call")
+        if not call_col:
+            return None
+        
+        calls = df_hit_abs.get(call_col, pd.Series(dtype=str)).astype(str)
+        inplay = calls.str.lower().isin(['inplay', 'in play'])
+        df_hit_abs = df_hit_abs[inplay].copy()
+        
+        # Now filter by pitch type if specified
+        if pitch_type and type_col and type_col in df_hit_abs.columns:
+            df_hit_abs = df_hit_abs[df_hit_abs[type_col].astype(str) == pitch_type].copy()
+        
+        if df_hit_abs.empty:
+            return None
+        
+        # Get coordinates
+        x_hits = pd.to_numeric(df_hit_abs.get(x_col, pd.Series(dtype=float)), errors='coerce')
+        y_hits = pd.to_numeric(df_hit_abs.get(y_col, pd.Series(dtype=float)), errors='coerce')
         valid_hits = x_hits.notna() & y_hits.notna()
         
         if not valid_hits.any():
@@ -1558,8 +1574,20 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         
         return x_hits[valid_hits].values, y_hits[valid_hits].values
     
+    # [Rest of the metrics remain the same as before]
     elif metric == "Hard Hits":
-        # Get all pitches for the ABs in pa_table to check exit velo
+        # Get all pitches for balls in play with pitch type filter
+        df_with_ab = add_inning_and_ab(df.copy())
+        pa_table = _terminal_pa_table(df_with_ab)
+        
+        # Filter by pitch type at PA level
+        if pitch_type and type_col and type_col in pa_table.columns:
+            pa_table = pa_table[pa_table[type_col].astype(str) == pitch_type].copy()
+        
+        if pa_table.empty:
+            return None
+        
+        # Get all pitches from these ABs
         ab_nums = pa_table["AB #"].unique()
         df_abs = df_with_ab[df_with_ab["AB #"].isin(ab_nums)].copy()
         
@@ -1585,7 +1613,17 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         return xs_all[hard_hit].values, ys_all[hard_hit].values
     
     elif metric == "Whiffs":
-        # Get all pitches for the ABs in pa_table
+        df_with_ab = add_inning_and_ab(df.copy())
+        pa_table = _terminal_pa_table(df_with_ab)
+        
+        # Filter by pitch type at PA level
+        if pitch_type and type_col and type_col in pa_table.columns:
+            pa_table = pa_table[pa_table[type_col].astype(str) == pitch_type].copy()
+        
+        if pa_table.empty:
+            return None
+        
+        # Get all pitches from these ABs
         ab_nums = pa_table["AB #"].unique()
         df_abs = df_with_ab[df_with_ab["AB #"].isin(ab_nums)].copy()
         
@@ -1606,7 +1644,17 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         return xs_all[is_whiff].values, ys_all[is_whiff].values
     
     elif metric == "Chases":
-        # Get all pitches for the ABs in pa_table
+        df_with_ab = add_inning_and_ab(df.copy())
+        pa_table = _terminal_pa_table(df_with_ab)
+        
+        # Filter by pitch type at PA level
+        if pitch_type and type_col and type_col in pa_table.columns:
+            pa_table = pa_table[pa_table[type_col].astype(str) == pitch_type].copy()
+        
+        if pa_table.empty:
+            return None
+        
+        # Get all pitches from these ABs
         ab_nums = pa_table["AB #"].unique()
         df_abs = df_with_ab[df_with_ab["AB #"].isin(ab_nums)].copy()
         
@@ -1635,7 +1683,17 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         return xs_all[is_chase].values, ys_all[is_chase].values
     
     elif metric == "Contact":
-        # Get all pitches for the ABs in pa_table
+        df_with_ab = add_inning_and_ab(df.copy())
+        pa_table = _terminal_pa_table(df_with_ab)
+        
+        # Filter by pitch type at PA level
+        if pitch_type and type_col and type_col in pa_table.columns:
+            pa_table = pa_table[pa_table[type_col].astype(str) == pitch_type].copy()
+        
+        if pa_table.empty:
+            return None
+        
+        # Get all pitches from these ABs
         ab_nums = pa_table["AB #"].unique()
         df_abs = df_with_ab[df_with_ab["AB #"].isin(ab_nums)].copy()
         
@@ -1658,7 +1716,17 @@ def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: s
         return xs_all[is_contact].values, ys_all[is_contact].values
     
     elif metric in ["Ground Balls", "Fly Balls", "Line Drives"]:
-        # Get all pitches for the ABs in pa_table
+        df_with_ab = add_inning_and_ab(df.copy())
+        pa_table = _terminal_pa_table(df_with_ab)
+        
+        # Filter by pitch type at PA level
+        if pitch_type and type_col and type_col in pa_table.columns:
+            pa_table = pa_table[pa_table[type_col].astype(str) == pitch_type].copy()
+        
+        if pa_table.empty:
+            return None
+        
+        # Get all pitches from these ABs
         ab_nums = pa_table["AB #"].unique()
         df_abs = df_with_ab[df_with_ab["AB #"].isin(ab_nums)].copy()
         

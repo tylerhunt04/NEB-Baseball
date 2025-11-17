@@ -3,7 +3,6 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
 
 # Page configuration
 st.set_page_config(
@@ -12,22 +11,19 @@ st.set_page_config(
     layout="wide"
 )
 
-# Title and description
 st.title("📈 Stock Evaluator")
 st.markdown("Analyze stocks with real-time data, charts, and key metrics")
 
-# Sidebar for stock input
+# Sidebar
 st.sidebar.header("Stock Selection")
 ticker_input = st.sidebar.text_input("Enter Stock Ticker", value="AAPL").upper()
 
-# Time range selection
 time_range = st.sidebar.selectbox(
     "Select Time Range",
     ["1M", "3M", "6M", "1Y", "2Y", "5Y", "MAX"],
     index=3
 )
 
-# Map time range to period
 period_map = {
     "1M": "1mo",
     "3M": "3mo",
@@ -38,31 +34,48 @@ period_map = {
     "MAX": "max"
 }
 
-# Fetch stock data
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+@st.cache_data(ttl=300)
 def get_stock_data(ticker, period):
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period=period)
         info = stock.info
-        return stock, hist, info
+        
+        if hist.empty:
+            return None, None, None, "No historical data available"
+        if not info or len(info) == 0:
+            return None, None, None, "No stock information available"
+            
+        return stock, hist, info, None
     except Exception as e:
-        return None, None, None
+        return None, None, None, f"Error: {str(e)}"
 
-# Load data
 with st.spinner(f"Loading data for {ticker_input}..."):
-    stock, hist, info = get_stock_data(ticker_input, period_map[time_range])
+    stock, hist, info, error = get_stock_data(ticker_input, period_map[time_range])
 
-if hist is not None and not hist.empty and info:
-    # Company header
+if error:
+    st.error(f"❌ Unable to fetch data for ticker '{ticker_input}'")
+    st.warning(f"**Error details:** {error}")
+    st.info("""
+    **Possible solutions:**
+    - Ensure yfinance is installed: `pip install yfinance`
+    - Check your internet connection
+    - Verify the ticker symbol is correct
+    - Try popular tickers: AAPL, MSFT, GOOGL, AMZN, TSLA
+    """)
+    
+elif hist is not None and not hist.empty and info:
     company_name = info.get('longName', ticker_input)
     st.header(f"{company_name} ({ticker_input})")
     
-    # Current price section
-    current_price = info.get('currentPrice', info.get('regularMarketPrice', 'N/A'))
-    previous_close = info.get('previousClose', 'N/A')
+    # Current price
+    current_price = info.get('currentPrice') or info.get('regularMarketPrice')
+    previous_close = info.get('previousClose')
     
-    if isinstance(current_price, (int, float)) and isinstance(previous_close, (int, float)):
+    if not current_price and not hist.empty:
+        current_price = float(hist['Close'].iloc[-1])
+    
+    if current_price and previous_close:
         price_change = current_price - previous_close
         price_change_pct = (price_change / previous_close) * 100
         
@@ -81,87 +94,59 @@ if hist is not None and not hist.empty and info:
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        market_cap = info.get('marketCap', 'N/A')
-        if isinstance(market_cap, (int, float)):
+        market_cap = info.get('marketCap')
+        if market_cap:
             if market_cap >= 1e12:
-                market_cap_display = f"${market_cap/1e12:.2f}T"
+                mc_display = f"${market_cap/1e12:.2f}T"
             elif market_cap >= 1e9:
-                market_cap_display = f"${market_cap/1e9:.2f}B"
-            elif market_cap >= 1e6:
-                market_cap_display = f"${market_cap/1e6:.2f}M"
+                mc_display = f"${market_cap/1e9:.2f}B"
             else:
-                market_cap_display = f"${market_cap:,.0f}"
+                mc_display = f"${market_cap/1e6:.2f}M"
         else:
-            market_cap_display = "N/A"
-        st.metric("Market Cap", market_cap_display)
+            mc_display = "N/A"
+        st.metric("Market Cap", mc_display)
         
-        pe_ratio = info.get('trailingPE', 'N/A')
-        if isinstance(pe_ratio, (int, float)):
-            st.metric("P/E Ratio", f"{pe_ratio:.2f}")
-        else:
-            st.metric("P/E Ratio", "N/A")
+        pe = info.get('trailingPE')
+        st.metric("P/E Ratio", f"{pe:.2f}" if pe else "N/A")
     
     with col2:
-        volume = info.get('volume', 'N/A')
-        if isinstance(volume, (int, float)):
-            if volume >= 1e9:
-                volume_display = f"{volume/1e9:.2f}B"
-            elif volume >= 1e6:
-                volume_display = f"{volume/1e6:.2f}M"
-            else:
-                volume_display = f"{volume:,.0f}"
+        vol = info.get('volume')
+        if vol:
+            vol_display = f"{vol/1e6:.2f}M" if vol >= 1e6 else f"{vol:,.0f}"
         else:
-            volume_display = "N/A"
-        st.metric("Volume", volume_display)
+            vol_display = "N/A"
+        st.metric("Volume", vol_display)
         
-        avg_volume = info.get('averageVolume', 'N/A')
-        if isinstance(avg_volume, (int, float)):
-            if avg_volume >= 1e9:
-                avg_volume_display = f"{avg_volume/1e9:.2f}B"
-            elif avg_volume >= 1e6:
-                avg_volume_display = f"{avg_volume/1e6:.2f}M"
-            else:
-                avg_volume_display = f"{avg_volume:,.0f}"
+        avg_vol = info.get('averageVolume')
+        if avg_vol:
+            avg_display = f"{avg_vol/1e6:.2f}M" if avg_vol >= 1e6 else f"{avg_vol:,.0f}"
         else:
-            avg_volume_display = "N/A"
-        st.metric("Avg Volume", avg_volume_display)
+            avg_display = "N/A"
+        st.metric("Avg Volume", avg_display)
     
     with col3:
-        high_52week = info.get('fiftyTwoWeekHigh', 'N/A')
-        if isinstance(high_52week, (int, float)):
-            st.metric("52 Week High", f"${high_52week:.2f}")
-        else:
-            st.metric("52 Week High", "N/A")
+        high_52 = info.get('fiftyTwoWeekHigh')
+        st.metric("52W High", f"${high_52:.2f}" if high_52 else "N/A")
         
-        low_52week = info.get('fiftyTwoWeekLow', 'N/A')
-        if isinstance(low_52week, (int, float)):
-            st.metric("52 Week Low", f"${low_52week:.2f}")
-        else:
-            st.metric("52 Week Low", "N/A")
+        low_52 = info.get('fiftyTwoWeekLow')
+        st.metric("52W Low", f"${low_52:.2f}" if low_52 else "N/A")
     
     with col4:
-        eps = info.get('trailingEps', 'N/A')
-        if isinstance(eps, (int, float)):
-            st.metric("EPS (TTM)", f"${eps:.2f}")
-        else:
-            st.metric("EPS (TTM)", "N/A")
+        eps = info.get('trailingEps')
+        st.metric("EPS (TTM)", f"${eps:.2f}" if eps else "N/A")
         
-        dividend_yield = info.get('dividendYield', 'N/A')
-        if isinstance(dividend_yield, (int, float)):
-            st.metric("Dividend Yield", f"{dividend_yield*100:.2f}%")
-        else:
-            st.metric("Dividend Yield", "N/A")
+        div_yield = info.get('dividendYield')
+        st.metric("Div Yield", f"{div_yield*100:.2f}%" if div_yield else "N/A")
     
     st.divider()
     
-    # Calculate moving averages
+    # Moving averages
     hist['MA20'] = hist['Close'].rolling(window=20).mean()
     hist['MA50'] = hist['Close'].rolling(window=50).mean()
     
-    # Price and Volume Chart
+    # Charts
     st.subheader("📈 Price Chart & Volume")
     
-    # Create subplots
     fig = make_subplots(
         rows=2, cols=1,
         shared_xaxes=True,
@@ -170,7 +155,6 @@ if hist is not None and not hist.empty and info:
         row_heights=[0.7, 0.3]
     )
     
-    # Add price candlestick
     fig.add_trace(
         go.Candlestick(
             x=hist.index,
@@ -183,11 +167,9 @@ if hist is not None and not hist.empty and info:
         row=1, col=1
     )
     
-    # Add moving averages
     fig.add_trace(
         go.Scatter(
-            x=hist.index,
-            y=hist['MA20'],
+            x=hist.index, y=hist['MA20'],
             name='MA20',
             line=dict(color='orange', width=1)
         ),
@@ -196,27 +178,24 @@ if hist is not None and not hist.empty and info:
     
     fig.add_trace(
         go.Scatter(
-            x=hist.index,
-            y=hist['MA50'],
+            x=hist.index, y=hist['MA50'],
             name='MA50',
             line=dict(color='blue', width=1)
         ),
         row=1, col=1
     )
     
-    # Add volume bars
-    colors = ['red' if row['Open'] > row['Close'] else 'green' for index, row in hist.iterrows()]
+    colors = ['red' if row['Open'] > row['Close'] else 'green' 
+              for _, row in hist.iterrows()]
     fig.add_trace(
         go.Bar(
-            x=hist.index,
-            y=hist['Volume'],
+            x=hist.index, y=hist['Volume'],
             name='Volume',
             marker_color=colors
         ),
         row=2, col=1
     )
     
-    # Update layout
     fig.update_layout(
         title=f"{ticker_input} Stock Price and Volume",
         yaxis_title="Price ($)",
@@ -229,7 +208,7 @@ if hist is not None and not hist.empty and info:
     
     st.plotly_chart(fig, use_container_width=True)
     
-    # Company Information
+    # Company Info
     st.divider()
     st.subheader("🏢 Company Information")
     
@@ -242,31 +221,26 @@ if hist is not None and not hist.empty and info:
     
     with col2:
         st.write(f"**Website:** {info.get('website', 'N/A')}")
-        employees = info.get('fullTimeEmployees', 'N/A')
-        if isinstance(employees, int):
-            st.write(f"**Employees:** {employees:,}")
-        else:
-            st.write(f"**Employees:** N/A")
+        emp = info.get('fullTimeEmployees')
+        st.write(f"**Employees:** {emp:,}" if emp else "**Employees:** N/A")
     
-    # Business Summary
     if 'longBusinessSummary' in info:
         with st.expander("📋 Business Summary"):
             st.write(info['longBusinessSummary'])
     
-    # Download data option
+    # Download
     st.divider()
     csv = hist.to_csv()
     st.download_button(
         label="📥 Download Historical Data (CSV)",
         data=csv,
-        file_name=f"{ticker_input}_historical_data.csv",
+        file_name=f"{ticker_input}_data.csv",
         mime="text/csv"
     )
 
 else:
-    st.error(f"❌ Unable to fetch data for ticker '{ticker_input}'. Please check the ticker symbol and try again.")
-    st.info("💡 Try popular tickers like: AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA")
+    st.error(f"❌ Unable to fetch data for ticker '{ticker_input}'")
+    st.info("💡 Try: AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA")
 
-# Footer
 st.divider()
-st.caption("Data provided by Yahoo Finance. This is for educational purposes only and not financial advice.")
+st.caption("Data from Yahoo Finance. For educational purposes only.")

@@ -1,6 +1,4 @@
-bash
 
-cat > /home/claude/stock_evaluator.py << 'EOF'
 import streamlit as st
 import yfinance as yf
 import pandas as pd

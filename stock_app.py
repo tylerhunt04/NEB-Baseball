@@ -5,229 +5,379 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
 
-# Professional Color Scheme (Theme 1: Professional Blue)
-COLORS = {
-    'primary': '#1E88E5',      # Professional Blue
-    'success': '#43A047',      # Green for gains
-    'danger': '#E53935',       # Red for losses
-    'warning': '#FB8C00',      # Orange for warnings
-    'info': '#00ACC1',         # Cyan for info
-    'neutral': '#757575',      # Gray for neutral
-    'background': '#0E1117',   # Dark background
-    'surface': '#1E1E1E',      # Card background
-    'text': '#FAFAFA',         # White text
-}
-
 # Page config
 st.set_page_config(
-    page_title="Stock Market Analyzer",
+    page_title="Stock Analyzer Pro",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for professional styling
-st.markdown(f"""
+# Professional custom CSS
+st.markdown("""
 <style>
-    /* Main container styling */
-    .main .block-container {{
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-    }}
+    /* Import Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
     
-    /* Professional metric cards */
-    div[data-testid="metric-container"] {{
-        background: {COLORS['surface']};
-        border: 1px solid #333;
-        padding: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-    }}
+    /* Global Styles */
+    * {
+        font-family: 'Inter', sans-serif;
+    }
     
-    div[data-testid="metric-container"]:hover {{
-        border-color: {COLORS['primary']};
-        box-shadow: 0 4px 8px rgba(30,136,229,0.2);
-        transition: all 0.3s ease;
-    }}
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
     
-    /* Performance badges */
-    .performance-badge {{
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        border-radius: 12px;
+    /* Main container */
+    .main {
+        background: linear-gradient(to bottom, #0f0f23 0%, #1a1a2e 100%);
+    }
+    
+    /* Professional Header */
+    .professional-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2.5rem 3rem;
+        border-radius: 20px;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 40px rgba(102, 126, 234, 0.4);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .professional-header::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 300px;
+        height: 300px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
+    }
+    
+    .app-title {
+        color: white;
+        font-size: 2.8rem;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -1px;
+    }
+    
+    .app-subtitle {
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 1.1rem;
+        margin-top: 0.5rem;
+        font-weight: 300;
+    }
+    
+    /* Stock Info Card */
+    .stock-card {
+        background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+        border-radius: 20px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    
+    .stock-symbol {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #667eea;
+        margin: 0;
+        line-height: 1;
+    }
+    
+    .stock-company {
+        font-size: 1.5rem;
+        color: rgba(255, 255, 255, 0.9);
+        margin-top: 0.5rem;
         font-weight: 600;
+    }
+    
+    .stock-meta {
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+    }
+    
+    /* Metric Cards */
+    .metric-container {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 15px;
+        padding: 1.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        transition: all 0.3s ease;
+        height: 100%;
+    }
+    
+    .metric-container:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        border-color: rgba(102, 126, 234, 0.5);
+    }
+    
+    .metric-label {
+        color: rgba(255, 255, 255, 0.6);
         font-size: 0.85rem;
-        margin: 0.25rem;
-    }}
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+    }
     
-    .badge-excellent {{
-        background: {COLORS['success']};
+    .metric-value {
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0.5rem 0;
+    }
+    
+    .metric-value.positive {
+        color: #48bb78;
+    }
+    
+    .metric-value.negative {
+        color: #f56565;
+    }
+    
+    .metric-value.neutral {
+        color: #cbd5e0;
+    }
+    
+    .metric-change {
+        font-size: 0.9rem;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+    }
+    
+    .metric-change.positive {
+        background: rgba(72, 187, 120, 0.2);
+        color: #48bb78;
+    }
+    
+    .metric-change.negative {
+        background: rgba(245, 101, 101, 0.2);
+        color: #f56565;
+    }
+    
+    /* Signal Badges */
+    .signal-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        border-radius: 30px;
+        font-weight: 700;
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+    
+    .signal-strong-buy {
+        background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
         color: white;
-    }}
+    }
     
-    .badge-good {{
-        background: #66BB6A;
+    .signal-buy {
+        background: linear-gradient(135deg, #68d391 0%, #48bb78 100%);
         color: white;
-    }}
+    }
     
-    .badge-neutral {{
-        background: {COLORS['neutral']};
+    .signal-hold {
+        background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
         color: white;
-    }}
+    }
     
-    .badge-poor {{
-        background: {COLORS['danger']};
+    .signal-sell {
+        background: linear-gradient(135deg, #fc8181 0%, #f56565 100%);
         color: white;
-    }}
+    }
     
-    /* Section headers */
-    .section-header {{
+    .signal-strong-sell {
+        background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+        color: white;
+    }
+    
+    /* Info Cards */
+    .info-card {
+        background: rgba(255, 255, 255, 0.05);
+        border-left: 4px solid;
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+    }
+    
+    .info-card.success {
+        border-left-color: #48bb78;
+        background: rgba(72, 187, 120, 0.1);
+    }
+    
+    .info-card.warning {
+        border-left-color: #ed8936;
+        background: rgba(237, 137, 54, 0.1);
+    }
+    
+    .info-card.error {
+        border-left-color: #f56565;
+        background: rgba(245, 101, 101, 0.1);
+    }
+    
+    .info-card.info {
+        border-left-color: #667eea;
+        background: rgba(102, 126, 234, 0.1);
+    }
+    
+    /* Sidebar Styling */
+    .css-1d391kg {
+        background: linear-gradient(to bottom, #1a1a2e 0%, #16213e 100%);
+    }
+    
+    /* Section Headers */
+    .section-header {
+        color: #667eea;
         font-size: 1.5rem;
         font-weight: 700;
-        color: {COLORS['primary']};
-        margin: 1.5rem 0 1rem 0;
+        margin: 2rem 0 1rem 0;
         padding-bottom: 0.5rem;
-        border-bottom: 2px solid {COLORS['primary']};
-    }}
+        border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+    }
     
-    /* Info cards */
-    .info-card {{
-        background: {COLORS['surface']};
-        border-left: 4px solid {COLORS['primary']};
-        padding: 1rem;
-        border-radius: 4px;
+    /* Divider */
+    .custom-divider {
+        height: 2px;
+        background: linear-gradient(to right, transparent, #667eea, transparent);
+        margin: 2rem 0;
+    }
+    
+    /* Chart Container */
+    .chart-container {
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 15px;
+        padding: 1.5rem;
         margin: 1rem 0;
-    }}
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
     
-    /* Success/Warning cards */
-    .success-card {{
-        background: rgba(67, 160, 71, 0.1);
-        border-left: 4px solid {COLORS['success']};
-        padding: 1rem;
-        border-radius: 4px;
-        margin: 1rem 0;
-    }}
+    /* Table Styling */
+    .dataframe {
+        background: rgba(255, 255, 255, 0.05) !important;
+        border-radius: 10px;
+    }
     
-    .warning-card {{
-        background: rgba(229, 57, 53, 0.1);
-        border-left: 4px solid {COLORS['danger']};
-        padding: 1rem;
-        border-radius: 4px;
-        margin: 1rem 0;
-    }}
-    
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {{
-        gap: 8px;
-        background: {COLORS['surface']};
+    /* Tabs Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background: rgba(255, 255, 255, 0.05);
         padding: 0.5rem;
-        border-radius: 8px;
-    }}
+        border-radius: 15px;
+    }
     
-    .stTabs [data-baseweb="tab"] {{
-        height: 50px;
-        border-radius: 6px;
-        padding: 0 1.5rem;
+    .stTabs [data-baseweb="tab"] {
         background: transparent;
+        border-radius: 10px;
+        color: rgba(255, 255, 255, 0.6);
         font-weight: 600;
-    }}
+        padding: 0.75rem 1.5rem;
+        transition: all 0.3s ease;
+    }
     
-    .stTabs [aria-selected="true"] {{
-        background: {COLORS['primary']};
-    }}
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
     
-    /* Button styling */
-    .stButton > button {{
-        background: {COLORS['primary']};
+    /* Button Styling */
+    .stButton>button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         border: none;
-        border-radius: 6px;
+        border-radius: 10px;
         padding: 0.75rem 2rem;
         font-weight: 600;
         transition: all 0.3s ease;
-    }}
+    }
     
-    .stButton > button:hover {{
-        background: #1565C0;
-        box-shadow: 0 4px 12px rgba(30,136,229,0.3);
-    }}
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+    }
     
-    /* Sidebar styling */
-    [data-testid="stSidebar"] {{
-        background: {COLORS['surface']};
-    }}
+    /* Expander Styling */
+    .streamlit-expanderHeader {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        font-weight: 600;
+        color: #667eea;
+    }
     
-    /* Data table styling */
-    .dataframe {{
-        border: 1px solid #333 !important;
-        border-radius: 8px;
-    }}
+    /* Loading Animation */
+    .stSpinner > div {
+        border-top-color: #667eea !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Header with professional styling
-st.markdown(f"""
-<div style="background: linear-gradient(135deg, {COLORS['primary']} 0%, #1565C0 100%); 
-            padding: 2rem; border-radius: 10px; margin-bottom: 2rem;">
-    <h1 style="color: white; margin: 0; font-size: 2.5rem; font-weight: 700;">
-        Stock Market Analyzer
-    </h1>
-    <p style="color: rgba(255,255,255,0.9); margin: 0.5rem 0 0 0; font-size: 1.1rem;">
-        Professional Real-Time Stock Analysis
-    </p>
+# Professional Header
+st.markdown("""
+<div class="professional-header">
+    <h1 class="app-title">📊 Stock Analyzer Pro</h1>
+    <p class="app-subtitle">Professional-Grade Market Analysis & Intelligence Platform</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Sidebar configuration
-with st.sidebar:
-    st.markdown('<p class="section-header">Configuration</p>', unsafe_allow_html=True)
-    
-    # Ticker input with cleaner styling
-    ticker = st.text_input("Stock Ticker", value="AAPL", help="Enter a valid stock symbol (e.g., AAPL, MSFT)").upper()
-    
-    # Period selection
-    st.markdown("**Time Period**")
-    period = st.radio(
-        "Select analysis range:",
-        ["1M", "3M", "6M", "1Y", "2Y", "5Y", "MAX"],
-        index=3,
-        label_visibility="collapsed"
-    )
-    
-    # Map period to yfinance format
-    period_map = {
-        "1M": "1mo", "3M": "3mo", "6M": "6mo", "1Y": "1y",
-        "2Y": "2y", "5Y": "5y", "MAX": "max"
-    }
-    
-    st.markdown("---")
-    analyze_button = st.button("Analyze Stock", type="primary", use_container_width=True)
-    
-    st.markdown("---")
-    st.markdown("**Quick Links**")
-    st.markdown("• [Market News](https://finance.yahoo.com)")
-    st.markdown("• [SEC Filings](https://www.sec.gov)")
-    st.markdown("• [Investor Relations](#)")
+# Sidebar inputs
+st.sidebar.markdown("### 🎯 Analysis Configuration")
+st.sidebar.markdown("<div style='height: 2px; background: linear-gradient(to right, transparent, #667eea, transparent); margin: 1rem 0;'></div>", unsafe_allow_html=True)
 
-# Helper function for performance badges
-def get_performance_badge(value, thresholds, metric_type="return"):
-    """Generate professional performance badge"""
-    if metric_type == "return":
-        if value > thresholds[0]:
-            return f'<span class="performance-badge badge-excellent">Excellent ({value:+.2f}%)</span>'
-        elif value > thresholds[1]:
-            return f'<span class="performance-badge badge-good">Good ({value:+.2f}%)</span>'
-        elif value > thresholds[2]:
-            return f'<span class="performance-badge badge-neutral">Neutral ({value:+.2f}%)</span>'
-        else:
-            return f'<span class="performance-badge badge-poor">Poor ({value:+.2f}%)</span>'
-    elif metric_type == "volatility":
-        if value < thresholds[0]:
-            return f'<span class="performance-badge badge-excellent">Low Risk ({value:.2f}%)</span>'
-        elif value < thresholds[1]:
-            return f'<span class="performance-badge badge-good">Moderate ({value:.2f}%)</span>'
-        else:
-            return f'<span class="performance-badge badge-poor">High Risk ({value:.2f}%)</span>'
+# Stock input with icon
+st.sidebar.markdown("#### 📌 Stock Selection")
+ticker = st.sidebar.text_input(
+    "",
+    value="AAPL",
+    placeholder="Enter ticker (e.g., AAPL, GOOGL, MSFT)",
+    help="Enter a valid stock ticker symbol"
+).upper()
+
+st.sidebar.markdown("<div style='height: 2px; background: linear-gradient(to right, transparent, #667eea, transparent); margin: 1rem 0;'></div>", unsafe_allow_html=True)
+
+# Period selection with buttons
+st.sidebar.markdown("#### 📅 Time Period")
+period = st.sidebar.radio(
+    "",
+    ["1M", "3M", "6M", "1Y", "2Y", "5Y", "MAX"],
+    index=3,  # Default to 1Y
+    horizontal=False
+)
+
+# Map period to yfinance format
+period_map = {
+    "1M": "1mo",
+    "3M": "3mo",
+    "6M": "6mo",
+    "1Y": "1y",
+    "2Y": "2y",
+    "5Y": "5y",
+    "MAX": "max"
+}
+
+st.sidebar.markdown("<div style='height: 2px; background: linear-gradient(to right, transparent, #667eea, transparent); margin: 1rem 0;'></div>", unsafe_allow_html=True)
+
+# Info card
+st.sidebar.markdown("""
+<div style='background: rgba(102, 126, 234, 0.1); border-left: 4px solid #667eea; padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
+    <strong style='color: #667eea;'>💡 Pro Tip</strong><br>
+    <span style='color: rgba(255,255,255,0.8); font-size: 0.85rem;'>
+    Use 1Y for comprehensive analysis. Shorter for day trading, longer for investing.
+    </span>
+</div>
+""", unsafe_allow_html=True)
+
+# Download button
+analyze_button = st.sidebar.button("📊 Analyze Stock", type="primary", use_container_width=True)
 
 # Cache the download function
 @st.cache_data(ttl=600)
@@ -241,19 +391,26 @@ def download_stock_data(ticker, period):
             if attempt > 0:
                 time.sleep(retry_delay)
             
-            df = yf.download(ticker, period=period, progress=False, threads=False)
+            df = yf.download(
+                ticker, 
+                period=period,
+                progress=False,
+                threads=False
+            )
             
             if not df.empty:
                 # Fix multi-level columns issue
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.droplevel(1)
                 
+                # Reset index and ensure Date column is properly named
                 df = df.reset_index()
                 
-                # Ensure proper column naming
+                # Make sure we have the right column names
                 if 'Date' not in df.columns and 'Datetime' in df.columns:
                     df = df.rename(columns={'Datetime': 'Date'})
                 elif 'Date' not in df.columns:
+                    # First column is probably the date
                     df = df.rename(columns={df.columns[0]: 'Date'})
                 
                 return df, None
@@ -265,7 +422,7 @@ def download_stock_data(ticker, period):
             
             if "429" in error_msg or "Too Many Requests" in error_msg:
                 if attempt < max_retries - 1:
-                    st.warning(f"Rate limited. Retrying in {retry_delay} seconds...")
+                    st.warning(f"⏳ Rate limited. Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)
                     retry_delay *= 2
                     continue
@@ -276,322 +433,546 @@ def download_stock_data(ticker, period):
     
     return None, "Failed after multiple retries"
 
-# Main analysis section
+# Main content
 if analyze_button or ticker:
     try:
-        with st.spinner(f"Loading {period} data for {ticker}..."):
+        with st.spinner(f"Loading {period} of data for {ticker}..."):
             df, error = download_stock_data(ticker, period_map[period])
         
         if error:
-            st.markdown(f'<div class="warning-card"><strong>Error:</strong> {error}</div>', unsafe_allow_html=True)
+            st.error(f"❌ {error}")
             
             if "Rate limited" in error:
-                st.info("**Solutions:** Wait 2-3 minutes • Clear cache (press 'C') • Try different ticker")
+                st.warning("""
+                **You've been rate limited by Yahoo Finance.**
+                
+                **Solutions:**
+                - ⏰ Wait 2-3 minutes before trying again
+                - 🔄 Press 'C' to clear cache
+                - 🎯 Try a different ticker
+                - 📉 Use a shorter time period
+                """)
             else:
-                st.info("**Try:** AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA")
+                st.info("💡 Try: AAPL, MSFT, GOOGL, AMZN, TSLA")
             
         elif df is None or df.empty:
-            st.markdown(f'<div class="warning-card">No data found for \'{ticker}\'</div>', unsafe_allow_html=True)
-            st.info("**Suggested tickers:** AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA")
+            st.error(f"❌ No data found for '{ticker}'")
+            st.info("💡 Try: AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA")
             
         else:
-            # Success message
-            st.markdown(f'<div class="success-card">Successfully loaded {len(df)} days of data for {ticker}</div>', 
-                       unsafe_allow_html=True)
+            st.success(f"✅ Successfully loaded {len(df)} days of data for {ticker} ({period})")
             
-            # Get company information
+            # Get company info
             company_name = ticker
+            sector = "N/A"
+            market_cap = None
             try:
                 stock = yf.Ticker(ticker)
                 info = stock.info if hasattr(stock, 'info') else {}
                 company_name = info.get('longName', ticker)
+                sector = info.get('sector', 'N/A')
+                market_cap = info.get('marketCap', None)
             except:
                 pass
             
-            # Company header
-            st.markdown(f'<h2 style="color: {COLORS["primary"]}; margin: 2rem 0 1rem 0;">{company_name} ({ticker})</h2>', 
-                       unsafe_allow_html=True)
-            
-            # Calculate key metrics
+            # Professional Stock Card
             latest_close = float(df['Close'].iloc[-1])
             prev_close = float(df['Close'].iloc[-2]) if len(df) > 1 else latest_close
             price_change = latest_close - prev_close
             price_change_pct = (price_change / prev_close) * 100
             
-            period_high = float(df['High'].max())
-            period_low = float(df['Low'].min())
-            avg_volume = float(df['Volume'].mean())
+            # Determine signal based on price change
+            if price_change_pct > 2:
+                signal_class = "signal-strong-buy"
+                signal_text = "🚀 STRONG BUY"
+            elif price_change_pct > 0:
+                signal_class = "signal-buy"
+                signal_text = "📈 BULLISH"
+            elif price_change_pct > -2:
+                signal_class = "signal-hold"
+                signal_text = "📊 HOLD"
+            elif price_change_pct > -5:
+                signal_class = "signal-sell"
+                signal_text = "📉 BEARISH"
+            else:
+                signal_class = "signal-strong-sell"
+                signal_text = "🔻 STRONG SELL"
             
-            # Professional metrics display
+            # Format market cap
+            mc_display = "N/A"
+            if market_cap:
+                if market_cap >= 1e12:
+                    mc_display = f"${market_cap/1e12:.2f}T"
+                elif market_cap >= 1e9:
+                    mc_display = f"${market_cap/1e9:.2f}B"
+                else:
+                    mc_display = f"${market_cap/1e6:.2f}M"
+            
+            st.markdown(f"""
+            <div class="stock-card">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+                    <div>
+                        <h1 class="stock-symbol">{ticker}</h1>
+                        <h2 class="stock-company">{company_name}</h2>
+                        <p class="stock-meta">{sector} • Market Cap: {mc_display}</p>
+                    </div>
+                    <div class="signal-badge {signal_class}">
+                        {signal_text}
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Key metrics with professional cards
             col1, col2, col3, col4 = st.columns(4)
             
+            change_class = "positive" if price_change >= 0 else "negative"
+            arrow = "▲" if price_change >= 0 else "▼"
+            
             with col1:
-                st.metric(
-                    "Current Price", 
-                    f"${latest_close:.2f}", 
-                    f"{price_change:.2f} ({price_change_pct:+.2f}%)",
-                    delta_color="normal"
-                )
+                st.markdown(f"""
+                <div class="metric-container">
+                    <div class="metric-label">Current Price</div>
+                    <div class="metric-value {change_class}">${latest_close:.2f}</div>
+                    <div class="metric-change {change_class}">{arrow} {abs(price_change_pct):.2f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
             
             with col2:
-                period_range_pct = ((period_high - period_low) / period_low) * 100
-                st.metric("Period High", f"${period_high:.2f}", f"{period_range_pct:.1f}% range")
+                st.markdown(f"""
+                <div class="metric-container">
+                    <div class="metric-label">Period High</div>
+                    <div class="metric-value neutral">${float(df['High'].max()):.2f}</div>
+                    <div style="color: rgba(255,255,255,0.5); font-size: 0.85rem; margin-top: 0.5rem;">
+                        {period} Range
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
             
             with col3:
-                distance_from_low = ((latest_close - period_low) / period_low) * 100
-                st.metric("Period Low", f"${period_low:.2f}", f"+{distance_from_low:.1f}% from low")
+                st.markdown(f"""
+                <div class="metric-container">
+                    <div class="metric-label">Period Low</div>
+                    <div class="metric-value neutral">${float(df['Low'].min()):.2f}</div>
+                    <div style="color: rgba(255,255,255,0.5); font-size: 0.85rem; margin-top: 0.5rem;">
+                        {period} Range
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
             
             with col4:
-                volume_display = f"{avg_volume/1e6:.1f}M" if avg_volume >= 1e6 else f"{avg_volume/1e3:.1f}K"
-                st.metric("Avg Volume", volume_display)
+                avg_vol = float(df['Volume'].mean())
+                if avg_vol >= 1e9:
+                    vol_display = f"{avg_vol/1e9:.2f}B"
+                elif avg_vol >= 1e6:
+                    vol_display = f"{avg_vol/1e6:.2f}M"
+                else:
+                    vol_display = f"{avg_vol/1e3:.2f}K"
+                    
+                st.markdown(f"""
+                <div class="metric-container">
+                    <div class="metric-label">Avg Volume</div>
+                    <div class="metric-value neutral">{vol_display}</div>
+                    <div style="color: rgba(255,255,255,0.5); font-size: 0.85rem; margin-top: 0.5rem;">
+                        Daily Average
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
             
-            # Performance summary
-            first_close = float(df['Close'].iloc[0])
-            last_close = float(df['Close'].iloc[-1])
-            total_return = ((last_close - first_close) / first_close) * 100
+            st.markdown("<div class='custom-divider'></div>", unsafe_allow_html=True)
             
-            daily_returns = df['Close'].pct_change()
-            volatility = float(daily_returns.std()) * 100
-            
-            st.markdown('<p class="section-header">Performance Summary</p>', unsafe_allow_html=True)
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                badge = get_performance_badge(total_return, [15, 5, -5], "return")
-                st.markdown(f"**Period Return:** {badge}", unsafe_allow_html=True)
-            
-            with col2:
-                vol_badge = get_performance_badge(volatility, [2, 5, 10], "volatility")
-                st.markdown(f"**Volatility:** {vol_badge}", unsafe_allow_html=True)
-            
-            with col3:
-                win_rate = (daily_returns > 0).sum() / len(daily_returns) * 100
-                st.markdown(f"**Win Rate:** <span style='color: {COLORS["primary"]}; font-weight: 600;'>{win_rate:.1f}%</span> "
-                          f"({(daily_returns > 0).sum()}/{len(daily_returns)} days)", unsafe_allow_html=True)
-            
-            st.markdown("---")
-            
-            # Create tabs with cleaner names
+            # Create tabs
             tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-                "Price Chart", 
-                "Volume Analysis", 
-                "Moving Averages",
-                "Technical Indicators",
-                "Fundamentals",
-                "Performance",
-                "Data Export"
+                "📊 Raw Data", 
+                "📈 Price Chart", 
+                "📊 Volume", 
+                "📉 Moving Averages",
+                "🔧 Technical Indicators",
+                "💼 Fundamentals",
+                "💰 Analysis"
             ])
             
-            # Tab 1: Price Chart
+            # Tab 1: Raw Data
             with tab1:
-                st.markdown('<p class="section-header">Price Chart</p>', unsafe_allow_html=True)
+                st.subheader(f"Historical Stock Data ({period})")
                 
-                chart_type = st.radio("Chart Type:", ["Candlestick", "Line"], horizontal=True)
+                display_df = df.copy()
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
                 
+                # Download CSV
+                csv = df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download as CSV",
+                    data=csv,
+                    file_name=f"{ticker}_{period}_data.csv",
+                    mime="text/csv"
+                )
+            
+            # Tab 2: Price Chart
+            with tab2:
+                st.subheader(f"Closing Price Chart ({period})")
+                
+                # Chart type selector
+                chart_type = st.radio("Chart Type:", ["Line Chart", "Candlestick Chart"], horizontal=True)
+                
+                # Ensure we have the right data
                 chart_df = df.copy()
+                
                 fig = go.Figure()
                 
-                if chart_type == "Candlestick":
+                if chart_type == "Candlestick Chart":
+                    # Candlestick chart
                     fig.add_trace(go.Candlestick(
                         x=chart_df['Date'],
                         open=chart_df['Open'],
                         high=chart_df['High'],
                         low=chart_df['Low'],
                         close=chart_df['Close'],
-                        name='Price',
-                        increasing_line_color=COLORS['success'],
-                        decreasing_line_color=COLORS['danger']
+                        name='Price'
                     ))
                 else:
+                    # Line chart
                     fig.add_trace(go.Scatter(
                         x=chart_df['Date'],
                         y=chart_df['Close'],
-                        mode='lines',
+                        mode='lines+markers',
                         name='Close Price',
-                        line=dict(color=COLORS['primary'], width=2.5),
-                        fill='tozeroy',
-                        fillcolor=f"rgba(30, 136, 229, 0.1)"
+                        line=dict(color='#00ff00', width=3),
+                        marker=dict(size=4, color='#00ff00')
                     ))
                 
                 fig.update_layout(
-                    title=f"{ticker} - {period} Performance",
+                    title=f"{ticker} Stock Prices - {period}",
                     xaxis_title="Date",
                     yaxis_title="Price (USD)",
                     hovermode='x unified',
                     height=500,
-                    plot_bgcolor=COLORS['background'],
-                    paper_bgcolor=COLORS['surface'],
-                    font=dict(color=COLORS['text'], size=12),
-                    xaxis=dict(gridcolor='#2a2a2a', showgrid=True, rangeslider=dict(visible=False)),
-                    yaxis=dict(gridcolor='#2a2a2a', showgrid=True),
-                    margin=dict(l=60, r=60, t=60, b=60)
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(
+                        gridcolor='#444',
+                        showgrid=True,
+                        rangeslider=dict(visible=False)
+                    ),
+                    yaxis=dict(
+                        gridcolor='#444',
+                        showgrid=True
+                    )
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Quick stats
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("High", f"${period_high:.2f}")
-                col2.metric("Low", f"${period_low:.2f}")
-                col3.metric("Change", f"{total_return:+.2f}%")
-                col4.metric("Days", len(df))
-            
-            # Tab 2: Volume Analysis
-            with tab2:
-                st.markdown('<p class="section-header">Volume Analysis</p>', unsafe_allow_html=True)
+                col1, col2 = st.columns(2)
+                col1.metric("Period High", f"${float(df['High'].max()):.2f}")
+                col2.metric("Period Low", f"${float(df['Low'].min()):.2f}")
                 
+                # Educational section
+                with st.expander("📚 How to Read This Chart"):
+                    st.markdown("""
+                    ### Understanding Price Charts
+                    
+                    **What am I looking at?**
+                    - The line/candles show the stock's price over time
+                    - **Line Chart**: Simple closing prices connected
+                    - **Candlestick Chart**: Shows Open, High, Low, Close for each day
+                    
+                    #### What to Look For:
+                    
+                    **🟢 Bullish Patterns (Good Signs)**
+                    - **Uptrend**: Price steadily going up over time
+                    - **Higher Highs**: Each peak is higher than the last
+                    - **Higher Lows**: Each dip is higher than the last
+                    - **Green Candles**: More green (up) days than red (down) days
+                    
+                    **🔴 Bearish Patterns (Warning Signs)**
+                    - **Downtrend**: Price steadily going down
+                    - **Lower Highs**: Each peak is lower than the last
+                    - **Lower Lows**: Each dip is lower than the last
+                    - **Red Candles**: More red (down) days than green (up) days
+                    
+                    **🟡 Sideways/Consolidation**
+                    - Price moving horizontally
+                    - No clear direction
+                    - Often happens before a big move
+                    
+                    #### Candlestick Colors:
+                    """)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success("""
+                        **🟢 Green Candle = Bullish**
+                        - Close > Open
+                        - Buyers won that day
+                        - Price went up
+                        """)
+                    with col2:
+                        st.error("""
+                        **🔴 Red Candle = Bearish**
+                        - Close < Open
+                        - Sellers won that day
+                        - Price went down
+                        """)
+                    
+                    st.info("""
+                    💡 **Quick Tip**: Look at the overall pattern, not individual days. 
+                    Is the general direction up, down, or sideways?
+                    """)
+            
+            # Tab 3: Volume
+            with tab3:
+                st.subheader(f"Trading Volume ({period})")
+                
+                # Create volume chart with better colors - use vectorized operation
                 vol_df = df.copy()
                 
+                # Check if we have the necessary columns
                 if 'Close' in vol_df.columns and 'Open' in vol_df.columns:
-                    vol_df['color'] = vol_df.apply(
-                        lambda row: COLORS['success'] if row['Close'] >= row['Open'] else COLORS['danger'],
-                        axis=1
-                    )
+                    vol_df['color'] = 'green'
+                    vol_df.loc[vol_df['Close'] < vol_df['Open'], 'color'] = 'red'
                     colors = vol_df['color'].tolist()
                 else:
-                    colors = COLORS['info']
+                    # Default to blue if we don't have Open/Close
+                    colors = 'lightblue'
                 
                 fig = go.Figure()
                 fig.add_trace(go.Bar(
                     x=vol_df['Date'],
                     y=vol_df['Volume'],
                     name='Volume',
-                    marker_color=colors,
-                    opacity=0.8
+                    marker_color=colors
                 ))
                 
-                # Add average volume line
-                avg_vol = vol_df['Volume'].mean()
-                fig.add_hline(
-                    y=avg_vol,
-                    line_dash="dash",
-                    line_color=COLORS['neutral'],
-                    annotation_text=f"Avg: {avg_vol/1e6:.1f}M",
-                    annotation_position="right"
-                )
-                
                 fig.update_layout(
-                    title=f"{ticker} Trading Volume",
+                    title=f"{ticker} Trading Volume - {period}",
                     xaxis_title="Date",
                     yaxis_title="Volume",
                     hovermode='x unified',
                     height=500,
-                    plot_bgcolor=COLORS['background'],
-                    paper_bgcolor=COLORS['surface'],
-                    font=dict(color=COLORS['text'], size=12),
-                    xaxis=dict(gridcolor='#2a2a2a', showgrid=True),
-                    yaxis=dict(gridcolor='#2a2a2a', showgrid=True),
-                    margin=dict(l=60, r=60, t=60, b=60)
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444', showgrid=True),
+                    yaxis=dict(gridcolor='#444', showgrid=True)
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Volume insights
-                col1, col2, col3 = st.columns(3)
-                max_vol = vol_df['Volume'].max()
-                min_vol = vol_df['Volume'].min()
-                recent_avg = vol_df.tail(10)['Volume'].mean()
-                
-                col1.metric("Max Volume", f"{max_vol/1e6:.1f}M")
-                col2.metric("Min Volume", f"{min_vol/1e6:.1f}M")
-                col3.metric("Recent Avg (10D)", f"{recent_avg/1e6:.1f}M")
+                # Educational section
+                with st.expander("📚 How to Read Volume"):
+                    st.markdown("""
+                    ### Understanding Trading Volume
+                    
+                    **What is Volume?**
+                    - Number of shares traded each day
+                    - Shows how much interest there is in the stock
+                    - **Tall bars** = High volume (lots of activity)
+                    - **Short bars** = Low volume (little activity)
+                    
+                    #### Volume Bar Colors:
+                    """)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success("""
+                        **🟢 Green Bar**
+                        - Price went UP that day
+                        - Close > Open
+                        - Buyers were stronger
+                        """)
+                    with col2:
+                        st.error("""
+                        **🔴 Red Bar**
+                        - Price went DOWN that day
+                        - Close < Open
+                        - Sellers were stronger
+                        """)
+                    
+                    st.markdown("""
+                    #### What to Look For:
+                    
+                    **🟢 Best Signals (Strong Buy)**
+                    - **Tall GREEN bars** when price is rising
+                    - Means: Strong buying pressure, rally is real
+                    - More greens than reds = Bullish sentiment
+                    
+                    **🔴 Warning Signals (Strong Sell)**
+                    - **Tall RED bars** when price is falling
+                    - Means: Strong selling pressure, decline is serious
+                    - More reds than greens = Bearish sentiment
+                    
+                    **🟡 Caution Signals**
+                    - **Short bars** on price increases = Weak rally, might reverse
+                    - **Short bars** on price decreases = Minor dip, not concerning
+                    
+                    #### Volume Patterns:
+                    
+                    **Volume Spike** 📈
+                    - Sudden very tall bar (2-3x normal)
+                    - Usually triggered by news or events
+                    - Often signals trend change or acceleration
+                    
+                    **Increasing Volume** 📊
+                    - Bars getting taller over time
+                    - Shows growing interest
+                    - Confirms the current trend
+                    
+                    **Decreasing Volume** 📉
+                    - Bars getting shorter
+                    - Shows declining interest
+                    - May signal consolidation before next move
+                    """)
+                    
+                    st.info("""
+                    💡 **Quick Tip**: Volume should **confirm** price movement. 
+                    Price up + High volume = Good ✅ | Price up + Low volume = Suspicious ⚠️
+                    """)
             
-            # Tab 3: Moving Averages
-            with tab3:
-                st.markdown('<p class="section-header">Moving Average Analysis</p>', unsafe_allow_html=True)
+            # Tab 4: Moving Averages
+            with tab4:
+                st.subheader("Moving Averages Analysis")
                 
-                # Add multiple MA options
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    ma_days = st.slider("Moving Average Period", 5, 200, 20, 5)
-                with col2:
-                    show_multiple = st.checkbox("Show 20/50/200 MA", value=False)
+                ma_days = st.slider("Select Moving Average Period (days)", 
+                                   min_value=5, max_value=200, value=20, step=5)
                 
-                df_ma = df.copy()
+                # Calculate moving average
+                df_copy = df.copy()
+                df_copy['MA'] = df_copy['Close'].rolling(window=ma_days).mean()
                 
                 fig = go.Figure()
                 
-                # Price line
                 fig.add_trace(go.Scatter(
-                    x=df_ma['Date'],
-                    y=df_ma['Close'],
+                    x=df_copy['Date'],
+                    y=df_copy['Close'],
                     mode='lines',
-                    name='Price',
-                    line=dict(color=COLORS['text'], width=2)
+                    name='Close Price',
+                    line=dict(color='#00aaff', width=2)
                 ))
                 
-                if show_multiple:
-                    # Show standard MAs
-                    for ma_period, color, name in [(20, COLORS['success'], '20-Day'), 
-                                                     (50, COLORS['warning'], '50-Day'),
-                                                     (200, COLORS['danger'], '200-Day')]:
-                        if len(df_ma) >= ma_period:
-                            df_ma[f'MA{ma_period}'] = df_ma['Close'].rolling(window=ma_period).mean()
-                            fig.add_trace(go.Scatter(
-                                x=df_ma['Date'],
-                                y=df_ma[f'MA{ma_period}'],
-                                mode='lines',
-                                name=f'{name} MA',
-                                line=dict(color=color, width=2, dash='dash')
-                            ))
-                else:
-                    # Single MA
-                    df_ma['MA'] = df_ma['Close'].rolling(window=ma_days).mean()
-                    fig.add_trace(go.Scatter(
-                        x=df_ma['Date'],
-                        y=df_ma['MA'],
-                        mode='lines',
-                        name=f'{ma_days}-Day MA',
-                        line=dict(color=COLORS['primary'], width=2.5, dash='dash')
-                    ))
+                fig.add_trace(go.Scatter(
+                    x=df_copy['Date'],
+                    y=df_copy['MA'],
+                    mode='lines',
+                    name=f'{ma_days}-Day MA',
+                    line=dict(color='#ff6600', width=3, dash='dash')
+                ))
                 
                 fig.update_layout(
-                    title=f"{ticker} with Moving Averages",
+                    title=f"{ticker} Price with {ma_days}-Day Moving Average ({period})",
                     xaxis_title="Date",
                     yaxis_title="Price (USD)",
                     hovermode='x unified',
                     height=500,
-                    plot_bgcolor=COLORS['background'],
-                    paper_bgcolor=COLORS['surface'],
-                    font=dict(color=COLORS['text'], size=12),
-                    xaxis=dict(gridcolor='#2a2a2a', showgrid=True),
-                    yaxis=dict(gridcolor='#2a2a2a', showgrid=True),
-                    legend=dict(bgcolor=COLORS['surface'], bordercolor='#333'),
-                    margin=dict(l=60, r=60, t=60, b=60)
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444', showgrid=True),
+                    yaxis=dict(gridcolor='#444', showgrid=True),
+                    legend=dict(
+                        bgcolor='#2e2e2e',
+                        bordercolor='#555'
+                    )
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # MA signals
-                if not show_multiple:
-                    current_price = float(df_ma['Close'].iloc[-1])
-                    current_ma = float(df_ma['MA'].iloc[-1])
+                # Educational section
+                with st.expander("📚 How to Read Moving Averages"):
+                    st.markdown("""
+                    ### Understanding Moving Averages (MA)
                     
-                    if pd.notna(current_ma):
-                        diff_pct = ((current_price - current_ma) / current_ma) * 100
-                        
-                        if diff_pct > 2:
-                            st.markdown(f'<div class="success-card"><strong>Signal:</strong> Price {diff_pct:.2f}% above MA - Bullish trend</div>', 
-                                      unsafe_allow_html=True)
-                        elif diff_pct < -2:
-                            st.markdown(f'<div class="warning-card"><strong>Signal:</strong> Price {diff_pct:.2f}% below MA - Bearish trend</div>', 
-                                      unsafe_allow_html=True)
-                        else:
-                            st.markdown(f'<div class="info-card"><strong>Signal:</strong> Price near MA ({diff_pct:+.2f}%) - Consolidating</div>', 
-                                      unsafe_allow_html=True)
+                    **What is a Moving Average?**
+                    - Average price over the last X days
+                    - **Blue line** = Actual stock price
+                    - **Orange dashed line** = Moving average
+                    - Smooths out daily noise to show the trend
+                    
+                    #### What the Lines Mean:
+                    
+                    **20-Day MA** = Average of last 20 days (short-term trend)  
+                    **50-Day MA** = Average of last 50 days (medium-term trend)  
+                    **200-Day MA** = Average of last 200 days (long-term trend)
+                    
+                    #### What to Look For:
+                    """)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success("""
+                        **🟢 Bullish Signals (Good)**
+                        - Price ABOVE the MA line
+                        - MA line sloping UPWARD
+                        - Price bouncing off MA (support)
+                        - Short MA crosses above long MA
+                        """)
+                    with col2:
+                        st.error("""
+                        **🔴 Bearish Signals (Bad)**
+                        - Price BELOW the MA line
+                        - MA line sloping DOWNWARD
+                        - Price rejected by MA (resistance)
+                        - Short MA crosses below long MA
+                        """)
+                    
+                    st.markdown("""
+                    #### Key Patterns:
+                    
+                    **Golden Cross** 🟢🟢 (Very Bullish)
+                    - 20-day MA crosses ABOVE 50-day MA
+                    - Strong buy signal
+                    - Often starts a major uptrend
+                    
+                    **Death Cross** 🔴🔴 (Very Bearish)
+                    - 20-day MA crosses BELOW 50-day MA
+                    - Strong sell signal
+                    - Often starts a major downtrend
+                    
+                    **Support** 🟢
+                    - Price drops to MA and bounces back up
+                    - MA acts like a floor
+                    - Shows buyers defend that level
+                    
+                    **Resistance** 🔴
+                    - Price rises to MA and gets pushed down
+                    - MA acts like a ceiling
+                    - Shows sellers defend that level
+                    
+                    #### How to Use the Slider:
+                    
+                    **5-20 days**: Very short-term, responds quickly to changes  
+                    **20-50 days**: Good for swing trading (weeks to months)  
+                    **50-200 days**: Long-term investing (months to years)
+                    
+                    Try different periods and see how the MA changes!
+                    """)
+                    
+                    st.info("""
+                    💡 **Quick Analysis**: 
+                    - Price **above** MA + MA going **up** = 🟢 Buy signal
+                    - Price **below** MA + MA going **down** = 🔴 Sell signal
+                    - Price **at** MA + MA **flat** = 🟡 Wait for direction
+                    """)
+                    
+                    st.warning("""
+                    ⚠️ **Important**: Moving averages are **lagging indicators** - they show what 
+                    already happened, not what will happen. Use them to confirm trends, not predict them.
+                    """)
             
-            # Tab 4: Technical Indicators
-            with tab4:
-                st.markdown('<p class="section-header">Technical Indicators</p>', unsafe_allow_html=True)
+            # Tab 5: Technical Indicators
+            with tab5:
+                st.subheader("🔧 Technical Indicators")
                 
-                # Calculate indicators
+                # Calculate technical indicators
+                
+                # RSI (Relative Strength Index)
                 def calculate_rsi(data, period=14):
                     delta = data.diff()
                     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
                     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
                     rs = gain / loss
-                    return 100 - (100 / (1 + rs))
+                    rsi = 100 - (100 / (1 + rs))
+                    return rsi
                 
                 df_tech = df.copy()
                 df_tech['RSI'] = calculate_rsi(df_tech['Close'])
@@ -601,7 +982,7 @@ if analyze_button or ticker:
                 exp2 = df_tech['Close'].ewm(span=26, adjust=False).mean()
                 df_tech['MACD'] = exp1 - exp2
                 df_tech['Signal'] = df_tech['MACD'].ewm(span=9, adjust=False).mean()
-                df_tech['Histogram'] = df_tech['MACD'] - df_tech['Signal']
+                df_tech['MACD_Histogram'] = df_tech['MACD'] - df_tech['Signal']
                 
                 # Bollinger Bands
                 df_tech['BB_Middle'] = df_tech['Close'].rolling(window=20).mean()
@@ -610,7 +991,7 @@ if analyze_button or ticker:
                 df_tech['BB_Lower'] = df_tech['BB_Middle'] - (df_tech['BB_Std'] * 2)
                 
                 # RSI Chart
-                st.markdown("**RSI (Relative Strength Index)**")
+                st.markdown("### RSI (Relative Strength Index)")
                 fig_rsi = go.Figure()
                 
                 fig_rsi.add_trace(go.Scatter(
@@ -618,192 +999,275 @@ if analyze_button or ticker:
                     y=df_tech['RSI'],
                     mode='lines',
                     name='RSI',
-                    line=dict(color=COLORS['primary'], width=2.5),
-                    fill='tozeroy',
-                    fillcolor=f"rgba(30, 136, 229, 0.1)"
+                    line=dict(color='purple', width=2)
                 ))
                 
-                # Reference lines
-                fig_rsi.add_hline(y=70, line_dash="dash", line_color=COLORS['danger'], 
-                                  annotation_text="Overbought")
-                fig_rsi.add_hline(y=30, line_dash="dash", line_color=COLORS['success'], 
-                                  annotation_text="Oversold")
-                fig_rsi.add_hline(y=50, line_dash="dot", line_color=COLORS['neutral'], 
-                                  annotation_text="Neutral")
+                # Add overbought/oversold lines
+                fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", 
+                                  annotation_text="Overbought (70)")
+                fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", 
+                                  annotation_text="Oversold (30)")
+                fig_rsi.add_hline(y=50, line_dash="dot", line_color="gray", 
+                                  annotation_text="Neutral (50)")
                 
-                fig_rsi.add_hrect(y0=70, y1=100, fillcolor=COLORS['danger'], opacity=0.1, line_width=0)
-                fig_rsi.add_hrect(y0=0, y1=30, fillcolor=COLORS['success'], opacity=0.1, line_width=0)
+                # Add background colors
+                fig_rsi.add_hrect(y0=70, y1=100, fillcolor="red", opacity=0.1, line_width=0)
+                fig_rsi.add_hrect(y0=0, y1=30, fillcolor="green", opacity=0.1, line_width=0)
                 
                 fig_rsi.update_layout(
+                    title="RSI Indicator",
+                    yaxis_title="RSI Value",
+                    xaxis_title="Date",
                     height=300,
-                    plot_bgcolor=COLORS['background'],
-                    paper_bgcolor=COLORS['surface'],
-                    font=dict(color=COLORS['text']),
-                    xaxis=dict(gridcolor='#2a2a2a'),
-                    yaxis=dict(gridcolor='#2a2a2a', range=[0, 100]),
-                    margin=dict(l=60, r=60, t=40, b=40)
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444'),
+                    yaxis=dict(gridcolor='#444', range=[0, 100])
                 )
                 
                 st.plotly_chart(fig_rsi, use_container_width=True)
                 
-                # RSI interpretation
+                # Current RSI value
                 current_rsi = df_tech['RSI'].iloc[-1]
                 if current_rsi > 70:
-                    st.markdown(f'<div class="warning-card">RSI: {current_rsi:.1f} - <strong>Overbought</strong> (Potential sell signal)</div>', 
-                              unsafe_allow_html=True)
+                    st.error(f"🔴 Current RSI: {current_rsi:.2f} - **OVERBOUGHT** (Potential sell signal)")
                 elif current_rsi < 30:
-                    st.markdown(f'<div class="success-card">RSI: {current_rsi:.1f} - <strong>Oversold</strong> (Potential buy signal)</div>', 
-                              unsafe_allow_html=True)
+                    st.success(f"🟢 Current RSI: {current_rsi:.2f} - **OVERSOLD** (Potential buy signal)")
                 else:
-                    st.markdown(f'<div class="info-card">RSI: {current_rsi:.1f} - <strong>Neutral</strong></div>', 
-                              unsafe_allow_html=True)
+                    st.info(f"🟡 Current RSI: {current_rsi:.2f} - **NEUTRAL** (No strong signal)")
                 
-                st.markdown("---")
+                st.divider()
                 
                 # MACD Chart
-                st.markdown("**MACD**")
+                st.markdown("### MACD (Moving Average Convergence Divergence)")
                 fig_macd = go.Figure()
                 
+                # MACD line
                 fig_macd.add_trace(go.Scatter(
                     x=df_tech['Date'],
                     y=df_tech['MACD'],
                     mode='lines',
                     name='MACD',
-                    line=dict(color=COLORS['primary'], width=2)
+                    line=dict(color='blue', width=2)
                 ))
                 
+                # Signal line
                 fig_macd.add_trace(go.Scatter(
                     x=df_tech['Date'],
                     y=df_tech['Signal'],
                     mode='lines',
                     name='Signal',
-                    line=dict(color=COLORS['warning'], width=2)
+                    line=dict(color='orange', width=2)
                 ))
                 
-                colors_hist = [COLORS['success'] if val >= 0 else COLORS['danger'] 
-                              for val in df_tech['Histogram']]
+                # Histogram
+                colors = ['green' if val >= 0 else 'red' for val in df_tech['MACD_Histogram']]
                 fig_macd.add_trace(go.Bar(
                     x=df_tech['Date'],
-                    y=df_tech['Histogram'],
+                    y=df_tech['MACD_Histogram'],
                     name='Histogram',
-                    marker_color=colors_hist,
-                    opacity=0.4
+                    marker_color=colors,
+                    opacity=0.3
                 ))
                 
                 fig_macd.update_layout(
+                    title="MACD Indicator",
+                    yaxis_title="MACD Value",
+                    xaxis_title="Date",
                     height=300,
-                    plot_bgcolor=COLORS['background'],
-                    paper_bgcolor=COLORS['surface'],
-                    font=dict(color=COLORS['text']),
-                    xaxis=dict(gridcolor='#2a2a2a'),
-                    yaxis=dict(gridcolor='#2a2a2a'),
-                    margin=dict(l=60, r=60, t=40, b=40)
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444'),
+                    yaxis=dict(gridcolor='#444')
                 )
                 
                 st.plotly_chart(fig_macd, use_container_width=True)
                 
-                # MACD interpretation
+                # MACD Signal
                 current_macd = df_tech['MACD'].iloc[-1]
                 current_signal = df_tech['Signal'].iloc[-1]
-                
                 if current_macd > current_signal:
-                    crossover_diff = current_macd - current_signal
-                    st.markdown(f'<div class="success-card">MACD above Signal (+{crossover_diff:.3f}) - <strong>Bullish momentum</strong></div>', 
-                              unsafe_allow_html=True)
+                    st.success(f"🟢 MACD above Signal - **BULLISH** (Upward momentum)")
                 else:
-                    crossover_diff = current_signal - current_macd
-                    st.markdown(f'<div class="warning-card">MACD below Signal (-{crossover_diff:.3f}) - <strong>Bearish momentum</strong></div>', 
-                              unsafe_allow_html=True)
+                    st.error(f"🔴 MACD below Signal - **BEARISH** (Downward momentum)")
                 
-                st.markdown("---")
+                st.divider()
                 
-                # Bollinger Bands
-                st.markdown("**Bollinger Bands**")
+                # Bollinger Bands Chart
+                st.markdown("### Bollinger Bands")
                 fig_bb = go.Figure()
                 
+                # Price
                 fig_bb.add_trace(go.Scatter(
                     x=df_tech['Date'],
                     y=df_tech['Close'],
                     mode='lines',
                     name='Price',
-                    line=dict(color=COLORS['text'], width=2.5)
+                    line=dict(color='white', width=2)
                 ))
                 
+                # Upper band
                 fig_bb.add_trace(go.Scatter(
                     x=df_tech['Date'],
                     y=df_tech['BB_Upper'],
                     mode='lines',
                     name='Upper Band',
-                    line=dict(color=COLORS['danger'], width=1, dash='dash')
+                    line=dict(color='red', width=1, dash='dash')
                 ))
                 
+                # Middle band
                 fig_bb.add_trace(go.Scatter(
                     x=df_tech['Date'],
                     y=df_tech['BB_Middle'],
                     mode='lines',
-                    name='Middle (20 MA)',
-                    line=dict(color=COLORS['neutral'], width=1)
+                    name='Middle Band (20 MA)',
+                    line=dict(color='gray', width=1)
                 ))
                 
+                # Lower band
                 fig_bb.add_trace(go.Scatter(
                     x=df_tech['Date'],
                     y=df_tech['BB_Lower'],
                     mode='lines',
                     name='Lower Band',
-                    line=dict(color=COLORS['success'], width=1, dash='dash'),
+                    line=dict(color='green', width=1, dash='dash'),
                     fill='tonexty',
-                    fillcolor='rgba(100, 100, 100, 0.1)'
+                    fillcolor='rgba(100, 100, 100, 0.2)'
                 ))
                 
                 fig_bb.update_layout(
+                    title="Bollinger Bands",
+                    yaxis_title="Price (USD)",
+                    xaxis_title="Date",
                     height=400,
-                    plot_bgcolor=COLORS['background'],
-                    paper_bgcolor=COLORS['surface'],
-                    font=dict(color=COLORS['text']),
-                    xaxis=dict(gridcolor='#2a2a2a'),
-                    yaxis=dict(gridcolor='#2a2a2a'),
-                    legend=dict(bgcolor=COLORS['surface'], bordercolor='#333'),
-                    margin=dict(l=60, r=60, t=40, b=40)
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444'),
+                    yaxis=dict(gridcolor='#444')
                 )
                 
                 st.plotly_chart(fig_bb, use_container_width=True)
                 
-                # Bollinger Bands interpretation
+                # Bollinger Bands Signal
                 latest_close = float(df_tech['Close'].iloc[-1])
                 latest_upper = float(df_tech['BB_Upper'].iloc[-1])
                 latest_lower = float(df_tech['BB_Lower'].iloc[-1])
-                latest_middle = float(df_tech['BB_Middle'].iloc[-1])
-                
-                bb_position = ((latest_close - latest_lower) / (latest_upper - latest_lower)) * 100
                 
                 if latest_close > latest_upper:
-                    st.markdown(f'<div class="warning-card">Price above upper band - <strong>Overbought</strong> (Position: {bb_position:.0f}%)</div>', 
-                              unsafe_allow_html=True)
+                    st.error(f"🔴 Price above upper band (${latest_upper:.2f}) - **OVERBOUGHT**")
                 elif latest_close < latest_lower:
-                    st.markdown(f'<div class="success-card">Price below lower band - <strong>Oversold</strong> (Position: {bb_position:.0f}%)</div>', 
-                              unsafe_allow_html=True)
+                    st.success(f"🟢 Price below lower band (${latest_lower:.2f}) - **OVERSOLD**")
                 else:
-                    st.markdown(f'<div class="info-card">Price within bands - <strong>Normal range</strong> (Position: {bb_position:.0f}%)</div>', 
-                              unsafe_allow_html=True)
-            
-            # Tab 5: Fundamentals
-            with tab5:
-                st.markdown('<p class="section-header">Company Fundamentals</p>', unsafe_allow_html=True)
+                    st.info(f"🟡 Price within bands - **NORMAL RANGE**")
                 
+                # Educational section
+                with st.expander("📚 How to Read Technical Indicators"):
+                    st.markdown("""
+                    ### Understanding Technical Indicators
+                    
+                    #### RSI (Relative Strength Index)
+                    
+                    **What is RSI?**
+                    - Measures momentum on a scale of 0-100
+                    - Shows if stock is overbought or oversold
+                    - Based on recent price changes
+                    
+                    **How to Read RSI:**
+                    - **Above 70** 🔴 = **OVERBOUGHT** (might drop soon, consider selling)
+                    - **Below 30** 🟢 = **OVERSOLD** (might rise soon, consider buying)
+                    - **Around 50** 🟡 = **NEUTRAL** (no strong signal)
+                    
+                    **RSI Divergence:**
+                    - Price makes new high, but RSI doesn't = Bearish signal
+                    - Price makes new low, but RSI doesn't = Bullish signal
+                    
+                    ---
+                    
+                    #### MACD (Moving Average Convergence Divergence)
+                    
+                    **What is MACD?**
+                    - Shows relationship between two moving averages
+                    - Three components: MACD line, Signal line, Histogram
+                    - Identifies momentum and trend changes
+                    
+                    **How to Read MACD:**
+                    - **MACD crosses above Signal** 🟢 = **BUY SIGNAL** (bullish)
+                    - **MACD crosses below Signal** 🔴 = **SELL SIGNAL** (bearish)
+                    - **Histogram growing** = Momentum increasing
+                    - **Histogram shrinking** = Momentum decreasing
+                    
+                    **MACD Colors:**
+                    - 🟢 Green histogram = Positive momentum
+                    - 🔴 Red histogram = Negative momentum
+                    
+                    ---
+                    
+                    #### Bollinger Bands
+                    
+                    **What are Bollinger Bands?**
+                    - Three lines: Upper, Middle (20-day MA), Lower
+                    - Bands widen when volatility increases
+                    - Bands narrow when volatility decreases
+                    
+                    **How to Read Bollinger Bands:**
+                    - **Price touches upper band** 🔴 = Overbought (might reverse down)
+                    - **Price touches lower band** 🟢 = Oversold (might reverse up)
+                    - **Price at middle band** 🟡 = Fair value
+                    - **Bands squeezing** = Big move coming soon
+                    - **Bands widening** = High volatility, big moves happening
+                    
+                    **The "Squeeze":**
+                    - When bands get very narrow
+                    - Stock is consolidating
+                    - Often followed by big breakout (up or down)
+                    
+                    ---
+                    
+                    #### Combining Indicators
+                    
+                    **🟢 Strong Buy Signal:**
+                    - RSI < 30 (oversold)
+                    - MACD crosses above Signal
+                    - Price near lower Bollinger Band
+                    
+                    **🔴 Strong Sell Signal:**
+                    - RSI > 70 (overbought)
+                    - MACD crosses below Signal
+                    - Price near upper Bollinger Band
+                    
+                    **🟡 Wait Signal:**
+                    - Mixed signals from different indicators
+                    - Better to wait for confirmation
+                    """)
+                    
+                    st.info("""
+                    💡 **Pro Tip**: Don't rely on just one indicator! Use multiple indicators 
+                    together for confirmation. When 2-3 indicators agree, the signal is stronger!
+                    """)
+            
+            # Tab 6: Fundamentals
+            with tab6:
+                st.subheader("💼 Company Fundamentals")
+                
+                # Get company info
                 try:
                     stock_obj = yf.Ticker(ticker)
                     info_data = stock_obj.info if hasattr(stock_obj, 'info') else {}
                     
                     # Company Overview
-                    st.markdown("**Company Overview**")
+                    st.markdown("### 📋 Company Overview")
                     
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        st.markdown(f"**Company:** {info_data.get('longName', 'N/A')}")
+                        st.markdown(f"**Company Name:** {info_data.get('longName', 'N/A')}")
                         st.markdown(f"**Sector:** {info_data.get('sector', 'N/A')}")
                         st.markdown(f"**Industry:** {info_data.get('industry', 'N/A')}")
                         st.markdown(f"**Country:** {info_data.get('country', 'N/A')}")
+                        st.markdown(f"**Website:** {info_data.get('website', 'N/A')}")
                     
                     with col2:
                         employees = info_data.get('fullTimeEmployees', 'N/A')
@@ -814,126 +1278,378 @@ if analyze_button or ticker:
                         
                         st.markdown(f"**Exchange:** {info_data.get('exchange', 'N/A')}")
                         st.markdown(f"**Currency:** {info_data.get('currency', 'N/A')}")
+                        st.markdown(f"**Quote Type:** {info_data.get('quoteType', 'N/A')}")
                     
+                    # Business Summary
                     summary = info_data.get('longBusinessSummary', '')
                     if summary:
-                        with st.expander("Business Summary"):
+                        with st.expander("📄 Business Summary"):
                             st.write(summary)
                     
-                    st.markdown("---")
+                    st.divider()
                     
-                    # Key Metrics
-                    st.markdown("**Key Financial Metrics**")
+                    # Key Financial Metrics
+                    st.markdown("### 💰 Key Financial Metrics")
                     
                     col1, col2, col3, col4 = st.columns(4)
                     
                     with col1:
+                        # Market Cap
                         market_cap = info_data.get('marketCap')
                         if market_cap:
-                            mc_display = f"${market_cap/1e12:.2f}T" if market_cap >= 1e12 else f"${market_cap/1e9:.2f}B"
+                            if market_cap >= 1e12:
+                                mc_display = f"${market_cap/1e12:.2f}T"
+                            elif market_cap >= 1e9:
+                                mc_display = f"${market_cap/1e9:.2f}B"
+                            else:
+                                mc_display = f"${market_cap/1e6:.2f}M"
                         else:
                             mc_display = "N/A"
                         st.metric("Market Cap", mc_display)
                         
-                        pe = info_data.get('trailingPE')
-                        st.metric("P/E Ratio", f"{pe:.2f}" if pe else "N/A")
+                        # Enterprise Value
+                        ev = info_data.get('enterpriseValue')
+                        if ev:
+                            if ev >= 1e12:
+                                ev_display = f"${ev/1e12:.2f}T"
+                            elif ev >= 1e9:
+                                ev_display = f"${ev/1e9:.2f}B"
+                            else:
+                                ev_display = f"${ev/1e6:.2f}M"
+                        else:
+                            ev_display = "N/A"
+                        st.metric("Enterprise Value", ev_display)
                     
                     with col2:
-                        eps = info_data.get('trailingEps')
-                        st.metric("EPS", f"${eps:.2f}" if eps else "N/A")
+                        # P/E Ratios
+                        pe_trailing = info_data.get('trailingPE')
+                        st.metric("P/E Ratio (TTM)", f"{pe_trailing:.2f}" if pe_trailing else "N/A")
                         
-                        pb = info_data.get('priceToBook')
-                        st.metric("P/B Ratio", f"{pb:.2f}" if pb else "N/A")
+                        pe_forward = info_data.get('forwardPE')
+                        st.metric("Forward P/E", f"{pe_forward:.2f}" if pe_forward else "N/A")
                     
                     with col3:
+                        # Price to Book & Sales
+                        pb = info_data.get('priceToBook')
+                        st.metric("Price/Book", f"{pb:.2f}" if pb else "N/A")
+                        
+                        ps = info_data.get('priceToSalesTrailing12Months')
+                        st.metric("Price/Sales", f"{ps:.2f}" if ps else "N/A")
+                    
+                    with col4:
+                        # EPS & PEG
+                        eps = info_data.get('trailingEps')
+                        st.metric("EPS (TTM)", f"${eps:.2f}" if eps else "N/A")
+                        
+                        peg = info_data.get('pegRatio')
+                        st.metric("PEG Ratio", f"{peg:.2f}" if peg else "N/A")
+                    
+                    st.divider()
+                    
+                    # Profitability & Performance
+                    st.markdown("### 📊 Profitability & Performance")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        # Margins
                         profit_margin = info_data.get('profitMargins')
                         if profit_margin:
                             st.metric("Profit Margin", f"{profit_margin*100:.2f}%")
                         else:
                             st.metric("Profit Margin", "N/A")
                         
+                        operating_margin = info_data.get('operatingMargins')
+                        if operating_margin:
+                            st.metric("Operating Margin", f"{operating_margin*100:.2f}%")
+                        else:
+                            st.metric("Operating Margin", "N/A")
+                    
+                    with col2:
+                        # Returns
                         roe = info_data.get('returnOnEquity')
                         if roe:
-                            st.metric("ROE", f"{roe*100:.2f}%")
+                            st.metric("Return on Equity", f"{roe*100:.2f}%")
                         else:
-                            st.metric("ROE", "N/A")
+                            st.metric("Return on Equity", "N/A")
+                        
+                        roa = info_data.get('returnOnAssets')
+                        if roa:
+                            st.metric("Return on Assets", f"{roa*100:.2f}%")
+                        else:
+                            st.metric("Return on Assets", "N/A")
+                    
+                    with col3:
+                        # Revenue & Earnings Growth
+                        revenue_growth = info_data.get('revenueGrowth')
+                        if revenue_growth:
+                            st.metric("Revenue Growth", f"{revenue_growth*100:.2f}%")
+                        else:
+                            st.metric("Revenue Growth", "N/A")
+                        
+                        earnings_growth = info_data.get('earningsGrowth')
+                        if earnings_growth:
+                            st.metric("Earnings Growth", f"{earnings_growth*100:.2f}%")
+                        else:
+                            st.metric("Earnings Growth", "N/A")
                     
                     with col4:
+                        # Beta & 52 Week Change
+                        beta = info_data.get('beta')
+                        st.metric("Beta", f"{beta:.2f}" if beta else "N/A")
+                        
+                        week52_change = info_data.get('52WeekChange')
+                        if week52_change:
+                            st.metric("52 Week Change", f"{week52_change*100:.2f}%")
+                        else:
+                            st.metric("52 Week Change", "N/A")
+                    
+                    st.divider()
+                    
+                    # Dividends & Financial Health
+                    st.markdown("### 💵 Dividends & Financial Health")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        # Dividend Info
+                        div_rate = info_data.get('dividendRate')
+                        st.metric("Dividend Rate", f"${div_rate:.2f}" if div_rate else "N/A")
+                        
                         div_yield = info_data.get('dividendYield')
                         if div_yield:
                             st.metric("Dividend Yield", f"{div_yield*100:.2f}%")
                         else:
                             st.metric("Dividend Yield", "N/A")
+                    
+                    with col2:
+                        # Payout Ratio
+                        payout = info_data.get('payoutRatio')
+                        if payout:
+                            st.metric("Payout Ratio", f"{payout*100:.2f}%")
+                        else:
+                            st.metric("Payout Ratio", "N/A")
                         
-                        beta = info_data.get('beta')
-                        st.metric("Beta", f"{beta:.2f}" if beta else "N/A")
+                        # Ex-Dividend Date
+                        ex_div = info_data.get('exDividendDate')
+                        if ex_div:
+                            from datetime import datetime
+                            ex_div_date = datetime.fromtimestamp(ex_div).strftime('%Y-%m-%d')
+                            st.metric("Ex-Dividend Date", ex_div_date)
+                        else:
+                            st.metric("Ex-Dividend Date", "N/A")
                     
-                    st.markdown("---")
+                    with col3:
+                        # Debt & Cash
+                        debt_to_equity = info_data.get('debtToEquity')
+                        st.metric("Debt/Equity", f"{debt_to_equity:.2f}" if debt_to_equity else "N/A")
+                        
+                        current_ratio = info_data.get('currentRatio')
+                        st.metric("Current Ratio", f"{current_ratio:.2f}" if current_ratio else "N/A")
                     
-                    # Analyst Targets
-                    st.markdown("**Analyst Price Targets**")
+                    with col4:
+                        # Cash & Book Value
+                        total_cash = info_data.get('totalCash')
+                        if total_cash:
+                            if total_cash >= 1e9:
+                                cash_display = f"${total_cash/1e9:.2f}B"
+                            else:
+                                cash_display = f"${total_cash/1e6:.2f}M"
+                        else:
+                            cash_display = "N/A"
+                        st.metric("Total Cash", cash_display)
+                        
+                        book_value = info_data.get('bookValue')
+                        st.metric("Book Value", f"${book_value:.2f}" if book_value else "N/A")
                     
-                    col1, col2, col3, col4 = st.columns(4)
+                    st.divider()
+                    
+                    # Analyst Recommendations
+                    st.markdown("### 🎯 Analyst Recommendations")
+                    
+                    col1, col2, col3 = st.columns(3)
                     
                     with col1:
                         target_high = info_data.get('targetHighPrice')
-                        st.metric("High", f"${target_high:.2f}" if target_high else "N/A")
+                        st.metric("Target High", f"${target_high:.2f}" if target_high else "N/A")
                     
                     with col2:
                         target_mean = info_data.get('targetMeanPrice')
-                        st.metric("Mean", f"${target_mean:.2f}" if target_mean else "N/A")
+                        st.metric("Target Mean", f"${target_mean:.2f}" if target_mean else "N/A")
                     
                     with col3:
                         target_low = info_data.get('targetLowPrice')
-                        st.metric("Low", f"${target_low:.2f}" if target_low else "N/A")
-                    
-                    with col4:
-                        if target_mean:
-                            upside = ((target_mean - latest_close) / latest_close) * 100
-                            st.metric("Upside", f"{upside:+.1f}%")
-                        else:
-                            st.metric("Upside", "N/A")
+                        st.metric("Target Low", f"${target_low:.2f}" if target_low else "N/A")
                     
                     recommendation = info_data.get('recommendationKey', 'N/A')
                     if recommendation != 'N/A':
-                        rec_display = recommendation.upper().replace('_', ' ')
                         if recommendation in ['buy', 'strong_buy']:
-                            st.markdown(f'<div class="success-card"><strong>Analyst Recommendation:</strong> {rec_display}</div>', 
-                                      unsafe_allow_html=True)
+                            st.success(f"📈 Analyst Recommendation: **{recommendation.upper().replace('_', ' ')}**")
                         elif recommendation == 'hold':
-                            st.markdown(f'<div class="info-card"><strong>Analyst Recommendation:</strong> {rec_display}</div>', 
-                                      unsafe_allow_html=True)
+                            st.info(f"📊 Analyst Recommendation: **{recommendation.upper()}**")
                         else:
-                            st.markdown(f'<div class="warning-card"><strong>Analyst Recommendation:</strong> {rec_display}</div>', 
-                                      unsafe_allow_html=True)
+                            st.warning(f"📉 Analyst Recommendation: **{recommendation.upper().replace('_', ' ')}**")
                     
                 except Exception as e:
-                    st.error("Unable to load fundamental data")
-                    st.info(f"Error: {str(e)}")
-            
-            # Tab 6: Performance Analysis
-            with tab6:
-                st.markdown('<p class="section-header">Performance Analysis</p>', unsafe_allow_html=True)
+                    st.error("Unable to load fundamental data. This may be due to API limitations.")
+                    st.info(f"Error details: {str(e)}")
                 
-                # Return metrics
+                # Educational section
+                with st.expander("📚 Understanding Fundamental Metrics"):
+                    st.markdown("""
+                    ### Key Fundamental Metrics Explained
+                    
+                    #### Valuation Metrics
+                    
+                    **P/E Ratio (Price-to-Earnings)**
+                    - Price per share ÷ Earnings per share
+                    - **Low P/E** (< 15) = Potentially undervalued or slow growth
+                    - **High P/E** (> 25) = Potentially overvalued or high growth
+                    - Compare to industry average for context
+                    
+                    **PEG Ratio**
+                    - P/E Ratio ÷ Earnings Growth Rate
+                    - **< 1.0** = Potentially undervalued
+                    - **> 2.0** = Potentially overvalued
+                    - Better than P/E for growth stocks
+                    
+                    **Price/Book (P/B)**
+                    - Market value ÷ Book value
+                    - **< 1.0** = Trading below book value (value opportunity)
+                    - **> 3.0** = Premium valuation
+                    
+                    **Price/Sales (P/S)**
+                    - Useful for unprofitable companies
+                    - Compare within same industry
+                    
+                    ---
+                    
+                    #### Profitability Metrics
+                    
+                    **Profit Margin**
+                    - Net income ÷ Revenue
+                    - **> 10%** = Good profitability
+                    - **> 20%** = Excellent profitability
+                    
+                    **ROE (Return on Equity)**
+                    - Net income ÷ Shareholder equity
+                    - **> 15%** = Good
+                    - **> 20%** = Excellent
+                    - Shows how efficiently company uses investments
+                    
+                    **ROA (Return on Assets)**
+                    - Net income ÷ Total assets
+                    - **> 5%** = Good
+                    - **> 10%** = Excellent
+                    
+                    ---
+                    
+                    #### Growth Metrics
+                    
+                    **Revenue Growth**
+                    - Year-over-year revenue increase
+                    - **> 10%** = Strong growth
+                    - Consistency matters more than one-time spikes
+                    
+                    **Earnings Growth**
+                    - Year-over-year earnings increase
+                    - **> 15%** = Strong growth
+                    - Should match or exceed revenue growth
+                    
+                    ---
+                    
+                    #### Financial Health
+                    
+                    **Debt/Equity Ratio**
+                    - Total debt ÷ Total equity
+                    - **< 0.5** = Very safe
+                    - **0.5-1.0** = Reasonable
+                    - **> 2.0** = High debt, risky
+                    
+                    **Current Ratio**
+                    - Current assets ÷ Current liabilities
+                    - **> 1.5** = Healthy liquidity
+                    - **< 1.0** = May struggle with short-term obligations
+                    
+                    **Beta**
+                    - Measures volatility vs market
+                    - **< 1.0** = Less volatile than market
+                    - **= 1.0** = Same as market
+                    - **> 1.0** = More volatile than market
+                    
+                    ---
+                    
+                    #### Dividend Metrics
+                    
+                    **Dividend Yield**
+                    - Annual dividend ÷ Stock price
+                    - **2-6%** = Typical for dividend stocks
+                    - **> 8%** = Very high (check if sustainable)
+                    
+                    **Payout Ratio**
+                    - Dividends ÷ Earnings
+                    - **< 60%** = Sustainable
+                    - **> 80%** = May be at risk if earnings drop
+                    
+                    ---
+                    
+                    #### How to Use This Data
+                    
+                    **Value Investing (Buy undervalued stocks)**
+                    - Low P/E, PEG < 1.0, P/B < 1.5
+                    - High ROE, good margins
+                    - Low debt
+                    
+                    **Growth Investing (Buy high-growth stocks)**
+                    - High revenue & earnings growth
+                    - May have high P/E (paying for future growth)
+                    - Strong margins improving over time
+                    
+                    **Income Investing (Buy dividend stocks)**
+                    - High dividend yield (but sustainable)
+                    - Low payout ratio (room to maintain/grow)
+                    - Stable, profitable company
+                    
+                    **Quality Investing (Buy best companies)**
+                    - High ROE & ROA
+                    - Consistent growth
+                    - Low debt
+                    - Strong competitive position
+                    """)
+                    
+                    st.info("""
+                    💡 **Pro Tip**: Don't look at metrics in isolation! A "high" P/E might be 
+                    justified for a fast-growing company. Always compare to:
+                    - Company's historical averages
+                    - Industry peers
+                    - Market average
+                    - Growth rate (use PEG ratio)
+                    """)
+            
+            # Tab 7: Analysis (was Tab 5)
+            
+            # Tab 7: Analysis
+            with tab7:
+                st.subheader(f"Stock Analysis Summary ({period})")
+                
+                # Calculate statistics
+                first_close = float(df['Close'].iloc[0])
+                last_close = float(df['Close'].iloc[-1])
+                total_return = ((last_close - first_close) / first_close) * 100
+                
+                daily_returns = df['Close'].pct_change()
+                volatility = float(daily_returns.std()) * 100
+                
                 col1, col2, col3 = st.columns(3)
                 
-                with col1:
-                    st.metric("Total Return", f"{total_return:+.2f}%")
+                col1.metric("Total Return", f"{total_return:.2f}%")
+                col2.metric("Daily Volatility", f"{volatility:.2f}%")
+                col3.metric("Data Points", len(df))
                 
-                with col2:
-                    annualized_return = total_return * (252 / len(df))
-                    st.metric("Annualized Return", f"{annualized_return:+.2f}%")
+                st.divider()
                 
-                with col3:
-                    sharpe = (daily_returns.mean() / daily_returns.std()) * (252 ** 0.5)
-                    st.metric("Sharpe Ratio", f"{sharpe:.2f}")
-                
-                st.markdown("---")
-                
-                # Returns distribution
-                st.markdown("**Daily Returns Distribution**")
-                
+                # Daily returns histogram
+                st.subheader("Daily Returns Distribution")
                 daily_returns_pct = daily_returns.dropna() * 100
                 
                 fig = go.Figure()
@@ -941,192 +1657,124 @@ if analyze_button or ticker:
                     x=daily_returns_pct,
                     nbinsx=50,
                     name='Daily Returns',
-                    marker_color=COLORS['primary'],
+                    marker_color='#00ff88',
                     opacity=0.8
                 ))
                 
                 fig.update_layout(
+                    title=f"{ticker} Daily Returns Distribution",
                     xaxis_title="Daily Return (%)",
                     yaxis_title="Frequency",
                     height=400,
-                    plot_bgcolor=COLORS['background'],
-                    paper_bgcolor=COLORS['surface'],
-                    font=dict(color=COLORS['text']),
-                    xaxis=dict(gridcolor='#2a2a2a'),
-                    yaxis=dict(gridcolor='#2a2a2a'),
-                    margin=dict(l=60, r=60, t=40, b=60)
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444', showgrid=True),
+                    yaxis=dict(gridcolor='#444', showgrid=True)
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Performance statistics
-                st.markdown("**Statistics**")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("Mean Daily Return", f"{daily_returns.mean()*100:.3f}%")
-                    st.metric("Std Deviation", f"{daily_returns.std()*100:.3f}%")
-                
-                with col2:
-                    st.metric("Best Day", f"{daily_returns.max()*100:+.2f}%")
-                    st.metric("Worst Day", f"{daily_returns.min()*100:+.2f}%")
-                
-                with col3:
-                    positive_days = (daily_returns > 0).sum()
-                    st.metric("Positive Days", f"{positive_days} ({positive_days/len(daily_returns)*100:.1f}%)")
-                    
-                    win_avg = daily_returns[daily_returns > 0].mean() * 100
-                    st.metric("Avg Win", f"+{win_avg:.2f}%")
-                
-                with col4:
-                    negative_days = (daily_returns < 0).sum()
-                    st.metric("Negative Days", f"{negative_days} ({negative_days/len(daily_returns)*100:.1f}%)")
-                    
-                    loss_avg = daily_returns[daily_returns < 0].mean() * 100
-                    st.metric("Avg Loss", f"{loss_avg:.2f}%")
-                
-                st.markdown("---")
-                
-                # Recent performance table
-                st.markdown("**Recent Trading Days (Last 10)**")
+                # Recent performance
+                st.subheader("Recent Performance (Last 10 Days)")
                 recent_data = df.tail(10)[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']].copy()
-                recent_data['Change %'] = recent_data['Close'].pct_change() * 100
+                st.dataframe(recent_data, use_container_width=True, hide_index=True)
                 
-                st.dataframe(
-                    recent_data.style.format({
-                        'Open': '${:.2f}',
-                        'High': '${:.2f}',
-                        'Low': '${:.2f}',
-                        'Close': '${:.2f}',
-                        'Volume': '{:,.0f}',
-                        'Change %': '{:+.2f}%'
-                    }),
-                    use_container_width=True,
-                    hide_index=True
-                )
-            
-            # Tab 7: Data Export
-            with tab7:
-                st.markdown('<p class="section-header">Data Export</p>', unsafe_allow_html=True)
-                
-                st.markdown("**Download Historical Data**")
-                
-                # Prepare export data
-                export_df = df.copy()
-                
-                # Add technical indicators to export
-                export_df['Daily_Return_%'] = daily_returns * 100
-                export_df['RSI'] = calculate_rsi(export_df['Close'])
-                
-                # Format for display
-                display_export = export_df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Daily_Return_%', 'RSI']].copy()
-                
-                st.dataframe(
-                    display_export.style.format({
-                        'Open': '${:.2f}',
-                        'High': '${:.2f}',
-                        'Low': '${:.2f}',
-                        'Close': '${:.2f}',
-                        'Volume': '{:,.0f}',
-                        'Daily_Return_%': '{:+.2f}%',
-                        'RSI': '{:.2f}'
-                    }),
-                    use_container_width=True,
-                    hide_index=True
-                )
-                
-                # Download buttons
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    csv = export_df.to_csv(index=False)
-                    st.download_button(
-                        label="Download Full Dataset (CSV)",
-                        data=csv,
-                        file_name=f"{ticker}_{period}_full_data.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                
-                with col2:
-                    summary_stats = {
-                        'Metric': ['Period', 'Total Return', 'Volatility', 'Sharpe Ratio', 'Max Drawdown', 
-                                  'Win Rate', 'Avg Daily Return', 'Data Points'],
-                        'Value': [
-                            period,
-                            f"{total_return:.2f}%",
-                            f"{volatility:.2f}%",
-                            f"{sharpe:.2f}",
-                            f"{(df['Close'] / df['Close'].cummax() - 1).min() * 100:.2f}%",
-                            f"{(daily_returns > 0).sum() / len(daily_returns) * 100:.1f}%",
-                            f"{daily_returns.mean() * 100:.3f}%",
-                            len(df)
-                        ]
-                    }
-                    summary_df = pd.DataFrame(summary_stats)
-                    summary_csv = summary_df.to_csv(index=False)
+                # Educational section
+                with st.expander("📚 Understanding the Analysis Metrics"):
+                    st.markdown("""
+                    ### What Do These Numbers Mean?
                     
-                    st.download_button(
-                        label="Download Summary Report (CSV)",
-                        data=summary_csv,
-                        file_name=f"{ticker}_{period}_summary.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                
-                st.markdown("---")
-                
-                # Data info
-                st.markdown("**Dataset Information**")
-                col1, col2, col3 = st.columns(3)
-                
-                col1.metric("Rows", len(export_df))
-                col2.metric("Columns", len(export_df.columns))
-                col3.metric("Period", f"{export_df['Date'].min().date()} to {export_df['Date'].max().date()}")
+                    **Total Return** 📊
+                    - Percentage change from start to end of period
+                    - **Positive %** = Stock went up 🟢
+                    - **Negative %** = Stock went down 🔴
+                    - Example: +25% means $100 became $125
+                    
+                    **Daily Volatility** 📉
+                    - How much the stock bounces around each day
+                    - **Low volatility** (0-2%) = Stable, steady stock
+                    - **Medium volatility** (2-5%) = Normal stock
+                    - **High volatility** (5%+) = Risky, jumps a lot
+                    
+                    **Daily Returns Distribution** 📈
+                    - Histogram shows how often stock goes up/down
+                    - **Right side** (positive) = Up days
+                    - **Left side** (negative) = Down days
+                    - **Peak in middle** = Most days are small moves
+                    - **Spread out** = Lots of big swings (volatile)
+                    
+                    #### Good vs Bad:
+                    """)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success("""
+                        **🟢 Positive Signs**
+                        - Total Return > 10%
+                        - More green on histogram (right side)
+                        - Steady climb in recent performance
+                        - Reasonable volatility for your risk level
+                        """)
+                    with col2:
+                        st.error("""
+                        **🔴 Warning Signs**
+                        - Total Return negative
+                        - More red on histogram (left side)
+                        - Declining recent performance
+                        - Extreme volatility (unless you like risk)
+                        """)
+                    
+                    st.info("""
+                    💡 **Investment Tip**: 
+                    - **Conservative**: Look for positive returns + low volatility
+                    - **Moderate**: Accept medium volatility for better returns
+                    - **Aggressive**: High volatility = high risk + high reward potential
+                    """)
                 
     except Exception as e:
-        st.markdown(f'<div class="warning-card"><strong>Error:</strong> {str(e)}</div>', unsafe_allow_html=True)
-        st.info("Try: Wait a few minutes • Clear cache (press 'C') • Different ticker • Shorter period")
+        st.error(f"❌ Unexpected error: {str(e)}")
+        st.info("""
+        **Troubleshooting:**
+        1. Wait a few minutes and try again
+        2. Press 'C' to clear cache
+        3. Try a different ticker
+        4. Use a shorter time period
+        """)
 
 else:
-    # Welcome screen
-    st.markdown('<div class="info-card">', unsafe_allow_html=True)
-    st.markdown("### Getting Started")
+    # Welcome message
+    st.info("👈 Select a time period and click 'Analyze Stock' to get started!")
+    
     st.markdown("""
-    1. Enter a stock ticker symbol (e.g., AAPL, MSFT, GOOGL)
-    2. Select your preferred time period
-    3. Click **Analyze Stock** to generate comprehensive analysis
+    ### How to Use:
+    1. **Enter a stock ticker** (e.g., AAPL, MSFT, GOOGL)
+    2. **Select a time period** (1M, 3M, 6M, 1Y, 2Y, 5Y, or MAX)
+    3. **Click "Analyze Stock"**
+    
+    ### Popular Stock Tickers:
+    - **AAPL** - Apple Inc.
+    - **MSFT** - Microsoft Corporation
+    - **GOOGL** - Alphabet Inc.
+    - **AMZN** - Amazon.com Inc.
+    - **TSLA** - Tesla Inc.
+    - **META** - Meta Platforms Inc.
+    - **NVDA** - NVIDIA Corporation
+    
+    ### Time Periods:
+    - **1M** - Last month
+    - **3M** - Last 3 months
+    - **6M** - Last 6 months
+    - **1Y** - Last year (recommended)
+    - **2Y** - Last 2 years
+    - **5Y** - Last 5 years
+    - **MAX** - All available history
+    
+    ### 💡 Tips:
+    - Data is cached for 10 minutes
+    - Wait 30-60 seconds between different stocks
+    - Shorter periods load faster
     """)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # Popular tickers
-    st.markdown('<p class="section-header">Popular Stocks</p>', unsafe_allow_html=True)
-    
-    popular = {
-        "AAPL": "Apple Inc.",
-        "MSFT": "Microsoft Corporation",
-        "GOOGL": "Alphabet Inc.",
-        "AMZN": "Amazon.com Inc.",
-        "TSLA": "Tesla Inc.",
-        "META": "Meta Platforms Inc.",
-        "NVDA": "NVIDIA Corporation",
-        "JPM": "JPMorgan Chase"
-    }
-    
-    cols = st.columns(4)
-    for idx, (symbol, name) in enumerate(popular.items()):
-        with cols[idx % 4]:
-            st.markdown(f"**{symbol}**")
-            st.caption(name)
 
-# Footer
-st.markdown("---")
-st.markdown(
-    f'<div style="text-align: center; color: {COLORS["neutral"]}; padding: 1rem;">'
-    'Data provided by Yahoo Finance • Updated every 10 minutes • For educational purposes only'
-    '</div>',
-    unsafe_allow_html=True
-)
+st.divider()
+st.caption("📊 Data from Yahoo Finance | Cached for 10 minutes")

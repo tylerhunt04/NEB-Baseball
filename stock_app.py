@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-
+import time
 
 # Page config
 st.set_page_config(
@@ -64,7 +64,12 @@ def download_stock_data(ticker, period):
             )
             
             if not df.empty:
-                df = df.reset_index()
+                # Reset index and ensure Date column is properly named
+                if 'Date' not in df.columns:
+                    df = df.reset_index()
+                    # Rename the date column to 'Date' if it has a different name
+                    if df.columns[0] in ['index', 'Datetime']:
+                        df = df.rename(columns={df.columns[0]: 'Date'})
                 return df, None
             else:
                 return None, "No data found for this ticker"
@@ -171,21 +176,53 @@ if analyze_button or ticker:
             with tab2:
                 st.subheader(f"Closing Price Chart ({period})")
                 
+                # Chart type selector
+                chart_type = st.radio("Chart Type:", ["Line Chart", "Candlestick Chart"], horizontal=True)
+                
+                # Ensure we have the right data
+                chart_df = df.copy()
+                
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=df['Date'],
-                    y=df['Close'],
-                    mode='lines',
-                    name='Close Price',
-                    line=dict(color='#1f77b4', width=2)
-                ))
+                
+                if chart_type == "Candlestick Chart":
+                    # Candlestick chart
+                    fig.add_trace(go.Candlestick(
+                        x=chart_df['Date'],
+                        open=chart_df['Open'],
+                        high=chart_df['High'],
+                        low=chart_df['Low'],
+                        close=chart_df['Close'],
+                        name='Price'
+                    ))
+                else:
+                    # Line chart
+                    fig.add_trace(go.Scatter(
+                        x=chart_df['Date'],
+                        y=chart_df['Close'],
+                        mode='lines+markers',
+                        name='Close Price',
+                        line=dict(color='#00ff00', width=3),
+                        marker=dict(size=4, color='#00ff00')
+                    ))
                 
                 fig.update_layout(
-                    title=f"{ticker} Closing Prices - {period}",
+                    title=f"{ticker} Stock Prices - {period}",
                     xaxis_title="Date",
                     yaxis_title="Price (USD)",
                     hovermode='x unified',
-                    height=500
+                    height=500,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(
+                        gridcolor='#444',
+                        showgrid=True,
+                        rangeslider=dict(visible=False)
+                    ),
+                    yaxis=dict(
+                        gridcolor='#444',
+                        showgrid=True
+                    )
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
@@ -198,12 +235,16 @@ if analyze_button or ticker:
             with tab3:
                 st.subheader(f"Trading Volume ({period})")
                 
+                # Create volume chart with better colors
+                colors = ['red' if df['Close'].iloc[i] < df['Open'].iloc[i] else 'green' 
+                         for i in range(len(df))]
+                
                 fig = go.Figure()
                 fig.add_trace(go.Bar(
                     x=df['Date'],
                     y=df['Volume'],
                     name='Volume',
-                    marker_color='lightblue'
+                    marker_color=colors
                 ))
                 
                 fig.update_layout(
@@ -211,7 +252,12 @@ if analyze_button or ticker:
                     xaxis_title="Date",
                     yaxis_title="Volume",
                     hovermode='x unified',
-                    height=500
+                    height=500,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444', showgrid=True),
+                    yaxis=dict(gridcolor='#444', showgrid=True)
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
@@ -234,7 +280,7 @@ if analyze_button or ticker:
                     y=df_copy['Close'],
                     mode='lines',
                     name='Close Price',
-                    line=dict(color='blue', width=1)
+                    line=dict(color='#00aaff', width=2)
                 ))
                 
                 fig.add_trace(go.Scatter(
@@ -242,7 +288,7 @@ if analyze_button or ticker:
                     y=df_copy['MA'],
                     mode='lines',
                     name=f'{ma_days}-Day MA',
-                    line=dict(color='red', width=2, dash='dash')
+                    line=dict(color='#ff6600', width=3, dash='dash')
                 ))
                 
                 fig.update_layout(
@@ -250,7 +296,16 @@ if analyze_button or ticker:
                     xaxis_title="Date",
                     yaxis_title="Price (USD)",
                     hovermode='x unified',
-                    height=500
+                    height=500,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444', showgrid=True),
+                    yaxis=dict(gridcolor='#444', showgrid=True),
+                    legend=dict(
+                        bgcolor='#2e2e2e',
+                        bordercolor='#555'
+                    )
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
@@ -284,14 +339,20 @@ if analyze_button or ticker:
                     x=daily_returns_pct,
                     nbinsx=50,
                     name='Daily Returns',
-                    marker_color='lightgreen'
+                    marker_color='#00ff88',
+                    opacity=0.8
                 ))
                 
                 fig.update_layout(
                     title=f"{ticker} Daily Returns Distribution",
                     xaxis_title="Daily Return (%)",
                     yaxis_title="Frequency",
-                    height=400
+                    height=400,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444', showgrid=True),
+                    yaxis=dict(gridcolor='#444', showgrid=True)
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)

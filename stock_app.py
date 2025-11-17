@@ -241,6 +241,59 @@ if analyze_button or ticker:
                 col1, col2 = st.columns(2)
                 col1.metric("Period High", f"${float(df['High'].max()):.2f}")
                 col2.metric("Period Low", f"${float(df['Low'].min()):.2f}")
+                
+                # Educational section
+                with st.expander("📚 How to Read This Chart"):
+                    st.markdown("""
+                    ### Understanding Price Charts
+                    
+                    **What am I looking at?**
+                    - The line/candles show the stock's price over time
+                    - **Line Chart**: Simple closing prices connected
+                    - **Candlestick Chart**: Shows Open, High, Low, Close for each day
+                    
+                    #### What to Look For:
+                    
+                    **🟢 Bullish Patterns (Good Signs)**
+                    - **Uptrend**: Price steadily going up over time
+                    - **Higher Highs**: Each peak is higher than the last
+                    - **Higher Lows**: Each dip is higher than the last
+                    - **Green Candles**: More green (up) days than red (down) days
+                    
+                    **🔴 Bearish Patterns (Warning Signs)**
+                    - **Downtrend**: Price steadily going down
+                    - **Lower Highs**: Each peak is lower than the last
+                    - **Lower Lows**: Each dip is lower than the last
+                    - **Red Candles**: More red (down) days than green (up) days
+                    
+                    **🟡 Sideways/Consolidation**
+                    - Price moving horizontally
+                    - No clear direction
+                    - Often happens before a big move
+                    
+                    #### Candlestick Colors:
+                    """)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success("""
+                        **🟢 Green Candle = Bullish**
+                        - Close > Open
+                        - Buyers won that day
+                        - Price went up
+                        """)
+                    with col2:
+                        st.error("""
+                        **🔴 Red Candle = Bearish**
+                        - Close < Open
+                        - Sellers won that day
+                        - Price went down
+                        """)
+                    
+                    st.info("""
+                    💡 **Quick Tip**: Look at the overall pattern, not individual days. 
+                    Is the general direction up, down, or sideways?
+                    """)
             
             # Tab 3: Volume
             with tab3:
@@ -280,6 +333,76 @@ if analyze_button or ticker:
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
+                
+                # Educational section
+                with st.expander("📚 How to Read Volume"):
+                    st.markdown("""
+                    ### Understanding Trading Volume
+                    
+                    **What is Volume?**
+                    - Number of shares traded each day
+                    - Shows how much interest there is in the stock
+                    - **Tall bars** = High volume (lots of activity)
+                    - **Short bars** = Low volume (little activity)
+                    
+                    #### Volume Bar Colors:
+                    """)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success("""
+                        **🟢 Green Bar**
+                        - Price went UP that day
+                        - Close > Open
+                        - Buyers were stronger
+                        """)
+                    with col2:
+                        st.error("""
+                        **🔴 Red Bar**
+                        - Price went DOWN that day
+                        - Close < Open
+                        - Sellers were stronger
+                        """)
+                    
+                    st.markdown("""
+                    #### What to Look For:
+                    
+                    **🟢 Best Signals (Strong Buy)**
+                    - **Tall GREEN bars** when price is rising
+                    - Means: Strong buying pressure, rally is real
+                    - More greens than reds = Bullish sentiment
+                    
+                    **🔴 Warning Signals (Strong Sell)**
+                    - **Tall RED bars** when price is falling
+                    - Means: Strong selling pressure, decline is serious
+                    - More reds than greens = Bearish sentiment
+                    
+                    **🟡 Caution Signals**
+                    - **Short bars** on price increases = Weak rally, might reverse
+                    - **Short bars** on price decreases = Minor dip, not concerning
+                    
+                    #### Volume Patterns:
+                    
+                    **Volume Spike** 📈
+                    - Sudden very tall bar (2-3x normal)
+                    - Usually triggered by news or events
+                    - Often signals trend change or acceleration
+                    
+                    **Increasing Volume** 📊
+                    - Bars getting taller over time
+                    - Shows growing interest
+                    - Confirms the current trend
+                    
+                    **Decreasing Volume** 📉
+                    - Bars getting shorter
+                    - Shows declining interest
+                    - May signal consolidation before next move
+                    """)
+                    
+                    st.info("""
+                    💡 **Quick Tip**: Volume should **confirm** price movement. 
+                    Price up + High volume = Good ✅ | Price up + Low volume = Suspicious ⚠️
+                    """)
             
             # Tab 4: Moving Averages
             with tab4:
@@ -328,6 +451,88 @@ if analyze_button or ticker:
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
+                
+                # Educational section
+                with st.expander("📚 How to Read Moving Averages"):
+                    st.markdown("""
+                    ### Understanding Moving Averages (MA)
+                    
+                    **What is a Moving Average?**
+                    - Average price over the last X days
+                    - **Blue line** = Actual stock price
+                    - **Orange dashed line** = Moving average
+                    - Smooths out daily noise to show the trend
+                    
+                    #### What the Lines Mean:
+                    
+                    **20-Day MA** = Average of last 20 days (short-term trend)  
+                    **50-Day MA** = Average of last 50 days (medium-term trend)  
+                    **200-Day MA** = Average of last 200 days (long-term trend)
+                    
+                    #### What to Look For:
+                    """)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success("""
+                        **🟢 Bullish Signals (Good)**
+                        - Price ABOVE the MA line
+                        - MA line sloping UPWARD
+                        - Price bouncing off MA (support)
+                        - Short MA crosses above long MA
+                        """)
+                    with col2:
+                        st.error("""
+                        **🔴 Bearish Signals (Bad)**
+                        - Price BELOW the MA line
+                        - MA line sloping DOWNWARD
+                        - Price rejected by MA (resistance)
+                        - Short MA crosses below long MA
+                        """)
+                    
+                    st.markdown("""
+                    #### Key Patterns:
+                    
+                    **Golden Cross** 🟢🟢 (Very Bullish)
+                    - 20-day MA crosses ABOVE 50-day MA
+                    - Strong buy signal
+                    - Often starts a major uptrend
+                    
+                    **Death Cross** 🔴🔴 (Very Bearish)
+                    - 20-day MA crosses BELOW 50-day MA
+                    - Strong sell signal
+                    - Often starts a major downtrend
+                    
+                    **Support** 🟢
+                    - Price drops to MA and bounces back up
+                    - MA acts like a floor
+                    - Shows buyers defend that level
+                    
+                    **Resistance** 🔴
+                    - Price rises to MA and gets pushed down
+                    - MA acts like a ceiling
+                    - Shows sellers defend that level
+                    
+                    #### How to Use the Slider:
+                    
+                    **5-20 days**: Very short-term, responds quickly to changes  
+                    **20-50 days**: Good for swing trading (weeks to months)  
+                    **50-200 days**: Long-term investing (months to years)
+                    
+                    Try different periods and see how the MA changes!
+                    """)
+                    
+                    st.info("""
+                    💡 **Quick Analysis**: 
+                    - Price **above** MA + MA going **up** = 🟢 Buy signal
+                    - Price **below** MA + MA going **down** = 🔴 Sell signal
+                    - Price **at** MA + MA **flat** = 🟡 Wait for direction
+                    """)
+                    
+                    st.warning("""
+                    ⚠️ **Important**: Moving averages are **lagging indicators** - they show what 
+                    already happened, not what will happen. Use them to confirm trends, not predict them.
+                    """)
             
             # Tab 5: Analysis
             with tab5:
@@ -380,6 +585,58 @@ if analyze_button or ticker:
                 st.subheader("Recent Performance (Last 10 Days)")
                 recent_data = df.tail(10)[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']].copy()
                 st.dataframe(recent_data, use_container_width=True, hide_index=True)
+                
+                # Educational section
+                with st.expander("📚 Understanding the Analysis Metrics"):
+                    st.markdown("""
+                    ### What Do These Numbers Mean?
+                    
+                    **Total Return** 📊
+                    - Percentage change from start to end of period
+                    - **Positive %** = Stock went up 🟢
+                    - **Negative %** = Stock went down 🔴
+                    - Example: +25% means $100 became $125
+                    
+                    **Daily Volatility** 📉
+                    - How much the stock bounces around each day
+                    - **Low volatility** (0-2%) = Stable, steady stock
+                    - **Medium volatility** (2-5%) = Normal stock
+                    - **High volatility** (5%+) = Risky, jumps a lot
+                    
+                    **Daily Returns Distribution** 📈
+                    - Histogram shows how often stock goes up/down
+                    - **Right side** (positive) = Up days
+                    - **Left side** (negative) = Down days
+                    - **Peak in middle** = Most days are small moves
+                    - **Spread out** = Lots of big swings (volatile)
+                    
+                    #### Good vs Bad:
+                    """)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success("""
+                        **🟢 Positive Signs**
+                        - Total Return > 10%
+                        - More green on histogram (right side)
+                        - Steady climb in recent performance
+                        - Reasonable volatility for your risk level
+                        """)
+                    with col2:
+                        st.error("""
+                        **🔴 Warning Signs**
+                        - Total Return negative
+                        - More red on histogram (left side)
+                        - Declining recent performance
+                        - Extreme volatility (unless you like risk)
+                        """)
+                    
+                    st.info("""
+                    💡 **Investment Tip**: 
+                    - **Conservative**: Look for positive returns + low volatility
+                    - **Moderate**: Accept medium volatility for better returns
+                    - **Aggressive**: High volatility = high risk + high reward potential
+                    """)
                 
     except Exception as e:
         st.error(f"❌ Unexpected error: {str(e)}")

@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+import time
 
 # Page config
 st.set_page_config(
@@ -36,23 +37,97 @@ with col2:
 # Download button
 analyze_button = st.sidebar.button("📊 Analyze Stock", type="primary")
 
+# Cache the download function with longer TTL to avoid rate limits
+@st.cache_data(ttl=600)  # Cache for 10 minutes
+def download_stock_data(ticker, start, end):
+    """
+    Download stock data with retry logic for rate limiting
+    """
+    max_retries = 3
+    retry_delay = 5  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            # Add a small delay before each request to be polite
+            if attempt > 0:
+                time.sleep(retry_delay)
+            
+            # Download data
+            df = yf.download(
+                ticker, 
+                start=start, 
+                end=end, 
+                progress=False,
+                # These headers can help avoid rate limiting
+                threads=False
+            )
+            
+            if not df.empty:
+                return df, None
+            else:
+                return None, "No data found for this ticker"
+                
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Check if it's a rate limit error
+            if "429" in error_msg or "Too Many Requests" in error_msg:
+                if attempt < max_retries - 1:
+                    st.warning(f"⏳ Rate limited. Retrying in {retry_delay} seconds... (Attempt {attempt + 1}/{max_retries})")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                    continue
+                else:
+                    return None, "Rate limited. Please wait a few minutes and try again."
+            else:
+                return None, f"Error: {error_msg}"
+    
+    return None, "Failed after multiple retries"
+
 # Main content
 if analyze_button or ticker:
     try:
-        # Download data using yf.download (most reliable method)
+        # Download data with rate limiting protection
         with st.spinner(f"Loading data for {ticker}..."):
-            df = yf.download(ticker, start=start_date, end=end_date, progress=False)
+            df, error = download_stock_data(ticker, start_date, end_date)
         
-        if df.empty:
+        if error:
+            st.error(f"❌ {error}")
+            
+            if "Rate limited" in error or "429" in error:
+                st.warning("""
+                **You've been rate limited by Yahoo Finance.**
+                
+                **Solutions:**
+                1. ⏰ Wait 2-3 minutes before trying again
+                2. 🔄 Clear the cache: Press 'C' on your keyboard or click the menu → Clear cache
+                3. 🎯 Try using a different ticker first (the app caches results)
+                4. 📉 Use a shorter date range to reduce data load
+                
+                **Why this happens:**
+                Yahoo Finance limits how many requests you can make per minute.
+                The app now caches data for 10 minutes to help avoid this.
+                """)
+            else:
+                st.info("💡 Try these tickers: AAPL, MSFT, GOOGL, AMZN, TSLA")
+            
+        elif df is None or df.empty:
             st.error(f"❌ No data found for ticker '{ticker}'. Please check the symbol and try again.")
             st.info("💡 Try these tickers: AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA")
-        else:
-            # Get additional info
-            stock = yf.Ticker(ticker)
-            info = stock.info if hasattr(stock, 'info') else {}
             
-            # Company name
-            company_name = info.get('longName', ticker)
+        else:
+            # Success! Show a success message
+            st.success(f"✅ Successfully loaded {len(df)} days of data for {ticker}")
+            
+            # Get additional info (with error handling)
+            company_name = ticker
+            try:
+                stock = yf.Ticker(ticker)
+                info = stock.info if hasattr(stock, 'info') else {}
+                company_name = info.get('longName', ticker)
+            except:
+                pass  # Just use ticker if we can't get name
+            
             st.header(f"{company_name} ({ticker})")
             
             # Key metrics at top
@@ -154,14 +229,15 @@ if analyze_button or ticker:
                                    min_value=5, max_value=200, value=20, step=5)
                 
                 # Calculate moving average
-                df['MA'] = df['Close'].rolling(window=ma_days).mean()
+                df_copy = df.copy()
+                df_copy['MA'] = df_copy['Close'].rolling(window=ma_days).mean()
                 
                 fig = go.Figure()
                 
                 # Close price
                 fig.add_trace(go.Scatter(
-                    x=df.index,
-                    y=df['Close'],
+                    x=df_copy.index,
+                    y=df_copy['Close'],
                     mode='lines',
                     name='Close Price',
                     line=dict(color='blue', width=1)
@@ -169,8 +245,8 @@ if analyze_button or ticker:
                 
                 # Moving average
                 fig.add_trace(go.Scatter(
-                    x=df.index,
-                    y=df['MA'],
+                    x=df_copy.index,
+                    y=df_copy['MA'],
                     mode='lines',
                     name=f'{ma_days}-Day MA',
                     line=dict(color='red', width=2, dash='dash')
@@ -229,13 +305,13 @@ if analyze_button or ticker:
                 st.dataframe(recent_data, use_container_width=True)
                 
     except Exception as e:
-        st.error(f"❌ Error loading data: {str(e)}")
+        st.error(f"❌ Unexpected error: {str(e)}")
         st.info("""
         **Troubleshooting:**
-        1. Make sure yfinance is installed: `pip install yfinance`
-        2. Check your internet connection
-        3. Verify the ticker symbol is correct
-        4. Try a different date range
+        1. Wait a few minutes and try again
+        2. Clear cache: Press 'C' on your keyboard
+        3. Try a different ticker
+        4. Check your internet connection
         """)
 
 else:
@@ -254,8 +330,14 @@ else:
     - **JPM** - JPMorgan Chase & Co.
     - **V** - Visa Inc.
     - **WMT** - Walmart Inc.
+    
+    ### 💡 Tips to Avoid Rate Limiting:
+    - The app caches data for 10 minutes
+    - Don't refresh too frequently
+    - Wait 2-3 minutes between different stocks
+    - Use shorter date ranges when possible
     """)
 
 # Footer
 st.divider()
-st.caption("📊 Data provided by Yahoo Finance via yfinance library | For educational purposes only")
+st.caption("📊 Data provided by Yahoo Finance | Cached for 10 minutes to avoid rate limiting")

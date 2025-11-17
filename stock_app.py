@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
+
 # Page config
 st.set_page_config(
     page_title="Stock Analyzer",
@@ -20,25 +21,32 @@ st.sidebar.header("Settings")
 # Ticker input
 ticker = st.sidebar.text_input("Enter Stock Ticker", value="AAPL").upper()
 
-# Date range
-col1, col2 = st.sidebar.columns(2)
-with col1:
-    start_date = st.date_input(
-        "Start Date",
-        value=datetime.now() - timedelta(days=365)
-    )
-with col2:
-    end_date = st.date_input(
-        "End Date",
-        value=datetime.now()
-    )
+# Period selection with buttons
+st.sidebar.subheader("Time Period")
+period = st.sidebar.radio(
+    "Select time range:",
+    ["1M", "3M", "6M", "1Y", "2Y", "5Y", "MAX"],
+    index=3,  # Default to 1Y
+    horizontal=False
+)
+
+# Map period to yfinance format
+period_map = {
+    "1M": "1mo",
+    "3M": "3mo",
+    "6M": "6mo",
+    "1Y": "1y",
+    "2Y": "2y",
+    "5Y": "5y",
+    "MAX": "max"
+}
 
 # Download button
 analyze_button = st.sidebar.button("📊 Analyze Stock", type="primary")
 
-# Cache the download function with longer TTL to avoid rate limits
+# Cache the download function
 @st.cache_data(ttl=600)
-def download_stock_data(ticker, start, end):
+def download_stock_data(ticker, period):
     """Download stock data with retry logic"""
     max_retries = 3
     retry_delay = 5
@@ -50,14 +58,12 @@ def download_stock_data(ticker, start, end):
             
             df = yf.download(
                 ticker, 
-                start=start, 
-                end=end, 
+                period=period,
                 progress=False,
                 threads=False
             )
             
             if not df.empty:
-                # Reset index to make date a column for easier handling
                 df = df.reset_index()
                 return df, None
             else:
@@ -82,8 +88,8 @@ def download_stock_data(ticker, start, end):
 # Main content
 if analyze_button or ticker:
     try:
-        with st.spinner(f"Loading data for {ticker}..."):
-            df, error = download_stock_data(ticker, start_date, end_date)
+        with st.spinner(f"Loading {period} of data for {ticker}..."):
+            df, error = download_stock_data(ticker, period_map[period])
         
         if error:
             st.error(f"❌ {error}")
@@ -96,7 +102,7 @@ if analyze_button or ticker:
                 - ⏰ Wait 2-3 minutes before trying again
                 - 🔄 Press 'C' to clear cache
                 - 🎯 Try a different ticker
-                - 📉 Use a shorter date range
+                - 📉 Use a shorter time period
                 """)
             else:
                 st.info("💡 Try: AAPL, MSFT, GOOGL, AMZN, TSLA")
@@ -106,7 +112,7 @@ if analyze_button or ticker:
             st.info("💡 Try: AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA")
             
         else:
-            st.success(f"✅ Successfully loaded {len(df)} days of data for {ticker}")
+            st.success(f"✅ Successfully loaded {len(df)} days of data for {ticker} ({period})")
             
             # Get company name
             company_name = ticker
@@ -147,9 +153,8 @@ if analyze_button or ticker:
             
             # Tab 1: Raw Data
             with tab1:
-                st.subheader("Historical Stock Data")
+                st.subheader(f"Historical Stock Data ({period})")
                 
-                # Display without special formatting
                 display_df = df.copy()
                 st.dataframe(display_df, use_container_width=True, hide_index=True)
                 
@@ -158,13 +163,13 @@ if analyze_button or ticker:
                 st.download_button(
                     label="📥 Download as CSV",
                     data=csv,
-                    file_name=f"{ticker}_data.csv",
+                    file_name=f"{ticker}_{period}_data.csv",
                     mime="text/csv"
                 )
             
             # Tab 2: Price Chart
             with tab2:
-                st.subheader("Closing Price Chart")
+                st.subheader(f"Closing Price Chart ({period})")
                 
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
@@ -176,7 +181,7 @@ if analyze_button or ticker:
                 ))
                 
                 fig.update_layout(
-                    title=f"{ticker} Closing Prices",
+                    title=f"{ticker} Closing Prices - {period}",
                     xaxis_title="Date",
                     yaxis_title="Price (USD)",
                     hovermode='x unified',
@@ -191,7 +196,7 @@ if analyze_button or ticker:
             
             # Tab 3: Volume
             with tab3:
-                st.subheader("Trading Volume")
+                st.subheader(f"Trading Volume ({period})")
                 
                 fig = go.Figure()
                 fig.add_trace(go.Bar(
@@ -202,7 +207,7 @@ if analyze_button or ticker:
                 ))
                 
                 fig.update_layout(
-                    title=f"{ticker} Trading Volume",
+                    title=f"{ticker} Trading Volume - {period}",
                     xaxis_title="Date",
                     yaxis_title="Volume",
                     hovermode='x unified',
@@ -241,7 +246,7 @@ if analyze_button or ticker:
                 ))
                 
                 fig.update_layout(
-                    title=f"{ticker} Price with {ma_days}-Day Moving Average",
+                    title=f"{ticker} Price with {ma_days}-Day Moving Average ({period})",
                     xaxis_title="Date",
                     yaxis_title="Price (USD)",
                     hovermode='x unified',
@@ -252,7 +257,7 @@ if analyze_button or ticker:
             
             # Tab 5: Analysis
             with tab5:
-                st.subheader("Stock Analysis Summary")
+                st.subheader(f"Stock Analysis Summary ({period})")
                 
                 # Calculate statistics
                 first_close = float(df['Close'].iloc[0])
@@ -303,14 +308,19 @@ if analyze_button or ticker:
         1. Wait a few minutes and try again
         2. Press 'C' to clear cache
         3. Try a different ticker
-        4. Check your internet connection
+        4. Use a shorter time period
         """)
 
 else:
     # Welcome message
-    st.info("👈 Enter a stock ticker in the sidebar and click 'Analyze Stock' to get started!")
+    st.info("👈 Select a time period and click 'Analyze Stock' to get started!")
     
     st.markdown("""
+    ### How to Use:
+    1. **Enter a stock ticker** (e.g., AAPL, MSFT, GOOGL)
+    2. **Select a time period** (1M, 3M, 6M, 1Y, 2Y, 5Y, or MAX)
+    3. **Click "Analyze Stock"**
+    
     ### Popular Stock Tickers:
     - **AAPL** - Apple Inc.
     - **MSFT** - Microsoft Corporation
@@ -320,10 +330,19 @@ else:
     - **META** - Meta Platforms Inc.
     - **NVDA** - NVIDIA Corporation
     
+    ### Time Periods:
+    - **1M** - Last month
+    - **3M** - Last 3 months
+    - **6M** - Last 6 months
+    - **1Y** - Last year (recommended)
+    - **2Y** - Last 2 years
+    - **5Y** - Last 5 years
+    - **MAX** - All available history
+    
     ### 💡 Tips:
     - Data is cached for 10 minutes
     - Wait 30-60 seconds between different stocks
-    - Use shorter date ranges to load faster
+    - Shorter periods load faster
     """)
 
 st.divider()

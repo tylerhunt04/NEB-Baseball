@@ -235,16 +235,17 @@ if analyze_button or ticker:
             with tab3:
                 st.subheader(f"Trading Volume ({period})")
                 
-                # Create volume chart with better colors
-                colors = ['red' if df['Close'].iloc[i] < df['Open'].iloc[i] else 'green' 
-                         for i in range(len(df))]
+                # Create volume chart with better colors - use vectorized operation
+                vol_df = df.copy()
+                vol_df['color'] = 'green'
+                vol_df.loc[vol_df['Close'] < vol_df['Open'], 'color'] = 'red'
                 
                 fig = go.Figure()
                 fig.add_trace(go.Bar(
-                    x=df['Date'],
-                    y=df['Volume'],
+                    x=vol_df['Date'],
+                    y=vol_df['Volume'],
                     name='Volume',
-                    marker_color=colors
+                    marker_color=vol_df['color']
                 ))
                 
                 fig.update_layout(

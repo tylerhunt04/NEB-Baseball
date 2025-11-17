@@ -159,11 +159,13 @@ if analyze_button or ticker:
             st.divider()
             
             # Create tabs
-            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
                 "📊 Raw Data", 
                 "📈 Price Chart", 
                 "📊 Volume", 
                 "📉 Moving Averages",
+                "🔧 Technical Indicators",
+                "💼 Fundamentals",
                 "💰 Analysis"
             ])
             
@@ -534,8 +536,677 @@ if analyze_button or ticker:
                     already happened, not what will happen. Use them to confirm trends, not predict them.
                     """)
             
-            # Tab 5: Analysis
+            # Tab 5: Technical Indicators
             with tab5:
+                st.subheader("🔧 Technical Indicators")
+                
+                # Calculate technical indicators
+                
+                # RSI (Relative Strength Index)
+                def calculate_rsi(data, period=14):
+                    delta = data.diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+                    rs = gain / loss
+                    rsi = 100 - (100 / (1 + rs))
+                    return rsi
+                
+                df_tech = df.copy()
+                df_tech['RSI'] = calculate_rsi(df_tech['Close'])
+                
+                # MACD
+                exp1 = df_tech['Close'].ewm(span=12, adjust=False).mean()
+                exp2 = df_tech['Close'].ewm(span=26, adjust=False).mean()
+                df_tech['MACD'] = exp1 - exp2
+                df_tech['Signal'] = df_tech['MACD'].ewm(span=9, adjust=False).mean()
+                df_tech['MACD_Histogram'] = df_tech['MACD'] - df_tech['Signal']
+                
+                # Bollinger Bands
+                df_tech['BB_Middle'] = df_tech['Close'].rolling(window=20).mean()
+                df_tech['BB_Std'] = df_tech['Close'].rolling(window=20).std()
+                df_tech['BB_Upper'] = df_tech['BB_Middle'] + (df_tech['BB_Std'] * 2)
+                df_tech['BB_Lower'] = df_tech['BB_Middle'] - (df_tech['BB_Std'] * 2)
+                
+                # RSI Chart
+                st.markdown("### RSI (Relative Strength Index)")
+                fig_rsi = go.Figure()
+                
+                fig_rsi.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['RSI'],
+                    mode='lines',
+                    name='RSI',
+                    line=dict(color='purple', width=2)
+                ))
+                
+                # Add overbought/oversold lines
+                fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", 
+                                  annotation_text="Overbought (70)")
+                fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", 
+                                  annotation_text="Oversold (30)")
+                fig_rsi.add_hline(y=50, line_dash="dot", line_color="gray", 
+                                  annotation_text="Neutral (50)")
+                
+                # Add background colors
+                fig_rsi.add_hrect(y0=70, y1=100, fillcolor="red", opacity=0.1, line_width=0)
+                fig_rsi.add_hrect(y0=0, y1=30, fillcolor="green", opacity=0.1, line_width=0)
+                
+                fig_rsi.update_layout(
+                    title="RSI Indicator",
+                    yaxis_title="RSI Value",
+                    xaxis_title="Date",
+                    height=300,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444'),
+                    yaxis=dict(gridcolor='#444', range=[0, 100])
+                )
+                
+                st.plotly_chart(fig_rsi, use_container_width=True)
+                
+                # Current RSI value
+                current_rsi = df_tech['RSI'].iloc[-1]
+                if current_rsi > 70:
+                    st.error(f"🔴 Current RSI: {current_rsi:.2f} - **OVERBOUGHT** (Potential sell signal)")
+                elif current_rsi < 30:
+                    st.success(f"🟢 Current RSI: {current_rsi:.2f} - **OVERSOLD** (Potential buy signal)")
+                else:
+                    st.info(f"🟡 Current RSI: {current_rsi:.2f} - **NEUTRAL** (No strong signal)")
+                
+                st.divider()
+                
+                # MACD Chart
+                st.markdown("### MACD (Moving Average Convergence Divergence)")
+                fig_macd = go.Figure()
+                
+                # MACD line
+                fig_macd.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['MACD'],
+                    mode='lines',
+                    name='MACD',
+                    line=dict(color='blue', width=2)
+                ))
+                
+                # Signal line
+                fig_macd.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['Signal'],
+                    mode='lines',
+                    name='Signal',
+                    line=dict(color='orange', width=2)
+                ))
+                
+                # Histogram
+                colors = ['green' if val >= 0 else 'red' for val in df_tech['MACD_Histogram']]
+                fig_macd.add_trace(go.Bar(
+                    x=df_tech['Date'],
+                    y=df_tech['MACD_Histogram'],
+                    name='Histogram',
+                    marker_color=colors,
+                    opacity=0.3
+                ))
+                
+                fig_macd.update_layout(
+                    title="MACD Indicator",
+                    yaxis_title="MACD Value",
+                    xaxis_title="Date",
+                    height=300,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444'),
+                    yaxis=dict(gridcolor='#444')
+                )
+                
+                st.plotly_chart(fig_macd, use_container_width=True)
+                
+                # MACD Signal
+                current_macd = df_tech['MACD'].iloc[-1]
+                current_signal = df_tech['Signal'].iloc[-1]
+                if current_macd > current_signal:
+                    st.success(f"🟢 MACD above Signal - **BULLISH** (Upward momentum)")
+                else:
+                    st.error(f"🔴 MACD below Signal - **BEARISH** (Downward momentum)")
+                
+                st.divider()
+                
+                # Bollinger Bands Chart
+                st.markdown("### Bollinger Bands")
+                fig_bb = go.Figure()
+                
+                # Price
+                fig_bb.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['Close'],
+                    mode='lines',
+                    name='Price',
+                    line=dict(color='white', width=2)
+                ))
+                
+                # Upper band
+                fig_bb.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['BB_Upper'],
+                    mode='lines',
+                    name='Upper Band',
+                    line=dict(color='red', width=1, dash='dash')
+                ))
+                
+                # Middle band
+                fig_bb.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['BB_Middle'],
+                    mode='lines',
+                    name='Middle Band (20 MA)',
+                    line=dict(color='gray', width=1)
+                ))
+                
+                # Lower band
+                fig_bb.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['BB_Lower'],
+                    mode='lines',
+                    name='Lower Band',
+                    line=dict(color='green', width=1, dash='dash'),
+                    fill='tonexty',
+                    fillcolor='rgba(100, 100, 100, 0.2)'
+                ))
+                
+                fig_bb.update_layout(
+                    title="Bollinger Bands",
+                    yaxis_title="Price (USD)",
+                    xaxis_title="Date",
+                    height=400,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444'),
+                    yaxis=dict(gridcolor='#444')
+                )
+                
+                st.plotly_chart(fig_bb, use_container_width=True)
+                
+                # Bollinger Bands Signal
+                latest_close = float(df_tech['Close'].iloc[-1])
+                latest_upper = float(df_tech['BB_Upper'].iloc[-1])
+                latest_lower = float(df_tech['BB_Lower'].iloc[-1])
+                
+                if latest_close > latest_upper:
+                    st.error(f"🔴 Price above upper band (${latest_upper:.2f}) - **OVERBOUGHT**")
+                elif latest_close < latest_lower:
+                    st.success(f"🟢 Price below lower band (${latest_lower:.2f}) - **OVERSOLD**")
+                else:
+                    st.info(f"🟡 Price within bands - **NORMAL RANGE**")
+                
+                # Educational section
+                with st.expander("📚 How to Read Technical Indicators"):
+                    st.markdown("""
+                    ### Understanding Technical Indicators
+                    
+                    #### RSI (Relative Strength Index)
+                    
+                    **What is RSI?**
+                    - Measures momentum on a scale of 0-100
+                    - Shows if stock is overbought or oversold
+                    - Based on recent price changes
+                    
+                    **How to Read RSI:**
+                    - **Above 70** 🔴 = **OVERBOUGHT** (might drop soon, consider selling)
+                    - **Below 30** 🟢 = **OVERSOLD** (might rise soon, consider buying)
+                    - **Around 50** 🟡 = **NEUTRAL** (no strong signal)
+                    
+                    **RSI Divergence:**
+                    - Price makes new high, but RSI doesn't = Bearish signal
+                    - Price makes new low, but RSI doesn't = Bullish signal
+                    
+                    ---
+                    
+                    #### MACD (Moving Average Convergence Divergence)
+                    
+                    **What is MACD?**
+                    - Shows relationship between two moving averages
+                    - Three components: MACD line, Signal line, Histogram
+                    - Identifies momentum and trend changes
+                    
+                    **How to Read MACD:**
+                    - **MACD crosses above Signal** 🟢 = **BUY SIGNAL** (bullish)
+                    - **MACD crosses below Signal** 🔴 = **SELL SIGNAL** (bearish)
+                    - **Histogram growing** = Momentum increasing
+                    - **Histogram shrinking** = Momentum decreasing
+                    
+                    **MACD Colors:**
+                    - 🟢 Green histogram = Positive momentum
+                    - 🔴 Red histogram = Negative momentum
+                    
+                    ---
+                    
+                    #### Bollinger Bands
+                    
+                    **What are Bollinger Bands?**
+                    - Three lines: Upper, Middle (20-day MA), Lower
+                    - Bands widen when volatility increases
+                    - Bands narrow when volatility decreases
+                    
+                    **How to Read Bollinger Bands:**
+                    - **Price touches upper band** 🔴 = Overbought (might reverse down)
+                    - **Price touches lower band** 🟢 = Oversold (might reverse up)
+                    - **Price at middle band** 🟡 = Fair value
+                    - **Bands squeezing** = Big move coming soon
+                    - **Bands widening** = High volatility, big moves happening
+                    
+                    **The "Squeeze":**
+                    - When bands get very narrow
+                    - Stock is consolidating
+                    - Often followed by big breakout (up or down)
+                    
+                    ---
+                    
+                    #### Combining Indicators
+                    
+                    **🟢 Strong Buy Signal:**
+                    - RSI < 30 (oversold)
+                    - MACD crosses above Signal
+                    - Price near lower Bollinger Band
+                    
+                    **🔴 Strong Sell Signal:**
+                    - RSI > 70 (overbought)
+                    - MACD crosses below Signal
+                    - Price near upper Bollinger Band
+                    
+                    **🟡 Wait Signal:**
+                    - Mixed signals from different indicators
+                    - Better to wait for confirmation
+                    """)
+                    
+                    st.info("""
+                    💡 **Pro Tip**: Don't rely on just one indicator! Use multiple indicators 
+                    together for confirmation. When 2-3 indicators agree, the signal is stronger!
+                    """)
+            
+            # Tab 6: Fundamentals
+            with tab6:
+                st.subheader("💼 Company Fundamentals")
+                
+                # Get company info
+                try:
+                    stock_obj = yf.Ticker(ticker)
+                    info_data = stock_obj.info if hasattr(stock_obj, 'info') else {}
+                    
+                    # Company Overview
+                    st.markdown("### 📋 Company Overview")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown(f"**Company Name:** {info_data.get('longName', 'N/A')}")
+                        st.markdown(f"**Sector:** {info_data.get('sector', 'N/A')}")
+                        st.markdown(f"**Industry:** {info_data.get('industry', 'N/A')}")
+                        st.markdown(f"**Country:** {info_data.get('country', 'N/A')}")
+                        st.markdown(f"**Website:** {info_data.get('website', 'N/A')}")
+                    
+                    with col2:
+                        employees = info_data.get('fullTimeEmployees', 'N/A')
+                        if isinstance(employees, int):
+                            st.markdown(f"**Employees:** {employees:,}")
+                        else:
+                            st.markdown(f"**Employees:** N/A")
+                        
+                        st.markdown(f"**Exchange:** {info_data.get('exchange', 'N/A')}")
+                        st.markdown(f"**Currency:** {info_data.get('currency', 'N/A')}")
+                        st.markdown(f"**Quote Type:** {info_data.get('quoteType', 'N/A')}")
+                    
+                    # Business Summary
+                    summary = info_data.get('longBusinessSummary', '')
+                    if summary:
+                        with st.expander("📄 Business Summary"):
+                            st.write(summary)
+                    
+                    st.divider()
+                    
+                    # Key Financial Metrics
+                    st.markdown("### 💰 Key Financial Metrics")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        # Market Cap
+                        market_cap = info_data.get('marketCap')
+                        if market_cap:
+                            if market_cap >= 1e12:
+                                mc_display = f"${market_cap/1e12:.2f}T"
+                            elif market_cap >= 1e9:
+                                mc_display = f"${market_cap/1e9:.2f}B"
+                            else:
+                                mc_display = f"${market_cap/1e6:.2f}M"
+                        else:
+                            mc_display = "N/A"
+                        st.metric("Market Cap", mc_display)
+                        
+                        # Enterprise Value
+                        ev = info_data.get('enterpriseValue')
+                        if ev:
+                            if ev >= 1e12:
+                                ev_display = f"${ev/1e12:.2f}T"
+                            elif ev >= 1e9:
+                                ev_display = f"${ev/1e9:.2f}B"
+                            else:
+                                ev_display = f"${ev/1e6:.2f}M"
+                        else:
+                            ev_display = "N/A"
+                        st.metric("Enterprise Value", ev_display)
+                    
+                    with col2:
+                        # P/E Ratios
+                        pe_trailing = info_data.get('trailingPE')
+                        st.metric("P/E Ratio (TTM)", f"{pe_trailing:.2f}" if pe_trailing else "N/A")
+                        
+                        pe_forward = info_data.get('forwardPE')
+                        st.metric("Forward P/E", f"{pe_forward:.2f}" if pe_forward else "N/A")
+                    
+                    with col3:
+                        # Price to Book & Sales
+                        pb = info_data.get('priceToBook')
+                        st.metric("Price/Book", f"{pb:.2f}" if pb else "N/A")
+                        
+                        ps = info_data.get('priceToSalesTrailing12Months')
+                        st.metric("Price/Sales", f"{ps:.2f}" if ps else "N/A")
+                    
+                    with col4:
+                        # EPS & PEG
+                        eps = info_data.get('trailingEps')
+                        st.metric("EPS (TTM)", f"${eps:.2f}" if eps else "N/A")
+                        
+                        peg = info_data.get('pegRatio')
+                        st.metric("PEG Ratio", f"{peg:.2f}" if peg else "N/A")
+                    
+                    st.divider()
+                    
+                    # Profitability & Performance
+                    st.markdown("### 📊 Profitability & Performance")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        # Margins
+                        profit_margin = info_data.get('profitMargins')
+                        if profit_margin:
+                            st.metric("Profit Margin", f"{profit_margin*100:.2f}%")
+                        else:
+                            st.metric("Profit Margin", "N/A")
+                        
+                        operating_margin = info_data.get('operatingMargins')
+                        if operating_margin:
+                            st.metric("Operating Margin", f"{operating_margin*100:.2f}%")
+                        else:
+                            st.metric("Operating Margin", "N/A")
+                    
+                    with col2:
+                        # Returns
+                        roe = info_data.get('returnOnEquity')
+                        if roe:
+                            st.metric("Return on Equity", f"{roe*100:.2f}%")
+                        else:
+                            st.metric("Return on Equity", "N/A")
+                        
+                        roa = info_data.get('returnOnAssets')
+                        if roa:
+                            st.metric("Return on Assets", f"{roa*100:.2f}%")
+                        else:
+                            st.metric("Return on Assets", "N/A")
+                    
+                    with col3:
+                        # Revenue & Earnings Growth
+                        revenue_growth = info_data.get('revenueGrowth')
+                        if revenue_growth:
+                            st.metric("Revenue Growth", f"{revenue_growth*100:.2f}%")
+                        else:
+                            st.metric("Revenue Growth", "N/A")
+                        
+                        earnings_growth = info_data.get('earningsGrowth')
+                        if earnings_growth:
+                            st.metric("Earnings Growth", f"{earnings_growth*100:.2f}%")
+                        else:
+                            st.metric("Earnings Growth", "N/A")
+                    
+                    with col4:
+                        # Beta & 52 Week Change
+                        beta = info_data.get('beta')
+                        st.metric("Beta", f"{beta:.2f}" if beta else "N/A")
+                        
+                        week52_change = info_data.get('52WeekChange')
+                        if week52_change:
+                            st.metric("52 Week Change", f"{week52_change*100:.2f}%")
+                        else:
+                            st.metric("52 Week Change", "N/A")
+                    
+                    st.divider()
+                    
+                    # Dividends & Financial Health
+                    st.markdown("### 💵 Dividends & Financial Health")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        # Dividend Info
+                        div_rate = info_data.get('dividendRate')
+                        st.metric("Dividend Rate", f"${div_rate:.2f}" if div_rate else "N/A")
+                        
+                        div_yield = info_data.get('dividendYield')
+                        if div_yield:
+                            st.metric("Dividend Yield", f"{div_yield*100:.2f}%")
+                        else:
+                            st.metric("Dividend Yield", "N/A")
+                    
+                    with col2:
+                        # Payout Ratio
+                        payout = info_data.get('payoutRatio')
+                        if payout:
+                            st.metric("Payout Ratio", f"{payout*100:.2f}%")
+                        else:
+                            st.metric("Payout Ratio", "N/A")
+                        
+                        # Ex-Dividend Date
+                        ex_div = info_data.get('exDividendDate')
+                        if ex_div:
+                            from datetime import datetime
+                            ex_div_date = datetime.fromtimestamp(ex_div).strftime('%Y-%m-%d')
+                            st.metric("Ex-Dividend Date", ex_div_date)
+                        else:
+                            st.metric("Ex-Dividend Date", "N/A")
+                    
+                    with col3:
+                        # Debt & Cash
+                        debt_to_equity = info_data.get('debtToEquity')
+                        st.metric("Debt/Equity", f"{debt_to_equity:.2f}" if debt_to_equity else "N/A")
+                        
+                        current_ratio = info_data.get('currentRatio')
+                        st.metric("Current Ratio", f"{current_ratio:.2f}" if current_ratio else "N/A")
+                    
+                    with col4:
+                        # Cash & Book Value
+                        total_cash = info_data.get('totalCash')
+                        if total_cash:
+                            if total_cash >= 1e9:
+                                cash_display = f"${total_cash/1e9:.2f}B"
+                            else:
+                                cash_display = f"${total_cash/1e6:.2f}M"
+                        else:
+                            cash_display = "N/A"
+                        st.metric("Total Cash", cash_display)
+                        
+                        book_value = info_data.get('bookValue')
+                        st.metric("Book Value", f"${book_value:.2f}" if book_value else "N/A")
+                    
+                    st.divider()
+                    
+                    # Analyst Recommendations
+                    st.markdown("### 🎯 Analyst Recommendations")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        target_high = info_data.get('targetHighPrice')
+                        st.metric("Target High", f"${target_high:.2f}" if target_high else "N/A")
+                    
+                    with col2:
+                        target_mean = info_data.get('targetMeanPrice')
+                        st.metric("Target Mean", f"${target_mean:.2f}" if target_mean else "N/A")
+                    
+                    with col3:
+                        target_low = info_data.get('targetLowPrice')
+                        st.metric("Target Low", f"${target_low:.2f}" if target_low else "N/A")
+                    
+                    recommendation = info_data.get('recommendationKey', 'N/A')
+                    if recommendation != 'N/A':
+                        if recommendation in ['buy', 'strong_buy']:
+                            st.success(f"📈 Analyst Recommendation: **{recommendation.upper().replace('_', ' ')}**")
+                        elif recommendation == 'hold':
+                            st.info(f"📊 Analyst Recommendation: **{recommendation.upper()}**")
+                        else:
+                            st.warning(f"📉 Analyst Recommendation: **{recommendation.upper().replace('_', ' ')}**")
+                    
+                except Exception as e:
+                    st.error("Unable to load fundamental data. This may be due to API limitations.")
+                    st.info(f"Error details: {str(e)}")
+                
+                # Educational section
+                with st.expander("📚 Understanding Fundamental Metrics"):
+                    st.markdown("""
+                    ### Key Fundamental Metrics Explained
+                    
+                    #### Valuation Metrics
+                    
+                    **P/E Ratio (Price-to-Earnings)**
+                    - Price per share ÷ Earnings per share
+                    - **Low P/E** (< 15) = Potentially undervalued or slow growth
+                    - **High P/E** (> 25) = Potentially overvalued or high growth
+                    - Compare to industry average for context
+                    
+                    **PEG Ratio**
+                    - P/E Ratio ÷ Earnings Growth Rate
+                    - **< 1.0** = Potentially undervalued
+                    - **> 2.0** = Potentially overvalued
+                    - Better than P/E for growth stocks
+                    
+                    **Price/Book (P/B)**
+                    - Market value ÷ Book value
+                    - **< 1.0** = Trading below book value (value opportunity)
+                    - **> 3.0** = Premium valuation
+                    
+                    **Price/Sales (P/S)**
+                    - Useful for unprofitable companies
+                    - Compare within same industry
+                    
+                    ---
+                    
+                    #### Profitability Metrics
+                    
+                    **Profit Margin**
+                    - Net income ÷ Revenue
+                    - **> 10%** = Good profitability
+                    - **> 20%** = Excellent profitability
+                    
+                    **ROE (Return on Equity)**
+                    - Net income ÷ Shareholder equity
+                    - **> 15%** = Good
+                    - **> 20%** = Excellent
+                    - Shows how efficiently company uses investments
+                    
+                    **ROA (Return on Assets)**
+                    - Net income ÷ Total assets
+                    - **> 5%** = Good
+                    - **> 10%** = Excellent
+                    
+                    ---
+                    
+                    #### Growth Metrics
+                    
+                    **Revenue Growth**
+                    - Year-over-year revenue increase
+                    - **> 10%** = Strong growth
+                    - Consistency matters more than one-time spikes
+                    
+                    **Earnings Growth**
+                    - Year-over-year earnings increase
+                    - **> 15%** = Strong growth
+                    - Should match or exceed revenue growth
+                    
+                    ---
+                    
+                    #### Financial Health
+                    
+                    **Debt/Equity Ratio**
+                    - Total debt ÷ Total equity
+                    - **< 0.5** = Very safe
+                    - **0.5-1.0** = Reasonable
+                    - **> 2.0** = High debt, risky
+                    
+                    **Current Ratio**
+                    - Current assets ÷ Current liabilities
+                    - **> 1.5** = Healthy liquidity
+                    - **< 1.0** = May struggle with short-term obligations
+                    
+                    **Beta**
+                    - Measures volatility vs market
+                    - **< 1.0** = Less volatile than market
+                    - **= 1.0** = Same as market
+                    - **> 1.0** = More volatile than market
+                    
+                    ---
+                    
+                    #### Dividend Metrics
+                    
+                    **Dividend Yield**
+                    - Annual dividend ÷ Stock price
+                    - **2-6%** = Typical for dividend stocks
+                    - **> 8%** = Very high (check if sustainable)
+                    
+                    **Payout Ratio**
+                    - Dividends ÷ Earnings
+                    - **< 60%** = Sustainable
+                    - **> 80%** = May be at risk if earnings drop
+                    
+                    ---
+                    
+                    #### How to Use This Data
+                    
+                    **Value Investing (Buy undervalued stocks)**
+                    - Low P/E, PEG < 1.0, P/B < 1.5
+                    - High ROE, good margins
+                    - Low debt
+                    
+                    **Growth Investing (Buy high-growth stocks)**
+                    - High revenue & earnings growth
+                    - May have high P/E (paying for future growth)
+                    - Strong margins improving over time
+                    
+                    **Income Investing (Buy dividend stocks)**
+                    - High dividend yield (but sustainable)
+                    - Low payout ratio (room to maintain/grow)
+                    - Stable, profitable company
+                    
+                    **Quality Investing (Buy best companies)**
+                    - High ROE & ROA
+                    - Consistent growth
+                    - Low debt
+                    - Strong competitive position
+                    """)
+                    
+                    st.info("""
+                    💡 **Pro Tip**: Don't look at metrics in isolation! A "high" P/E might be 
+                    justified for a fast-growing company. Always compare to:
+                    - Company's historical averages
+                    - Industry peers
+                    - Market average
+                    - Growth rate (use PEG ratio)
+                    """)
+            
+            # Tab 7: Analysis (was Tab 5)
+            
+            # Tab 7: Analysis
+            with tab7:
                 st.subheader(f"Stock Analysis Summary ({period})")
                 
                 # Calculate statistics

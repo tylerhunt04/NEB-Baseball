@@ -64,12 +64,20 @@ def download_stock_data(ticker, period):
             )
             
             if not df.empty:
+                # Fix multi-level columns issue
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.droplevel(1)
+                
                 # Reset index and ensure Date column is properly named
-                if 'Date' not in df.columns:
-                    df = df.reset_index()
-                    # Rename the date column to 'Date' if it has a different name
-                    if df.columns[0] in ['index', 'Datetime']:
-                        df = df.rename(columns={df.columns[0]: 'Date'})
+                df = df.reset_index()
+                
+                # Make sure we have the right column names
+                if 'Date' not in df.columns and 'Datetime' in df.columns:
+                    df = df.rename(columns={'Datetime': 'Date'})
+                elif 'Date' not in df.columns:
+                    # First column is probably the date
+                    df = df.rename(columns={df.columns[0]: 'Date'})
+                
                 return df, None
             else:
                 return None, "No data found for this ticker"
@@ -118,6 +126,9 @@ if analyze_button or ticker:
             
         else:
             st.success(f"✅ Successfully loaded {len(df)} days of data for {ticker} ({period})")
+            
+            # Debug: Show column names (can remove later)
+            # st.write("Columns:", df.columns.tolist())
             
             # Get company name
             company_name = ticker
@@ -237,15 +248,22 @@ if analyze_button or ticker:
                 
                 # Create volume chart with better colors - use vectorized operation
                 vol_df = df.copy()
-                vol_df['color'] = 'green'
-                vol_df.loc[vol_df['Close'] < vol_df['Open'], 'color'] = 'red'
+                
+                # Check if we have the necessary columns
+                if 'Close' in vol_df.columns and 'Open' in vol_df.columns:
+                    vol_df['color'] = 'green'
+                    vol_df.loc[vol_df['Close'] < vol_df['Open'], 'color'] = 'red'
+                    colors = vol_df['color'].tolist()
+                else:
+                    # Default to blue if we don't have Open/Close
+                    colors = 'lightblue'
                 
                 fig = go.Figure()
                 fig.add_trace(go.Bar(
                     x=vol_df['Date'],
                     y=vol_df['Volume'],
                     name='Volume',
-                    marker_color=vol_df['color']
+                    marker_color=colors
                 ))
                 
                 fig.update_layout(

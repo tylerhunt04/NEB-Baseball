@@ -38,31 +38,28 @@ with col2:
 analyze_button = st.sidebar.button("📊 Analyze Stock", type="primary")
 
 # Cache the download function with longer TTL to avoid rate limits
-@st.cache_data(ttl=600)  # Cache for 10 minutes
+@st.cache_data(ttl=600)
 def download_stock_data(ticker, start, end):
-    """
-    Download stock data with retry logic for rate limiting
-    """
+    """Download stock data with retry logic"""
     max_retries = 3
-    retry_delay = 5  # seconds
+    retry_delay = 5
     
     for attempt in range(max_retries):
         try:
-            # Add a small delay before each request to be polite
             if attempt > 0:
                 time.sleep(retry_delay)
             
-            # Download data
             df = yf.download(
                 ticker, 
                 start=start, 
                 end=end, 
                 progress=False,
-                # These headers can help avoid rate limiting
                 threads=False
             )
             
             if not df.empty:
+                # Reset index to make date a column for easier handling
+                df = df.reset_index()
                 return df, None
             else:
                 return None, "No data found for this ticker"
@@ -70,12 +67,11 @@ def download_stock_data(ticker, start, end):
         except Exception as e:
             error_msg = str(e)
             
-            # Check if it's a rate limit error
             if "429" in error_msg or "Too Many Requests" in error_msg:
                 if attempt < max_retries - 1:
-                    st.warning(f"⏳ Rate limited. Retrying in {retry_delay} seconds... (Attempt {attempt + 1}/{max_retries})")
+                    st.warning(f"⏳ Rate limited. Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff
+                    retry_delay *= 2
                     continue
                 else:
                     return None, "Rate limited. Please wait a few minutes and try again."
@@ -87,63 +83,57 @@ def download_stock_data(ticker, start, end):
 # Main content
 if analyze_button or ticker:
     try:
-        # Download data with rate limiting protection
         with st.spinner(f"Loading data for {ticker}..."):
             df, error = download_stock_data(ticker, start_date, end_date)
         
         if error:
             st.error(f"❌ {error}")
             
-            if "Rate limited" in error or "429" in error:
+            if "Rate limited" in error:
                 st.warning("""
                 **You've been rate limited by Yahoo Finance.**
                 
                 **Solutions:**
-                1. ⏰ Wait 2-3 minutes before trying again
-                2. 🔄 Clear the cache: Press 'C' on your keyboard or click the menu → Clear cache
-                3. 🎯 Try using a different ticker first (the app caches results)
-                4. 📉 Use a shorter date range to reduce data load
-                
-                **Why this happens:**
-                Yahoo Finance limits how many requests you can make per minute.
-                The app now caches data for 10 minutes to help avoid this.
+                - ⏰ Wait 2-3 minutes before trying again
+                - 🔄 Press 'C' to clear cache
+                - 🎯 Try a different ticker
+                - 📉 Use a shorter date range
                 """)
             else:
-                st.info("💡 Try these tickers: AAPL, MSFT, GOOGL, AMZN, TSLA")
+                st.info("💡 Try: AAPL, MSFT, GOOGL, AMZN, TSLA")
             
         elif df is None or df.empty:
-            st.error(f"❌ No data found for ticker '{ticker}'. Please check the symbol and try again.")
-            st.info("💡 Try these tickers: AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA")
+            st.error(f"❌ No data found for '{ticker}'")
+            st.info("💡 Try: AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA")
             
         else:
-            # Success! Show a success message
             st.success(f"✅ Successfully loaded {len(df)} days of data for {ticker}")
             
-            # Get additional info (with error handling)
+            # Get company name
             company_name = ticker
             try:
                 stock = yf.Ticker(ticker)
                 info = stock.info if hasattr(stock, 'info') else {}
                 company_name = info.get('longName', ticker)
             except:
-                pass  # Just use ticker if we can't get name
+                pass
             
             st.header(f"{company_name} ({ticker})")
             
-            # Key metrics at top
+            # Key metrics
             col1, col2, col3, col4 = st.columns(4)
             
-            latest_close = df['Close'].iloc[-1]
-            prev_close = df['Close'].iloc[-2] if len(df) > 1 else latest_close
+            latest_close = float(df['Close'].iloc[-1])
+            prev_close = float(df['Close'].iloc[-2]) if len(df) > 1 else latest_close
             price_change = latest_close - prev_close
             price_change_pct = (price_change / prev_close) * 100
             
             col1.metric("Latest Close", f"${latest_close:.2f}", 
                        f"{price_change:.2f} ({price_change_pct:.2f}%)")
             
-            col2.metric("Period High", f"${df['High'].max():.2f}")
-            col3.metric("Period Low", f"${df['Low'].min():.2f}")
-            col4.metric("Avg Volume", f"{df['Volume'].mean()/1e6:.2f}M")
+            col2.metric("Period High", f"${float(df['High'].max()):.2f}")
+            col3.metric("Period Low", f"${float(df['Low'].min()):.2f}")
+            col4.metric("Avg Volume", f"{float(df['Volume'].mean())/1e6:.2f}M")
             
             st.divider()
             
@@ -159,10 +149,13 @@ if analyze_button or ticker:
             # Tab 1: Raw Data
             with tab1:
                 st.subheader("Historical Stock Data")
-                st.dataframe(df, use_container_width=True)
+                
+                # Display without special formatting
+                display_df = df.copy()
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
                 
                 # Download CSV
-                csv = df.to_csv()
+                csv = df.to_csv(index=False)
                 st.download_button(
                     label="📥 Download as CSV",
                     data=csv,
@@ -176,7 +169,7 @@ if analyze_button or ticker:
                 
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
-                    x=df.index,
+                    x=df['Date'],
                     y=df['Close'],
                     mode='lines',
                     name='Close Price',
@@ -193,10 +186,9 @@ if analyze_button or ticker:
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Show high and low
                 col1, col2 = st.columns(2)
-                col1.metric("Period High", f"${df['High'].max():.2f}")
-                col2.metric("Period Low", f"${df['Low'].min():.2f}")
+                col1.metric("Period High", f"${float(df['High'].max()):.2f}")
+                col2.metric("Period Low", f"${float(df['Low'].min()):.2f}")
             
             # Tab 3: Volume
             with tab3:
@@ -204,7 +196,7 @@ if analyze_button or ticker:
                 
                 fig = go.Figure()
                 fig.add_trace(go.Bar(
-                    x=df.index,
+                    x=df['Date'],
                     y=df['Volume'],
                     name='Volume',
                     marker_color='lightblue'
@@ -224,7 +216,6 @@ if analyze_button or ticker:
             with tab4:
                 st.subheader("Moving Averages Analysis")
                 
-                # MA selector
                 ma_days = st.slider("Select Moving Average Period (days)", 
                                    min_value=5, max_value=200, value=20, step=5)
                 
@@ -234,18 +225,16 @@ if analyze_button or ticker:
                 
                 fig = go.Figure()
                 
-                # Close price
                 fig.add_trace(go.Scatter(
-                    x=df_copy.index,
+                    x=df_copy['Date'],
                     y=df_copy['Close'],
                     mode='lines',
                     name='Close Price',
                     line=dict(color='blue', width=1)
                 ))
                 
-                # Moving average
                 fig.add_trace(go.Scatter(
-                    x=df_copy.index,
+                    x=df_copy['Date'],
                     y=df_copy['MA'],
                     mode='lines',
                     name=f'{ma_days}-Day MA',
@@ -267,8 +256,12 @@ if analyze_button or ticker:
                 st.subheader("Stock Analysis Summary")
                 
                 # Calculate statistics
-                total_return = ((df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100
-                volatility = df['Close'].pct_change().std() * 100
+                first_close = float(df['Close'].iloc[0])
+                last_close = float(df['Close'].iloc[-1])
+                total_return = ((last_close - first_close) / first_close) * 100
+                
+                daily_returns = df['Close'].pct_change()
+                volatility = float(daily_returns.std()) * 100
                 
                 col1, col2, col3 = st.columns(3)
                 
@@ -278,13 +271,13 @@ if analyze_button or ticker:
                 
                 st.divider()
                 
-                # Show daily returns
+                # Daily returns histogram
                 st.subheader("Daily Returns Distribution")
-                daily_returns = df['Close'].pct_change().dropna() * 100
+                daily_returns_pct = daily_returns.dropna() * 100
                 
                 fig = go.Figure()
                 fig.add_trace(go.Histogram(
-                    x=daily_returns,
+                    x=daily_returns_pct,
                     nbinsx=50,
                     name='Daily Returns',
                     marker_color='lightgreen'
@@ -300,16 +293,16 @@ if analyze_button or ticker:
                 st.plotly_chart(fig, use_container_width=True)
                 
                 # Recent performance
-                st.subheader("Recent Performance")
-                recent_data = df.tail(10)[['Open', 'High', 'Low', 'Close', 'Volume']]
-                st.dataframe(recent_data, use_container_width=True)
+                st.subheader("Recent Performance (Last 10 Days)")
+                recent_data = df.tail(10)[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']].copy()
+                st.dataframe(recent_data, use_container_width=True, hide_index=True)
                 
     except Exception as e:
         st.error(f"❌ Unexpected error: {str(e)}")
         st.info("""
         **Troubleshooting:**
         1. Wait a few minutes and try again
-        2. Clear cache: Press 'C' on your keyboard
+        2. Press 'C' to clear cache
         3. Try a different ticker
         4. Check your internet connection
         """)
@@ -322,22 +315,17 @@ else:
     ### Popular Stock Tickers:
     - **AAPL** - Apple Inc.
     - **MSFT** - Microsoft Corporation
-    - **GOOGL** - Alphabet Inc. (Google)
+    - **GOOGL** - Alphabet Inc.
     - **AMZN** - Amazon.com Inc.
     - **TSLA** - Tesla Inc.
     - **META** - Meta Platforms Inc.
     - **NVDA** - NVIDIA Corporation
-    - **JPM** - JPMorgan Chase & Co.
-    - **V** - Visa Inc.
-    - **WMT** - Walmart Inc.
     
-    ### 💡 Tips to Avoid Rate Limiting:
-    - The app caches data for 10 minutes
-    - Don't refresh too frequently
-    - Wait 2-3 minutes between different stocks
-    - Use shorter date ranges when possible
+    ### 💡 Tips:
+    - Data is cached for 10 minutes
+    - Wait 30-60 seconds between different stocks
+    - Use shorter date ranges to load faster
     """)
 
-# Footer
 st.divider()
-st.caption("📊 Data provided by Yahoo Finance | Cached for 10 minutes to avoid rate limiting")
+st.caption("📊 Data from Yahoo Finance | Cached for 10 minutes")

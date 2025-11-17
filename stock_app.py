@@ -1,4 +1,3 @@
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -271,4 +270,3 @@ else:
 # Footer
 st.divider()
 st.caption("Data provided by Yahoo Finance. This is for educational purposes only and not financial advice.")
-EOF

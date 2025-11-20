@@ -33,43 +33,6 @@ st.markdown("""
         background: linear-gradient(to bottom, #0f0f23 0%, #1a1a2e 100%);
     }
     
-    /* Professional Header */
-    .professional-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2.5rem 3rem;
-        border-radius: 20px;
-        margin-bottom: 2rem;
-        box-shadow: 0 10px 40px rgba(102, 126, 234, 0.4);
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .professional-header::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        right: -10%;
-        width: 300px;
-        height: 300px;
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 50%;
-    }
-    
-    .app-title {
-        color: white;
-        font-size: 2.8rem;
-        font-weight: 700;
-        margin: 0;
-        letter-spacing: -1px;
-    }
-    
-    .app-subtitle {
-        color: rgba(255, 255, 255, 0.8);
-        font-size: 1.1rem;
-        margin-top: 0.5rem;
-        font-weight: 300;
-    }
-    
     /* Stock Info Card */
     .stock-card {
         background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
@@ -319,14 +282,6 @@ st.markdown("""
         border-top-color: #667eea !important;
     }
 </style>
-""", unsafe_allow_html=True)
-
-# Professional Header
-st.markdown("""
-<div class="professional-header">
-    <h1 class="app-title">📊 Stock Analyzer Pro</h1>
-    <p class="app-subtitle">Professional-Grade Market Analysis & Intelligence Platform</p>
-</div>
 """, unsafe_allow_html=True)
 
 # Sidebar inputs

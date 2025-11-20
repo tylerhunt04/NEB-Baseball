@@ -13,6 +13,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Initialize session state for watchlist
+if 'watchlist' not in st.session_state:
+    st.session_state.watchlist = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']  # Default watchlist
+
 # Professional custom CSS
 st.markdown("""
 <style>
@@ -281,29 +285,86 @@ st.markdown("""
     .stSpinner > div {
         border-top-color: #667eea !important;
     }
+    
+    /* Watchlist Styling */
+    .watchlist-item {
+        background: rgba(255, 255, 255, 0.05);
+        padding: 0.5rem 1rem;
+        margin: 0.25rem 0;
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Sidebar inputs
-st.sidebar.markdown("### 🎯 Analysis Configuration")
+st.sidebar.markdown("### Analysis Configuration")
 st.sidebar.markdown("<div style='height: 2px; background: linear-gradient(to right, transparent, #667eea, transparent); margin: 1rem 0;'></div>", unsafe_allow_html=True)
 
+# Watchlist Section
+st.sidebar.markdown("#### Watchlist")
+
+# Select from watchlist
+if st.session_state.watchlist:
+    selected_from_watchlist = st.sidebar.selectbox(
+        "Select from Watchlist",
+        [""] + st.session_state.watchlist,
+        key="watchlist_select"
+    )
+else:
+    selected_from_watchlist = ""
+    st.sidebar.info("Your watchlist is empty. Add stocks below.")
+
+st.sidebar.markdown("<div style='height: 1px; background: rgba(255,255,255,0.1); margin: 0.5rem 0;'></div>", unsafe_allow_html=True)
+
 # Stock input with icon
-st.sidebar.markdown("#### 📌 Stock Selection")
-ticker = st.sidebar.text_input(
+st.sidebar.markdown("#### Stock Selection")
+ticker_input = st.sidebar.text_input(
     "",
-    value="AAPL",
+    value=selected_from_watchlist if selected_from_watchlist else "AAPL",
     placeholder="Enter ticker (e.g., AAPL, GOOGL, MSFT)",
-    help="Enter a valid stock ticker symbol"
+    help="Enter a valid stock ticker symbol",
+    key="ticker_input"
 ).upper()
 
+# Use selected ticker from watchlist or manual input
+ticker = selected_from_watchlist.upper() if selected_from_watchlist else ticker_input
+
+# Watchlist management
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    if st.button("Add to Watchlist", use_container_width=True):
+        if ticker and ticker not in st.session_state.watchlist:
+            st.session_state.watchlist.append(ticker)
+            st.success(f"Added {ticker}")
+            st.rerun()
+        elif ticker in st.session_state.watchlist:
+            st.warning("Already in watchlist")
+
+with col2:
+    if st.button("Remove", use_container_width=True):
+        if ticker in st.session_state.watchlist:
+            st.session_state.watchlist.remove(ticker)
+            st.success(f"Removed {ticker}")
+            st.rerun()
+        else:
+            st.warning("Not in watchlist")
+
+# Display current watchlist
+if st.session_state.watchlist:
+    with st.sidebar.expander("View Watchlist", expanded=False):
+        for stock in st.session_state.watchlist:
+            st.markdown(f"• {stock}")
+
 # Analyze button right after ticker input
-analyze_button = st.sidebar.button("📊 Analyze Stock", type="primary", use_container_width=True)
+analyze_button = st.sidebar.button("Analyze Stock", type="primary", use_container_width=True)
 
 st.sidebar.markdown("<div style='height: 2px; background: linear-gradient(to right, transparent, #667eea, transparent); margin: 1rem 0;'></div>", unsafe_allow_html=True)
 
 # Period selection with buttons
-st.sidebar.markdown("#### 📅 Time Period")
+st.sidebar.markdown("#### Time Period")
 period = st.sidebar.radio(
     "",
     ["1M", "3M", "6M", "1Y", "2Y", "5Y", "MAX"],
@@ -365,7 +426,7 @@ def download_stock_data(ticker, period):
             
             if "429" in error_msg or "Too Many Requests" in error_msg:
                 if attempt < max_retries - 1:
-                    st.warning(f"⏳ Rate limited. Retrying in {retry_delay} seconds...")
+                    st.warning(f"Rate limited. Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)
                     retry_delay *= 2
                     continue
@@ -383,27 +444,27 @@ if analyze_button or ticker:
             df, error = download_stock_data(ticker, period_map[period])
         
         if error:
-            st.error(f"❌ {error}")
+            st.error(f"Error: {error}")
             
             if "Rate limited" in error:
                 st.warning("""
                 **You've been rate limited by Yahoo Finance.**
                 
                 **Solutions:**
-                - ⏰ Wait 2-3 minutes before trying again
-                - 🔄 Press 'C' to clear cache
-                - 🎯 Try a different ticker
-                - 📉 Use a shorter time period
+                - Wait 2-3 minutes before trying again
+                - Press 'C' to clear cache
+                - Try a different ticker
+                - Use a shorter time period
                 """)
             else:
-                st.info("💡 Try: AAPL, MSFT, GOOGL, AMZN, TSLA")
+                st.info("Try: AAPL, MSFT, GOOGL, AMZN, TSLA")
             
         elif df is None or df.empty:
-            st.error(f"❌ No data found for '{ticker}'")
-            st.info("💡 Try: AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA")
+            st.error(f"No data found for '{ticker}'")
+            st.info("Try: AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA")
             
         else:
-            st.success(f"✅ Successfully loaded {len(df)} days of data for {ticker} ({period})")
+            st.success(f"Successfully loaded {len(df)} days of data for {ticker} ({period})")
             
             # Get company info
             company_name = ticker
@@ -427,19 +488,19 @@ if analyze_button or ticker:
             # Determine signal based on price change
             if price_change_pct > 2:
                 signal_class = "signal-strong-buy"
-                signal_text = "🚀 STRONG BUY"
+                signal_text = "STRONG BUY"
             elif price_change_pct > 0:
                 signal_class = "signal-buy"
-                signal_text = "📈 BULLISH"
+                signal_text = "BULLISH"
             elif price_change_pct > -2:
                 signal_class = "signal-hold"
-                signal_text = "📊 HOLD"
+                signal_text = "HOLD"
             elif price_change_pct > -5:
                 signal_class = "signal-sell"
-                signal_text = "📉 BEARISH"
+                signal_text = "BEARISH"
             else:
                 signal_class = "signal-strong-sell"
-                signal_text = "🔻 STRONG SELL"
+                signal_text = "STRONG SELL"
             
             # Format market cap
             mc_display = "N/A"
@@ -551,701 +612,44 @@ if analyze_button or ticker:
                 
                 if drawdown_from_high <= -20:
                     st.error(f"""
-                    🚨 **DEEP CORRECTION ALERT** - {ticker} is down **{abs(drawdown_from_high):.1f}%** from 52-week high (${week_52_high:.2f})
+                    **DEEP CORRECTION ALERT** - {ticker} is down **{abs(drawdown_from_high):.1f}%** from 52-week high (${week_52_high:.2f})
                     
                     {category_msg}
                     
-                    💡 **Historical Context**: Deep corrections (20%+) often present the best long-term entry points for quality companies. 
+                    **Historical Context**: Deep corrections (20%+) often present the best long-term entry points for quality companies. 
                     See **Market Insights tab** for detailed analysis and opportunity score.
                     """)
                 elif drawdown_from_high <= -15:
                     st.warning(f"""
-                    ⚠️ **CORRECTION TERRITORY** - {ticker} is down **{abs(drawdown_from_high):.1f}%** from 52-week high (${week_52_high:.2f})
+                    **CORRECTION TERRITORY** - {ticker} is down **{abs(drawdown_from_high):.1f}%** from 52-week high (${week_52_high:.2f})
                     
                     {category_msg}
                     
-                    💡 Check the **Market Insights tab** for opportunity analysis and buying strategy.
+                    Check the **Market Insights tab** for opportunity analysis and buying strategy.
                     """)
                 else:
                     st.info(f"""
-                    📊 **PULLBACK DETECTED** - {ticker} is down **{abs(drawdown_from_high):.1f}%** from 52-week high (${week_52_high:.2f})
+                    **PULLBACK DETECTED** - {ticker} is down **{abs(drawdown_from_high):.1f}%** from 52-week high (${week_52_high:.2f})
                     
                     {category_msg}
                     
-                    💡 Monitor for further weakness. See **Market Insights tab** for analysis.
+                    Monitor for further weakness. See **Market Insights tab** for analysis.
                     """)
             
-            # Create tabs
-            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-                "📊 Raw Data", 
-                "📈 Price Chart", 
-                "📊 Volume", 
-                "📉 Moving Averages",
-                "🔧 Technical Indicators",
-                "💼 Fundamentals",
-                "💰 Analysis",
-                "🎯 Market Insights"
+            # Create tabs - Fundamentals first, removed Raw Data
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+                "Fundamentals",
+                "Price Chart", 
+                "Volume", 
+                "Moving Averages",
+                "Technical Indicators",
+                "Analysis",
+                "Market Insights"
             ])
             
-            # Tab 1: Raw Data
+            # Tab 1: Fundamentals (moved from tab 6)
             with tab1:
-                st.subheader(f"Historical Stock Data ({period})")
-                
-                display_df = df.copy()
-                st.dataframe(display_df, use_container_width=True, hide_index=True)
-                
-                # Download CSV
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label="📥 Download as CSV",
-                    data=csv,
-                    file_name=f"{ticker}_{period}_data.csv",
-                    mime="text/csv"
-                )
-            
-            # Tab 2: Price Chart
-            with tab2:
-                st.subheader(f"Closing Price Chart ({period})")
-                
-                # Chart type selector
-                chart_type = st.radio("Chart Type:", ["Line Chart", "Candlestick Chart"], horizontal=True)
-                
-                # Ensure we have the right data
-                chart_df = df.copy()
-                
-                fig = go.Figure()
-                
-                if chart_type == "Candlestick Chart":
-                    # Candlestick chart
-                    fig.add_trace(go.Candlestick(
-                        x=chart_df['Date'],
-                        open=chart_df['Open'],
-                        high=chart_df['High'],
-                        low=chart_df['Low'],
-                        close=chart_df['Close'],
-                        name='Price'
-                    ))
-                else:
-                    # Line chart
-                    fig.add_trace(go.Scatter(
-                        x=chart_df['Date'],
-                        y=chart_df['Close'],
-                        mode='lines+markers',
-                        name='Close Price',
-                        line=dict(color='#00ff00', width=3),
-                        marker=dict(size=4, color='#00ff00')
-                    ))
-                
-                fig.update_layout(
-                    title=f"{ticker} Stock Prices - {period}",
-                    xaxis_title="Date",
-                    yaxis_title="Price (USD)",
-                    hovermode='x unified',
-                    height=500,
-                    plot_bgcolor='#1e1e1e',
-                    paper_bgcolor='#1e1e1e',
-                    font=dict(color='white'),
-                    xaxis=dict(
-                        gridcolor='#444',
-                        showgrid=True,
-                        rangeslider=dict(visible=False)
-                    ),
-                    yaxis=dict(
-                        gridcolor='#444',
-                        showgrid=True
-                    )
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                col1, col2 = st.columns(2)
-                col1.metric("Period High", f"${float(df['High'].max()):.2f}")
-                col2.metric("Period Low", f"${float(df['Low'].min()):.2f}")
-                
-                # Educational section
-                with st.expander("📚 How to Read This Chart"):
-                    st.markdown("""
-                    ### Understanding Price Charts
-                    
-                    **What am I looking at?**
-                    - The line/candles show the stock's price over time
-                    - **Line Chart**: Simple closing prices connected
-                    - **Candlestick Chart**: Shows Open, High, Low, Close for each day
-                    
-                    #### What to Look For:
-                    
-                    **🟢 Bullish Patterns (Good Signs)**
-                    - **Uptrend**: Price steadily going up over time
-                    - **Higher Highs**: Each peak is higher than the last
-                    - **Higher Lows**: Each dip is higher than the last
-                    - **Green Candles**: More green (up) days than red (down) days
-                    
-                    **🔴 Bearish Patterns (Warning Signs)**
-                    - **Downtrend**: Price steadily going down
-                    - **Lower Highs**: Each peak is lower than the last
-                    - **Lower Lows**: Each dip is lower than the last
-                    - **Red Candles**: More red (down) days than green (up) days
-                    
-                    **🟡 Sideways/Consolidation**
-                    - Price moving horizontally
-                    - No clear direction
-                    - Often happens before a big move
-                    
-                    #### Candlestick Colors:
-                    """)
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.success("""
-                        **🟢 Green Candle = Bullish**
-                        - Close > Open
-                        - Buyers won that day
-                        - Price went up
-                        """)
-                    with col2:
-                        st.error("""
-                        **🔴 Red Candle = Bearish**
-                        - Close < Open
-                        - Sellers won that day
-                        - Price went down
-                        """)
-                    
-                    st.info("""
-                    💡 **Quick Tip**: Look at the overall pattern, not individual days. 
-                    Is the general direction up, down, or sideways?
-                    """)
-            
-            # Tab 3: Volume
-            with tab3:
-                st.subheader(f"Trading Volume ({period})")
-                
-                # Create volume chart with better colors - use vectorized operation
-                vol_df = df.copy()
-                
-                # Check if we have the necessary columns
-                if 'Close' in vol_df.columns and 'Open' in vol_df.columns:
-                    vol_df['color'] = 'green'
-                    vol_df.loc[vol_df['Close'] < vol_df['Open'], 'color'] = 'red'
-                    colors = vol_df['color'].tolist()
-                else:
-                    # Default to blue if we don't have Open/Close
-                    colors = 'lightblue'
-                
-                fig = go.Figure()
-                fig.add_trace(go.Bar(
-                    x=vol_df['Date'],
-                    y=vol_df['Volume'],
-                    name='Volume',
-                    marker_color=colors
-                ))
-                
-                fig.update_layout(
-                    title=f"{ticker} Trading Volume - {period}",
-                    xaxis_title="Date",
-                    yaxis_title="Volume",
-                    hovermode='x unified',
-                    height=500,
-                    plot_bgcolor='#1e1e1e',
-                    paper_bgcolor='#1e1e1e',
-                    font=dict(color='white'),
-                    xaxis=dict(gridcolor='#444', showgrid=True),
-                    yaxis=dict(gridcolor='#444', showgrid=True)
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Educational section
-                with st.expander("📚 How to Read Volume"):
-                    st.markdown("""
-                    ### Understanding Trading Volume
-                    
-                    **What is Volume?**
-                    - Number of shares traded each day
-                    - Shows how much interest there is in the stock
-                    - **Tall bars** = High volume (lots of activity)
-                    - **Short bars** = Low volume (little activity)
-                    
-                    #### Volume Bar Colors:
-                    """)
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.success("""
-                        **🟢 Green Bar**
-                        - Price went UP that day
-                        - Close > Open
-                        - Buyers were stronger
-                        """)
-                    with col2:
-                        st.error("""
-                        **🔴 Red Bar**
-                        - Price went DOWN that day
-                        - Close < Open
-                        - Sellers were stronger
-                        """)
-                    
-                    st.markdown("""
-                    #### What to Look For:
-                    
-                    **🟢 Best Signals (Strong Buy)**
-                    - **Tall GREEN bars** when price is rising
-                    - Means: Strong buying pressure, rally is real
-                    - More greens than reds = Bullish sentiment
-                    
-                    **🔴 Warning Signals (Strong Sell)**
-                    - **Tall RED bars** when price is falling
-                    - Means: Strong selling pressure, decline is serious
-                    - More reds than greens = Bearish sentiment
-                    
-                    **🟡 Caution Signals**
-                    - **Short bars** on price increases = Weak rally, might reverse
-                    - **Short bars** on price decreases = Minor dip, not concerning
-                    
-                    #### Volume Patterns:
-                    
-                    **Volume Spike** 📈
-                    - Sudden very tall bar (2-3x normal)
-                    - Usually triggered by news or events
-                    - Often signals trend change or acceleration
-                    
-                    **Increasing Volume** 📊
-                    - Bars getting taller over time
-                    - Shows growing interest
-                    - Confirms the current trend
-                    
-                    **Decreasing Volume** 📉
-                    - Bars getting shorter
-                    - Shows declining interest
-                    - May signal consolidation before next move
-                    """)
-                    
-                    st.info("""
-                    💡 **Quick Tip**: Volume should **confirm** price movement. 
-                    Price up + High volume = Good ✅ | Price up + Low volume = Suspicious ⚠️
-                    """)
-            
-            # Tab 4: Moving Averages
-            with tab4:
-                st.subheader("Moving Averages Analysis")
-                
-                ma_days = st.slider("Select Moving Average Period (days)", 
-                                   min_value=5, max_value=200, value=20, step=5)
-                
-                # Calculate moving average
-                df_copy = df.copy()
-                df_copy['MA'] = df_copy['Close'].rolling(window=ma_days).mean()
-                
-                fig = go.Figure()
-                
-                fig.add_trace(go.Scatter(
-                    x=df_copy['Date'],
-                    y=df_copy['Close'],
-                    mode='lines',
-                    name='Close Price',
-                    line=dict(color='#00aaff', width=2)
-                ))
-                
-                fig.add_trace(go.Scatter(
-                    x=df_copy['Date'],
-                    y=df_copy['MA'],
-                    mode='lines',
-                    name=f'{ma_days}-Day MA',
-                    line=dict(color='#ff6600', width=3, dash='dash')
-                ))
-                
-                fig.update_layout(
-                    title=f"{ticker} Price with {ma_days}-Day Moving Average ({period})",
-                    xaxis_title="Date",
-                    yaxis_title="Price (USD)",
-                    hovermode='x unified',
-                    height=500,
-                    plot_bgcolor='#1e1e1e',
-                    paper_bgcolor='#1e1e1e',
-                    font=dict(color='white'),
-                    xaxis=dict(gridcolor='#444', showgrid=True),
-                    yaxis=dict(gridcolor='#444', showgrid=True),
-                    legend=dict(
-                        bgcolor='#2e2e2e',
-                        bordercolor='#555'
-                    )
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Educational section
-                with st.expander("📚 How to Read Moving Averages"):
-                    st.markdown("""
-                    ### Understanding Moving Averages (MA)
-                    
-                    **What is a Moving Average?**
-                    - Average price over the last X days
-                    - **Blue line** = Actual stock price
-                    - **Orange dashed line** = Moving average
-                    - Smooths out daily noise to show the trend
-                    
-                    #### What the Lines Mean:
-                    
-                    **20-Day MA** = Average of last 20 days (short-term trend)  
-                    **50-Day MA** = Average of last 50 days (medium-term trend)  
-                    **200-Day MA** = Average of last 200 days (long-term trend)
-                    
-                    #### What to Look For:
-                    """)
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.success("""
-                        **🟢 Bullish Signals (Good)**
-                        - Price ABOVE the MA line
-                        - MA line sloping UPWARD
-                        - Price bouncing off MA (support)
-                        - Short MA crosses above long MA
-                        """)
-                    with col2:
-                        st.error("""
-                        **🔴 Bearish Signals (Bad)**
-                        - Price BELOW the MA line
-                        - MA line sloping DOWNWARD
-                        - Price rejected by MA (resistance)
-                        - Short MA crosses below long MA
-                        """)
-                    
-                    st.markdown("""
-                    #### Key Patterns:
-                    
-                    **Golden Cross** 🟢🟢 (Very Bullish)
-                    - 20-day MA crosses ABOVE 50-day MA
-                    - Strong buy signal
-                    - Often starts a major uptrend
-                    
-                    **Death Cross** 🔴🔴 (Very Bearish)
-                    - 20-day MA crosses BELOW 50-day MA
-                    - Strong sell signal
-                    - Often starts a major downtrend
-                    
-                    **Support** 🟢
-                    - Price drops to MA and bounces back up
-                    - MA acts like a floor
-                    - Shows buyers defend that level
-                    
-                    **Resistance** 🔴
-                    - Price rises to MA and gets pushed down
-                    - MA acts like a ceiling
-                    - Shows sellers defend that level
-                    
-                    #### How to Use the Slider:
-                    
-                    **5-20 days**: Very short-term, responds quickly to changes  
-                    **20-50 days**: Good for swing trading (weeks to months)  
-                    **50-200 days**: Long-term investing (months to years)
-                    
-                    Try different periods and see how the MA changes!
-                    """)
-                    
-                    st.info("""
-                    💡 **Quick Analysis**: 
-                    - Price **above** MA + MA going **up** = 🟢 Buy signal
-                    - Price **below** MA + MA going **down** = 🔴 Sell signal
-                    - Price **at** MA + MA **flat** = 🟡 Wait for direction
-                    """)
-                    
-                    st.warning("""
-                    ⚠️ **Important**: Moving averages are **lagging indicators** - they show what 
-                    already happened, not what will happen. Use them to confirm trends, not predict them.
-                    """)
-            
-            # Tab 5: Technical Indicators
-            with tab5:
-                st.subheader("🔧 Technical Indicators")
-                
-                # Calculate technical indicators
-                
-                # RSI (Relative Strength Index)
-                def calculate_rsi(data, period=14):
-                    delta = data.diff()
-                    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-                    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-                    rs = gain / loss
-                    rsi = 100 - (100 / (1 + rs))
-                    return rsi
-                
-                df_tech = df.copy()
-                df_tech['RSI'] = calculate_rsi(df_tech['Close'])
-                
-                # MACD
-                exp1 = df_tech['Close'].ewm(span=12, adjust=False).mean()
-                exp2 = df_tech['Close'].ewm(span=26, adjust=False).mean()
-                df_tech['MACD'] = exp1 - exp2
-                df_tech['Signal'] = df_tech['MACD'].ewm(span=9, adjust=False).mean()
-                df_tech['MACD_Histogram'] = df_tech['MACD'] - df_tech['Signal']
-                
-                # Bollinger Bands
-                df_tech['BB_Middle'] = df_tech['Close'].rolling(window=20).mean()
-                df_tech['BB_Std'] = df_tech['Close'].rolling(window=20).std()
-                df_tech['BB_Upper'] = df_tech['BB_Middle'] + (df_tech['BB_Std'] * 2)
-                df_tech['BB_Lower'] = df_tech['BB_Middle'] - (df_tech['BB_Std'] * 2)
-                
-                # RSI Chart
-                st.markdown("### RSI (Relative Strength Index)")
-                fig_rsi = go.Figure()
-                
-                fig_rsi.add_trace(go.Scatter(
-                    x=df_tech['Date'],
-                    y=df_tech['RSI'],
-                    mode='lines',
-                    name='RSI',
-                    line=dict(color='purple', width=2)
-                ))
-                
-                # Add overbought/oversold lines
-                fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", 
-                                  annotation_text="Overbought (70)")
-                fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", 
-                                  annotation_text="Oversold (30)")
-                fig_rsi.add_hline(y=50, line_dash="dot", line_color="gray", 
-                                  annotation_text="Neutral (50)")
-                
-                # Add background colors
-                fig_rsi.add_hrect(y0=70, y1=100, fillcolor="red", opacity=0.1, line_width=0)
-                fig_rsi.add_hrect(y0=0, y1=30, fillcolor="green", opacity=0.1, line_width=0)
-                
-                fig_rsi.update_layout(
-                    title="RSI Indicator",
-                    yaxis_title="RSI Value",
-                    xaxis_title="Date",
-                    height=300,
-                    plot_bgcolor='#1e1e1e',
-                    paper_bgcolor='#1e1e1e',
-                    font=dict(color='white'),
-                    xaxis=dict(gridcolor='#444'),
-                    yaxis=dict(gridcolor='#444', range=[0, 100])
-                )
-                
-                st.plotly_chart(fig_rsi, use_container_width=True)
-                
-                # Current RSI value
-                current_rsi = df_tech['RSI'].iloc[-1]
-                if current_rsi > 70:
-                    st.error(f"🔴 Current RSI: {current_rsi:.2f} - **OVERBOUGHT** (Potential sell signal)")
-                elif current_rsi < 30:
-                    st.success(f"🟢 Current RSI: {current_rsi:.2f} - **OVERSOLD** (Potential buy signal)")
-                else:
-                    st.info(f"🟡 Current RSI: {current_rsi:.2f} - **NEUTRAL** (No strong signal)")
-                
-                st.divider()
-                
-                # MACD Chart
-                st.markdown("### MACD (Moving Average Convergence Divergence)")
-                fig_macd = go.Figure()
-                
-                # MACD line
-                fig_macd.add_trace(go.Scatter(
-                    x=df_tech['Date'],
-                    y=df_tech['MACD'],
-                    mode='lines',
-                    name='MACD',
-                    line=dict(color='blue', width=2)
-                ))
-                
-                # Signal line
-                fig_macd.add_trace(go.Scatter(
-                    x=df_tech['Date'],
-                    y=df_tech['Signal'],
-                    mode='lines',
-                    name='Signal',
-                    line=dict(color='orange', width=2)
-                ))
-                
-                # Histogram
-                colors = ['green' if val >= 0 else 'red' for val in df_tech['MACD_Histogram']]
-                fig_macd.add_trace(go.Bar(
-                    x=df_tech['Date'],
-                    y=df_tech['MACD_Histogram'],
-                    name='Histogram',
-                    marker_color=colors,
-                    opacity=0.3
-                ))
-                
-                fig_macd.update_layout(
-                    title="MACD Indicator",
-                    yaxis_title="MACD Value",
-                    xaxis_title="Date",
-                    height=300,
-                    plot_bgcolor='#1e1e1e',
-                    paper_bgcolor='#1e1e1e',
-                    font=dict(color='white'),
-                    xaxis=dict(gridcolor='#444'),
-                    yaxis=dict(gridcolor='#444')
-                )
-                
-                st.plotly_chart(fig_macd, use_container_width=True)
-                
-                # MACD Signal
-                current_macd = df_tech['MACD'].iloc[-1]
-                current_signal = df_tech['Signal'].iloc[-1]
-                if current_macd > current_signal:
-                    st.success(f"🟢 MACD above Signal - **BULLISH** (Upward momentum)")
-                else:
-                    st.error(f"🔴 MACD below Signal - **BEARISH** (Downward momentum)")
-                
-                st.divider()
-                
-                # Bollinger Bands Chart
-                st.markdown("### Bollinger Bands")
-                fig_bb = go.Figure()
-                
-                # Price
-                fig_bb.add_trace(go.Scatter(
-                    x=df_tech['Date'],
-                    y=df_tech['Close'],
-                    mode='lines',
-                    name='Price',
-                    line=dict(color='white', width=2)
-                ))
-                
-                # Upper band
-                fig_bb.add_trace(go.Scatter(
-                    x=df_tech['Date'],
-                    y=df_tech['BB_Upper'],
-                    mode='lines',
-                    name='Upper Band',
-                    line=dict(color='red', width=1, dash='dash')
-                ))
-                
-                # Middle band
-                fig_bb.add_trace(go.Scatter(
-                    x=df_tech['Date'],
-                    y=df_tech['BB_Middle'],
-                    mode='lines',
-                    name='Middle Band (20 MA)',
-                    line=dict(color='gray', width=1)
-                ))
-                
-                # Lower band
-                fig_bb.add_trace(go.Scatter(
-                    x=df_tech['Date'],
-                    y=df_tech['BB_Lower'],
-                    mode='lines',
-                    name='Lower Band',
-                    line=dict(color='green', width=1, dash='dash'),
-                    fill='tonexty',
-                    fillcolor='rgba(100, 100, 100, 0.2)'
-                ))
-                
-                fig_bb.update_layout(
-                    title="Bollinger Bands",
-                    yaxis_title="Price (USD)",
-                    xaxis_title="Date",
-                    height=400,
-                    plot_bgcolor='#1e1e1e',
-                    paper_bgcolor='#1e1e1e',
-                    font=dict(color='white'),
-                    xaxis=dict(gridcolor='#444'),
-                    yaxis=dict(gridcolor='#444')
-                )
-                
-                st.plotly_chart(fig_bb, use_container_width=True)
-                
-                # Bollinger Bands Signal
-                latest_close = float(df_tech['Close'].iloc[-1])
-                latest_upper = float(df_tech['BB_Upper'].iloc[-1])
-                latest_lower = float(df_tech['BB_Lower'].iloc[-1])
-                
-                if latest_close > latest_upper:
-                    st.error(f"🔴 Price above upper band (${latest_upper:.2f}) - **OVERBOUGHT**")
-                elif latest_close < latest_lower:
-                    st.success(f"🟢 Price below lower band (${latest_lower:.2f}) - **OVERSOLD**")
-                else:
-                    st.info(f"🟡 Price within bands - **NORMAL RANGE**")
-                
-                # Educational section
-                with st.expander("📚 How to Read Technical Indicators"):
-                    st.markdown("""
-                    ### Understanding Technical Indicators
-                    
-                    #### RSI (Relative Strength Index)
-                    
-                    **What is RSI?**
-                    - Measures momentum on a scale of 0-100
-                    - Shows if stock is overbought or oversold
-                    - Based on recent price changes
-                    
-                    **How to Read RSI:**
-                    - **Above 70** 🔴 = **OVERBOUGHT** (might drop soon, consider selling)
-                    - **Below 30** 🟢 = **OVERSOLD** (might rise soon, consider buying)
-                    - **Around 50** 🟡 = **NEUTRAL** (no strong signal)
-                    
-                    **RSI Divergence:**
-                    - Price makes new high, but RSI doesn't = Bearish signal
-                    - Price makes new low, but RSI doesn't = Bullish signal
-                    
-                    ---
-                    
-                    #### MACD (Moving Average Convergence Divergence)
-                    
-                    **What is MACD?**
-                    - Shows relationship between two moving averages
-                    - Three components: MACD line, Signal line, Histogram
-                    - Identifies momentum and trend changes
-                    
-                    **How to Read MACD:**
-                    - **MACD crosses above Signal** 🟢 = **BUY SIGNAL** (bullish)
-                    - **MACD crosses below Signal** 🔴 = **SELL SIGNAL** (bearish)
-                    - **Histogram growing** = Momentum increasing
-                    - **Histogram shrinking** = Momentum decreasing
-                    
-                    **MACD Colors:**
-                    - 🟢 Green histogram = Positive momentum
-                    - 🔴 Red histogram = Negative momentum
-                    
-                    ---
-                    
-                    #### Bollinger Bands
-                    
-                    **What are Bollinger Bands?**
-                    - Three lines: Upper, Middle (20-day MA), Lower
-                    - Bands widen when volatility increases
-                    - Bands narrow when volatility decreases
-                    
-                    **How to Read Bollinger Bands:**
-                    - **Price touches upper band** 🔴 = Overbought (might reverse down)
-                    - **Price touches lower band** 🟢 = Oversold (might reverse up)
-                    - **Price at middle band** 🟡 = Fair value
-                    - **Bands squeezing** = Big move coming soon
-                    - **Bands widening** = High volatility, big moves happening
-                    
-                    **The "Squeeze":**
-                    - When bands get very narrow
-                    - Stock is consolidating
-                    - Often followed by big breakout (up or down)
-                    
-                    ---
-                    
-                    #### Combining Indicators
-                    
-                    **🟢 Strong Buy Signal:**
-                    - RSI < 30 (oversold)
-                    - MACD crosses above Signal
-                    - Price near lower Bollinger Band
-                    
-                    **🔴 Strong Sell Signal:**
-                    - RSI > 70 (overbought)
-                    - MACD crosses below Signal
-                    - Price near upper Bollinger Band
-                    
-                    **🟡 Wait Signal:**
-                    - Mixed signals from different indicators
-                    - Better to wait for confirmation
-                    """)
-                    
-                    st.info("""
-                    💡 **Pro Tip**: Don't rely on just one indicator! Use multiple indicators 
-                    together for confirmation. When 2-3 indicators agree, the signal is stronger!
-                    """)
-            
-            # Tab 6: Fundamentals
-            with tab6:
-                st.subheader("💼 Company Fundamentals")
+                st.subheader("Company Fundamentals")
                 
                 # Get company info
                 try:
@@ -1253,7 +657,7 @@ if analyze_button or ticker:
                     info_data = stock_obj.info if hasattr(stock_obj, 'info') else {}
                     
                     # Company Overview
-                    st.markdown("### 📋 Company Overview")
+                    st.markdown("### Company Overview")
                     
                     col1, col2 = st.columns(2)
                     
@@ -1278,13 +682,13 @@ if analyze_button or ticker:
                     # Business Summary
                     summary = info_data.get('longBusinessSummary', '')
                     if summary:
-                        with st.expander("📄 Business Summary"):
+                        with st.expander("Business Summary"):
                             st.write(summary)
                     
                     st.divider()
                     
                     # Key Financial Metrics
-                    st.markdown("### 💰 Key Financial Metrics")
+                    st.markdown("### Key Financial Metrics")
                     
                     col1, col2, col3, col4 = st.columns(4)
                     
@@ -1342,7 +746,7 @@ if analyze_button or ticker:
                     st.divider()
                     
                     # Profitability & Performance
-                    st.markdown("### 📊 Profitability & Performance")
+                    st.markdown("### Profitability & Performance")
                     
                     col1, col2, col3, col4 = st.columns(4)
                     
@@ -1402,7 +806,7 @@ if analyze_button or ticker:
                     st.divider()
                     
                     # Dividends & Financial Health
-                    st.markdown("### 💵 Dividends & Financial Health")
+                    st.markdown("### Dividends & Financial Health")
                     
                     col1, col2, col3, col4 = st.columns(4)
                     
@@ -1460,7 +864,7 @@ if analyze_button or ticker:
                     st.divider()
                     
                     # Analyst Recommendations
-                    st.markdown("### 🎯 Analyst Recommendations")
+                    st.markdown("### Analyst Recommendations")
                     
                     col1, col2, col3 = st.columns(3)
                     
@@ -1479,18 +883,18 @@ if analyze_button or ticker:
                     recommendation = info_data.get('recommendationKey', 'N/A')
                     if recommendation != 'N/A':
                         if recommendation in ['buy', 'strong_buy']:
-                            st.success(f"📈 Analyst Recommendation: **{recommendation.upper().replace('_', ' ')}**")
+                            st.success(f"Analyst Recommendation: **{recommendation.upper().replace('_', ' ')}**")
                         elif recommendation == 'hold':
-                            st.info(f"📊 Analyst Recommendation: **{recommendation.upper()}**")
+                            st.info(f"Analyst Recommendation: **{recommendation.upper()}**")
                         else:
-                            st.warning(f"📉 Analyst Recommendation: **{recommendation.upper().replace('_', ' ')}**")
+                            st.warning(f"Analyst Recommendation: **{recommendation.upper().replace('_', ' ')}**")
                     
                 except Exception as e:
                     st.error("Unable to load fundamental data. This may be due to API limitations.")
                     st.info(f"Error details: {str(e)}")
                 
                 # Educational section
-                with st.expander("📚 Understanding Fundamental Metrics"):
+                with st.expander("Understanding Fundamental Metrics"):
                     st.markdown("""
                     ### Key Fundamental Metrics Explained
                     
@@ -1613,7 +1017,7 @@ if analyze_button or ticker:
                     """)
                     
                     st.info("""
-                    💡 **Pro Tip**: Don't look at metrics in isolation! A "high" P/E might be 
+                    **Pro Tip**: Don't look at metrics in isolation! A "high" P/E might be 
                     justified for a fast-growing company. Always compare to:
                     - Company's historical averages
                     - Industry peers
@@ -1621,10 +1025,648 @@ if analyze_button or ticker:
                     - Growth rate (use PEG ratio)
                     """)
             
-            # Tab 7: Analysis (was Tab 5)
+            # Tab 2: Price Chart
+            with tab2:
+                st.subheader(f"Closing Price Chart ({period})")
+                
+                # Chart type selector
+                chart_type = st.radio("Chart Type:", ["Line Chart", "Candlestick Chart"], horizontal=True)
+                
+                # Ensure we have the right data
+                chart_df = df.copy()
+                
+                fig = go.Figure()
+                
+                if chart_type == "Candlestick Chart":
+                    # Candlestick chart
+                    fig.add_trace(go.Candlestick(
+                        x=chart_df['Date'],
+                        open=chart_df['Open'],
+                        high=chart_df['High'],
+                        low=chart_df['Low'],
+                        close=chart_df['Close'],
+                        name='Price'
+                    ))
+                else:
+                    # Line chart
+                    fig.add_trace(go.Scatter(
+                        x=chart_df['Date'],
+                        y=chart_df['Close'],
+                        mode='lines+markers',
+                        name='Close Price',
+                        line=dict(color='#00ff00', width=3),
+                        marker=dict(size=4, color='#00ff00')
+                    ))
+                
+                fig.update_layout(
+                    title=f"{ticker} Stock Prices - {period}",
+                    xaxis_title="Date",
+                    yaxis_title="Price (USD)",
+                    hovermode='x unified',
+                    height=500,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(
+                        gridcolor='#444',
+                        showgrid=True,
+                        rangeslider=dict(visible=False)
+                    ),
+                    yaxis=dict(
+                        gridcolor='#444',
+                        showgrid=True
+                    )
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                col1, col2 = st.columns(2)
+                col1.metric("Period High", f"${float(df['High'].max()):.2f}")
+                col2.metric("Period Low", f"${float(df['Low'].min()):.2f}")
+                
+                # Educational section
+                with st.expander("How to Read This Chart"):
+                    st.markdown("""
+                    ### Understanding Price Charts
+                    
+                    **What am I looking at?**
+                    - The line/candles show the stock's price over time
+                    - **Line Chart**: Simple closing prices connected
+                    - **Candlestick Chart**: Shows Open, High, Low, Close for each day
+                    
+                    #### What to Look For:
+                    
+                    **Bullish Patterns (Good Signs)**
+                    - **Uptrend**: Price steadily going up over time
+                    - **Higher Highs**: Each peak is higher than the last
+                    - **Higher Lows**: Each dip is higher than the last
+                    - **Green Candles**: More green (up) days than red (down) days
+                    
+                    **Bearish Patterns (Warning Signs)**
+                    - **Downtrend**: Price steadily going down
+                    - **Lower Highs**: Each peak is lower than the last
+                    - **Lower Lows**: Each dip is lower than the last
+                    - **Red Candles**: More red (down) days than green (up) days
+                    
+                    **Sideways/Consolidation**
+                    - Price moving horizontally
+                    - No clear direction
+                    - Often happens before a big move
+                    
+                    #### Candlestick Colors:
+                    """)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success("""
+                        **Green Candle = Bullish**
+                        - Close > Open
+                        - Buyers won that day
+                        - Price went up
+                        """)
+                    with col2:
+                        st.error("""
+                        **Red Candle = Bearish**
+                        - Close < Open
+                        - Sellers won that day
+                        - Price went down
+                        """)
+                    
+                    st.info("""
+                    **Quick Tip**: Look at the overall pattern, not individual days. 
+                    Is the general direction up, down, or sideways?
+                    """)
             
-            # Tab 7: Analysis
-            with tab7:
+            # Tab 3: Volume
+            with tab3:
+                st.subheader(f"Trading Volume ({period})")
+                
+                # Create volume chart with better colors - use vectorized operation
+                vol_df = df.copy()
+                
+                # Check if we have the necessary columns
+                if 'Close' in vol_df.columns and 'Open' in vol_df.columns:
+                    vol_df['color'] = 'green'
+                    vol_df.loc[vol_df['Close'] < vol_df['Open'], 'color'] = 'red'
+                    colors = vol_df['color'].tolist()
+                else:
+                    # Default to blue if we don't have Open/Close
+                    colors = 'lightblue'
+                
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    x=vol_df['Date'],
+                    y=vol_df['Volume'],
+                    name='Volume',
+                    marker_color=colors
+                ))
+                
+                fig.update_layout(
+                    title=f"{ticker} Trading Volume - {period}",
+                    xaxis_title="Date",
+                    yaxis_title="Volume",
+                    hovermode='x unified',
+                    height=500,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444', showgrid=True),
+                    yaxis=dict(gridcolor='#444', showgrid=True)
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Educational section
+                with st.expander("How to Read Volume"):
+                    st.markdown("""
+                    ### Understanding Trading Volume
+                    
+                    **What is Volume?**
+                    - Number of shares traded each day
+                    - Shows how much interest there is in the stock
+                    - **Tall bars** = High volume (lots of activity)
+                    - **Short bars** = Low volume (little activity)
+                    
+                    #### Volume Bar Colors:
+                    """)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success("""
+                        **Green Bar**
+                        - Price went UP that day
+                        - Close > Open
+                        - Buyers were stronger
+                        """)
+                    with col2:
+                        st.error("""
+                        **Red Bar**
+                        - Price went DOWN that day
+                        - Close < Open
+                        - Sellers were stronger
+                        """)
+                    
+                    st.markdown("""
+                    #### What to Look For:
+                    
+                    **Best Signals (Strong Buy)**
+                    - **Tall GREEN bars** when price is rising
+                    - Means: Strong buying pressure, rally is real
+                    - More greens than reds = Bullish sentiment
+                    
+                    **Warning Signals (Strong Sell)**
+                    - **Tall RED bars** when price is falling
+                    - Means: Strong selling pressure, decline is serious
+                    - More reds than greens = Bearish sentiment
+                    
+                    **Caution Signals**
+                    - **Short bars** on price increases = Weak rally, might reverse
+                    - **Short bars** on price decreases = Minor dip, not concerning
+                    
+                    #### Volume Patterns:
+                    
+                    **Volume Spike**
+                    - Sudden very tall bar (2-3x normal)
+                    - Usually triggered by news or events
+                    - Often signals trend change or acceleration
+                    
+                    **Increasing Volume**
+                    - Bars getting taller over time
+                    - Shows growing interest
+                    - Confirms the current trend
+                    
+                    **Decreasing Volume**
+                    - Bars getting shorter
+                    - Shows declining interest
+                    - May signal consolidation before next move
+                    """)
+                    
+                    st.info("""
+                    **Quick Tip**: Volume should **confirm** price movement. 
+                    Price up + High volume = Good | Price up + Low volume = Suspicious
+                    """)
+            
+            # Tab 4: Moving Averages
+            with tab4:
+                st.subheader("Moving Averages Analysis")
+                
+                ma_days = st.slider("Select Moving Average Period (days)", 
+                                   min_value=5, max_value=200, value=20, step=5)
+                
+                # Calculate moving average
+                df_copy = df.copy()
+                df_copy['MA'] = df_copy['Close'].rolling(window=ma_days).mean()
+                
+                fig = go.Figure()
+                
+                fig.add_trace(go.Scatter(
+                    x=df_copy['Date'],
+                    y=df_copy['Close'],
+                    mode='lines',
+                    name='Close Price',
+                    line=dict(color='#00aaff', width=2)
+                ))
+                
+                fig.add_trace(go.Scatter(
+                    x=df_copy['Date'],
+                    y=df_copy['MA'],
+                    mode='lines',
+                    name=f'{ma_days}-Day MA',
+                    line=dict(color='#ff6600', width=3, dash='dash')
+                ))
+                
+                fig.update_layout(
+                    title=f"{ticker} Price with {ma_days}-Day Moving Average ({period})",
+                    xaxis_title="Date",
+                    yaxis_title="Price (USD)",
+                    hovermode='x unified',
+                    height=500,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444', showgrid=True),
+                    yaxis=dict(gridcolor='#444', showgrid=True),
+                    legend=dict(
+                        bgcolor='#2e2e2e',
+                        bordercolor='#555'
+                    )
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Educational section
+                with st.expander("How to Read Moving Averages"):
+                    st.markdown("""
+                    ### Understanding Moving Averages (MA)
+                    
+                    **What is a Moving Average?**
+                    - Average price over the last X days
+                    - **Blue line** = Actual stock price
+                    - **Orange dashed line** = Moving average
+                    - Smooths out daily noise to show the trend
+                    
+                    #### What the Lines Mean:
+                    
+                    **20-Day MA** = Average of last 20 days (short-term trend)  
+                    **50-Day MA** = Average of last 50 days (medium-term trend)  
+                    **200-Day MA** = Average of last 200 days (long-term trend)
+                    
+                    #### What to Look For:
+                    """)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.success("""
+                        **Bullish Signals (Good)**
+                        - Price ABOVE the MA line
+                        - MA line sloping UPWARD
+                        - Price bouncing off MA (support)
+                        - Short MA crosses above long MA
+                        """)
+                    with col2:
+                        st.error("""
+                        **Bearish Signals (Bad)**
+                        - Price BELOW the MA line
+                        - MA line sloping DOWNWARD
+                        - Price rejected by MA (resistance)
+                        - Short MA crosses below long MA
+                        """)
+                    
+                    st.markdown("""
+                    #### Key Patterns:
+                    
+                    **Golden Cross (Very Bullish)**
+                    - 20-day MA crosses ABOVE 50-day MA
+                    - Strong buy signal
+                    - Often starts a major uptrend
+                    
+                    **Death Cross (Very Bearish)**
+                    - 20-day MA crosses BELOW 50-day MA
+                    - Strong sell signal
+                    - Often starts a major downtrend
+                    
+                    **Support**
+                    - Price drops to MA and bounces back up
+                    - MA acts like a floor
+                    - Shows buyers defend that level
+                    
+                    **Resistance**
+                    - Price rises to MA and gets pushed down
+                    - MA acts like a ceiling
+                    - Shows sellers defend that level
+                    
+                    #### How to Use the Slider:
+                    
+                    **5-20 days**: Very short-term, responds quickly to changes  
+                    **20-50 days**: Good for swing trading (weeks to months)  
+                    **50-200 days**: Long-term investing (months to years)
+                    
+                    Try different periods and see how the MA changes!
+                    """)
+                    
+                    st.info("""
+                    **Quick Analysis**: 
+                    - Price **above** MA + MA going **up** = Buy signal
+                    - Price **below** MA + MA going **down** = Sell signal
+                    - Price **at** MA + MA **flat** = Wait for direction
+                    """)
+                    
+                    st.warning("""
+                    **Important**: Moving averages are **lagging indicators** - they show what 
+                    already happened, not what will happen. Use them to confirm trends, not predict them.
+                    """)
+            
+            # Tab 5: Technical Indicators
+            with tab5:
+                st.subheader("Technical Indicators")
+                
+                # Calculate technical indicators
+                
+                # RSI (Relative Strength Index)
+                def calculate_rsi(data, period=14):
+                    delta = data.diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+                    rs = gain / loss
+                    rsi = 100 - (100 / (1 + rs))
+                    return rsi
+                
+                df_tech = df.copy()
+                df_tech['RSI'] = calculate_rsi(df_tech['Close'])
+                
+                # MACD
+                exp1 = df_tech['Close'].ewm(span=12, adjust=False).mean()
+                exp2 = df_tech['Close'].ewm(span=26, adjust=False).mean()
+                df_tech['MACD'] = exp1 - exp2
+                df_tech['Signal'] = df_tech['MACD'].ewm(span=9, adjust=False).mean()
+                df_tech['MACD_Histogram'] = df_tech['MACD'] - df_tech['Signal']
+                
+                # Bollinger Bands
+                df_tech['BB_Middle'] = df_tech['Close'].rolling(window=20).mean()
+                df_tech['BB_Std'] = df_tech['Close'].rolling(window=20).std()
+                df_tech['BB_Upper'] = df_tech['BB_Middle'] + (df_tech['BB_Std'] * 2)
+                df_tech['BB_Lower'] = df_tech['BB_Middle'] - (df_tech['BB_Std'] * 2)
+                
+                # RSI Chart
+                st.markdown("### RSI (Relative Strength Index)")
+                fig_rsi = go.Figure()
+                
+                fig_rsi.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['RSI'],
+                    mode='lines',
+                    name='RSI',
+                    line=dict(color='purple', width=2)
+                ))
+                
+                # Add overbought/oversold lines
+                fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", 
+                                  annotation_text="Overbought (70)")
+                fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", 
+                                  annotation_text="Oversold (30)")
+                fig_rsi.add_hline(y=50, line_dash="dot", line_color="gray", 
+                                  annotation_text="Neutral (50)")
+                
+                # Add background colors
+                fig_rsi.add_hrect(y0=70, y1=100, fillcolor="red", opacity=0.1, line_width=0)
+                fig_rsi.add_hrect(y0=0, y1=30, fillcolor="green", opacity=0.1, line_width=0)
+                
+                fig_rsi.update_layout(
+                    title="RSI Indicator",
+                    yaxis_title="RSI Value",
+                    xaxis_title="Date",
+                    height=300,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444'),
+                    yaxis=dict(gridcolor='#444', range=[0, 100])
+                )
+                
+                st.plotly_chart(fig_rsi, use_container_width=True)
+                
+                # Current RSI value
+                current_rsi = df_tech['RSI'].iloc[-1]
+                if current_rsi > 70:
+                    st.error(f"Current RSI: {current_rsi:.2f} - **OVERBOUGHT** (Potential sell signal)")
+                elif current_rsi < 30:
+                    st.success(f"Current RSI: {current_rsi:.2f} - **OVERSOLD** (Potential buy signal)")
+                else:
+                    st.info(f"Current RSI: {current_rsi:.2f} - **NEUTRAL** (No strong signal)")
+                
+                st.divider()
+                
+                # MACD Chart
+                st.markdown("### MACD (Moving Average Convergence Divergence)")
+                fig_macd = go.Figure()
+                
+                # MACD line
+                fig_macd.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['MACD'],
+                    mode='lines',
+                    name='MACD',
+                    line=dict(color='blue', width=2)
+                ))
+                
+                # Signal line
+                fig_macd.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['Signal'],
+                    mode='lines',
+                    name='Signal',
+                    line=dict(color='orange', width=2)
+                ))
+                
+                # Histogram
+                colors = ['green' if val >= 0 else 'red' for val in df_tech['MACD_Histogram']]
+                fig_macd.add_trace(go.Bar(
+                    x=df_tech['Date'],
+                    y=df_tech['MACD_Histogram'],
+                    name='Histogram',
+                    marker_color=colors,
+                    opacity=0.3
+                ))
+                
+                fig_macd.update_layout(
+                    title="MACD Indicator",
+                    yaxis_title="MACD Value",
+                    xaxis_title="Date",
+                    height=300,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444'),
+                    yaxis=dict(gridcolor='#444')
+                )
+                
+                st.plotly_chart(fig_macd, use_container_width=True)
+                
+                # MACD Signal
+                current_macd = df_tech['MACD'].iloc[-1]
+                current_signal = df_tech['Signal'].iloc[-1]
+                if current_macd > current_signal:
+                    st.success(f"MACD above Signal - **BULLISH** (Upward momentum)")
+                else:
+                    st.error(f"MACD below Signal - **BEARISH** (Downward momentum)")
+                
+                st.divider()
+                
+                # Bollinger Bands Chart
+                st.markdown("### Bollinger Bands")
+                fig_bb = go.Figure()
+                
+                # Price
+                fig_bb.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['Close'],
+                    mode='lines',
+                    name='Price',
+                    line=dict(color='white', width=2)
+                ))
+                
+                # Upper band
+                fig_bb.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['BB_Upper'],
+                    mode='lines',
+                    name='Upper Band',
+                    line=dict(color='red', width=1, dash='dash')
+                ))
+                
+                # Middle band
+                fig_bb.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['BB_Middle'],
+                    mode='lines',
+                    name='Middle Band (20 MA)',
+                    line=dict(color='gray', width=1)
+                ))
+                
+                # Lower band
+                fig_bb.add_trace(go.Scatter(
+                    x=df_tech['Date'],
+                    y=df_tech['BB_Lower'],
+                    mode='lines',
+                    name='Lower Band',
+                    line=dict(color='green', width=1, dash='dash'),
+                    fill='tonexty',
+                    fillcolor='rgba(100, 100, 100, 0.2)'
+                ))
+                
+                fig_bb.update_layout(
+                    title="Bollinger Bands",
+                    yaxis_title="Price (USD)",
+                    xaxis_title="Date",
+                    height=400,
+                    plot_bgcolor='#1e1e1e',
+                    paper_bgcolor='#1e1e1e',
+                    font=dict(color='white'),
+                    xaxis=dict(gridcolor='#444'),
+                    yaxis=dict(gridcolor='#444')
+                )
+                
+                st.plotly_chart(fig_bb, use_container_width=True)
+                
+                # Bollinger Bands Signal
+                latest_close = float(df_tech['Close'].iloc[-1])
+                latest_upper = float(df_tech['BB_Upper'].iloc[-1])
+                latest_lower = float(df_tech['BB_Lower'].iloc[-1])
+                
+                if latest_close > latest_upper:
+                    st.error(f"Price above upper band (${latest_upper:.2f}) - **OVERBOUGHT**")
+                elif latest_close < latest_lower:
+                    st.success(f"Price below lower band (${latest_lower:.2f}) - **OVERSOLD**")
+                else:
+                    st.info(f"Price within bands - **NORMAL RANGE**")
+                
+                # Educational section
+                with st.expander("How to Read Technical Indicators"):
+                    st.markdown("""
+                    ### Understanding Technical Indicators
+                    
+                    #### RSI (Relative Strength Index)
+                    
+                    **What is RSI?**
+                    - Measures momentum on a scale of 0-100
+                    - Shows if stock is overbought or oversold
+                    - Based on recent price changes
+                    
+                    **How to Read RSI:**
+                    - **Above 70** = **OVERBOUGHT** (might drop soon, consider selling)
+                    - **Below 30** = **OVERSOLD** (might rise soon, consider buying)
+                    - **Around 50** = **NEUTRAL** (no strong signal)
+                    
+                    **RSI Divergence:**
+                    - Price makes new high, but RSI doesn't = Bearish signal
+                    - Price makes new low, but RSI doesn't = Bullish signal
+                    
+                    ---
+                    
+                    #### MACD (Moving Average Convergence Divergence)
+                    
+                    **What is MACD?**
+                    - Shows relationship between two moving averages
+                    - Three components: MACD line, Signal line, Histogram
+                    - Identifies momentum and trend changes
+                    
+                    **How to Read MACD:**
+                    - **MACD crosses above Signal** = **BUY SIGNAL** (bullish)
+                    - **MACD crosses below Signal** = **SELL SIGNAL** (bearish)
+                    - **Histogram growing** = Momentum increasing
+                    - **Histogram shrinking** = Momentum decreasing
+                    
+                    **MACD Colors:**
+                    - Green histogram = Positive momentum
+                    - Red histogram = Negative momentum
+                    
+                    ---
+                    
+                    #### Bollinger Bands
+                    
+                    **What are Bollinger Bands?**
+                    - Three lines: Upper, Middle (20-day MA), Lower
+                    - Bands widen when volatility increases
+                    - Bands narrow when volatility decreases
+                    
+                    **How to Read Bollinger Bands:**
+                    - **Price touches upper band** = Overbought (might reverse down)
+                    - **Price touches lower band** = Oversold (might reverse up)
+                    - **Price at middle band** = Fair value
+                    - **Bands squeezing** = Big move coming soon
+                    - **Bands widening** = High volatility, big moves happening
+                    
+                    **The "Squeeze":**
+                    - When bands get very narrow
+                    - Stock is consolidating
+                    - Often followed by big breakout (up or down)
+                    
+                    ---
+                    
+                    #### Combining Indicators
+                    
+                    **Strong Buy Signal:**
+                    - RSI < 30 (oversold)
+                    - MACD crosses above Signal
+                    - Price near lower Bollinger Band
+                    
+                    **Strong Sell Signal:**
+                    - RSI > 70 (overbought)
+                    - MACD crosses below Signal
+                    - Price near upper Bollinger Band
+                    
+                    **Wait Signal:**
+                    - Mixed signals from different indicators
+                    - Better to wait for confirmation
+                    """)
+                    
+                    st.info("""
+                    **Pro Tip**: Don't rely on just one indicator! Use multiple indicators 
+                    together for confirmation. When 2-3 indicators agree, the signal is stronger!
+                    """)
+            
+            # Tab 6: Analysis
+            with tab6:
                 st.subheader(f"Stock Analysis Summary ({period})")
                 
                 # Calculate statistics
@@ -1676,23 +1718,23 @@ if analyze_button or ticker:
                 st.dataframe(recent_data, use_container_width=True, hide_index=True)
                 
                 # Educational section
-                with st.expander("📚 Understanding the Analysis Metrics"):
+                with st.expander("Understanding the Analysis Metrics"):
                     st.markdown("""
                     ### What Do These Numbers Mean?
                     
-                    **Total Return** 📊
+                    **Total Return**
                     - Percentage change from start to end of period
-                    - **Positive %** = Stock went up 🟢
-                    - **Negative %** = Stock went down 🔴
+                    - **Positive %** = Stock went up
+                    - **Negative %** = Stock went down
                     - Example: +25% means $100 became $125
                     
-                    **Daily Volatility** 📉
+                    **Daily Volatility**
                     - How much the stock bounces around each day
                     - **Low volatility** (0-2%) = Stable, steady stock
                     - **Medium volatility** (2-5%) = Normal stock
                     - **High volatility** (5%+) = Risky, jumps a lot
                     
-                    **Daily Returns Distribution** 📈
+                    **Daily Returns Distribution**
                     - Histogram shows how often stock goes up/down
                     - **Right side** (positive) = Up days
                     - **Left side** (negative) = Down days
@@ -1705,7 +1747,7 @@ if analyze_button or ticker:
                     col1, col2 = st.columns(2)
                     with col1:
                         st.success("""
-                        **🟢 Positive Signs**
+                        **Positive Signs**
                         - Total Return > 10%
                         - More green on histogram (right side)
                         - Steady climb in recent performance
@@ -1713,7 +1755,7 @@ if analyze_button or ticker:
                         """)
                     with col2:
                         st.error("""
-                        **🔴 Warning Signs**
+                        **Warning Signs**
                         - Total Return negative
                         - More red on histogram (left side)
                         - Declining recent performance
@@ -1721,15 +1763,15 @@ if analyze_button or ticker:
                         """)
                     
                     st.info("""
-                    💡 **Investment Tip**: 
+                    **Investment Tip**: 
                     - **Conservative**: Look for positive returns + low volatility
                     - **Moderate**: Accept medium volatility for better returns
                     - **Aggressive**: High volatility = high risk + high reward potential
                     """)
             
-            # Tab 8: Market Insights
-            with tab8:
-                st.markdown("### 🎯 Market Insights & Investment Strategy")
+            # Tab 7: Market Insights
+            with tab7:
+                st.markdown("### Market Insights & Investment Strategy")
                 
                 # Get additional stock info for classification
                 try:
@@ -1765,35 +1807,35 @@ if analyze_button or ticker:
                     value_sectors = ['Energy', 'Financial Services', 'Industrials', 'Basic Materials']
                     
                     if ticker.upper() in mega_cap_tech or (market_cap >= 500e9 and sector == 'Technology'):
-                        return "🏆 Mega-Cap Technology", "mega_cap"
+                        return "Mega-Cap Technology", "mega_cap"
                     elif sector in defensive_sectors:
-                        return f"🛡️ Defensive ({sector})", "defensive"
+                        return f"Defensive ({sector})", "defensive"
                     elif sector in value_sectors:
-                        return f"💎 Value Play ({sector})", "value"
+                        return f"Value Play ({sector})", "value"
                     elif market_cap >= 200e9:
-                        return "🏢 Large-Cap", "large_cap"
+                        return "Large-Cap", "large_cap"
                     elif market_cap >= 10e9:
-                        return "📊 Mid-Cap", "mid_cap"
+                        return "Mid-Cap", "mid_cap"
                     else:
-                        return "🎲 Small-Cap / Growth", "small_cap"
+                        return "Small-Cap / Growth", "small_cap"
                 
                 category_name, category_type = classify_stock(market_cap, sector, ticker)
                 
                 # Correction status
                 if drawdown_from_high <= -20:
-                    correction_status = "🔴 DEEP CORRECTION"
+                    correction_status = "DEEP CORRECTION"
                     correction_color = "error"
                     correction_desc = "Down 20%+ from highs - Strong buy signal for quality stocks"
                 elif drawdown_from_high <= -10:
-                    correction_status = "🟡 CORRECTION TERRITORY"
+                    correction_status = "CORRECTION TERRITORY"
                     correction_color = "warning"
                     correction_desc = "Down 10-20% from highs - Buy zone for long-term investors"
                 elif drawdown_from_high <= -5:
-                    correction_status = "🟠 MILD PULLBACK"
+                    correction_status = "MILD PULLBACK"
                     correction_color = "info"
                     correction_desc = "Down 5-10% from highs - Watch for entry opportunity"
                 else:
-                    correction_status = "🟢 NEAR HIGHS"
+                    correction_status = "NEAR HIGHS"
                     correction_color = "success"
                     correction_desc = "Within 5% of 52-week high - Exercise caution"
                 
@@ -1804,45 +1846,45 @@ if analyze_button or ticker:
                 # Factor 1: Correction depth (0-3 points)
                 if drawdown_from_high <= -20:
                     score += 3
-                    score_factors.append("✅ Deep correction (3 pts)")
+                    score_factors.append("Deep correction (3 pts)")
                 elif drawdown_from_high <= -10:
                     score += 2
-                    score_factors.append("✅ In correction (2 pts)")
+                    score_factors.append("In correction (2 pts)")
                 elif drawdown_from_high <= -5:
                     score += 1
-                    score_factors.append("⚠️ Mild pullback (1 pt)")
+                    score_factors.append("Mild pullback (1 pt)")
                 else:
-                    score_factors.append("❌ Near highs (0 pts)")
+                    score_factors.append("Near highs (0 pts)")
                 
                 # Factor 2: Fundamentals (0-3 points)
                 if pe_ratio and pe_ratio < 25:
                     score += 2
-                    score_factors.append("✅ Reasonable P/E (2 pts)")
+                    score_factors.append("Reasonable P/E (2 pts)")
                 elif pe_ratio and pe_ratio < 35:
                     score += 1
-                    score_factors.append("⚠️ Moderate P/E (1 pt)")
+                    score_factors.append("Moderate P/E (1 pt)")
                 else:
-                    score_factors.append("❌ High/No P/E (0 pts)")
+                    score_factors.append("High/No P/E (0 pts)")
                 
                 # Factor 3: Category strength (0-2 points)
                 if category_type in ['mega_cap', 'defensive']:
                     score += 2
-                    score_factors.append("✅ Strong category (2 pts)")
+                    score_factors.append("Strong category (2 pts)")
                 elif category_type in ['large_cap', 'value']:
                     score += 1
-                    score_factors.append("⚠️ Good category (1 pt)")
+                    score_factors.append("Good category (1 pt)")
                 else:
-                    score_factors.append("❌ Higher risk (0 pts)")
+                    score_factors.append("Higher risk (0 pts)")
                 
                 # Factor 4: Distance from low (0-2 points)
                 if distance_from_low > 50:
                     score += 1
-                    score_factors.append("✅ Well above lows (1 pt)")
+                    score_factors.append("Well above lows (1 pt)")
                 elif distance_from_low > 100:
                     score += 2
-                    score_factors.append("✅ Far from lows (2 pts)")
+                    score_factors.append("Far from lows (2 pts)")
                 else:
-                    score_factors.append("⚠️ Near lows (0 pts)")
+                    score_factors.append("Near lows (0 pts)")
                 
                 max_score = 10
                 opportunity_score = (score / max_score) * 10
@@ -1890,7 +1932,7 @@ if analyze_button or ticker:
                 strategy = strategy_guide.get(category_type, strategy_guide["large_cap"])
                 
                 # Display Correction Analysis
-                st.markdown("### 📉 Correction Analysis")
+                st.markdown("### Correction Analysis")
                 
                 col1, col2, col3 = st.columns(3)
                 
@@ -1939,7 +1981,7 @@ if analyze_button or ticker:
                 st.markdown("<div class='custom-divider'></div>", unsafe_allow_html=True)
                 
                 # Stock Classification & Strategy
-                st.markdown("### 🎯 Investment Category & Strategy")
+                st.markdown("### Investment Category & Strategy")
                 
                 col1, col2 = st.columns([1, 1])
                 
@@ -1981,7 +2023,7 @@ if analyze_button or ticker:
                 st.markdown("<div class='custom-divider'></div>", unsafe_allow_html=True)
                 
                 # Opportunity Score Breakdown
-                st.markdown("### 💯 Opportunity Score Breakdown")
+                st.markdown("### Opportunity Score Breakdown")
                 
                 st.markdown("""
                 <div class="metric-container" style="margin-bottom: 1rem;">
@@ -1995,7 +2037,7 @@ if analyze_button or ticker:
                 # Buying conditions
                 if opportunity_score >= 7:
                     st.success("""
-                    🟢 **STRONG BUYING OPPORTUNITY**
+                    **STRONG BUYING OPPORTUNITY**
                     
                     Multiple factors align for a potential entry:
                     - Stock is significantly below recent highs
@@ -2006,7 +2048,7 @@ if analyze_button or ticker:
                     """)
                 elif opportunity_score >= 5:
                     st.warning("""
-                    🟡 **MODERATE OPPORTUNITY**
+                    **MODERATE OPPORTUNITY**
                     
                     Some positive factors present:
                     - May be worth watching for further weakness
@@ -2017,7 +2059,7 @@ if analyze_button or ticker:
                     """)
                 else:
                     st.error("""
-                    🔴 **WEAK OPPORTUNITY**
+                    **WEAK OPPORTUNITY**
                     
                     Limited positive factors:
                     - Stock may be overvalued or near highs
@@ -2030,9 +2072,9 @@ if analyze_button or ticker:
                 st.markdown("<div class='custom-divider'></div>", unsafe_allow_html=True)
                 
                 # Market Context & Philosophy
-                st.markdown("### 📚 Understanding Market Corrections")
+                st.markdown("### Understanding Market Corrections")
                 
-                with st.expander("💡 Market Correction Philosophy"):
+                with st.expander("Market Correction Philosophy"):
                     st.markdown("""
                     ### The Nature of Market Corrections
                     
@@ -2070,10 +2112,10 @@ if analyze_button or ticker:
                     **For the strategic investor, volatility is not a threat; it is a signal of opportunity.**
                     
                     This is the window where:
-                    - ✅ Assets return to rational prices
-                    - ✅ Careful planning pays dividends
-                    - ✅ Quality companies go "on sale"
-                    - ✅ Long-term wealth is built
+                    - Assets return to rational prices
+                    - Careful planning pays dividends
+                    - Quality companies go "on sale"
+                    - Long-term wealth is built
                     
                     Think of corrections not as a collapse, but as a **cleansing**. They purge the system of:
                     - Excess speculation
@@ -2086,7 +2128,7 @@ if analyze_button or ticker:
                     
                     ### Investment Categories During Corrections
                     
-                    #### 🏆 Mega-Cap Technology
+                    #### Mega-Cap Technology
                     **Examples:** Microsoft, Alphabet, Amazon, Apple, Nvidia
                     
                     **Strategy:** Buy on 10-20% pullbacks
@@ -2095,7 +2137,7 @@ if analyze_button or ticker:
                     - Undeniable market power
                     - Fundamental building blocks
                     
-                    #### 🛡️ Defensive Stalwarts
+                    #### Defensive Stalwarts
                     **Sectors:** Healthcare, Consumer Staples, Utilities, Insurance
                     **Examples:** UnitedHealth, Johnson & Johnson, PepsiCo, Procter & Gamble
                     
@@ -2105,7 +2147,7 @@ if analyze_button or ticker:
                     - Reliable dividends
                     - Defensive buffer against fear
                     
-                    #### 💎 Undervalued Value Plays
+                    #### Undervalued Value Plays
                     **Sectors:** Energy, Financials, Industrials
                     
                     **Strategy:** Buy when P/E below historical average
@@ -2120,12 +2162,12 @@ if analyze_button or ticker:
                     
                     **What separates successful investors from emotional traders:**
                     
-                    ✅ **See corrections as opportunities, not crises**
-                    ✅ **Focus on fundamentals, not fear**
-                    ✅ **Buy quality assets at discount prices**
-                    ✅ **Think in years, not days**
-                    ✅ **Position sizing protects capital**
-                    ✅ **Patience beats panic**
+                    - See corrections as opportunities, not crises
+                    - Focus on fundamentals, not fear
+                    - Buy quality assets at discount prices
+                    - Think in years, not days
+                    - Position sizing protects capital
+                    - Patience beats panic
                     
                     ---
                     
@@ -2159,7 +2201,7 @@ if analyze_button or ticker:
                     The best investors are made during corrections, not bull markets.
                     """)
                 
-                with st.expander("🎯 How to Use This Analysis"):
+                with st.expander("How to Use This Analysis"):
                     st.markdown("""
                     ### Using the Opportunity Score
                     
@@ -2200,14 +2242,14 @@ if analyze_button or ticker:
                     
                     ### When to Buy
                     
-                    ✅ **Do Buy When:**
+                    **Do Buy When:**
                     - Opportunity score ≥ 7
                     - Stock down 10-20%+ from highs
                     - Fundamentals remain strong
                     - Category fits your strategy
                     - You have long-term horizon (3+ years)
                     
-                    ❌ **Don't Buy When:**
+                    **Don't Buy When:**
                     - Opportunity score < 5
                     - Stock near all-time highs
                     - Fundamentals deteriorating
@@ -2235,15 +2277,15 @@ if analyze_button or ticker:
                 st.markdown("<div class='custom-divider'></div>", unsafe_allow_html=True)
                 
                 # Watchlist by Category
-                st.markdown("### 📋 Example Watchlist by Category")
+                st.markdown("### Example Watchlist by Category")
                 
                 watchlist_data = {
-                    "🏆 Mega-Cap Tech": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META"],
-                    "🛡️ Defensive Healthcare": ["UNH", "JNJ", "PFE", "ABBV"],
-                    "🛡️ Consumer Staples": ["PEP", "PG", "KO", "WMT", "COST"],
-                    "💎 Energy Value": ["XOM", "CVX", "COP", "SLB"],
-                    "💎 Financial Value": ["JPM", "BAC", "WFC", "GS"],
-                    "💎 Industrial Value": ["CAT", "BA", "HON", "UNP"]
+                    "Mega-Cap Tech": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META"],
+                    "Defensive Healthcare": ["UNH", "JNJ", "PFE", "ABBV"],
+                    "Consumer Staples": ["PEP", "PG", "KO", "WMT", "COST"],
+                    "Energy Value": ["XOM", "CVX", "COP", "SLB"],
+                    "Financial Value": ["JPM", "BAC", "WFC", "GS"],
+                    "Industrial Value": ["CAT", "BA", "HON", "UNP"]
                 }
                 
                 for category, tickers in watchlist_data.items():
@@ -2253,7 +2295,7 @@ if analyze_button or ticker:
                         st.caption(f"Click on any ticker in the sidebar to analyze")
                                 
     except Exception as e:
-        st.error(f"❌ Unexpected error: {str(e)}")
+        st.error(f"Unexpected error: {str(e)}")
         st.info("""
         **Troubleshooting:**
         1. Wait a few minutes and try again
@@ -2264,7 +2306,7 @@ if analyze_button or ticker:
 
 else:
     # Welcome message
-    st.info("👈 Select a time period and click 'Analyze Stock' to get started!")
+    st.info("Select a time period and click 'Analyze Stock' to get started!")
     
     st.markdown("""
     ### How to Use:
@@ -2290,11 +2332,11 @@ else:
     - **5Y** - Last 5 years
     - **MAX** - All available history
     
-    ### 💡 Tips:
+    ### Tips:
     - Data is cached for 10 minutes
     - Wait 30-60 seconds between different stocks
     - Shorter periods load faster
     """)
 
 st.divider()
-st.caption("📊 Data from Yahoo Finance | Cached for 10 minutes")
+st.caption("Data from Yahoo Finance | Cached for 10 minutes")

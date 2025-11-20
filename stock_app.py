@@ -581,15 +581,67 @@ if analyze_button or ticker:
             
             st.markdown("<div class='custom-divider'></div>", unsafe_allow_html=True)
             
+            # Smart Correction Banner
+            week_52_high = float(df['High'].max())
+            drawdown_from_high = ((latest_close - week_52_high) / week_52_high) * 100
+            
+            if drawdown_from_high <= -10:
+                # Get stock info for better messaging
+                try:
+                    stock_obj = yf.Ticker(ticker)
+                    info_data = stock_obj.info if hasattr(stock_obj, 'info') else {}
+                    market_cap = info_data.get('marketCap', 0)
+                    sector = info_data.get('sector', 'Unknown')
+                    
+                    # Determine category
+                    mega_cap_tech = ['AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'META', 'TSLA']
+                    defensive_sectors = ['Healthcare', 'Consumer Defensive', 'Utilities']
+                    
+                    if ticker.upper() in mega_cap_tech:
+                        category_msg = "**Mega-Cap Tech** - Quality at a discount. Consider buying on 10-20% pullbacks."
+                    elif sector in defensive_sectors:
+                        category_msg = f"**Defensive {sector}** - Stable performer. Good time to accumulate."
+                    else:
+                        category_msg = "Check fundamentals before buying the dip."
+                except:
+                    category_msg = "Review the Market Insights tab for strategy guidance."
+                
+                if drawdown_from_high <= -20:
+                    st.error(f"""
+                    🚨 **DEEP CORRECTION ALERT** - {ticker} is down **{abs(drawdown_from_high):.1f}%** from 52-week high (${week_52_high:.2f})
+                    
+                    {category_msg}
+                    
+                    💡 **Historical Context**: Deep corrections (20%+) often present the best long-term entry points for quality companies. 
+                    See **Market Insights tab** for detailed analysis and opportunity score.
+                    """)
+                elif drawdown_from_high <= -15:
+                    st.warning(f"""
+                    ⚠️ **CORRECTION TERRITORY** - {ticker} is down **{abs(drawdown_from_high):.1f}%** from 52-week high (${week_52_high:.2f})
+                    
+                    {category_msg}
+                    
+                    💡 Check the **Market Insights tab** for opportunity analysis and buying strategy.
+                    """)
+                else:
+                    st.info(f"""
+                    📊 **PULLBACK DETECTED** - {ticker} is down **{abs(drawdown_from_high):.1f}%** from 52-week high (${week_52_high:.2f})
+                    
+                    {category_msg}
+                    
+                    💡 Monitor for further weakness. See **Market Insights tab** for analysis.
+                    """)
+            
             # Create tabs
-            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
                 "📊 Raw Data", 
                 "📈 Price Chart", 
                 "📊 Volume", 
                 "📉 Moving Averages",
                 "🔧 Technical Indicators",
                 "💼 Fundamentals",
-                "💰 Analysis"
+                "💰 Analysis",
+                "🎯 Market Insights"
             ])
             
             # Tab 1: Raw Data
@@ -1731,7 +1783,532 @@ if analyze_button or ticker:
                     - **Moderate**: Accept medium volatility for better returns
                     - **Aggressive**: High volatility = high risk + high reward potential
                     """)
+            
+            # Tab 8: Market Insights
+            with tab8:
+                st.markdown("### 🎯 Market Insights & Investment Strategy")
                 
+                # Get additional stock info for classification
+                try:
+                    stock_obj = yf.Ticker(ticker)
+                    info_data = stock_obj.info if hasattr(stock_obj, 'info') else {}
+                    market_cap = info_data.get('marketCap', 0)
+                    sector = info_data.get('sector', 'Unknown')
+                    pe_ratio = info_data.get('trailingPE', None)
+                    industry = info_data.get('industry', 'Unknown')
+                except:
+                    market_cap = 0
+                    sector = 'Unknown'
+                    pe_ratio = None
+                    industry = 'Unknown'
+                
+                # Calculate correction metrics
+                latest_price = float(df['Close'].iloc[-1])
+                week_52_high = float(df['High'].max())
+                week_52_low = float(df['Low'].min())
+                drawdown_from_high = ((latest_price - week_52_high) / week_52_high) * 100
+                distance_from_low = ((latest_price - week_52_low) / week_52_low) * 100
+                
+                # Classify stock category
+                def classify_stock(market_cap, sector, ticker):
+                    """Classify stock into investment categories"""
+                    # Mega-cap tech stocks
+                    mega_cap_tech = ['AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'META', 'TSLA']
+                    
+                    # Defensive sectors
+                    defensive_sectors = ['Healthcare', 'Consumer Defensive', 'Utilities']
+                    
+                    # Value sectors
+                    value_sectors = ['Energy', 'Financial Services', 'Industrials', 'Basic Materials']
+                    
+                    if ticker.upper() in mega_cap_tech or (market_cap >= 500e9 and sector == 'Technology'):
+                        return "🏆 Mega-Cap Technology", "mega_cap"
+                    elif sector in defensive_sectors:
+                        return f"🛡️ Defensive ({sector})", "defensive"
+                    elif sector in value_sectors:
+                        return f"💎 Value Play ({sector})", "value"
+                    elif market_cap >= 200e9:
+                        return "🏢 Large-Cap", "large_cap"
+                    elif market_cap >= 10e9:
+                        return "📊 Mid-Cap", "mid_cap"
+                    else:
+                        return "🎲 Small-Cap / Growth", "small_cap"
+                
+                category_name, category_type = classify_stock(market_cap, sector, ticker)
+                
+                # Correction status
+                if drawdown_from_high <= -20:
+                    correction_status = "🔴 DEEP CORRECTION"
+                    correction_color = "error"
+                    correction_desc = "Down 20%+ from highs - Strong buy signal for quality stocks"
+                elif drawdown_from_high <= -10:
+                    correction_status = "🟡 CORRECTION TERRITORY"
+                    correction_color = "warning"
+                    correction_desc = "Down 10-20% from highs - Buy zone for long-term investors"
+                elif drawdown_from_high <= -5:
+                    correction_status = "🟠 MILD PULLBACK"
+                    correction_color = "info"
+                    correction_desc = "Down 5-10% from highs - Watch for entry opportunity"
+                else:
+                    correction_status = "🟢 NEAR HIGHS"
+                    correction_color = "success"
+                    correction_desc = "Within 5% of 52-week high - Exercise caution"
+                
+                # Opportunity Score Calculation
+                score = 0
+                score_factors = []
+                
+                # Factor 1: Correction depth (0-3 points)
+                if drawdown_from_high <= -20:
+                    score += 3
+                    score_factors.append("✅ Deep correction (3 pts)")
+                elif drawdown_from_high <= -10:
+                    score += 2
+                    score_factors.append("✅ In correction (2 pts)")
+                elif drawdown_from_high <= -5:
+                    score += 1
+                    score_factors.append("⚠️ Mild pullback (1 pt)")
+                else:
+                    score_factors.append("❌ Near highs (0 pts)")
+                
+                # Factor 2: Fundamentals (0-3 points)
+                if pe_ratio and pe_ratio < 25:
+                    score += 2
+                    score_factors.append("✅ Reasonable P/E (2 pts)")
+                elif pe_ratio and pe_ratio < 35:
+                    score += 1
+                    score_factors.append("⚠️ Moderate P/E (1 pt)")
+                else:
+                    score_factors.append("❌ High/No P/E (0 pts)")
+                
+                # Factor 3: Category strength (0-2 points)
+                if category_type in ['mega_cap', 'defensive']:
+                    score += 2
+                    score_factors.append("✅ Strong category (2 pts)")
+                elif category_type in ['large_cap', 'value']:
+                    score += 1
+                    score_factors.append("⚠️ Good category (1 pt)")
+                else:
+                    score_factors.append("❌ Higher risk (0 pts)")
+                
+                # Factor 4: Distance from low (0-2 points)
+                if distance_from_low > 50:
+                    score += 1
+                    score_factors.append("✅ Well above lows (1 pt)")
+                elif distance_from_low > 100:
+                    score += 2
+                    score_factors.append("✅ Far from lows (2 pts)")
+                else:
+                    score_factors.append("⚠️ Near lows (0 pts)")
+                
+                max_score = 10
+                opportunity_score = (score / max_score) * 10
+                
+                # Strategy recommendations by category
+                strategy_guide = {
+                    "mega_cap": {
+                        "strategy": "Buy on 10-20% pullbacks",
+                        "reasoning": "These titans don't disappear in downturns; they just go on sale. A 10-20% drop is a long-term gift.",
+                        "hold_period": "Long-term (3-5+ years)",
+                        "risk_level": "Low to Moderate"
+                    },
+                    "defensive": {
+                        "strategy": "Accumulate during volatility",
+                        "reasoning": "When economic uncertainty rises, consistency becomes king. Essential services with steady cash flow.",
+                        "hold_period": "Long-term (5+ years)",
+                        "risk_level": "Low"
+                    },
+                    "value": {
+                        "strategy": "Buy when P/E is below historical average",
+                        "reasoning": "Quality value stocks overlooked by growth obsession. Trading below historical averages presents opportunity.",
+                        "hold_period": "Medium to Long-term (2-5 years)",
+                        "risk_level": "Moderate"
+                    },
+                    "large_cap": {
+                        "strategy": "Buy on weakness, verify fundamentals",
+                        "reasoning": "Established companies with proven business models. Verify financial health before buying dips.",
+                        "hold_period": "Long-term (3-5 years)",
+                        "risk_level": "Moderate"
+                    },
+                    "mid_cap": {
+                        "strategy": "Selective buying on deep corrections",
+                        "reasoning": "More volatile but growth potential. Buy only on significant pullbacks with strong fundamentals.",
+                        "hold_period": "Medium-term (2-3 years)",
+                        "risk_level": "Moderate to High"
+                    },
+                    "small_cap": {
+                        "strategy": "High risk - Buy only with strong conviction",
+                        "reasoning": "Highest volatility. Requires deep research and strong conviction. Small position sizes recommended.",
+                        "hold_period": "Variable (1-3 years)",
+                        "risk_level": "High"
+                    }
+                }
+                
+                strategy = strategy_guide.get(category_type, strategy_guide["large_cap"])
+                
+                # Display Correction Analysis
+                st.markdown("### 📉 Correction Analysis")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.markdown(f"""
+                    <div class="info-card {correction_color}">
+                        <h4>{correction_status}</h4>
+                        <p style="font-size: 1.5rem; margin: 0.5rem 0;">
+                            {drawdown_from_high:.1f}%
+                        </p>
+                        <p style="font-size: 0.85rem; opacity: 0.8;">from 52-week high</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(f"""
+                    <div class="info-card info">
+                        <h4>52-Week Range</h4>
+                        <p style="font-size: 1.2rem; margin: 0.5rem 0;">
+                            ${week_52_low:.2f} - ${week_52_high:.2f}
+                        </p>
+                        <p style="font-size: 0.85rem; opacity: 0.8;">Current: ${latest_price:.2f}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col3:
+                    score_color = "success" if opportunity_score >= 7 else ("warning" if opportunity_score >= 5 else "error")
+                    st.markdown(f"""
+                    <div class="info-card {score_color}">
+                        <h4>Opportunity Score</h4>
+                        <p style="font-size: 1.5rem; margin: 0.5rem 0;">
+                            {opportunity_score:.1f}/10
+                        </p>
+                        <p style="font-size: 0.85rem; opacity: 0.8;">
+                            {"Strong Buy" if opportunity_score >= 7 else ("Moderate" if opportunity_score >= 5 else "Weak")}
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown(f"""
+                <div class="info-card info" style="margin-top: 1rem;">
+                    <strong>Assessment:</strong> {correction_desc}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("<div class='custom-divider'></div>", unsafe_allow_html=True)
+                
+                # Stock Classification & Strategy
+                st.markdown("### 🎯 Investment Category & Strategy")
+                
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.markdown(f"""
+                    <div class="metric-container">
+                        <div class="metric-label">Stock Category</div>
+                        <div class="metric-value neutral" style="font-size: 1.5rem;">
+                            {category_name}
+                        </div>
+                        <div style="color: rgba(255,255,255,0.6); font-size: 0.85rem; margin-top: 0.5rem;">
+                            Sector: {sector}<br>
+                            Industry: {industry}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(f"""
+                    <div class="metric-container">
+                        <div class="metric-label">Recommended Strategy</div>
+                        <div style="font-size: 1.2rem; margin: 0.5rem 0; color: #667eea;">
+                            {strategy['strategy']}
+                        </div>
+                        <div style="color: rgba(255,255,255,0.6); font-size: 0.85rem;">
+                            Risk Level: {strategy['risk_level']}<br>
+                            Hold Period: {strategy['hold_period']}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown(f"""
+                <div class="info-card info" style="margin-top: 1rem;">
+                    <strong>Strategy Reasoning:</strong><br>
+                    {strategy['reasoning']}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("<div class='custom-divider'></div>", unsafe_allow_html=True)
+                
+                # Opportunity Score Breakdown
+                st.markdown("### 💯 Opportunity Score Breakdown")
+                
+                st.markdown("""
+                <div class="metric-container" style="margin-bottom: 1rem;">
+                """, unsafe_allow_html=True)
+                
+                for factor in score_factors:
+                    st.markdown(f"- {factor}")
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                # Buying conditions
+                if opportunity_score >= 7:
+                    st.success("""
+                    🟢 **STRONG BUYING OPPORTUNITY**
+                    
+                    Multiple factors align for a potential entry:
+                    - Stock is significantly below recent highs
+                    - Fundamentals appear reasonable
+                    - Category fits long-term strategy
+                    
+                    Consider starting or adding to position with proper position sizing.
+                    """)
+                elif opportunity_score >= 5:
+                    st.warning("""
+                    🟡 **MODERATE OPPORTUNITY**
+                    
+                    Some positive factors present:
+                    - May be worth watching for further weakness
+                    - Verify fundamentals before entry
+                    - Consider waiting for better entry point
+                    
+                    Not a clear buy signal yet - patience recommended.
+                    """)
+                else:
+                    st.error("""
+                    🔴 **WEAK OPPORTUNITY**
+                    
+                    Limited positive factors:
+                    - Stock may be overvalued or near highs
+                    - Fundamentals may not support current price
+                    - Higher risk category or weak technicals
+                    
+                    Better opportunities likely available elsewhere.
+                    """)
+                
+                st.markdown("<div class='custom-divider'></div>", unsafe_allow_html=True)
+                
+                # Market Context & Philosophy
+                st.markdown("### 📚 Understanding Market Corrections")
+                
+                with st.expander("💡 Market Correction Philosophy"):
+                    st.markdown("""
+                    ### The Nature of Market Corrections
+                    
+                    A deep red flush across market tickers, rising panic in financial headlines, palpable anxiety—these are the unmistakable signs of a market correction. In these moments, the impulse to react emotionally is strong. Yet, what if we chose to see this not as a crisis, but as a **predictable cycle**?
+                    
+                    **The market, after a period of exuberant growth, is simply taking a breath.**
+                    
+                    ---
+                    
+                    ### Why Corrections Happen
+                    
+                    This pullback is not the financial apocalypse. It is the **cost of doing business** for anyone committed to long-term wealth creation. Current factors include:
+                    
+                    **1. Persistent Inflation & Rate Cut Delays**
+                    - Market priced in swift interest rate cuts
+                    - Inflation proving stickier than anticipated
+                    - Central banks signaling patience
+                    - Era of cheap money isn't returning quickly
+                    
+                    **2. Tech & AI Valuation Reset**
+                    - Meteoric rise stretched valuations
+                    - Even revolutionary companies answer to fundamentals
+                    - Healthy correction bringing prices to reality
+                    
+                    **3. "Risk-Off" Sentiment Shift**
+                    - After high-risk speculation period
+                    - Capital rotating toward safety
+                    - Traders unwinding leveraged bets
+                    - Moving to less volatile sectors
+                    
+                    ---
+                    
+                    ### The Opportunity in Volatility
+                    
+                    **For the strategic investor, volatility is not a threat; it is a signal of opportunity.**
+                    
+                    This is the window where:
+                    - ✅ Assets return to rational prices
+                    - ✅ Careful planning pays dividends
+                    - ✅ Quality companies go "on sale"
+                    - ✅ Long-term wealth is built
+                    
+                    Think of corrections not as a collapse, but as a **cleansing**. They purge the system of:
+                    - Excess speculation
+                    - Fragile business models
+                    - Undisciplined leverage
+                    
+                    It's during these resets that the foundation for the next wave of growth is quietly laid.
+                    
+                    ---
+                    
+                    ### Investment Categories During Corrections
+                    
+                    #### 🏆 Mega-Cap Technology
+                    **Examples:** Microsoft, Alphabet, Amazon, Apple, Nvidia
+                    
+                    **Strategy:** Buy on 10-20% pullbacks
+                    - Don't disappear in downturns
+                    - Global reach and fortified balance sheets
+                    - Undeniable market power
+                    - Fundamental building blocks
+                    
+                    #### 🛡️ Defensive Stalwarts
+                    **Sectors:** Healthcare, Consumer Staples, Utilities, Insurance
+                    **Examples:** UnitedHealth, Johnson & Johnson, PepsiCo, Procter & Gamble
+                    
+                    **Strategy:** Accumulate during volatility
+                    - Essential services
+                    - Steady cash flow
+                    - Reliable dividends
+                    - Defensive buffer against fear
+                    
+                    #### 💎 Undervalued Value Plays
+                    **Sectors:** Energy, Financials, Industrials
+                    
+                    **Strategy:** Buy when P/E below historical average
+                    - Overlooked by growth obsession
+                    - Capital now rotating here
+                    - Trading below historical P/E ratios
+                    - Compelling for value investors
+                    
+                    ---
+                    
+                    ### The Strategic Mindset
+                    
+                    **What separates successful investors from emotional traders:**
+                    
+                    ✅ **See corrections as opportunities, not crises**
+                    ✅ **Focus on fundamentals, not fear**
+                    ✅ **Buy quality assets at discount prices**
+                    ✅ **Think in years, not days**
+                    ✅ **Position sizing protects capital**
+                    ✅ **Patience beats panic**
+                    
+                    ---
+                    
+                    ### Key Principles
+                    
+                    1. **Volatility Creates Discounts on Quality**
+                       - Best companies become affordable
+                       - 10-20% drops are gifts for patient investors
+                    
+                    2. **Consistency Beats Speculation**
+                       - Steady accumulation during fear
+                       - Dollar-cost averaging into weakness
+                    
+                    3. **Fundamentals Always Matter**
+                       - Strong balance sheets survive downturns
+                       - Quality businesses recover faster
+                    
+                    4. **Time in Market > Timing Market**
+                       - Long-term holdings outperform trading
+                       - Corrections are temporary, growth is permanent
+                    
+                    ---
+                    
+                    ### Final Thought
+                    
+                    > "Be fearful when others are greedy, and greedy when others are fearful." 
+                    > — Warren Buffett
+                    
+                    This is not about reckless buying or catching falling knives. It's about **strategic accumulation of quality assets when they return to rational prices**.
+                    
+                    The best investors are made during corrections, not bull markets.
+                    """)
+                
+                with st.expander("🎯 How to Use This Analysis"):
+                    st.markdown("""
+                    ### Using the Opportunity Score
+                    
+                    **Score 8-10: Strong Buy Signal**
+                    - Multiple positive factors aligned
+                    - Consider starting or adding to position
+                    - Use proper position sizing (never go all-in)
+                    - Set a long-term horizon
+                    
+                    **Score 5-7: Moderate Opportunity**
+                    - Some positive factors present
+                    - Add to watchlist
+                    - Wait for more confirmation
+                    - May want to see further weakness
+                    
+                    **Score 0-4: Weak Signal**
+                    - Limited positive factors
+                    - Better opportunities exist elsewhere
+                    - May be overvalued or risky
+                    - Pass for now
+                    
+                    ---
+                    
+                    ### Position Sizing Guidelines
+                    
+                    **Never invest more than you can afford to lose:**
+                    
+                    - **Conservative:** 2-3% per position
+                    - **Moderate:** 3-5% per position
+                    - **Aggressive:** 5-10% per position (max)
+                    
+                    **Diversification is key:**
+                    - 10-20 positions minimum
+                    - Multiple sectors
+                    - Mix of categories (Mega-cap, Defensive, Value)
+                    
+                    ---
+                    
+                    ### When to Buy
+                    
+                    ✅ **Do Buy When:**
+                    - Opportunity score ≥ 7
+                    - Stock down 10-20%+ from highs
+                    - Fundamentals remain strong
+                    - Category fits your strategy
+                    - You have long-term horizon (3+ years)
+                    
+                    ❌ **Don't Buy When:**
+                    - Opportunity score < 5
+                    - Stock near all-time highs
+                    - Fundamentals deteriorating
+                    - Just because price is falling
+                    - You need the money short-term
+                    
+                    ---
+                    
+                    ### Risk Management
+                    
+                    **Always:**
+                    - Have an emergency fund (6-12 months expenses)
+                    - Never use leverage or margin
+                    - Don't invest money you need soon
+                    - Diversify across categories
+                    - Review positions regularly
+                    
+                    **Remember:**
+                    - This tool provides analysis, not financial advice
+                    - Do your own research
+                    - Consider your risk tolerance
+                    - Consult a financial advisor if needed
+                    """)
+                
+                st.markdown("<div class='custom-divider'></div>", unsafe_allow_html=True)
+                
+                # Watchlist by Category
+                st.markdown("### 📋 Example Watchlist by Category")
+                
+                watchlist_data = {
+                    "🏆 Mega-Cap Tech": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META"],
+                    "🛡️ Defensive Healthcare": ["UNH", "JNJ", "PFE", "ABBV"],
+                    "🛡️ Consumer Staples": ["PEP", "PG", "KO", "WMT", "COST"],
+                    "💎 Energy Value": ["XOM", "CVX", "COP", "SLB"],
+                    "💎 Financial Value": ["JPM", "BAC", "WFC", "GS"],
+                    "💎 Industrial Value": ["CAT", "BA", "HON", "UNP"]
+                }
+                
+                for category, tickers in watchlist_data.items():
+                    with st.expander(f"{category} ({len(tickers)} stocks)"):
+                        ticker_str = " • ".join([f"`{t}`" for t in tickers])
+                        st.markdown(ticker_str)
+                        st.caption(f"Click on any ticker in the sidebar to analyze")
+                                
     except Exception as e:
         st.error(f"❌ Unexpected error: {str(e)}")
         st.info("""

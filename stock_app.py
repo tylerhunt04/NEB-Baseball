@@ -297,6 +297,9 @@ ticker = st.sidebar.text_input(
     help="Enter a valid stock ticker symbol"
 ).upper()
 
+# Analyze button right after ticker input
+analyze_button = st.sidebar.button("📊 Analyze Stock", type="primary", use_container_width=True)
+
 st.sidebar.markdown("<div style='height: 2px; background: linear-gradient(to right, transparent, #667eea, transparent); margin: 1rem 0;'></div>", unsafe_allow_html=True)
 
 # Period selection with buttons
@@ -318,21 +321,6 @@ period_map = {
     "5Y": "5y",
     "MAX": "max"
 }
-
-st.sidebar.markdown("<div style='height: 2px; background: linear-gradient(to right, transparent, #667eea, transparent); margin: 1rem 0;'></div>", unsafe_allow_html=True)
-
-# Info card
-st.sidebar.markdown("""
-<div style='background: rgba(102, 126, 234, 0.1); border-left: 4px solid #667eea; padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
-    <strong style='color: #667eea;'>💡 Pro Tip</strong><br>
-    <span style='color: rgba(255,255,255,0.8); font-size: 0.85rem;'>
-    Use 1Y for comprehensive analysis. Shorter for day trading, longer for investing.
-    </span>
-</div>
-""", unsafe_allow_html=True)
-
-# Download button
-analyze_button = st.sidebar.button("📊 Analyze Stock", type="primary", use_container_width=True)
 
 # Cache the download function
 @st.cache_data(ttl=600)

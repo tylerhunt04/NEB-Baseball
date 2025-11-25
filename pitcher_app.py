@@ -2378,6 +2378,604 @@ with tabs[2]:
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
+# ══════════════════════════════════════════════════════════════════════════════
+# FALL SUMMARY TAB - Only for scrimmages (tabs[3])
+# ══════════════════════════════════════════════════════════════════════════════
+
+if segment_choice == "2025/26 Scrimmages":
+    # ──────────────────────────────────────────────────────────────────────────────
+    # Helper function: Categorize pitch types into Fastball, Offspeed, Breaking Ball
+    # ──────────────────────────────────────────────────────────────────────────────
+    def categorize_pitch_type(pitch_type_str):
+        """
+        Categorize a pitch type into one of: Fastball, Offspeed, Breaking Ball
+        """
+        if pd.isna(pitch_type_str):
+            return "Unknown"
+        
+        ptype = str(pitch_type_str).lower().strip()
+        
+        # Fastballs
+        if any(fb in ptype for fb in ['fastball', 'four-seam', 'fourseam', '4-seam', 'sinker', 'two-seam', 'twostar']):
+            return "Fastball"
+        
+        # Breaking balls
+        if any(bb in ptype for bb in ['slider', 'curveball', 'curve', 'slurve', 'cutter', 'knuckle curve']):
+            return "Breaking Ball"
+        
+        # Offspeed
+        if any(os in ptype for os in ['changeup', 'change', 'splitter', 'split', 'forkball', 'screwball', 'eephus']):
+            return "Offspeed"
+        
+        return "Unknown"
+
+    # ──────────────────────────────────────────────────────────────────────────────
+    # Helper function: Create average release points only (for Fall Summary)
+    # ──────────────────────────────────────────────────────────────────────────────
+    def average_release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=None, figsize=(7.0, 7.0)):
+        """
+        Create a single-panel figure showing only average release points.
+        Designed to match the size and style of the movement plot for professional presentation.
+        """
+        sub_all = subset_by_pitcher_if_possible(df, pitcher_name)
+        x_col = pick_col(sub_all, "Relside","RelSide","ReleaseSide","Release_Side","release_pos_x")
+        y_col = pick_col(sub_all, "Relheight","RelHeight","ReleaseHeight","Release_Height","release_pos_z")
+        type_col = type_col_in_df(sub_all)
+        speed_col = pick_col(sub_all, "Relspeed","RelSpeed","ReleaseSpeed","RelSpeedMPH","release_speed")
+
+        missing = [lbl for lbl, col in [("Relside",x_col), ("Relheight",y_col)] if col is None]
+        if missing:
+            return None
+
+        sub = sub_all.copy()
+        if sub.empty:
+            return None
+
+        sub[x_col] = pd.to_numeric(sub[x_col], errors="coerce")
+        sub[y_col] = pd.to_numeric(sub[y_col], errors="coerce")
+        if speed_col: sub[speed_col] = pd.to_numeric(sub[speed_col], errors="coerce")
+        sub = sub.dropna(subset=[x_col, y_col])
+
+        def norm_text(x: str) -> str: return str(x).strip().lower()
+        def norm_type(x: str) -> str:
+            s = norm_text(x)
+            return {"four seam":"four-seam","4 seam":"4-seam","two seam":"two-seam","2 seam":"2-seam"}.get(s, s)
+
+        def canonicalize_type(raw: str) -> str:
+            s = norm_text(raw)
+            if "sinker" in s or s in {"si","snk"}: return "Fastball"
+            n = norm_type(raw)
+            return {
+                "four-seam":"Fastball","4-seam":"Fastball","fastball":"Fastball",
+                "two-seam":"Two-Seam Fastball","2-seam":"Two-Seam Fastball",
+                "cutter":"Cutter","changeup":"Changeup","splitter":"Splitter",
+                "curveball":"Curveball","knuckle curve":"Knuckle Curve","slider":"Slider",
+                "sweeper":"Sweeper","screwball":"Screwball","eephus":"Eephus",
+            }.get(n, "Unknown")
+
+        def color_for_release(canon_label: str) -> str:
+            key = str(canon_label).lower()
+            palette = {
+                "fastball": "#E60026",
+                "two-seam fastball": "#FF9300",
+                "cutter": "#800080",
+                "changeup": "#008000",
+                "splitter": "#00CCCC",
+                "curveball": "#0033CC",
+                "knuckle curve": "#000000",
+                "slider": "#CCCC00",
+                "sweeper": "#B5651D",
+                "screwball": "#CC0066",
+                "eephus": "#666666",
+            }
+            return palette.get(key, "#7F7F7F")
+
+        sub["_type_canon"] = sub[type_col].apply(canonicalize_type)
+        sub = sub[sub["_type_canon"] != "Unknown"].copy()
+
+        if include_types is not None and len(include_types) > 0:
+            sub = sub[sub["_type_canon"].isin(include_types)]
+        if sub.empty:
+            return None
+
+        sub["_color"] = sub["_type_canon"].apply(color_for_release)
+
+        agg = {"mean_x": (x_col, "mean"), "mean_y": (y_col, "mean")}
+        if speed_col: agg["mean_speed"] = (speed_col, "mean")
+        means = sub.groupby("_type_canon", as_index=False).agg(**agg)
+        means["color"] = means["_type_canon"].apply(color_for_release)
+        if "mean_speed" in means.columns:
+            means = means.sort_values("mean_speed", ascending=False, na_position="last").reset_index(drop=True)
+
+        # Create single panel figure
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Draw average release points with arm visualization
+        ARM_BASE_HALF_WIDTH = 0.15
+        ARM_TIP_HALF_WIDTH = 0.05
+        ARM_FILL_COLOR = "#4a4a4a"
+        
+        for _, row in means.iterrows():
+            x0, y0 = 0.0, 0.0
+            x1, y1 = float(row["mean_x"]), float(row["mean_y"])
+            dx, dy = x1 - x0, y1 - y0
+            L = float(np.hypot(dx, dy))
+            if L <= 1e-6: continue
+            ux, uy = dx / L, dy / L
+            px, py = -uy, ux
+            sLx, sLy = x0 + px*ARM_BASE_HALF_WIDTH, y0 + py*ARM_BASE_HALF_WIDTH
+            sRx, sRy = x0 - px*ARM_BASE_HALF_WIDTH, y0 - py*ARM_BASE_HALF_WIDTH
+            eLx, eLy = x1 + px*ARM_TIP_HALF_WIDTH, y1 + py*ARM_TIP_HALF_WIDTH
+            eRx, eRy = x1 - px*ARM_TIP_HALF_WIDTH, y1 - py*ARM_TIP_HALF_WIDTH
+            arm_poly = Polygon([(sLx, sLy), (eLx, eLy), (eRx, eRy), (sRx, sRy)], closed=True,
+                               facecolor=ARM_FILL_COLOR, edgecolor=ARM_FILL_COLOR, zorder=1)
+            ax.add_patch(arm_poly)
+            ax.add_patch(Circle((x0, y0), radius=0.20, facecolor="#0d0d0d", edgecolor="#0d0d0d", zorder=2))
+            outer = Circle((x1, y1), radius=0.26, facecolor=row["color"], edgecolor=row["color"], zorder=4)
+            ax.add_patch(outer)
+            inner_face = ax.get_facecolor()
+            inner = Circle((x1, y1), radius=0.15, facecolor=inner_face, edgecolor=inner_face, zorder=5)
+            ax.add_patch(inner)
+
+        ax.set_xlim(-5, 5)
+        ax.set_ylim(0, 8)
+        ax.set_aspect("equal")
+        ax.axhline(0, color="black", linewidth=1)
+        ax.axvline(0, color="black", linewidth=1)
+        ax.set_xlabel("Release Side (ft)", fontsize=11, fontweight='500')
+        ax.set_ylabel("Release Height (ft)", fontsize=11, fontweight='500')
+        ax.set_title("Average Release Points", fontweight="bold", fontsize=14)
+        ax.grid(True, alpha=0.2, linestyle=':')
+
+        # Legend
+        handles = []
+        for _, row in means.iterrows():
+            label = row["_type_canon"]
+            if "mean_speed" in means.columns and not pd.isna(row.get("mean_speed", None)):
+                label = f"{label} ({row['mean_speed']:.1f})"
+            handles.append(Line2D([0],[0], marker="o", linestyle="none", markersize=8, label=label, color=row["color"]))
+        if handles:
+            ax.legend(handles=handles, title="Pitch Type", loc="upper right", framealpha=0.95, fontsize=9)
+
+        fig.tight_layout()
+        return fig
+
+    # ──────────────────────────────────────────────────────────────────────────────
+    # Helper function: Create profile summary by pitch category
+    # ──────────────────────────────────────────────────────────────────────────────
+    def create_pitch_category_summary(df):
+        """
+        Create a summary table grouped by Fastball, Offspeed, Breaking Ball
+        Returns a DataFrame with key metrics for each category
+        """
+        if df.empty:
+            return pd.DataFrame()
+        
+        type_col = type_col_in_df(df)
+        if not type_col or type_col not in df.columns:
+            return pd.DataFrame()
+        
+        # Add pitch category column
+        df_work = df.copy()
+        df_work['_PitchCategory'] = df_work[type_col].apply(categorize_pitch_type)
+        df_work = df_work[df_work['_PitchCategory'] != "Unknown"]
+        
+        if df_work.empty:
+            return pd.DataFrame()
+        
+        # Get relevant columns
+        speed_col = pick_col(df_work, "RelSpeed", "Relspeed", "ReleaseSpeed", "RelSpeedMPH", "release_speed")
+        ivb_col = pick_col(df_work, "InducedVertBreak", "IVB", "Induced Vert Break", "IndVertBreak")
+        hb_col = pick_col(df_work, "HorzBreak", "HorizontalBreak", "HB", "HorizBreak")
+        spin_col = pick_col(df_work, "SpinRate", "Spin Rate", "Spin", "spin_rate")
+        call_col = pick_col(df_work, "PitchCall", "Pitch Call", "Call")
+        exit_col = pick_col(df_work, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", "ExitVel", "EV", "LaunchSpeed", "Launch_Speed")
+        
+        summary_data = []
+        
+        for category in ['Fastball', 'Breaking Ball', 'Offspeed']:
+            cat_df = df_work[df_work['_PitchCategory'] == category]
+            
+            if cat_df.empty:
+                continue
+            
+            row = {'Pitch Category': category, 'Count': len(cat_df)}
+            
+            # Average velocity
+            if speed_col:
+                velo = pd.to_numeric(cat_df.get(speed_col, pd.Series(dtype=float)), errors='coerce')
+                row['Avg Velo'] = round(velo.mean(), 1) if not velo.isna().all() else np.nan
+                row['Max Velo'] = round(velo.max(), 1) if not velo.isna().all() else np.nan
+            
+            # Average movement
+            if ivb_col:
+                ivb = pd.to_numeric(cat_df.get(ivb_col, pd.Series(dtype=float)), errors='coerce')
+                row['Avg IVB'] = round(ivb.mean(), 1) if not ivb.isna().all() else np.nan
+            
+            if hb_col:
+                hb = pd.to_numeric(cat_df.get(hb_col, pd.Series(dtype=float)), errors='coerce')
+                row['Avg HB'] = round(hb.mean(), 1) if not hb.isna().all() else np.nan
+            
+            # Average spin rate
+            if spin_col:
+                spin = pd.to_numeric(cat_df.get(spin_col, pd.Series(dtype=float)), errors='coerce')
+                row['Avg Spin'] = round(spin.mean(), 0) if not spin.isna().all() else np.nan
+            
+            # Whiff rate
+            if call_col:
+                calls = cat_df[call_col].astype(str)
+                swings = calls.isin(['StrikeSwinging', 'FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay'])
+                whiffs = calls.eq('StrikeSwinging')
+                total_swings = swings.sum()
+                if total_swings > 0:
+                    row['Whiff%'] = round((whiffs.sum() / total_swings) * 100, 1)
+                else:
+                    row['Whiff%'] = np.nan
+            
+            # Strike rate
+            if call_col:
+                strike_calls = calls.isin(['StrikeCalled', 'StrikeSwinging', 'FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay'])
+                row['Strike%'] = round((strike_calls.sum() / len(cat_df)) * 100, 1)
+            
+            # Hard hit rate (on balls in play)
+            if exit_col and call_col:
+                ev = pd.to_numeric(cat_df.get(exit_col, pd.Series(dtype=float)), errors='coerce')
+                inplay = calls.eq('InPlay')
+                bip_count = inplay.sum()
+                if bip_count > 0:
+                    hard_hits = ((ev >= 95.0) & inplay & ev.notna()).sum()
+                    row['HardHit%'] = round((hard_hits / bip_count) * 100, 1)
+                    row['Avg EV'] = round(ev[inplay].mean(), 1) if not ev[inplay].isna().all() else np.nan
+                else:
+                    row['HardHit%'] = np.nan
+                    row['Avg EV'] = np.nan
+            
+            summary_data.append(row)
+        
+        if not summary_data:
+            return pd.DataFrame()
+        
+        result_df = pd.DataFrame(summary_data)
+        
+        # Reorder columns
+        col_order = ['Pitch Category', 'Count', 'Avg Velo', 'Max Velo', 'Avg IVB', 'Avg HB', 
+                     'Avg Spin', 'Strike%', 'Whiff%', 'HardHit%', 'Avg EV']
+        result_df = result_df[[c for c in col_order if c in result_df.columns]]
+        
+        return result_df
+
+    # ──────────────────────────────────────────────────────────────────────────────
+    # UI — Fall Summary tab
+    # ──────────────────────────────────────────────────────────────────────────────
+    with tabs[3]:
+        section_header("Fall Season Summary")
+        
+        # Use all fall data
+        df_fall = df_pitcher_all.copy()
+        
+        if df_fall.empty:
+            info_message("No fall scrimmage data available for this pitcher.")
+        else:
+            # Determine season label
+            fall_label = f"{segment_choice}"
+            
+            # ═══════════════════════════════════════════════════════════════════════
+            # TOP SECTION: Overall Metrics + Average Release Points (side by side)
+            # ═══════════════════════════════════════════════════════════════════════
+            subsection_header("Performance Overview")
+            
+            col_metrics, col_release = st.columns([1, 1])
+            
+            with col_metrics:
+                logo_img = load_logo_img()
+                out_metrics = combined_pitcher_report(
+                    df_fall, player_disp, logo_img, coverage=0.8, season_label=fall_label
+                )
+                if out_metrics:
+                    fig_metrics, _ = out_metrics
+                    show_and_close(fig_metrics, use_container_width=True)
+                else:
+                    info_message("Metrics visualization not available.")
+            
+            with col_release:
+                # Get available pitch types for release points
+                type_col_fall = type_col_in_df(df_fall)
+                types_avail_fall = []
+                if type_col_fall and type_col_fall in df_fall.columns:
+                    def norm_text(x: str) -> str: return str(x).strip().lower()
+                    def norm_type(x: str) -> str:
+                        s = norm_text(x)
+                        return {"four seam":"four-seam","4 seam":"4-seam","two seam":"two-seam","2 seam":"2-seam"}.get(s, s)
+
+                    def canonicalize_type(raw: str) -> str:
+                        s = norm_text(raw)
+                        if "sinker" in s or s in {"si","snk"}: return "Fastball"
+                        n = norm_type(raw)
+                        return {
+                            "four-seam":"Fastball","4-seam":"Fastball","fastball":"Fastball",
+                            "two-seam":"Two-Seam Fastball","2-seam":"Two-Seam Fastball",
+                            "cutter":"Cutter","changeup":"Changeup","splitter":"Splitter",
+                            "curveball":"Curveball","knuckle curve":"Knuckle Curve","slider":"Slider",
+                            "sweeper":"Sweeper","screwball":"Screwball","eephus":"Eephus",
+                        }.get(n, "Unknown")
+                    
+                    types_avail_fall = (
+                        df_fall[type_col_fall]
+                        .dropna().map(canonicalize_type)
+                        .replace("Unknown", np.nan).dropna().unique().tolist()
+                    )
+                
+                fig_release = average_release_points_figure(
+                    df_fall, player_disp, include_types=types_avail_fall, figsize=(7.0, 7.0)
+                )
+                if fig_release:
+                    show_and_close(fig_release, use_container_width=True)
+                else:
+                    info_message("Release points visualization not available.")
+            
+            professional_divider()
+            
+            # ═══════════════════════════════════════════════════════════════════════
+            # MIDDLE SECTION: Top 3 Pitch Type Strike Zones with Filters
+            # ═══════════════════════════════════════════════════════════════════════
+            subsection_header("Strike Zone Analysis — Top 3 Pitches")
+            
+            # Get top 3 pitch types
+            type_col = type_col_in_df(df_fall)
+            if not type_col or type_col not in df_fall.columns:
+                warning_message("Pitch type data not available for strike zone analysis.")
+            else:
+                top3_pitches = df_fall[type_col].value_counts().head(3).index.tolist()
+                
+                if len(top3_pitches) == 0:
+                    warning_message("No pitch type data available.")
+                else:
+                    # Filter controls - apply to ALL panels
+                    st.markdown('<div class="filter-section">', unsafe_allow_html=True)
+                    st.markdown("**Situational Filters** *(apply to all visualizations below)*")
+                    filter_col1, filter_col2 = st.columns([1, 1])
+                    
+                    with filter_col1:
+                        count_options = ["All Counts", "0-0 (First Pitch)", "0-1, 1-0, 1-1 (Even)", 
+                                       "0-2, 1-2, 2-2 (Two Strikes)", "2-0, 3-0, 3-1, 2-1, 3-2 (Hitter's)"]
+                        count_filter = st.selectbox(
+                            "Count Situation:",
+                            options=count_options,
+                            key="fall_count_filter"
+                        )
+                    
+                    with filter_col2:
+                        side_filter = st.radio(
+                            "Batter Handedness:",
+                            options=["Both", "vs LHH", "vs RHH"],
+                            horizontal=True,
+                            key="fall_side_filter"
+                        )
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # Apply filters to the data
+                    df_filtered = df_fall.copy()
+                    
+                    # Filter by count
+                    if "Balls" in df_fall.columns and "Strikes" in df_fall.columns and count_filter != "All Counts":
+                        if count_filter == "0-0 (First Pitch)":
+                            df_filtered = df_filtered[(df_filtered["Balls"] == 0) & (df_filtered["Strikes"] == 0)]
+                        elif count_filter == "0-1, 1-0, 1-1 (Even)":
+                            df_filtered = df_filtered[
+                                ((df_filtered["Balls"] == 0) & (df_filtered["Strikes"] == 1)) |
+                                ((df_filtered["Balls"] == 1) & (df_filtered["Strikes"] == 0)) |
+                                ((df_filtered["Balls"] == 1) & (df_filtered["Strikes"] == 1))
+                            ]
+                        elif count_filter == "0-2, 1-2, 2-2 (Two Strikes)":
+                            df_filtered = df_filtered[
+                                ((df_filtered["Balls"] == 0) & (df_filtered["Strikes"] == 2)) |
+                                ((df_filtered["Balls"] == 1) & (df_filtered["Strikes"] == 2)) |
+                                ((df_filtered["Balls"] == 2) & (df_filtered["Strikes"] == 2))
+                            ]
+                        elif count_filter == "2-0, 3-0, 3-1, 2-1, 3-2 (Hitter's)":
+                            df_filtered = df_filtered[
+                                ((df_filtered["Balls"] == 2) & (df_filtered["Strikes"] == 0)) |
+                                ((df_filtered["Balls"] == 3) & (df_filtered["Strikes"] == 0)) |
+                                ((df_filtered["Balls"] == 3) & (df_filtered["Strikes"] == 1)) |
+                                ((df_filtered["Balls"] == 2) & (df_filtered["Strikes"] == 1)) |
+                                ((df_filtered["Balls"] == 3) & (df_filtered["Strikes"] == 2))
+                            ]
+                    
+                    # Filter by batter side
+                    if side_filter != "Both":
+                        side_col = find_batter_side_col(df_filtered)
+                        if side_col:
+                            sides = normalize_batter_side(df_filtered[side_col])
+                            target_side = "L" if side_filter == "vs LHH" else "R"
+                            df_filtered = df_filtered[sides == target_side]
+                    
+                    # Get necessary columns
+                    x_col = pick_col(df_filtered, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
+                    y_col = pick_col(df_filtered, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
+                    speed_col = pick_col(df_filtered, "RelSpeed", "Relspeed", "ReleaseSpeed", "RelSpeedMPH", "release_speed")
+                    ivb_col = pick_col(df_filtered, "InducedVertBreak", "IVB", "Induced Vert Break", "IndVertBreak")
+                    hb_col = pick_col(df_filtered, "HorzBreak", "HorizontalBreak", "HB", "HorizBreak")
+                    exit_col = pick_col(df_filtered, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", "ExitVel", "EV", "LaunchSpeed", "Launch_Speed")
+                    call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call")
+                    
+                    if not x_col or not y_col:
+                        warning_message("Plate location data not available for strike zone visualization.")
+                    else:
+                        x_min, x_max, y_min, y_max = get_view_bounds()
+                        
+                        # Create 3-panel figure for top 3 pitch types
+                        fig_top3_zones = make_subplots(
+                            rows=1, cols=3,
+                            shared_yaxes=True,
+                            shared_xaxes=True,
+                            subplot_titles=[f"{pitch} (n={len(df_filtered[df_filtered[type_col]==pitch])})" 
+                                          for pitch in top3_pitches[:3]],
+                            horizontal_spacing=0.05
+                        )
+                        
+                        # Add zone shapes to all panels
+                        for col_idx in range(1, 4):
+                            for shp in _zone_shapes_for_subplot():
+                                fig_top3_zones.add_shape(shp, row=1, col=col_idx)
+                        
+                        # Add data for each pitch type
+                        for idx, pitch_type in enumerate(top3_pitches[:3]):
+                            col_idx = idx + 1
+                            df_pitch = df_filtered[df_filtered[type_col] == pitch_type].copy()
+                            
+                            if df_pitch.empty:
+                                continue
+                            
+                            xs = pd.to_numeric(df_pitch.get(x_col, pd.Series(dtype=float)), errors='coerce')
+                            ys = pd.to_numeric(df_pitch.get(y_col, pd.Series(dtype=float)), errors='coerce')
+                            
+                            if xs.isna().all() or ys.isna().all():
+                                continue
+                            
+                            cd = np.column_stack([
+                                df_pitch[type_col].astype(str).values,
+                                pd.to_numeric(df_pitch.get(speed_col, pd.Series(dtype=float)), errors='coerce').values if speed_col else np.full(len(df_pitch), np.nan),
+                                pd.to_numeric(df_pitch.get(ivb_col, pd.Series(dtype=float)), errors='coerce').values if ivb_col else np.full(len(df_pitch), np.nan),
+                                pd.to_numeric(df_pitch.get(hb_col, pd.Series(dtype=float)), errors='coerce').values if hb_col else np.full(len(df_pitch), np.nan),
+                                df_pitch.get(call_col, pd.Series(dtype=object)).astype(str).values if call_col else np.array([""]*len(df_pitch)),
+                                pd.to_numeric(df_pitch.get(exit_col, pd.Series(dtype=float)), errors='coerce').values if exit_col else np.full(len(df_pitch), np.nan),
+                            ])
+                            
+                            pitch_color = get_pitch_color(pitch_type)
+                            
+                            fig_top3_zones.add_trace(
+                                go.Scattergl(
+                                    x=xs, y=ys,
+                                    mode="markers",
+                                    marker=dict(size=8, line=dict(width=0.5, color="white"), color=pitch_color),
+                                    customdata=cd,
+                                    hovertemplate=(
+                                        "<b>%{customdata[0]}</b><br>"
+                                        "Velocity: %{customdata[1]:.1f} mph<br>"
+                                        "IVB: %{customdata[2]:.1f}\"<br>"
+                                        "HB: %{customdata[3]:.1f}\"<br>"
+                                        "Result: %{customdata[4]}<br>"
+                                        "Exit Velo: %{customdata[5]:.1f} mph<br>"
+                                        "<extra></extra>"
+                                    ),
+                                    showlegend=False,
+                                    name=pitch_type
+                                ),
+                                row=1, col=col_idx
+                            )
+                        
+                        # Update axes
+                        for col_idx in range(1, 4):
+                            fig_top3_zones.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col_idx)
+                            fig_top3_zones.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col_idx)
+                        
+                        filter_text = f"{count_filter}" if count_filter != "All Counts" else "All Counts"
+                        if side_filter != "Both":
+                            filter_text = f"{filter_text}, {side_filter}"
+                        
+                        fig_top3_zones.update_layout(
+                            height=500,
+                            title_text=f"{canonicalize_person_name(player_disp)} — {filter_text}",
+                            title_x=0.5,
+                            title_font=dict(size=16, color=DARK_GRAY, family="Arial Black"),
+                            margin=dict(l=10, r=10, t=80, b=10),
+                            showlegend=False,
+                            plot_bgcolor='white',
+                            paper_bgcolor='white'
+                        )
+                        
+                        st.plotly_chart(fig_top3_zones, use_container_width=True, key="fall_top3_strike_zones")
+            
+            professional_divider()
+            
+            # ═══════════════════════════════════════════════════════════════════════
+            # BOTTOM SECTION: Pitch Profile Summary (Fastball, Offspeed, Breaking)
+            # ═══════════════════════════════════════════════════════════════════════
+            subsection_header("Pitch Arsenal Summary")
+            st.markdown('<p class="caption-text">Performance metrics grouped by pitch category</p>', unsafe_allow_html=True)
+            
+            category_summary = create_pitch_category_summary(df_fall)
+            
+            if not category_summary.empty:
+                st.table(themed_table(category_summary))
+                
+                # Additional breakdown by individual pitch types within categories
+                with st.expander("Detailed Breakdown by Pitch Type", expanded=False):
+                    type_col = type_col_in_df(df_fall)
+                    if type_col and type_col in df_fall.columns:
+                        # Add category info
+                        df_detail = df_fall.copy()
+                        df_detail['_Category'] = df_detail[type_col].apply(categorize_pitch_type)
+                        df_detail = df_detail[df_detail['_Category'] != "Unknown"]
+                        
+                        if not df_detail.empty:
+                            for category in ['Fastball', 'Breaking Ball', 'Offspeed']:
+                                cat_df = df_detail[df_detail['_Category'] == category]
+                                if not cat_df.empty:
+                                    st.markdown(f"**{category}**")
+                                    
+                                    # Get outcome summary for this category
+                                    outcome_cat = make_pitcher_outcome_summary_by_type(cat_df)
+                                    if not outcome_cat.empty:
+                                        st.table(themed_table(outcome_cat))
+                                    
+                                    st.markdown("")  # spacing
+                        else:
+                            info_message("Pitch type information not available for detailed breakdown.")
+                    else:
+                        info_message("Pitch type information not available for detailed breakdown.")
+            else:
+                info_message("Unable to generate pitch arsenal summary.")
+            
+            professional_divider()
+            
+            # ═══════════════════════════════════════════════════════════════════════
+            # ADDITIONAL: Outing-by-Outing Summary Table
+            # ═══════════════════════════════════════════════════════════════════════
+            subsection_header("Outing-by-Outing Performance")
+            
+            if 'Date' in df_fall.columns:
+                df_fall_dated = df_fall.copy()
+                df_fall_dated['Date'] = pd.to_datetime(df_fall_dated['Date'], errors='coerce')
+                df_fall_dated = df_fall_dated.dropna(subset=['Date'])
+                
+                if not df_fall_dated.empty:
+                    # Group by date and calculate summary stats
+                    outing_summaries = []
+                    for date, date_df in df_fall_dated.groupby(df_fall_dated['Date'].dt.date):
+                        outing_sum = make_outing_overall_summary(date_df)
+                        if not outing_sum.empty:
+                            outing_sum.insert(0, 'Date', format_date_long(date))
+                            outing_summaries.append(outing_sum)
+                    
+                    if outing_summaries:
+                        all_outings = pd.concat(outing_summaries, ignore_index=True)
+                        st.dataframe(all_outings, use_container_width=True, hide_index=True)
+                        
+                        # Download button
+                        csv_outings = all_outings.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            "Download Outing Summaries (CSV)",
+                            data=csv_outings,
+                            file_name=f"{player_key}_fall_outings.csv",
+                            mime="text/csv"
+                        )
+                    else:
+                        info_message("No outing summaries available.")
+                else:
+                    info_message("No date information available for outing breakdown.")
+            else:
+                info_message("Date column not found in data.")
+
+# Footer
+st.markdown("---")
+st.markdown(f"""
+<div style='text-align: center; color: #999; font-size: 12px; padding: 20px 0;'>
+    Nebraska Baseball Pitcher Analytics Platform • {segment_choice}<br>
+    Powered by Trackman Data
+</div>
+""", unsafe_allow_html=True)
 
 st.markdown("---")
 st.markdown(f"""

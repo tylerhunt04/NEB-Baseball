@@ -1,4 +1,4 @@
-# pitcher_app.py — FULL APP (Modified with KDE Heatmaps in Profiles Tab)
+# pitcher_app.py — PROFESSIONAL UI VERSION
 
 import os, gc, re, base64
 import numpy as np
@@ -11,7 +11,7 @@ import streamlit as st
 from matplotlib.patches import Rectangle, Ellipse, Polygon, Circle
 from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
-from scipy.stats import chi2, gaussian_kde
+from scipy.stats import chi2
 from numpy.linalg import LinAlgError
 from matplotlib import colors
 from datetime import date
@@ -19,8 +19,14 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
 # ─── Page config ──────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Nebraska Baseball — Pitcher Reports",
-                   layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(
+    page_title="Nebraska Baseball — Pitcher Analytics",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+    menu_items={
+        'About': "Nebraska Baseball Pitcher Analysis Platform"
+    }
+)
 st.set_option("client.showErrorDetails", True)
 
 DATA_PATH_MAIN  = "pitcher_columns.csv"
@@ -28,7 +34,172 @@ DATA_PATH_SCRIM = "Scrimmage(28).csv"
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
 HUSKER_RED  = "#E60026"
+HUSKER_CREAM = "#FEFDFA"
+DARK_GRAY = "#2B2B2B"
+LIGHT_GRAY = "#F5F5F5"
 EXT_VIS_WIDTH = 480
+
+# ─── Professional CSS Styling ─────────────────────────────────────────────────
+st.markdown("""
+<style>
+    /* Main container styling */
+    .main {
+        background-color: #FFFFFF;
+    }
+    
+    /* Section headers */
+    .section-header {
+        background: linear-gradient(135deg, #E60026 0%, #B8001F 100%);
+        color: white;
+        padding: 16px 24px;
+        border-radius: 8px;
+        margin: 24px 0 16px 0;
+        font-weight: 600;
+        font-size: 20px;
+        box-shadow: 0 2px 8px rgba(230, 0, 38, 0.15);
+    }
+    
+    /* Subsection headers */
+    .subsection-header {
+        color: #2B2B2B;
+        padding: 12px 0;
+        border-bottom: 3px solid #E60026;
+        margin: 20px 0 12px 0;
+        font-weight: 600;
+        font-size: 18px;
+    }
+    
+    /* Metric cards */
+    .metric-card {
+        background: linear-gradient(135deg, #FFFFFF 0%, #F8F8F8 100%);
+        border-left: 4px solid #E60026;
+        padding: 16px;
+        border-radius: 8px;
+        margin: 8px 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    }
+    
+    .metric-label {
+        color: #666666;
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+    }
+    
+    .metric-value {
+        color: #2B2B2B;
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+    
+    .metric-sublabel {
+        color: #999999;
+        font-size: 11px;
+        margin-top: 4px;
+    }
+    
+    /* Filter section */
+    .filter-section {
+        background-color: #F8F9FA;
+        padding: 20px;
+        border-radius: 8px;
+        border: 1px solid #E0E0E0;
+        margin-bottom: 20px;
+    }
+    
+    /* Table styling improvements */
+    .dataframe {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    /* Divider */
+    .professional-divider {
+        height: 2px;
+        background: linear-gradient(to right, transparent, #E60026, transparent);
+        margin: 32px 0;
+    }
+    
+    /* Info boxes */
+    .info-box {
+        background-color: #F0F7FF;
+        border-left: 4px solid #1E88E5;
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin: 12px 0;
+        color: #1565C0;
+    }
+    
+    .warning-box {
+        background-color: #FFF8E1;
+        border-left: 4px solid #FFA726;
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin: 12px 0;
+        color: #EF6C00;
+    }
+    
+    /* Button styling */
+    .stDownloadButton button {
+        background-color: #E60026;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 20px;
+        font-weight: 500;
+        transition: all 0.3s;
+    }
+    
+    .stDownloadButton button:hover {
+        background-color: #B8001F;
+        box-shadow: 0 4px 8px rgba(230, 0, 38, 0.3);
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #F8F9FA;
+        padding: 8px;
+        border-radius: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: white;
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-weight: 500;
+        border: 1px solid #E0E0E0;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #E60026;
+        color: white;
+        border-color: #E60026;
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background-color: #F8F9FA;
+        border-radius: 6px;
+        font-weight: 500;
+    }
+    
+    /* Select box and input styling */
+    .stSelectbox, .stMultiSelect, .stNumberInput {
+        background-color: white;
+    }
+    
+    /* Caption styling */
+    .caption-text {
+        color: #666666;
+        font-size: 13px;
+        font-style: italic;
+        margin: 8px 0;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Custom colormap for heatmaps
 custom_cmap = colors.LinearSegmentedColormap.from_list(
@@ -68,8 +239,8 @@ def show_image_scaled(fig, *, width_px=EXT_VIS_WIDTH, dpi=200, pad_inches=0.1):
     st.image(buf, width=width_px)
     plt.close(fig); gc.collect()
 
-# ─── Hero banner ──────────────────────────────────────────────────────────────
-def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 260):
+# ─── Professional Hero Banner ─────────────────────────────────────────────────
+def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 280):
     from streamlit.components.v1 import html as _html
     b64 = load_banner_b64() or ""
     sub_html = f'<div class="hero-sub">{subtitle}</div>' if subtitle else ""
@@ -77,21 +248,31 @@ def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 260
         f"""
         <style>
         .hero-wrap {{
-            position: relative; width: 100%; height: {height_px}px; border-radius: 10px;
-            overflow: hidden; margin-bottom: 1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+            position: relative; width: 100%; height: {height_px}px; border-radius: 12px;
+            overflow: hidden; margin-bottom: 2rem; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.1);
         }}
         .hero-bg {{
             position: absolute; inset: 0;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.45), rgba(0,0,0,0.60)),
+            background: linear-gradient(135deg, rgba(0,0,0,0.5) 0%, rgba(230,0,38,0.3) 100%),
                         url('data:image/jpeg;base64,{b64}');
-            background-size: cover; background-position: center; filter: saturate(105%);
+            background-size: cover; background-position: center;
         }}
         .hero-text {{
             position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-            flex-direction: column; color: #fff; text-align: center;
+            flex-direction: column; color: #fff; text-align: center; z-index: 10;
         }}
-        .hero-title {{ font-size: 40px; font-weight: 800; letter-spacing: .5px; text-shadow: 0 2px 8px rgba(0,0,0,.45); margin: 0; }}
-        .hero-sub   {{ font-size: 18px; font-weight: 600; opacity: .95; margin-top: 6px; }}
+        .hero-title {{ 
+            font-size: 48px; font-weight: 800; letter-spacing: 1px; 
+            text-shadow: 0 4px 12px rgba(0,0,0,0.6); margin: 0;
+            text-transform: uppercase;
+        }}
+        .hero-sub {{ 
+            font-size: 20px; font-weight: 500; opacity: .95; margin-top: 8px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+            letter-spacing: 0.5px;
+        }}
         </style>
         <div class="hero-wrap">
           <div class="hero-bg"></div>
@@ -101,11 +282,38 @@ def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 260
           </div>
         </div>
         """,
-        height=height_px + 28,
+        height=height_px + 40,
     )
 
-hero_banner("Nebraska Baseball", subtitle=None, height_px=260)
+hero_banner("Nebraska Baseball", subtitle="Pitcher Analytics Platform", height_px=280)
 
+# ─── Professional Section Header Helper ──────────────────────────────────────
+def section_header(text: str):
+    st.markdown(f'<div class="section-header">{text}</div>', unsafe_allow_html=True)
+
+def subsection_header(text: str):
+    st.markdown(f'<div class="subsection-header">{text}</div>', unsafe_allow_html=True)
+
+def professional_divider():
+    st.markdown('<div class="professional-divider"></div>', unsafe_allow_html=True)
+
+def metric_card(label: str, value: str, sublabel: str = ""):
+    sub_html = f'<div class="metric-sublabel">{sublabel}</div>' if sublabel else ""
+    st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">{label}</div>
+            <div class="metric-value">{value}</div>
+            {sub_html}
+        </div>
+    """, unsafe_allow_html=True)
+
+def info_message(text: str):
+    st.markdown(f'<div class="info-box">{text}</div>', unsafe_allow_html=True)
+
+def warning_message(text: str):
+    st.markdown(f'<div class="warning-box">{text}</div>', unsafe_allow_html=True)
+
+# ─── Outing Summary Helper ────────────────────────────────────────────────────
 def make_outing_overall_summary(df_in: pd.DataFrame) -> pd.DataFrame:
     """
     Overall outing summary for the currently filtered selection:
@@ -348,26 +556,6 @@ def format_name(name):
         return f"{first} {last}"
     return str(name)
 
-def compute_density_simple(x_vals, y_vals, grid_coords, mesh_shape):
-    """
-    Simple density heatmap using KDE.
-    Returns density values reshaped to mesh_shape.
-    """
-    if len(x_vals) < 2:
-        return np.zeros(mesh_shape)
-    
-    try:
-        kde = gaussian_kde(np.vstack([x_vals, y_vals]))
-        density = kde(grid_coords).reshape(mesh_shape)
-        
-        # Mask out very low density areas (no actual pitches)
-        density_threshold = 0.01 * density.max()
-        density[density < density_threshold] = np.nan
-        
-        return density
-    except (LinAlgError, ValueError):
-        return np.full(mesh_shape, np.nan)
-
 # ─── Name normalization & subset ──────────────────────────────────────────────
 def _collapse_ws(s: str) -> str: return re.sub(r"\s+", " ", s).strip()
 
@@ -579,9 +767,10 @@ def themed_table(df: pd.DataFrame):
         elif c in percent_cols_numeric: fmt_map[c] = "{:.1f}"
         else: fmt_map[c] = "{:.1f}"
     styles = [
-        {'selector': 'thead th', 'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
-        {'selector': 'th',        'props': f'background-color: {HUSKER_RED}; color: white; white-space: nowrap; text-align: center;'},
-        {'selector': 'td',        'props': 'white-space: nowrap; color: black;'},
+        {'selector': 'thead th', 'props': f'background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%); color: white; font-weight: 600; text-align: center; padding: 12px 8px; border: none;'},
+        {'selector': 'th',        'props': f'background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%); color: white; font-weight: 600; text-align: center; padding: 12px 8px; border: none;'},
+        {'selector': 'td',        'props': 'white-space: nowrap; color: #2B2B2B; padding: 10px 8px; border-bottom: 1px solid #E0E0E0;'},
+        {'selector': 'tr:hover',  'props': 'background-color: #F8F9FA;'},
     ]
     return (df.style.hide(axis="index").format(fmt_map, na_rep="—").set_table_styles(styles))
 
@@ -590,11 +779,16 @@ def style_pbp_expanders():
         f"""
         <style>
         .pbp-scope div[data-testid="stExpander"] > details > summary {{
-            background-color: #ffffff !important; color: #111 !important; border-radius: 6px !important;
-            padding: 6px 10px !important; font-weight: 800 !important;
+            background-color: #FFFFFF !important; color: #2B2B2B !important; border-radius: 6px !important;
+            padding: 10px 14px !important; font-weight: 600 !important; border: 1px solid #E0E0E0 !important;
+            transition: all 0.3s ease;
+        }}
+        .pbp-scope div[data-testid="stExpander"] > details > summary:hover {{
+            background-color: #F8F9FA !important; border-color: {HUSKER_RED} !important;
         }}
         .pbp-scope .inning-block > div[data-testid="stExpander"] > details > summary {{
-            background-color: {HUSKER_RED} !important; color: #fff !important;
+            background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%) !important; 
+            color: #FFFFFF !important; border: none !important;
         }}
         </style>
         """,
@@ -646,8 +840,8 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     summary = summary.sort_values('Pitches', ascending=False)
 
     fig = plt.figure(figsize=(8, 12)); gs = GridSpec(2, 1, figure=fig, height_ratios=[1.5, 0.7], hspace=0.3)
-    axm = fig.add_subplot(gs[0, 0]); axm.set_title('Movement Plot', fontweight='bold')
-    axm.axhline(0, ls='--', color='grey'); axm.axvline(0, ls='--', color='grey')
+    axm = fig.add_subplot(gs[0, 0]); axm.set_title('Movement Profile', fontweight='bold', fontsize=14)
+    axm.axhline(0, ls='--', color='grey', alpha=0.5); axm.axvline(0, ls='--', color='grey', alpha=0.5)
     chi2v = chi2.ppf(coverage, df=2)
 
     for ptype, g in df_p.groupby(type_col, dropna=False):
@@ -656,7 +850,7 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
         y = pd.to_numeric(g.get('InducedVertBreak', g.get('IVB')), errors='coerce')
         mask = x.notna() & y.notna()
         if mask.any():
-            axm.scatter(x[mask], y[mask], label=str(ptype), color=clr, alpha=0.7)
+            axm.scatter(x[mask], y[mask], label=str(ptype), color=clr, alpha=0.7, s=60, edgecolors='white', linewidths=0.5)
             if mask.sum() > 1:
                 X = np.vstack((x[mask], y[mask])); cov = np.cov(X)
                 try:
@@ -665,26 +859,39 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
                     ang = np.degrees(np.arctan2(*vecs[:,0][::-1]))
                     w, h = 2*np.sqrt(vals*chi2v)
                     axm.add_patch(Ellipse((x[mask].mean(), y[mask].mean()), w, h, angle=ang,
-                                          edgecolor=clr, facecolor=clr, alpha=0.2, ls='--', lw=1.5))
+                                          edgecolor=clr, facecolor=clr, alpha=0.15, ls='--', lw=1.5))
                 except Exception:
                     pass
         else:
-            axm.scatter([], [], label=str(ptype), color=clr, alpha=0.7)
+            axm.scatter([], [], label=str(ptype), color=clr, alpha=0.7, s=60)
 
     axm.set_xlim(-30,30); axm.set_ylim(-30,30); axm.set_aspect('equal','box')
-    axm.set_xlabel('Horizontal Break'); axm.set_ylabel('Induced Vertical Break')
-    axm.legend(title='Pitch Type', fontsize=8, title_fontsize=9, loc='upper right')
+    axm.set_xlabel('Horizontal Break (inches)', fontsize=11, fontweight='500')
+    axm.set_ylabel('Induced Vertical Break (inches)', fontsize=11, fontweight='500')
+    axm.legend(title='Pitch Type', fontsize=9, title_fontsize=10, loc='upper right', framealpha=0.95)
+    axm.grid(True, alpha=0.2, linestyle=':')
 
     axt = fig.add_subplot(gs[1, 0]); axt.axis('off')
     tbl = axt.table(cellText=summary.values, colLabels=summary.columns, cellLoc='center', loc='center')
-    tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.5, 1.5)
-    axt.set_title('Summary Metrics', fontweight='bold', y=0.87)
+    tbl.auto_set_font_size(False); tbl.set_fontsize(9); tbl.scale(1.5, 1.5)
+    
+    # Professional table styling
+    for i in range(len(summary.columns)):
+        tbl[(0, i)].set_facecolor(HUSKER_RED)
+        tbl[(0, i)].set_text_props(weight='bold', color='white')
+    
+    for i in range(1, len(summary) + 1):
+        for j in range(len(summary.columns)):
+            tbl[(i, j)].set_facecolor('#F8F9FA' if i % 2 == 0 else 'white')
+            tbl[(i, j)].set_edgecolor('#E0E0E0')
+    
+    axt.set_title('Performance Metrics by Pitch Type', fontweight='bold', y=0.88, fontsize=12)
 
     logo_img = load_logo_img()
     if logo_img is not None:
         axl = fig.add_axes([1, 0.88, 0.12, 0.12], anchor='NE', zorder=10); axl.imshow(logo_img); axl.axis('off')
 
-    fig.suptitle(f"{canonicalize_person_name(pitcher_name)} Metrics\n({season_label})", fontweight='bold', fontsize=16, y=0.98)
+    fig.suptitle(f"{canonicalize_person_name(pitcher_name)}\n{season_label}", fontweight='bold', fontsize=16, y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, summary
 
@@ -749,17 +956,17 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
             mode="markers+text",
             text=[str(int(n)) if pd.notna(n) else "" for n in cd[:,6]],
             textposition="top center",
-            marker=dict(size=10, line=dict(width=0.5, color="black"), color=colors_pts),
+            marker=dict(size=12, line=dict(width=1, color="white"), color=colors_pts),
             customdata=cd,
             hovertemplate=(
-                "Pitch Type: %{customdata[0]}<br>"
-                "RelSpeed: %{customdata[1]:.1f} mph<br>"
+                "<b>Pitch %{customdata[6]:.0f}</b><br>"
+                "Type: %{customdata[0]}<br>"
+                "Velocity: %{customdata[1]:.1f} mph<br>"
                 "IVB: %{customdata[2]:.1f}\"<br>"
                 "HB: %{customdata[3]:.1f}\"<br>"
                 "Result: %{customdata[4]}<br>"
                 "Exit Velo: %{customdata[5]:.1f} mph<br>"
-                "Pitch # in AB: %{customdata[6]:.0f}<br>"
-                "x: %{x:.2f}  y: %{y:.2f}<extra></extra>"
+                "<extra></extra>"
             ),
             showlegend=False,
             name=""
@@ -769,8 +976,15 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
 
     fig.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
     fig.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
-    fig.update_layout(height=360, title_text=(title or "PA Strike Zone"), title_x=0.5,
-                      margin=dict(l=10, r=10, t=48, b=10))
+    fig.update_layout(
+        height=400, 
+        title_text=(title or "Plate Appearance Strike Zone"), 
+        title_x=0.5,
+        title_font=dict(size=16, color=DARK_GRAY, family="Arial Black"),
+        margin=dict(l=10, r=10, t=60, b=10),
+        plot_bgcolor='white',
+        paper_bgcolor='white'
+    )
     return fig
 
 # ─── Outcome summary helpers (needed in Profiles) ─────────────────────────────
@@ -1130,7 +1344,6 @@ def make_pitcher_rankings(df_segment: pd.DataFrame, pitch_types_filter: list[str
     out = out.sort_values(["WHIP","SO"], ascending=[True, False], na_position="last").reset_index(drop=True)
     return out
 
-# NEW — Team averages helper (used by Rankings tab to show NEB team numbers first)
 def make_team_averages(df_segment: pd.DataFrame, pitch_types_filter: list[str] | None = None) -> pd.DataFrame:
     """
     Team-level numbers for NEB using the same logic as make_pitcher_rankings:
@@ -1222,8 +1435,12 @@ def dedupe_pitches(df: pd.DataFrame) -> pd.DataFrame:
 if df_scrim is not None: df_scrim = dedupe_pitches(df_scrim)
 
 # ─── Segment picker ───────────────────────────────────────────────────────────
-st.markdown("### Data Segment")
-segment_choice = st.selectbox("Choose time period", list(SEGMENT_DEFS.keys()), index=0, key="segment_choice")
+section_header("Data Configuration")
+
+col1, col2 = st.columns([2, 3])
+with col1:
+    segment_choice = st.selectbox("Select Time Period", list(SEGMENT_DEFS.keys()), index=0, key="segment_choice")
+
 if segment_choice == "2025/26 Scrimmages":
     if df_scrim is None:
         st.error(f"Scrimmage data file not found. Tried: {', '.join(_scrim_candidates)}")
@@ -1236,7 +1453,8 @@ else:
 
 df_segment = filter_by_segment(base_df, segment_choice)
 if df_segment.empty:
-    st.info(f"No rows found for **{segment_choice}** with the current dataset."); st.stop()
+    warning_message(f"No rows found for **{segment_choice}** with the current dataset.")
+    st.stop()
 
 SEG_TYPES = SEGMENT_DEFS.get(segment_choice, {}).get("types", [])
 is_bullpen_segment = "bullpen" in SEG_TYPES
@@ -1251,25 +1469,42 @@ _unique_pitchers = (neb_df_all[["PitcherKey","PitcherDisplay"]]
 pitchers_display = _unique_pitchers["PitcherDisplay"].tolist()
 _disp_to_key = dict(zip(_unique_pitchers["PitcherDisplay"], _unique_pitchers["PitcherKey"]))
 
-st.markdown("### Pitcher Report")
-player_disp = st.selectbox("Pitcher", pitchers_display, key="neb_player_main") if pitchers_display else None
+with col2:
+    player_disp = st.selectbox("Select Pitcher", pitchers_display, key="neb_player_main") if pitchers_display else None
+
 if not player_disp:
-    st.info("Select a pitcher to begin."); st.stop()
+    info_message("Please select a pitcher to view their analytics.")
+    st.stop()
 
 player_key = _disp_to_key.get(player_disp, player_disp.lower())
 df_pitcher_all = neb_df_all[neb_df_all["PitcherKey"] == player_key].copy()
 df_pitcher_all['Date'] = pd.to_datetime(df_pitcher_all['Date'], errors="coerce")
 appearances = int(df_pitcher_all['Date'].dropna().dt.date.nunique())
-st.subheader(f"{canonicalize_person_name(player_disp)} ({appearances} Appearances)")
+
+professional_divider()
+
+# Pitcher header with appearance count
+st.markdown(f"""
+    <div style='background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%); 
+                padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px;
+                box-shadow: 0 4px 12px rgba(230, 0, 38, 0.2);'>
+        <h2 style='color: white; margin: 0; font-size: 32px; font-weight: 700;'>
+            {canonicalize_person_name(player_disp)}
+        </h2>
+        <p style='color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 16px; font-weight: 500;'>
+            {appearances} Appearances • {segment_choice}
+        </p>
+    </div>
+""", unsafe_allow_html=True)
 
 # ─── Tab Setup (Conditional) ──────────────────────────────────────────────────
 # Only show Fall Summary for scrimmages
 if segment_choice == "2025/26 Scrimmages":
-    tabs = st.tabs(["Standard", "Profiles", "Rankings", "Fall Summary"])
+    tabs = st.tabs(["📊 Standard", "📈 Profiles", "🏆 Rankings", "🍂 Fall Summary"])
 else:
-    tabs = st.tabs(["Standard", "Profiles", "Rankings"])
+    tabs = st.tabs(["📊 Standard", "📈 Profiles", "🏆 Rankings"])
 
-# ========== Batter-side helpers (moved up so Standard tab can use) ==========
+# ========== Batter-side helpers ==========
 def find_batter_side_col(df: pd.DataFrame) -> str | None:
     return pick_col(
         df, "BatterSide", "Batter Side", "Batter_Bats", "BatterBats", "Bats", "Stand",
@@ -1291,7 +1526,7 @@ def parse_hand_filter_to_LR(hand_filter: str) -> str | None:
 def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=100, season_label="Season"):
     df_p = subset_by_pitcher_if_possible(df, pitcher_name)
     if df_p.empty:
-        st.info("No data for the selected filters.")
+        info_message("No data for the selected filters.")
         return None
 
     type_col = type_col_in_df(df_p)
@@ -1304,7 +1539,7 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
         if   want == "L": df_p = df_p[sides == "L"]
         elif want == "R": df_p = df_p[sides == "R"]
     if df_p.empty:
-        st.info("No pitches for the selected batter-side filter.")
+        info_message("No pitches for the selected batter-side filter.")
         return None
 
     x_min, x_max, y_min, y_max = get_view_bounds()
@@ -1347,17 +1582,17 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
                 go.Scattergl(
                     x=xs, y=ys,
                     mode="markers",
-                    marker=dict(size=8, line=dict(width=0.5, color="black"),
+                    marker=dict(size=8, line=dict(width=0.5, color="white"),
                                 color=get_pitch_color(pitch)),
                     customdata=cd,
                     hovertemplate=(
-                        "Pitch Type: %{customdata[0]}<br>"
-                        "RelSpeed: %{customdata[1]:.1f} mph<br>"
+                        "<b>%{customdata[0]}</b><br>"
+                        "Velocity: %{customdata[1]:.1f} mph<br>"
                         "IVB: %{customdata[2]:.1f}\"<br>"
                         "HB: %{customdata[3]:.1f}\"<br>"
                         "Result: %{customdata[4]}<br>"
                         "Exit Velo: %{customdata[5]:.1f} mph<br>"
-                        "x: %{x:.2f}  y: %{y:.2f}<extra></extra>"
+                        "<extra></extra>"
                     ),
                     showlegend=False,
                     name=str(pitch),
@@ -1368,487 +1603,15 @@ def heatmaps_top3_pitch_types(df, pitcher_name, hand_filter="Both", grid_size=10
         fig.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col)
         fig.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col)
 
-    fig.update_layout(height=420, title_text=f"{canonicalize_person_name(pitcher_name)} — Top 3 Pitches ({season_label})",
-                      title_x=0.5, margin=dict(l=10, r=10, t=60, b=10))
-    return fig
-
-# ─── STANDARD TAB ─────────────────────────────────────────────────────────────
-with tabs[0]:
-    if segment_choice == "2025/26 Scrimmages":
-        dates_all = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
-        if not dates_all:
-            st.info("No scrimmage dates available for this pitcher.")
-            st.stop()
-        default_idx = len(dates_all) - 1
-        date_labels = [label_date_with_fb(d) for d in dates_all]
-        sel_label = st.selectbox(
-            "Scrimmage Date",
-            options=date_labels,
-            index=default_idx,
-            key="scrim_std_date"
-        )
-        sel_date = dates_all[date_labels.index(sel_label)]
-        neb_df = df_pitcher_all[pd.to_datetime(df_pitcher_all['Date']).dt.date == sel_date].copy()
-        season_label = label_date_with_fb(sel_date)
-    else:
-        present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
-        col_m, col_d, _col_side = st.columns([1, 1, 1.6])
-        months_sel = col_m.multiselect(
-            "Months (optional)",
-            options=present_months,
-            format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
-            default=[],
-            key="std_months"
-        )
-        dser = df_pitcher_all['Date'].dropna()
-        if months_sel:
-            dser = dser[dser.dt.month.isin(months_sel)]
-        present_days = sorted(dser.dt.day.unique().tolist())
-        days_sel = col_d.multiselect(
-            "Days (optional)",
-            options=present_days,
-            default=[],
-            key="std_days"
-        )
-        neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
-        season_label_base = build_pitcher_season_label(months_sel, days_sel, neb_df)
-        season_label = f"{segment_choice} — {season_label_base}" if season_label_base else segment_choice
-
-    if neb_df.empty:
-        st.info("No rows for the selected filters.")
-    else:
-        # === Outing Summary ====================================================
-        st.markdown("### Outing Summary")
-        summary_df = make_outing_overall_summary(neb_df)
-        st.table(themed_table(summary_df))
-
-        # === Movement + summary table =========================================
-        logo_img = load_logo_img()
-        out = combined_pitcher_report(
-            neb_df, player_disp, logo_img, coverage=0.8, season_label=season_label
-        )
-        if out:
-            fig_m, _ = out
-            show_and_close(fig_m)
-
-        # === Play-by-Play (Standard tab only) =================================
-        st.markdown("### Play-by-Play")
-        style_pbp_expanders()
-        st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
-        st.markdown('<div class="inning-block">', unsafe_allow_html=True)
-
-        pbp = build_pitch_by_inning_pa_table(neb_df)
-        if pbp.empty:
-            st.info("Play-by-Play not available for this selection.")
-        else:
-            cols_pitch = [
-                c for c in ["Pitch # in AB","Pitch Type","Result","Velo","Spin Rate","IVB","HB","Rel Height","Extension"]
-                if c in pbp.columns
-            ]
-            for inn, df_inn in pbp.groupby("Inning #", sort=True, dropna=False):
-                inn_disp = f"Inning {int(inn)}" if pd.notna(inn) else "Inning —"
-                with st.expander(inn_disp, expanded=False):
-                    for pa, g in df_inn.groupby("PA # in Inning", sort=True, dropna=False):
-                        batter = g.get("Batter", pd.Series(["Unknown"])).iloc[0] if "Batter" in g.columns else "Unknown"
-                        side   = g.get("Batter Side", pd.Series([""])).iloc[0] if "Batter Side" in g.columns else ""
-                        side_s = f" ({side})" if isinstance(side, str) and side else ""
-                        pa_text = f"PA {'' if pd.isna(pa) else int(pa)} — vs {batter}{side_s}"
-                        with st.expander(pa_text, expanded=False):
-                            if cols_pitch:
-                                st.table(themed_table(g[cols_pitch]))
-                            else:
-                                st.table(themed_table(g))
-
-            # CSV download for full PBP table
-            csv = pbp.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="Download play-by-play (CSV)",
-                data=csv,
-                file_name="play_by_play_summary.csv",
-                mime="text/csv"
-            )
-
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # === Top 3 pitch strike zones (Standard tab only) ======================
-        st.markdown("### Top 3 Pitches — Strike Zone Map")
-        fig_top3_std = heatmaps_top3_pitch_types(
-            neb_df,
-            player_disp,
-            hand_filter="Both",
-            season_label=season_label
-        )
-        if fig_top3_std:
-            st.plotly_chart(fig_top3_std, use_container_width=True, key="standard_top3_pitches")
-        else:
-            st.caption("No plate-location data available to plot top 3 pitches.")
-
-# ══════════════════════════════════════════════════════════════════════════════
-# KDE HEATMAP HELPER FUNCTIONS FOR PROFILES TAB
-# ══════════════════════════════════════════════════════════════════════════════
-
-def calculate_heatmap_metric_values(df: pd.DataFrame, metric: str, pitch_type: str = None):
-    """
-    Filter dataframe to specific events and return coordinates for density plotting.
-    Returns tuple of (x_coords, y_vals) for the filtered events.
-    
-    Args:
-        df: Full dataset for the pitcher
-        metric: The metric to calculate
-        pitch_type: Optional pitch type to filter by
-    """
-    if df.empty:
-        return None
-    
-    # Get coordinate columns
-    x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
-    y_col = pick_col(df, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
-    type_col = type_col_in_df(df)
-    
-    if not x_col or not y_col:
-        return None
-    
-    # Start with full dataset
-    df_filtered = df.copy()
-    
-    # Filter by pitch type FIRST (for all metrics)
-    if pitch_type and type_col and type_col in df_filtered.columns:
-        df_filtered = df_filtered[df_filtered[type_col].astype(str) == pitch_type].copy()
-    
-    if df_filtered.empty:
-        return None
-    
-    if metric == "Pitch Locations (All)":
-        # All pitches of this type
-        xs = pd.to_numeric(df_filtered.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys = pd.to_numeric(df_filtered.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        valid = xs.notna() & ys.notna()
-        if not valid.any():
-            return None
-        return xs[valid].values, ys[valid].values
-    
-    elif metric == "Hits":
-        # For hits, we need PA-level outcome, then get in-play balls from those PAs
-        df_with_ab = add_inning_and_ab(df_filtered)
-        pa_table = _terminal_pa_table(df_with_ab)
-        
-        if "_PlayResult" not in pa_table.columns:
-            return None
-        
-        # Find ABs that resulted in hits
-        pr_low = pa_table["_PlayResult"].astype(str).str.lower()
-        is_hit = (pr_low.str.contains(r"\bsingle\b", regex=True) | 
-                 pr_low.str.contains(r"\bdouble\b", regex=True) | 
-                 pr_low.str.contains(r"\btriple\b", regex=True) |
-                 pr_low.str.contains(r"\bhome\s*run\b", regex=True) |
-                 pr_low.eq("hr"))
-        
-        if not is_hit.any():
-            return None
-        
-        hit_ab_nums = pa_table[is_hit.values]["AB #"].unique()
-        
-        # Get ALL pitches from hit ABs that were put in play
-        df_hit_abs = df_with_ab[df_with_ab["AB #"].isin(hit_ab_nums)].copy()
-        
-        call_col = pick_col(df_hit_abs, "PitchCall", "Pitch Call", "Call", "call")
-        if call_col:
-            calls = df_hit_abs.get(call_col, pd.Series(dtype=str)).astype(str)
-            df_hit_abs = df_hit_abs[calls.str.lower().isin(['inplay', 'in play'])].copy()
-        
-        xs = pd.to_numeric(df_hit_abs.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys = pd.to_numeric(df_hit_abs.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        valid = xs.notna() & ys.notna()
-        if not valid.any():
-            return None
-        return xs[valid].values, ys[valid].values
-    
-    elif metric == "Hard Hits":
-        # Direct filter: ExitSpeed >= 95 and InPlay
-        ev_col = pick_col(df_filtered, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", 
-                         "ExitVel", "EV", "LaunchSpeed", "Launch_Speed", "exit_speed")
-        call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
-        
-        if not ev_col or not call_col:
-            return None
-        
-        ev = pd.to_numeric(df_filtered.get(ev_col, pd.Series(dtype=float)), errors='coerce')
-        calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str)
-        
-        mask = (ev >= 95.0) & calls.str.lower().isin(['inplay', 'in play']) & ev.notna()
-        df_hard = df_filtered[mask].copy()
-        
-        xs = pd.to_numeric(df_hard.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys = pd.to_numeric(df_hard.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        valid = xs.notna() & ys.notna()
-        if not valid.any():
-            return None
-        return xs[valid].values, ys[valid].values
-    
-    elif metric == "Whiffs":
-        # Direct filter: PitchCall == StrikeSwinging
-        call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
-        if not call_col:
-            return None
-        
-        calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str)
-        df_whiff = df_filtered[calls.str.lower().isin(['strikeswinging', 'strike swinging', 'swinging strike'])].copy()
-        
-        xs = pd.to_numeric(df_whiff.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys = pd.to_numeric(df_whiff.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        valid = xs.notna() & ys.notna()
-        if not valid.any():
-            return None
-        return xs[valid].values, ys[valid].values
-    
-    elif metric == "Chases":
-        # Direct filter: Swings outside the zone
-        call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
-        if not call_col:
-            return None
-        
-        calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str).str.lower()
-        is_swing = calls.isin(['strikeswinging', 'strike swinging', 'swinging strike',
-                               'foulballnotfieldable', 'foul ball not fieldable', 'foul',
-                               'foulballfieldable', 'foul ball fieldable',
-                               'inplay', 'in play'])
-        
-        xs = pd.to_numeric(df_filtered.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys = pd.to_numeric(df_filtered.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        
-        z_left, z_bot, z_w, z_h = get_zone_bounds()
-        in_zone = xs.between(z_left, z_left+z_w) & ys.between(z_bot, z_bot+z_h)
-        
-        is_chase = is_swing & (~in_zone) & xs.notna() & ys.notna()
-        
-        if not is_chase.any():
-            return None
-        return xs[is_chase].values, ys[is_chase].values
-    
-    elif metric == "Contact":
-        # Direct filter: Fouls or InPlay
-        call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
-        if not call_col:
-            return None
-        
-        calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str).str.lower()
-        df_contact = df_filtered[calls.isin(['inplay', 'in play',
-                                             'foulballnotfieldable', 'foul ball not fieldable', 'foul',
-                                             'foulballfieldable', 'foul ball fieldable'])].copy()
-        
-        xs = pd.to_numeric(df_contact.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys = pd.to_numeric(df_contact.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        valid = xs.notna() & ys.notna()
-        if not valid.any():
-            return None
-        return xs[valid].values, ys[valid].values
-    
-    elif metric in ["Ground Balls", "Fly Balls", "Line Drives"]:
-        # Direct filter: HitType and InPlay
-        hit_type_col = pick_col(df_filtered, "TaggedHitType", "HitType", "Hit Type", "tagged_hit_type")
-        call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call", "call")
-        
-        if not hit_type_col or not call_col:
-            return None
-        
-        hit_types = df_filtered.get(hit_type_col, pd.Series(dtype=str)).astype(str).str.lower()
-        calls = df_filtered.get(call_col, pd.Series(dtype=str)).astype(str).str.lower()
-        inplay = calls.isin(['inplay', 'in play'])
-        
-        if metric == "Ground Balls":
-            mask = hit_types.str.contains("ground", na=False) & inplay
-        elif metric == "Fly Balls":
-            mask = hit_types.str.contains("fly", na=False) & inplay
-        else:  # Line Drives
-            mask = hit_types.str.contains("line", na=False) & inplay
-        
-        df_batted = df_filtered[mask].copy()
-        
-        xs = pd.to_numeric(df_batted.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        ys = pd.to_numeric(df_batted.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        valid = xs.notna() & ys.notna()
-        if not valid.any():
-            return None
-        return xs[valid].values, ys[valid].values
-    
-    return None
-
-def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, season_label: str):
-    """
-    Create a KDE-based heatmap for a specific pitch type based on the selected metric.
-    If fewer than 5 points, shows scatter plot instead.
-    """
-    # Get plate location columns
-    x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
-    y_col = pick_col(df, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
-    type_col = type_col_in_df(df)
-    
-    if not x_col or not y_col or not type_col:
-        return None
-    
-    # Calculate metric values with pitch type filter built in
-    coords = calculate_heatmap_metric_values(df, metric, pitch_type=pitch_type)
-    
-    if coords is None or len(coords) != 2:
-        return None
-    
-    x_vals, y_vals = coords
-    
-    if len(x_vals) == 0:
-        return None
-    
-    # Get zone and view bounds
-    sz_left, sz_bottom, sz_width, sz_height = get_zone_bounds()
-    x_min, x_max, y_min, y_max = get_view_bounds()
-    
-    # Create matplotlib figure
-    fig, ax = plt.subplots(figsize=(4, 4))
-    
-    # If fewer than 5 points, show scatter plot instead of heatmap
-    if len(x_vals) < 5:
-        pitch_color = get_pitch_color(pitch_type)
-        ax.scatter(x_vals, y_vals, c=pitch_color, s=100, alpha=0.7, 
-                  edgecolors='black', linewidth=1.5, zorder=10)
-        
-        draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
-        
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylim(y_min, y_max)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_title(f"{pitch_type}\n(n={len(x_vals)} - scatter view)", 
-                     fontweight='bold', fontsize=10, pad=8)
-        ax.set_facecolor('white')
-        
-    else:
-        # KDE heatmap for 5+ points
-        grid_size = 100
-        xi = np.linspace(x_min, x_max, grid_size)
-        yi = np.linspace(y_min, y_max, grid_size)
-        xi_mesh, yi_mesh = np.meshgrid(xi, yi)
-        grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
-        
-        zi = compute_density_simple(x_vals, y_vals, grid_coords, xi_mesh.shape)
-        zi_masked = np.ma.array(zi, mask=np.isnan(zi))
-        
-        im = ax.imshow(zi_masked, origin='lower', extent=[x_min, x_max, y_min, y_max], 
-                       aspect='equal', cmap=custom_cmap, alpha=0.8)
-        
-        draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
-        
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylim(y_min, y_max)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_title(f"{pitch_type}\n(n={len(x_vals)})", 
-                     fontweight='bold', fontsize=10, pad=8)
-        ax.set_facecolor('white')
-    
-    plt.tight_layout()
-    return fig
-
-def create_profile_heatmap(df: pd.DataFrame, pitch_type: str, metric: str, season_label: str):
-    """
-    Create a KDE-based heatmap for a specific pitch type based on the selected metric.
-    If fewer than 5 points, shows scatter plot instead.
-    """
-    # Get plate location columns
-    x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
-    y_col = pick_col(df, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
-    type_col = type_col_in_df(df)
-    
-    if not x_col or not y_col or not type_col:
-        return None
-    
-    # For "Pitch Locations (All)", filter by pitch type FIRST
-    # For outcome metrics (Hits, etc.), we need the full dataset to build ABs correctly
-    if metric == "Pitch Locations (All)":
-        df_filtered = df[df[type_col] == pitch_type].copy()
-    else:
-        # Pass full dataset - filtering happens after terminal pitch identification
-        df_filtered = df.copy()
-    
-    # Calculate metric values (get filtered coordinates)
-    coords = calculate_heatmap_metric_values(df_filtered, metric)
-    
-    if coords is None or len(coords) != 2:
-        return None
-    
-    x_vals, y_vals = coords
-    
-    # For outcome metrics, NOW filter by pitch type from the results
-    if metric != "Pitch Locations (All)" and type_col in df.columns:
-        # Build AB structure to get pitch types of events
-        df_with_ab = add_inning_and_ab(df.copy())
-        pa_table = _terminal_pa_table(df_with_ab)
-        
-        # Filter terminal pitches to this pitch type only
-        type_mask = pa_table[type_col].astype(str) == pitch_type
-        pa_filtered = pa_table[type_mask]
-        
-        if pa_filtered.empty:
-            return None
-        
-        # Re-extract coordinates for just this pitch type's terminal events
-        x_filtered = pd.to_numeric(pa_filtered.get(x_col, pd.Series(dtype=float)), errors='coerce')
-        y_filtered = pd.to_numeric(pa_filtered.get(y_col, pd.Series(dtype=float)), errors='coerce')
-        valid = x_filtered.notna() & y_filtered.notna()
-        
-        x_vals = x_filtered[valid].values
-        y_vals = y_filtered[valid].values
-    
-    if len(x_vals) == 0:
-        return None
-    
-    # Get zone and view bounds
-    sz_left, sz_bottom, sz_width, sz_height = get_zone_bounds()
-    x_min, x_max, y_min, y_max = get_view_bounds()
-    
-    # Create matplotlib figure
-    fig, ax = plt.subplots(figsize=(4, 4))
-    
-    # If fewer than 5 points, show scatter plot instead of heatmap
-    if len(x_vals) < 5:
-        pitch_color = get_pitch_color(pitch_type)
-        ax.scatter(x_vals, y_vals, c=pitch_color, s=100, alpha=0.7, 
-                  edgecolors='black', linewidth=1.5, zorder=10)
-        
-        draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
-        
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylim(y_min, y_max)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_title(f"{pitch_type}\n(n={len(x_vals)} - scatter view)", 
-                     fontweight='bold', fontsize=10, pad=8)
-        ax.set_facecolor('white')
-        
-    else:
-        # KDE heatmap for 5+ points
-        grid_size = 100
-        xi = np.linspace(x_min, x_max, grid_size)
-        yi = np.linspace(y_min, y_max, grid_size)
-        xi_mesh, yi_mesh = np.meshgrid(xi, yi)
-        grid_coords = np.vstack([xi_mesh.ravel(), yi_mesh.ravel()])
-        
-        zi = compute_density_simple(x_vals, y_vals, grid_coords, xi_mesh.shape)
-        zi_masked = np.ma.array(zi, mask=np.isnan(zi))
-        
-        im = ax.imshow(zi_masked, origin='lower', extent=[x_min, x_max, y_min, y_max], 
-                       aspect='equal', cmap=custom_cmap, alpha=0.8)
-        
-        draw_strikezone(ax, sz_left, sz_bottom, sz_width, sz_height)
-        
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylim(y_min, y_max)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_title(f"{pitch_type}\n(n={len(x_vals)})", 
-                     fontweight='bold', fontsize=10, pad=8)
-        ax.set_facecolor('white')
-    
-    plt.tight_layout()
+    fig.update_layout(
+        height=420, 
+        title_text=f"{canonicalize_person_name(pitcher_name)} — Top 3 Pitches ({season_label})",
+        title_x=0.5, 
+        title_font=dict(size=16, color=DARK_GRAY, family="Arial Black"),
+        margin=dict(l=10, r=10, t=70, b=10),
+        plot_bgcolor='white',
+        paper_bgcolor='white'
+    )
     return fig
 
 # ─── Profile tables (Batted Ball / Plate Discipline / Strike %) ==========
@@ -2148,24 +1911,172 @@ def make_pitcher_outcome_summary_by_type(df: pd.DataFrame) -> pd.DataFrame:
 
     return out
 
+# ─── STANDARD TAB ─────────────────────────────────────────────────────────────
+with tabs[0]:
+    section_header("Performance Overview")
+    
+    if segment_choice == "2025/26 Scrimmages":
+        dates_all = sorted(df_pitcher_all['Date'].dropna().dt.date.unique().tolist())
+        if not dates_all:
+            info_message("No scrimmage dates available for this pitcher.")
+            st.stop()
+        default_idx = len(dates_all) - 1
+        date_labels = [label_date_with_fb(d) for d in dates_all]
+        
+        st.markdown('<div class="filter-section">', unsafe_allow_html=True)
+        sel_label = st.selectbox(
+            "Scrimmage Date",
+            options=date_labels,
+            index=default_idx,
+            key="scrim_std_date"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        sel_date = dates_all[date_labels.index(sel_label)]
+        neb_df = df_pitcher_all[pd.to_datetime(df_pitcher_all['Date']).dt.date == sel_date].copy()
+        season_label = label_date_with_fb(sel_date)
+    else:
+        present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
+        
+        st.markdown('<div class="filter-section">', unsafe_allow_html=True)
+        st.markdown("**Filter Data**")
+        col_m, col_d = st.columns([1, 1])
+        months_sel = col_m.multiselect(
+            "Months (optional)",
+            options=present_months,
+            format_func=lambda n: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][n-1],
+            default=[],
+            key="std_months"
+        )
+        dser = df_pitcher_all['Date'].dropna()
+        if months_sel:
+            dser = dser[dser.dt.month.isin(months_sel)]
+        present_days = sorted(dser.dt.day.unique().tolist())
+        days_sel = col_d.multiselect(
+            "Days (optional)",
+            options=present_days,
+            default=[],
+            key="std_days"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        neb_df = filter_by_month_day(df_pitcher_all, months=months_sel, days=days_sel)
+        season_label_base = build_pitcher_season_label(months_sel, days_sel, neb_df)
+        season_label = f"{segment_choice} — {season_label_base}" if season_label_base else segment_choice
+
+    if neb_df.empty:
+        info_message("No rows for the selected filters.")
+    else:
+        # === Key Metrics Cards ====================================================
+        subsection_header("Key Performance Indicators")
+        summary_df = make_outing_overall_summary(neb_df)
+        
+        if not summary_df.empty:
+            row = summary_df.iloc[0]
+            col1, col2, col3, col4, col5 = st.columns(5)
+            
+            with col1:
+                metric_card("Innings Pitched", str(row.get("IP", "0.0")), f"{row.get('Pitches', 0)} pitches")
+            with col2:
+                metric_card("Strikeouts", str(row.get("SO", 0)), f"{row.get('Strike%', 0)}% strikes")
+            with col3:
+                metric_card("Whiff Rate", f"{row.get('Whiff%', 0)}%", f"{row.get('Whiffs', 0)} whiffs")
+            with col4:
+                metric_card("Hard Hits Allowed", str(row.get("HardHits", 0)), f"{row.get('HardHit% (BIP)', 0)}% of BIP")
+            with col5:
+                metric_card("Hits | Walks", f"{row.get('Hits', 0)} | {row.get('Walks', 0)}", f"HBP: {row.get('HBP', 0)}")
+
+        professional_divider()
+
+        # === Movement + summary table =========================================
+        subsection_header("Pitch Arsenal Analysis")
+        st.markdown(f'<p class="caption-text">Data from: {season_label}</p>', unsafe_allow_html=True)
+        
+        logo_img = load_logo_img()
+        out = combined_pitcher_report(
+            neb_df, player_disp, logo_img, coverage=0.8, season_label=season_label
+        )
+        if out:
+            fig_m, _ = out
+            show_and_close(fig_m, use_container_width=True)
+
+        professional_divider()
+
+        # === Play-by-Play (Standard tab only) =================================
+        subsection_header("Pitch-by-Pitch Breakdown")
+        style_pbp_expanders()
+        st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
+        st.markdown('<div class="inning-block">', unsafe_allow_html=True)
+
+        pbp = build_pitch_by_inning_pa_table(neb_df)
+        if pbp.empty:
+            info_message("Play-by-play data not available for this selection.")
+        else:
+            cols_pitch = [
+                c for c in ["Pitch # in AB","Pitch Type","Result","Velo","Spin Rate","IVB","HB","Rel Height","Extension"]
+                if c in pbp.columns
+            ]
+            for inn, df_inn in pbp.groupby("Inning #", sort=True, dropna=False):
+                inn_disp = f"Inning {int(inn)}" if pd.notna(inn) else "Inning —"
+                with st.expander(inn_disp, expanded=False):
+                    for pa, g in df_inn.groupby("PA # in Inning", sort=True, dropna=False):
+                        batter = g.get("Batter", pd.Series(["Unknown"])).iloc[0] if "Batter" in g.columns else "Unknown"
+                        side   = g.get("Batter Side", pd.Series([""])).iloc[0] if "Batter Side" in g.columns else ""
+                        side_s = f" ({side})" if isinstance(side, str) and side else ""
+                        pa_text = f"PA {'' if pd.isna(pa) else int(pa)} — vs {batter}{side_s}"
+                        with st.expander(pa_text, expanded=False):
+                            if cols_pitch:
+                                st.table(themed_table(g[cols_pitch]))
+                            else:
+                                st.table(themed_table(g))
+
+            # CSV download for full PBP table
+            csv = pbp.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="Download Complete Play-by-Play (CSV)",
+                data=csv,
+                file_name=f"{player_key}_play_by_play.csv",
+                mime="text/csv"
+            )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        professional_divider()
+
+        # === Top 3 pitch strike zones (Standard tab only) ======================
+        subsection_header("Strike Zone Visualization — Top 3 Pitches")
+        fig_top3_std = heatmaps_top3_pitch_types(
+            neb_df,
+            player_disp,
+            hand_filter="Both",
+            season_label=season_label
+        )
+        if fig_top3_std:
+            st.plotly_chart(fig_top3_std, use_container_width=True, key="standard_top3_pitches")
+        else:
+            info_message("Plate location data not available for strike zone visualization.")
+
 # ──────────────────────────────────────────────────────────────────────────────
-# UI — Profiles tab (now tabs[1]) - REDESIGNED WITH KDE HEATMAPS
+# UI — Profiles tab (tabs[1]) - SIMPLIFIED WITHOUT KDE HEATMAPS
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[1]:
-    st.markdown("#### Pitcher Profiles")
+    section_header("Advanced Pitcher Profiles")
+    
     if "bullpen" in SEGMENT_DEFS.get(segment_choice, {}).get("types", []):
-        st.info("Profiles are not available for **Bullpens** (no batting occurs).")
+        info_message("Advanced profiles are not available for bullpen sessions (no batting occurs).")
     else:
         # ═══════════════════════════════════════════════════════════════════════
         # FILTERS SECTION
         # ═══════════════════════════════════════════════════════════════════════
-        st.markdown("### Filters")
+        subsection_header("Analysis Filters")
         
+        st.markdown('<div class="filter-section">', unsafe_allow_html=True)
         # Row 1: Handedness, Month/Days, Last N Games
         filter_row1_col1, filter_row1_col2, filter_row1_col3, filter_row1_col4 = st.columns([1, 1, 1, 1])
         
         with filter_row1_col1:
-            prof_hand = st.radio("Batter Side", ["Both", "LHH", "RHH"], index=0, horizontal=False, key="prof_hand_new")
+            prof_hand = st.radio("Batter Handedness", ["Both", "LHH", "RHH"], index=0, horizontal=False, key="prof_hand_new")
         
         present_months = sorted(df_pitcher_all['Date'].dropna().dt.month.unique().tolist())
         with filter_row1_col2:
@@ -2188,24 +2099,7 @@ with tabs[1]:
         with filter_row1_col4:
             last_n_games = int(st.number_input("Last N games (0 = All)", min_value=0, max_value=100, value=0, step=1, format="%d", key="prof_lastn_new"))
         
-        st.markdown("---")
-        st.markdown("**Heatmap Visualization**")
-        
-        filter_row2_col1, filter_row2_col2 = st.columns([1, 3])
-        with filter_row2_col1:
-            heatmap_metric = st.selectbox("Metric to Display", [
-                "Pitch Locations (All)",
-                "Hits",
-                "Hard Hits",
-                "Whiffs",
-                "Chases",
-                "Contact",
-                "Ground Balls",
-                "Fly Balls",
-                "Line Drives"
-            ], index=0, key="prof_heatmap_metric")
-        
-        st.markdown("---")
+        st.markdown('</div>', unsafe_allow_html=True)
         
         # ═══════════════════════════════════════════════════════════════════════
         # APPLY FILTERS TO DATA
@@ -2221,84 +2115,48 @@ with tabs[1]:
             df_prof = df_prof[sides == target].copy()
         
         if df_prof.empty:
-            st.info("No rows for the selected profile filters.")
+            warning_message("No data available for the selected filters. Please adjust your selection.")
         else:
             # ═══════════════════════════════════════════════════════════════════════
-            # HEATMAPS SECTION (3x3 grid layout)
+            # PERFORMANCE TABLES SECTION
             # ═══════════════════════════════════════════════════════════════════════
-            st.markdown(f"### Heatmaps by Pitch Type — {heatmap_metric}")
-            st.caption(f"Data: {season_label_prof} | {prof_hand}")
+            professional_divider()
             
-            # Get pitch types
-            type_col = type_col_in_df(df_prof)
-            if type_col and type_col in df_prof.columns:
-                pitch_types = df_prof[type_col].value_counts().index.tolist()
-                
-                if len(pitch_types) == 0:
-                    st.warning("No pitch type data available.")
-                else:
-                    # Display heatmaps in 3-column grid
-                    cols_per_row = 3
-                    
-                    for i in range(0, len(pitch_types), cols_per_row):
-                        # Create a row of 3 columns
-                        cols = st.columns(cols_per_row)
-                        
-                        # Fill each column in this row
-                        for j in range(cols_per_row):
-                            pitch_idx = i + j
-                            
-                            if pitch_idx < len(pitch_types):
-                                pitch_type = pitch_types[pitch_idx]
-                                # DON'T filter here - pass full dataset and filter will happen inside
-                                df_pitch = df_prof.copy()
-                                
-                                if not df_pitch.empty:
-                                    # The function will handle filtering internally for terminal pitch attribution
-                                    fig_heatmap = create_profile_heatmap(
-                                        df_pitch, 
-                                        pitch_type, 
-                                        heatmap_metric,
-                                        season_label_prof
-                                    )
-                                    
-                                    with cols[j]:
-                                        if fig_heatmap:
-                                            # Display matplotlib figure in Streamlit
-                                            show_and_close(fig_heatmap, use_container_width=True)
-                                        else:
-                                            st.caption(f"No data for {pitch_type}")
-            else:
-                st.warning("Pitch type information not available.")
+            st.markdown(f"""
+                <div style='background-color: #F8F9FA; padding: 16px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid {HUSKER_RED};'>
+                    <strong style='color: {DARK_GRAY};'>Filtered Dataset:</strong> 
+                    <span style='color: #666;'>{season_label_prof} | {prof_hand}</span>
+                </div>
+            """, unsafe_allow_html=True)
             
-            st.markdown("---")
-            
-            # ═══════════════════════════════════════════════════════════════════════
-            # TABLES SECTION (existing tables remain)
-            # ═══════════════════════════════════════════════════════════════════════
-            st.markdown("### Performance Tables")
-            
-            st.markdown("#### Outcomes by Pitch Type")
+            subsection_header("Batting Outcomes by Pitch Type")
             outcome_by_type = make_pitcher_outcome_summary_by_type(df_prof)
             st.table(themed_table(outcome_by_type))
 
-            st.markdown("### Strike Percentage by Count")
+            professional_divider()
+
+            subsection_header("Strike Percentage by Count Situation")
             strike_df = make_strike_percentage_table(df_prof).round(1)
             st.table(themed_table(strike_df))
 
+            professional_divider()
+
+            subsection_header("Batted Ball Distribution")
             bb_df_typed = make_pitcher_batted_ball_by_type(df_prof)
-            st.markdown(f"### Batted Ball Profile")
             st.table(themed_table(bb_df_typed))
 
+            professional_divider()
+
+            subsection_header("Plate Discipline Metrics")
             pd_df_typed = make_pitcher_plate_discipline_by_type(df_prof)
-            st.markdown(f"### Plate Discipline Profile")
             st.table(themed_table(pd_df_typed))
 
-# Continue with Rankings tab...
 # ──────────────────────────────────────────────────────────────────────────────
 # UI — Rankings tab (now tabs[2])
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[2]:
+    section_header("Team Rankings & Comparisons")
+    
     # League averages & which metrics are "lower is better"
     LEAGUE_AVG = {
         "Whiff%": 23.0,
@@ -2316,11 +2174,11 @@ with tabs[2]:
     LOWER_BETTER = {"Barrel%", "HH%", "BB%", "WHIP", "H9"}
 
     # --- Team Averages (NEB) — shown above filter + pitcher rankings title ---
-    st.markdown("#### Team Averages (NEB)")
+    subsection_header("Nebraska Team Averages")
 
     team_df = make_team_averages(df_segment)  # unfiltered, whole team
     if team_df.empty:
-        st.info("No data available to compute team averages.")
+        info_message("Team average data is not available for the current segment.")
     else:
         # Columns we will color (align to pitcher rankings scheme)
         color_cols = [c for c in [
@@ -2384,15 +2242,18 @@ with tabs[2]:
             .hide(axis="index")
             .format(fmt_map, na_rep="")
             .set_table_styles([
-                {"selector": "th", "props": [("text-align","center"), ("padding","6px 6px")]},
-                {"selector": "td", "props": [("padding-top","4px"), ("padding-bottom","4px")]}
+                {"selector": "th", "props": [("text-align","center"), ("padding","10px 8px"), ("font-weight","600")]},
+                {"selector": "td", "props": [("padding","10px 8px"), ("text-align","center")]}
             ])
             .apply(lambda _: styles[team_display.columns], axis=None)
         )
 
         st.dataframe(styled_team, use_container_width=True, hide_index=True)
 
+    professional_divider()
+
     # ---------- Pitch-type filter (optional) ----------
+    st.markdown('<div class="filter-section">', unsafe_allow_html=True)
     type_col_all = type_col_in_df(df_segment)
     type_options = []
     if type_col_all in df_segment.columns:
@@ -2402,20 +2263,21 @@ with tabs[2]:
         )
 
     types_selected = st.multiselect(
-        "Filter by Pitch Type (optional)",
+        "Filter Rankings by Pitch Type (optional)",
         options=type_options,
         default=[],
-        help="Leave empty for all pitch types."
+        help="Leave empty to view all pitch types combined."
     )
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # ---------- Pitcher Rankings ----------
-    st.markdown("#### Pitcher Rankings")
+    subsection_header("Individual Pitcher Rankings")
 
     # Build rankings (keep columns numeric)
     ranks_df = make_pitcher_rankings(df_segment, pitch_types_filter=types_selected)
 
     if ranks_df.empty:
-        st.info("No data available for rankings with the current filters.")
+        info_message("No ranking data available with the current filters.")
     else:
         # ---------- keep numerics; default sort still by WHIP asc, SO desc ----------
         ranks_df = ranks_df.sort_values(["WHIP", "SO"], ascending=[True, False], na_position="last")
@@ -2497,8 +2359,8 @@ with tabs[2]:
             .hide(axis="index")
             .format(fmt_map, na_rep="")
             .set_table_styles([
-                {"selector": "th", "props": [("text-align","center"), ("padding","6px 6px")]},
-                {"selector": "td", "props": [("padding-top","4px"), ("padding-bottom","4px")]}
+                {"selector": "th", "props": [("text-align","center"), ("padding","10px 8px"), ("font-weight","600")]},
+                {"selector": "td", "props": [("padding","10px 8px")]}
             ])
         )
 
@@ -2511,591 +2373,16 @@ with tabs[2]:
 
         # Download CSV
         st.download_button(
-            "Download rankings (CSV)",
+            "Download Rankings Data (CSV)",
             data=csv_rank.to_csv(index=False).encode("utf-8"),
             file_name="pitcher_rankings.csv",
             mime="text/csv"
         )
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FALL SUMMARY TAB - Only for scrimmages (tabs[3])
-# ══════════════════════════════════════════════════════════════════════════════
-
-if segment_choice == "2025/26 Scrimmages":
-    # ──────────────────────────────────────────────────────────────────────────────
-    # Helper function: Categorize pitch types into Fastball, Offspeed, Breaking Ball
-    # ──────────────────────────────────────────────────────────────────────────────
-    def categorize_pitch_type(pitch_type_str):
-        """
-        Categorize a pitch type into one of: Fastball, Offspeed, Breaking Ball
-        """
-        if pd.isna(pitch_type_str):
-            return "Unknown"
-        
-        ptype = str(pitch_type_str).lower().strip()
-        
-        # Fastballs
-        if any(fb in ptype for fb in ['fastball', 'four-seam', 'fourseam', '4-seam', 'sinker', 'two-seam', 'twostar']):
-            return "Fastball"
-        
-        # Breaking balls
-        if any(bb in ptype for bb in ['slider', 'curveball', 'curve', 'slurve', 'cutter', 'knuckle curve']):
-            return "Breaking Ball"
-        
-        # Offspeed
-        if any(os in ptype for os in ['changeup', 'change', 'splitter', 'split', 'forkball', 'screwball', 'eephus']):
-            return "Offspeed"
-        
-        return "Unknown"
-
-    # ──────────────────────────────────────────────────────────────────────────────
-    # Helper function: Create average release points only (for Fall Summary)
-    # ──────────────────────────────────────────────────────────────────────────────
-    def average_release_points_figure(df: pd.DataFrame, pitcher_name: str, include_types=None, figsize=(7.0, 7.0)):
-        """
-        Create a single-panel figure showing only average release points.
-        Designed to match the size and style of the movement plot for professional presentation.
-        """
-        sub_all = subset_by_pitcher_if_possible(df, pitcher_name)
-        x_col = pick_col(sub_all, "Relside","RelSide","ReleaseSide","Release_Side","release_pos_x")
-        y_col = pick_col(sub_all, "Relheight","RelHeight","ReleaseHeight","Release_Height","release_pos_z")
-        type_col = type_col_in_df(sub_all)
-        speed_col = pick_col(sub_all, "Relspeed","RelSpeed","ReleaseSpeed","RelSpeedMPH","release_speed")
-
-        missing = [lbl for lbl, col in [("Relside",x_col), ("Relheight",y_col)] if col is None]
-        if missing:
-            return None
-
-        sub = sub_all.copy()
-        if sub.empty:
-            return None
-
-        sub[x_col] = pd.to_numeric(sub[x_col], errors="coerce")
-        sub[y_col] = pd.to_numeric(sub[y_col], errors="coerce")
-        if speed_col: sub[speed_col] = pd.to_numeric(sub[speed_col], errors="coerce")
-        sub = sub.dropna(subset=[x_col, y_col])
-
-        def norm_text(x: str) -> str: return str(x).strip().lower()
-        def norm_type(x: str) -> str:
-            s = norm_text(x)
-            return {"four seam":"four-seam","4 seam":"4-seam","two seam":"two-seam","2 seam":"2-seam"}.get(s, s)
-
-        def canonicalize_type(raw: str) -> str:
-            s = norm_text(raw)
-            if "sinker" in s or s in {"si","snk"}: return "Fastball"
-            n = norm_type(raw)
-            return {
-                "four-seam":"Fastball","4-seam":"Fastball","fastball":"Fastball",
-                "two-seam":"Two-Seam Fastball","2-seam":"Two-Seam Fastball",
-                "cutter":"Cutter","changeup":"Changeup","splitter":"Splitter",
-                "curveball":"Curveball","knuckle curve":"Knuckle Curve","slider":"Slider",
-                "sweeper":"Sweeper","screwball":"Screwball","eephus":"Eephus",
-            }.get(n, "Unknown")
-
-        def color_for_release(canon_label: str) -> str:
-            key = str(canon_label).lower()
-            palette = {
-                "fastball": "#E60026",
-                "two-seam fastball": "#FF9300",
-                "cutter": "#800080",
-                "changeup": "#008000",
-                "splitter": "#00CCCC",
-                "curveball": "#0033CC",
-                "knuckle curve": "#000000",
-                "slider": "#CCCC00",
-                "sweeper": "#B5651D",
-                "screwball": "#CC0066",
-                "eephus": "#666666",
-            }
-            return palette.get(key, "#7F7F7F")
-
-        sub["_type_canon"] = sub[type_col].apply(canonicalize_type)
-        sub = sub[sub["_type_canon"] != "Unknown"].copy()
-
-        if include_types is not None and len(include_types) > 0:
-            sub = sub[sub["_type_canon"].isin(include_types)]
-        if sub.empty:
-            return None
-
-        sub["_color"] = sub["_type_canon"].apply(color_for_release)
-
-        agg = {"mean_x": (x_col, "mean"), "mean_y": (y_col, "mean")}
-        if speed_col: agg["mean_speed"] = (speed_col, "mean")
-        means = sub.groupby("_type_canon", as_index=False).agg(**agg)
-        means["color"] = means["_type_canon"].apply(color_for_release)
-        if "mean_speed" in means.columns:
-            means = means.sort_values("mean_speed", ascending=False, na_position="last").reset_index(drop=True)
-
-        # Create single panel figure
-        fig, ax = plt.subplots(figsize=figsize)
-        
-        # Draw average release points with arm visualization
-        ARM_BASE_HALF_WIDTH = 0.15
-        ARM_TIP_HALF_WIDTH = 0.05
-        ARM_FILL_COLOR = "#4a4a4a"
-        
-        for _, row in means.iterrows():
-            x0, y0 = 0.0, 0.0
-            x1, y1 = float(row["mean_x"]), float(row["mean_y"])
-            dx, dy = x1 - x0, y1 - y0
-            L = float(np.hypot(dx, dy))
-            if L <= 1e-6: continue
-            ux, uy = dx / L, dy / L
-            px, py = -uy, ux
-            sLx, sLy = x0 + px*ARM_BASE_HALF_WIDTH, y0 + py*ARM_BASE_HALF_WIDTH
-            sRx, sRy = x0 - px*ARM_BASE_HALF_WIDTH, y0 - py*ARM_BASE_HALF_WIDTH
-            eLx, eLy = x1 + px*ARM_TIP_HALF_WIDTH, y1 + py*ARM_TIP_HALF_WIDTH
-            eRx, eRy = x1 - px*ARM_TIP_HALF_WIDTH, y1 - py*ARM_TIP_HALF_WIDTH
-            arm_poly = Polygon([(sLx, sLy), (eLx, eLy), (eRx, eRy), (sRx, sRy)], closed=True,
-                               facecolor=ARM_FILL_COLOR, edgecolor=ARM_FILL_COLOR, zorder=1)
-            ax.add_patch(arm_poly)
-            ax.add_patch(Circle((x0, y0), radius=0.20, facecolor="#0d0d0d", edgecolor="#0d0d0d", zorder=2))
-            outer = Circle((x1, y1), radius=0.26, facecolor=row["color"], edgecolor=row["color"], zorder=4)
-            ax.add_patch(outer)
-            inner_face = ax.get_facecolor()
-            inner = Circle((x1, y1), radius=0.15, facecolor=inner_face, edgecolor=inner_face, zorder=5)
-            ax.add_patch(inner)
-
-        ax.set_xlim(-5, 5)
-        ax.set_ylim(0, 8)
-        ax.set_aspect("equal")
-        ax.axhline(0, color="black", linewidth=1)
-        ax.axvline(0, color="black", linewidth=1)
-        ax.set_xlabel("Release Side (ft)", fontsize=10)
-        ax.set_ylabel("Release Height (ft)", fontsize=10)
-        ax.set_title("Average Release Points", fontweight="bold", fontsize=12)
-
-        # Legend
-        handles = []
-        for _, row in means.iterrows():
-            label = row["_type_canon"]
-            if "mean_speed" in means.columns and not pd.isna(row.get("mean_speed", None)):
-                label = f"{label} ({row['mean_speed']:.1f})"
-            handles.append(Line2D([0],[0], marker="o", linestyle="none", markersize=8, label=label, color=row["color"]))
-        if handles:
-            ax.legend(handles=handles, title="Pitch Type", loc="upper right", framealpha=0.9)
-
-        fig.tight_layout()
-        return fig
-
-    # ──────────────────────────────────────────────────────────────────────────────
-    # Helper function: Create profile summary by pitch category
-    # ──────────────────────────────────────────────────────────────────────────────
-    def create_pitch_category_summary(df):
-        """
-        Create a summary table grouped by Fastball, Offspeed, Breaking Ball
-        Returns a DataFrame with key metrics for each category
-        """
-        if df.empty:
-            return pd.DataFrame()
-        
-        type_col = type_col_in_df(df)
-        if not type_col or type_col not in df.columns:
-            return pd.DataFrame()
-        
-        # Add pitch category column
-        df_work = df.copy()
-        df_work['_PitchCategory'] = df_work[type_col].apply(categorize_pitch_type)
-        df_work = df_work[df_work['_PitchCategory'] != "Unknown"]
-        
-        if df_work.empty:
-            return pd.DataFrame()
-        
-        # Get relevant columns
-        speed_col = pick_col(df_work, "RelSpeed", "Relspeed", "ReleaseSpeed", "RelSpeedMPH", "release_speed")
-        ivb_col = pick_col(df_work, "InducedVertBreak", "IVB", "Induced Vert Break", "IndVertBreak")
-        hb_col = pick_col(df_work, "HorzBreak", "HorizontalBreak", "HB", "HorizBreak")
-        spin_col = pick_col(df_work, "SpinRate", "Spin Rate", "Spin", "spin_rate")
-        call_col = pick_col(df_work, "PitchCall", "Pitch Call", "Call")
-        exit_col = pick_col(df_work, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", "ExitVel", "EV", "LaunchSpeed", "Launch_Speed")
-        
-        summary_data = []
-        
-        for category in ['Fastball', 'Breaking Ball', 'Offspeed']:
-            cat_df = df_work[df_work['_PitchCategory'] == category]
-            
-            if cat_df.empty:
-                continue
-            
-            row = {'Pitch Category': category, 'Count': len(cat_df)}
-            
-            # Average velocity
-            if speed_col:
-                velo = pd.to_numeric(cat_df.get(speed_col, pd.Series(dtype=float)), errors='coerce')
-                row['Avg Velo'] = round(velo.mean(), 1) if not velo.isna().all() else np.nan
-                row['Max Velo'] = round(velo.max(), 1) if not velo.isna().all() else np.nan
-            
-            # Average movement
-            if ivb_col:
-                ivb = pd.to_numeric(cat_df.get(ivb_col, pd.Series(dtype=float)), errors='coerce')
-                row['Avg IVB'] = round(ivb.mean(), 1) if not ivb.isna().all() else np.nan
-            
-            if hb_col:
-                hb = pd.to_numeric(cat_df.get(hb_col, pd.Series(dtype=float)), errors='coerce')
-                row['Avg HB'] = round(hb.mean(), 1) if not hb.isna().all() else np.nan
-            
-            # Average spin rate
-            if spin_col:
-                spin = pd.to_numeric(cat_df.get(spin_col, pd.Series(dtype=float)), errors='coerce')
-                row['Avg Spin'] = round(spin.mean(), 0) if not spin.isna().all() else np.nan
-            
-            # Whiff rate
-            if call_col:
-                calls = cat_df[call_col].astype(str)
-                swings = calls.isin(['StrikeSwinging', 'FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay'])
-                whiffs = calls.eq('StrikeSwinging')
-                total_swings = swings.sum()
-                if total_swings > 0:
-                    row['Whiff%'] = round((whiffs.sum() / total_swings) * 100, 1)
-                else:
-                    row['Whiff%'] = np.nan
-            
-            # Strike rate
-            if call_col:
-                strike_calls = calls.isin(['StrikeCalled', 'StrikeSwinging', 'FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay'])
-                row['Strike%'] = round((strike_calls.sum() / len(cat_df)) * 100, 1)
-            
-            # Hard hit rate (on balls in play)
-            if exit_col and call_col:
-                ev = pd.to_numeric(cat_df.get(exit_col, pd.Series(dtype=float)), errors='coerce')
-                inplay = calls.eq('InPlay')
-                bip_count = inplay.sum()
-                if bip_count > 0:
-                    hard_hits = ((ev >= 95.0) & inplay & ev.notna()).sum()
-                    row['HardHit%'] = round((hard_hits / bip_count) * 100, 1)
-                    row['Avg EV'] = round(ev[inplay].mean(), 1) if not ev[inplay].isna().all() else np.nan
-                else:
-                    row['HardHit%'] = np.nan
-                    row['Avg EV'] = np.nan
-            
-            summary_data.append(row)
-        
-        if not summary_data:
-            return pd.DataFrame()
-        
-        result_df = pd.DataFrame(summary_data)
-        
-        # Reorder columns
-        col_order = ['Pitch Category', 'Count', 'Avg Velo', 'Max Velo', 'Avg IVB', 'Avg HB', 
-                     'Avg Spin', 'Strike%', 'Whiff%', 'HardHit%', 'Avg EV']
-        result_df = result_df[[c for c in col_order if c in result_df.columns]]
-        
-        return result_df
-
-    # ──────────────────────────────────────────────────────────────────────────────
-    # UI — Fall Summary tab
-    # ──────────────────────────────────────────────────────────────────────────────
-    with tabs[3]:
-        st.markdown("### Fall Season Summary")
-        
-        # Use all fall data
-        df_fall = df_pitcher_all.copy()
-        
-        if df_fall.empty:
-            st.info("No fall data available for this pitcher.")
-        else:
-            # Determine season label
-            fall_label = f"{segment_choice}"
-            
-            # ═══════════════════════════════════════════════════════════════════════
-            # TOP SECTION: Overall Metrics + Average Release Points (side by side)
-            # ═══════════════════════════════════════════════════════════════════════
-            st.markdown("#### Performance Overview")
-            
-            col_metrics, col_release = st.columns([1, 1])
-            
-            with col_metrics:
-                logo_img = load_logo_img()
-                out_metrics = combined_pitcher_report(
-                    df_fall, player_disp, logo_img, coverage=0.8, season_label=fall_label
-                )
-                if out_metrics:
-                    fig_metrics, _ = out_metrics
-                    show_and_close(fig_metrics, use_container_width=True)
-                else:
-                    st.info("Metrics visualization not available.")
-            
-            with col_release:
-                # Get available pitch types for release points
-                type_col_fall = type_col_in_df(df_fall)
-                types_avail_fall = []
-                if type_col_fall and type_col_fall in df_fall.columns:
-                    def norm_text(x: str) -> str: return str(x).strip().lower()
-                    def norm_type(x: str) -> str:
-                        s = norm_text(x)
-                        return {"four seam":"four-seam","4 seam":"4-seam","two seam":"two-seam","2 seam":"2-seam"}.get(s, s)
-
-                    def canonicalize_type(raw: str) -> str:
-                        s = norm_text(raw)
-                        if "sinker" in s or s in {"si","snk"}: return "Fastball"
-                        n = norm_type(raw)
-                        return {
-                            "four-seam":"Fastball","4-seam":"Fastball","fastball":"Fastball",
-                            "two-seam":"Two-Seam Fastball","2-seam":"Two-Seam Fastball",
-                            "cutter":"Cutter","changeup":"Changeup","splitter":"Splitter",
-                            "curveball":"Curveball","knuckle curve":"Knuckle Curve","slider":"Slider",
-                            "sweeper":"Sweeper","screwball":"Screwball","eephus":"Eephus",
-                        }.get(n, "Unknown")
-                    
-                    types_avail_fall = (
-                        df_fall[type_col_fall]
-                        .dropna().map(canonicalize_type)
-                        .replace("Unknown", np.nan).dropna().unique().tolist()
-                    )
-                
-                fig_release = average_release_points_figure(
-                    df_fall, player_disp, include_types=types_avail_fall, figsize=(7.0, 7.0)
-                )
-                if fig_release:
-                    show_and_close(fig_release, use_container_width=True)
-                else:
-                    st.info("Release points visualization not available.")
-            
-            st.markdown("---")
-            
-            # ═══════════════════════════════════════════════════════════════════════
-            # MIDDLE SECTION: Top 3 Pitch Type Strike Zones with Filters
-            # ═══════════════════════════════════════════════════════════════════════
-            st.markdown("#### Strike Zone Analysis — Top 3 Pitches")
-            
-            # Get top 3 pitch types
-            type_col = type_col_in_df(df_fall)
-            if not type_col or type_col not in df_fall.columns:
-                st.warning("Pitch type data not available for strike zone analysis.")
-            else:
-                top3_pitches = df_fall[type_col].value_counts().head(3).index.tolist()
-                
-                if len(top3_pitches) == 0:
-                    st.warning("No pitch type data available.")
-                else:
-                    # Filter controls - apply to ALL panels
-                    st.markdown("**Filters** (apply to all panels below)")
-                    filter_col1, filter_col2 = st.columns([1, 1])
-                    
-                    with filter_col1:
-                        count_options = ["All Counts", "0-0 (First Pitch)", "0-1, 1-0, 1-1 (Even)", 
-                                       "0-2, 1-2, 2-2 (Two Strikes)", "2-0, 3-0, 3-1, 2-1, 3-2 (Hitter's)"]
-                        count_filter = st.selectbox(
-                            "Count Situation:",
-                            options=count_options,
-                            key="fall_count_filter"
-                        )
-                    
-                    with filter_col2:
-                        side_filter = st.radio(
-                            "Batter Handedness:",
-                            options=["Both", "vs LHH", "vs RHH"],
-                            horizontal=True,
-                            key="fall_side_filter"
-                        )
-                    
-                    st.markdown("")  # spacing
-                    
-                    # Apply filters to the data
-                    df_filtered = df_fall.copy()
-                    
-                    # Filter by count
-                    if "Balls" in df_fall.columns and "Strikes" in df_fall.columns and count_filter != "All Counts":
-                        if count_filter == "0-0 (First Pitch)":
-                            df_filtered = df_filtered[(df_filtered["Balls"] == 0) & (df_filtered["Strikes"] == 0)]
-                        elif count_filter == "0-1, 1-0, 1-1 (Even)":
-                            df_filtered = df_filtered[
-                                ((df_filtered["Balls"] == 0) & (df_filtered["Strikes"] == 1)) |
-                                ((df_filtered["Balls"] == 1) & (df_filtered["Strikes"] == 0)) |
-                                ((df_filtered["Balls"] == 1) & (df_filtered["Strikes"] == 1))
-                            ]
-                        elif count_filter == "0-2, 1-2, 2-2 (Two Strikes)":
-                            df_filtered = df_filtered[
-                                ((df_filtered["Balls"] == 0) & (df_filtered["Strikes"] == 2)) |
-                                ((df_filtered["Balls"] == 1) & (df_filtered["Strikes"] == 2)) |
-                                ((df_filtered["Balls"] == 2) & (df_filtered["Strikes"] == 2))
-                            ]
-                        elif count_filter == "2-0, 3-0, 3-1, 2-1, 3-2 (Hitter's)":
-                            df_filtered = df_filtered[
-                                ((df_filtered["Balls"] == 2) & (df_filtered["Strikes"] == 0)) |
-                                ((df_filtered["Balls"] == 3) & (df_filtered["Strikes"] == 0)) |
-                                ((df_filtered["Balls"] == 3) & (df_filtered["Strikes"] == 1)) |
-                                ((df_filtered["Balls"] == 2) & (df_filtered["Strikes"] == 1)) |
-                                ((df_filtered["Balls"] == 3) & (df_filtered["Strikes"] == 2))
-                            ]
-                    
-                    # Filter by batter side
-                    if side_filter != "Both":
-                        side_col = find_batter_side_col(df_filtered)
-                        if side_col:
-                            sides = normalize_batter_side(df_filtered[side_col])
-                            target_side = "L" if side_filter == "vs LHH" else "R"
-                            df_filtered = df_filtered[sides == target_side]
-                    
-                    # Get necessary columns
-                    x_col = pick_col(df_filtered, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
-                    y_col = pick_col(df_filtered, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
-                    speed_col = pick_col(df_filtered, "RelSpeed", "Relspeed", "ReleaseSpeed", "RelSpeedMPH", "release_speed")
-                    ivb_col = pick_col(df_filtered, "InducedVertBreak", "IVB", "Induced Vert Break", "IndVertBreak")
-                    hb_col = pick_col(df_filtered, "HorzBreak", "HorizontalBreak", "HB", "HorizBreak")
-                    exit_col = pick_col(df_filtered, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", "ExitVel", "EV", "LaunchSpeed", "Launch_Speed")
-                    call_col = pick_col(df_filtered, "PitchCall", "Pitch Call", "Call")
-                    
-                    if not x_col or not y_col:
-                        st.warning("Plate location data not available for strike zone visualization.")
-                    else:
-                        x_min, x_max, y_min, y_max = get_view_bounds()
-                        
-                        # Create 3-panel figure for top 3 pitch types
-                        fig_top3_zones = make_subplots(
-                            rows=1, cols=3,
-                            shared_yaxes=True,
-                            shared_xaxes=True,
-                            subplot_titles=[f"{pitch} (n={len(df_filtered[df_filtered[type_col]==pitch])})" 
-                                          for pitch in top3_pitches[:3]],
-                            horizontal_spacing=0.05
-                        )
-                        
-                        # Add zone shapes to all panels
-                        for col_idx in range(1, 4):
-                            for shp in _zone_shapes_for_subplot():
-                                fig_top3_zones.add_shape(shp, row=1, col=col_idx)
-                        
-                        # Add data for each pitch type
-                        for idx, pitch_type in enumerate(top3_pitches[:3]):
-                            col_idx = idx + 1
-                            df_pitch = df_filtered[df_filtered[type_col] == pitch_type].copy()
-                            
-                            if df_pitch.empty:
-                                continue
-                            
-                            xs = pd.to_numeric(df_pitch.get(x_col, pd.Series(dtype=float)), errors='coerce')
-                            ys = pd.to_numeric(df_pitch.get(y_col, pd.Series(dtype=float)), errors='coerce')
-                            
-                            if xs.isna().all() or ys.isna().all():
-                                continue
-                            
-                            cd = np.column_stack([
-                                df_pitch[type_col].astype(str).values,
-                                pd.to_numeric(df_pitch.get(speed_col, pd.Series(dtype=float)), errors='coerce').values if speed_col else np.full(len(df_pitch), np.nan),
-                                pd.to_numeric(df_pitch.get(ivb_col, pd.Series(dtype=float)), errors='coerce').values if ivb_col else np.full(len(df_pitch), np.nan),
-                                pd.to_numeric(df_pitch.get(hb_col, pd.Series(dtype=float)), errors='coerce').values if hb_col else np.full(len(df_pitch), np.nan),
-                                df_pitch.get(call_col, pd.Series(dtype=object)).astype(str).values if call_col else np.array([""]*len(df_pitch)),
-                                pd.to_numeric(df_pitch.get(exit_col, pd.Series(dtype=float)), errors='coerce').values if exit_col else np.full(len(df_pitch), np.nan),
-                            ])
-                            
-                            pitch_color = get_pitch_color(pitch_type)
-                            
-                            fig_top3_zones.add_trace(
-                                go.Scattergl(
-                                    x=xs, y=ys,
-                                    mode="markers",
-                                    marker=dict(size=8, line=dict(width=0.5, color="black"), color=pitch_color),
-                                    customdata=cd,
-                                    hovertemplate=(
-                                        "Pitch Type: %{customdata[0]}<br>"
-                                        "Velo: %{customdata[1]:.1f} mph<br>"
-                                        "IVB: %{customdata[2]:.1f}\"<br>"
-                                        "HB: %{customdata[3]:.1f}\"<br>"
-                                        "Result: %{customdata[4]}<br>"
-                                        "Exit Velo: %{customdata[5]:.1f} mph<br>"
-                                        "x: %{x:.2f}  y: %{y:.2f}<extra></extra>"
-                                    ),
-                                    showlegend=False,
-                                    name=pitch_type
-                                ),
-                                row=1, col=col_idx
-                            )
-                        
-                        # Update axes
-                        for col_idx in range(1, 4):
-                            fig_top3_zones.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col_idx)
-                            fig_top3_zones.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=col_idx)
-                        
-                        filter_text = f"{count_filter}" if count_filter != "All Counts" else "All Counts"
-                        if side_filter != "Both":
-                            filter_text = f"{filter_text}, {side_filter}"
-                        
-                        fig_top3_zones.update_layout(
-                            height=500,
-                            title_text=f"{canonicalize_person_name(player_disp)} — {filter_text}",
-                            title_x=0.5,
-                            margin=dict(l=10, r=10, t=80, b=10),
-                            showlegend=False
-                        )
-                        
-                        st.plotly_chart(fig_top3_zones, use_container_width=True, key="fall_top3_strike_zones")
-            
-            st.markdown("---")
-            
-            # ═══════════════════════════════════════════════════════════════════════
-            # BOTTOM SECTION: Pitch Profile Summary (Fastball, Offspeed, Breaking)
-            # ═══════════════════════════════════════════════════════════════════════
-            st.markdown("#### Pitch Arsenal Summary")
-            st.caption("Performance metrics grouped by pitch category")
-            
-            category_summary = create_pitch_category_summary(df_fall)
-            
-            if not category_summary.empty:
-                st.table(themed_table(category_summary))
-                
-                # Additional breakdown by individual pitch types within categories
-                with st.expander("📊 Detailed Breakdown by Pitch Type", expanded=False):
-                    type_col = type_col_in_df(df_fall)
-                    if type_col and type_col in df_fall.columns:
-                        # Add category info
-                        df_detail = df_fall.copy()
-                        df_detail['_Category'] = df_detail[type_col].apply(categorize_pitch_type)
-                        df_detail = df_detail[df_detail['_Category'] != "Unknown"]
-                        
-                        if not df_detail.empty:
-                            for category in ['Fastball', 'Breaking Ball', 'Offspeed']:
-                                cat_df = df_detail[df_detail['_Category'] == category]
-                                if not cat_df.empty:
-                                    st.markdown(f"**{category}**")
-                                    
-                                    # Get outcome summary for this category
-                                    outcome_cat = make_pitcher_outcome_summary_by_type(cat_df)
-                                    if not outcome_cat.empty:
-                                        st.table(themed_table(outcome_cat))
-                                    
-                                    st.markdown("")  # spacing
-                    else:
-                        st.info("Pitch type information not available for detailed breakdown.")
-            else:
-                st.info("Unable to generate pitch arsenal summary.")
-            
-            st.markdown("---")
-            
-            # ═══════════════════════════════════════════════════════════════════════
-            # ADDITIONAL: Outing-by-Outing Summary Table
-            # ═══════════════════════════════════════════════════════════════════════
-            st.markdown("#### Outing-by-Outing Performance")
-            
-            if 'Date' in df_fall.columns:
-                df_fall_dated = df_fall.copy()
-                df_fall_dated['Date'] = pd.to_datetime(df_fall_dated['Date'], errors='coerce')
-                df_fall_dated = df_fall_dated.dropna(subset=['Date'])
-                
-                if not df_fall_dated.empty:
-                    # Group by date and calculate summary stats
-                    outing_summaries = []
-                    for date, date_df in df_fall_dated.groupby(df_fall_dated['Date'].dt.date):
-                        outing_sum = make_outing_overall_summary(date_df)
-                        if not outing_sum.empty:
-                            outing_sum.insert(0, 'Date', format_date_long(date))
-                            outing_summaries.append(outing_sum)
-                    
-                    if outing_summaries:
-                        all_outings = pd.concat(outing_summaries, ignore_index=True)
-                        st.dataframe(all_outings, use_container_width=True, hide_index=True)
-                        
-                        # Download button
-                        csv_outings = all_outings.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            "Download outing summaries (CSV)",
-                            data=csv_outings,
-                            file_name=f"{player_key}_fall_outings.csv",
-                            mime="text/csv"
-                        )
-                    else:
-                        st.info("No outing summaries available.")
-                else:
-                    st.info("No date information available for outing breakdown.")
-            else:
-                st.info("Date column not found in data.")
+st.markdown("---")
+st.markdown(f"""
+<div style='text-align: center; color: #999; font-size: 12px; padding: 20px 0;'>
+    Nebraska Baseball Pitcher Analytics Platform • {segment_choice}<br>
+    Powered by Trackman Data
+</div>
+""", unsafe_allow_html=True)

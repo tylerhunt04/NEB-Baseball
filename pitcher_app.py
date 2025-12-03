@@ -1782,17 +1782,55 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📅 Date Filters")
     
+    # Filter data by segment and pitcher to get available dates
+    if segment_choice == "All Data":
+        df_for_date_filter = df_all.copy()
+    else:
+        df_for_date_filter = filter_by_segment(df_all, segment_choice)
+    
+    df_for_date_filter = subset_by_pitcher_if_possible(df_for_date_filter, pitcher_choice)
+    
+    # Get unique dates for this pitcher
+    if "Date" in df_for_date_filter.columns:
+        pitcher_dates = pd.to_datetime(df_for_date_filter["Date"], errors="coerce").dropna()
+        unique_dates = sorted(pitcher_dates.dt.date.unique())
+        
+        # Get available months (only those where pitcher has data)
+        available_months = sorted(pitcher_dates.dt.month.unique())
+        month_options = [name for num, name in MONTH_CHOICES if num in available_months]
+        
+        # Get available days (only those where pitcher has data)
+        available_days = sorted(pitcher_dates.dt.day.unique())
+    else:
+        unique_dates = []
+        month_options = []
+        available_days = []
+    
+    # Game selector (by date)
+    game_choices = st.multiselect(
+        "Select Game(s)",
+        options=[format_date_long(d) for d in unique_dates],
+        default=[],
+        help="Select specific games by date"
+    )
+    
+    # Convert selected game strings back to dates
+    date_lookup = {format_date_long(d): d for d in unique_dates}
+    selected_game_dates = [date_lookup[g] for g in game_choices]
+    
     month_choices = st.multiselect(
         "Month(s)",
-        options=[name for _, name in MONTH_CHOICES],
-        default=[]
+        options=month_options,
+        default=[],
+        help="Only shows months where pitcher has data"
     )
     months_sel = [num for num, name in MONTH_CHOICES if name in month_choices]
     
     day_choices = st.multiselect(
         "Day(s) of Month",
-        options=list(range(1, 32)),
-        default=[]
+        options=available_days,
+        default=[],
+        help="Only shows days where pitcher has data"
     )
     
     last_n_games = st.number_input(
@@ -1804,8 +1842,7 @@ with st.sidebar:
     )
     
     st.markdown("---")
-    st.caption("Nebraska Baseball Analytics Platform v2.0")
-
+    st.caption("Nebraska Baseball Analytics")
 # ═══════════════════════════════════════════════════════════════════════════════
 # APPLY FILTERS
 # ═══════════════════════════════════════════════════════════════════════════════

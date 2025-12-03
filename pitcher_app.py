@@ -1161,23 +1161,237 @@ def create_count_situation_comparison(df: pd.DataFrame):
     
     return pd.DataFrame(rows).sort_values('Pitches', ascending=False)
 
-# End of Part 3# Part 4 of 6: Spray Charts and Pitch Sequencing Analysis
+# Part 4 of 6: Spray Charts, Pitch Sequencing, and Count Heatmaps (Hitter App Style)
 
-# ─── NEW: Spray Charts ────────────────────────────────────────────────────────
+# ─── DENSITY COMPUTATION ──────────────────────────────────────────────────────
+def compute_density_pitcher(x, y, xi_m, yi_m):
+    """Compute density for pitcher location heatmaps"""
+    coords = np.vstack([x, y])
+    mask = np.isfinite(coords).all(axis=0)
+    if mask.sum() <= 1:
+        return np.zeros(xi_m.shape)
+    try:
+        from scipy.stats import gaussian_kde
+        kde = gaussian_kde(coords[:, mask])
+        return kde(np.vstack([xi_m.ravel(), yi_m.ravel()])).reshape(xi_m.shape)
+    except Exception:
+        return np.zeros(xi_m.shape)
+
+# ─── SPRAY CHART HELPER FUNCTIONS ─────────────────────────────────────────────
+def draw_dirt_diamond(
+    ax,
+    origin=(0.0, 0.0),
+    size: float = 80,
+    base_size: float = 8,
+    grass_scale: float = 0.4,
+    custom_wall_distances: list = None
+):
+    """Draw a baseball diamond matching the hitter app style"""
+    home = np.array(origin)
+
+    if custom_wall_distances is not None:
+        angles = [item[0] for item in custom_wall_distances]
+        distances = [item[1] for item in custom_wall_distances]
+        
+        outfield_points = []
+        for angle, dist in zip(angles, distances):
+            rad = math.radians(angle)
+            x = home[0] + dist * math.cos(rad)
+            y = home[1] + dist * math.sin(rad)
+            outfield_points.append([x, y])
+        
+        outfield_points.append(home.tolist())
+        ax.add_patch(Polygon(outfield_points, closed=True, facecolor='#228B22', 
+                            edgecolor='black', linewidth=2))
+        
+        outfield_radius = max(distances)
+    else:
+        outfield_radius = size * 1.7
+        ax.add_patch(Wedge(home, outfield_radius, 45, 135, facecolor='#228B22', 
+                          edgecolor='black', linewidth=2))
+    
+    # Dirt infield
+    ax.add_patch(Wedge(home, size, 45, 135, facecolor='#ED8B00', 
+                      edgecolor='black', linewidth=2))
+    
+    # Grass cutout
+    gsize = size * grass_scale
+    gfirst = home + np.array((gsize, gsize))
+    gsecond = home + np.array((0.0, 2 * gsize))
+    gthird = home + np.array((-gsize, gsize))
+    
+    arc_angles = np.linspace(45, 135, 50)
+    arc_radius = gsize * 1.8
+    arc_points = []
+    for angle in arc_angles:
+        rad = math.radians(angle)
+        x = home[0] + arc_radius * math.cos(rad)
+        y = home[1] + arc_radius * math.sin(rad)
+        arc_points.append([x, y])
+    
+    grass_polygon = [gfirst.tolist()] + arc_points + [gthird.tolist(), home.tolist()]
+    ax.add_patch(Polygon(grass_polygon, closed=True, facecolor='#228B22', edgecolor='none'))
+    
+    # Bases
+    for pos in [gfirst, gsecond, gthird]:
+        ax.add_patch(Rectangle((pos[0] - base_size/2, pos[1] - base_size/2), 
+                              base_size, base_size,
+                              facecolor='white', edgecolor='black', linewidth=1))
+
+    # Home plate
+    half = base_size / 2
+    plate = Polygon([
+        (home[0] - half, home[1]),
+        (home[0] + half, home[1]),
+        (home[0] + half * 0.6, home[1] - half * 0.8),
+        (home[0], home[1] - base_size),
+        (home[0] - half * 0.6, home[1] - half * 0.8)
+    ], closed=True, facecolor='white', edgecolor='black', linewidth=1)
+    ax.add_patch(plate)
+
+    # Foul lines
+    for angle in [45, 135]:
+        rad = math.radians(angle)
+        end = home + np.array([outfield_radius * 1.1 * math.cos(rad),
+                               outfield_radius * 1.1 * math.sin(rad)])
+        ax.plot([home[0], end[0]], [home[1], end[1]], color='white', linewidth=2)
+
+    ax.set_xlim(-outfield_radius, outfield_radius)
+    ax.set_ylim(-base_size * 1.5, outfield_radius)
+    ax.set_aspect('equal')
+    ax.axis('off')
+    return ax
+
+def bearing_distance_to_xy(bearing, distance):
+    """Convert bearing and distance to x,y coordinates"""
+    angle_rad = np.radians(90 - bearing)
+    x = distance * np.cos(angle_rad)
+    y = distance * np.sin(angle_rad)
+    return x, y
+
+# ─── NEW: Count Leveraging Heatmaps (3-panel matching hitter app) ────────────
+def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str):
+    """
+    Creates 3-panel heatmaps showing pitcher performance in different count situations.
+    Matches the visual style of the hitter app heatmaps.
+    """
+    if df is None or df.empty:
+        return None
+    
+    balls_col = pick_col(df, "Balls", "Ball Count", "BallCount", "balls")
+    strikes_col = pick_col(df, "Strikes", "Strike Count", "StrikeCount", "strikes")
+    call_col = pick_col(df, "PitchCall", "Pitch Call", "Call", "PitchResult")
+    x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
+    y_col = pick_col(df, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
+    
+    if not balls_col or not strikes_col or not x_col or not y_col:
+        return None
+    
+    balls = pd.to_numeric(df[balls_col], errors="coerce")
+    strikes = pd.to_numeric(df[strikes_col], errors="coerce")
+    
+    work = df.copy()
+    work["Balls"] = balls
+    work["Strikes"] = strikes
+    
+    # Define count situations
+    ahead_mask = strikes > balls  # Pitcher ahead
+    behind_mask = balls > strikes  # Hitter ahead
+    two_strike_mask = strikes == 2
+    
+    # Get location data
+    xs = pd.to_numeric(work[x_col], errors="coerce")
+    ys = pd.to_numeric(work[y_col], errors="coerce")
+    
+    # Create figure with 3 panels (matching hitter app layout)
+    fig = plt.figure(figsize=(18, 6))
+    gs = GridSpec(1, 3, figure=fig, wspace=0.25)
+    
+    def _panel(ax, title, mask):
+        """Draw a single heatmap panel"""
+        # Draw strike zone
+        l, b, w, h = get_zone_bounds()
+        ax.add_patch(Rectangle((l, b), w, h, fill=False, linewidth=2, color='black'))
+        
+        # Draw thirds
+        dx, dy = w/3, h/3
+        for i in (1, 2):
+            ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', color='gray', linewidth=1))
+            ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', color='gray', linewidth=1))
+        
+        subset_x = xs[mask].to_numpy()
+        subset_y = ys[mask].to_numpy()
+        
+        valid_mask = np.isfinite(subset_x) & np.isfinite(subset_y)
+        subset_x = subset_x[valid_mask]
+        subset_y = subset_y[valid_mask]
+        
+        if len(subset_x) < 10:
+            # Plot individual pitches if too few
+            ax.plot(subset_x, subset_y, 'o', color='deepskyblue', alpha=0.8, markersize=6)
+        else:
+            # Create density heatmap
+            xi = np.linspace(-3, 3, 200)
+            yi = np.linspace(0, 5, 200)
+            xi_m, yi_m = np.meshgrid(xi, yi)
+            zi = compute_density_pitcher(subset_x, subset_y, xi_m, yi_m)
+            
+            ax.imshow(zi, origin='lower', extent=[-3, 3, 0, 5], 
+                     aspect='equal', cmap=custom_cmap, alpha=0.8)
+            
+            # Redraw strike zone on top
+            ax.add_patch(Rectangle((l, b), w, h, fill=False, linewidth=2, color='black'))
+            for i in (1, 2):
+                ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', color='gray', linewidth=1))
+                ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', color='gray', linewidth=1))
+        
+        ax.set_xlim(-3, 3)
+        ax.set_ylim(0, 5)
+        ax.set_aspect('equal', 'box')
+        ax.set_title(title, fontsize=12, pad=8, fontweight='bold')
+        ax.set_xticks([])
+        ax.set_yticks([])
+        
+        # Add pitch count to title
+        n_pitches = mask.sum()
+        ax.text(0.5, 0.02, f"n = {n_pitches}", transform=ax.transAxes,
+               ha='center', va='bottom', fontsize=10, style='italic',
+               bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8))
+    
+    # Panel 1: Pitcher Ahead
+    ax1 = fig.add_subplot(gs[0, 0])
+    _panel(ax1, "Pitcher Ahead in Count", ahead_mask & balls.notna() & strikes.notna())
+    
+    # Panel 2: Hitter Ahead  
+    ax2 = fig.add_subplot(gs[0, 1])
+    _panel(ax2, "Hitter Ahead in Count", behind_mask & balls.notna() & strikes.notna())
+    
+    # Panel 3: Two Strikes
+    ax3 = fig.add_subplot(gs[0, 2])
+    _panel(ax3, "Two Strike Counts", two_strike_mask & balls.notna() & strikes.notna())
+    
+    plt.tight_layout()
+    return fig
+
+# ─── NEW: Spray Chart (matching hitter app style) ────────────────────────────
 def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = "Season"):
-    """Creates a spray chart showing batted ball locations using polar coordinates."""
+    """
+    Creates a spray chart showing hits allowed (from batter's perspective).
+    Matches the visual style of the hitter app spray charts.
+    """
     df_p = subset_by_pitcher_if_possible(df, pitcher_name)
     
     bearing_col = pick_col(df_p, "Bearing", "HitBearing", "Hit Bearing", "Direction", "Angle")
     distance_col = pick_col(df_p, "Distance", "HitDistance", "Hit Distance", "Dist")
     result_col = pick_col(df_p, "PlayResult", "Result", "Event", "PAResult")
-    type_col = pick_col(df_p, "HitType", "Hit Type", "BattedBallType", "BBType")
+    type_col = pick_col(df_p, "HitType", "Hit Type", "BattedBallType", "BBType", "TaggedHitType")
     ev_col = pick_col(df_p, "ExitSpeed", "Exit Velo", "ExitVelocity", "EV")
     call_col = pick_col(df_p, "PitchCall", "Pitch Call", "Call")
     
     if not bearing_col or not distance_col:
-        return create_simplified_spray_chart(df_p, pitcher_name, season_label)
+        return None, pd.DataFrame()
     
+    # Get balls in play
     if call_col:
         bip = df_p[df_p[call_col].eq('InPlay')].copy()
     else:
@@ -1197,108 +1411,150 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
     if bip.empty:
         return None, pd.DataFrame()
     
-    theta_rad = np.radians(bearing)
-    x = distance * np.sin(theta_rad)
-    y = distance * np.cos(theta_rad)
+    # Convert to x,y coordinates
+    coords = [bearing_distance_to_xy(b, d) for b, d in zip(bearing, distance)]
+    bip['x'] = [c[0] for c in coords]
+    bip['y'] = [c[1] for c in coords]
     
-    fig, ax = plt.subplots(figsize=(10, 10))
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 12))
     
-    colors_list = []
-    sizes_list = []
-    labels_list = []
-    
-    for idx in bip.index:
-        result = str(bip.loc[idx, result_col]) if result_col else ""
-        hit_type = str(bip.loc[idx, type_col]) if type_col else ""
-        
-        result_lower = result.lower()
-        hit_type_lower = hit_type.lower()
-        
-        if "home run" in result_lower or result_lower == "hr":
-            color = 'red'; size = 200; label = "Home Run"
-        elif any(x in result_lower for x in ["single", "double", "triple"]) or "hit" in result_lower:
-            color = 'gold'; size = 120; label = "Hit"
-        elif "line" in hit_type_lower:
-            color = 'orange'; size = 100; label = "Line Drive"
-        elif "fly" in hit_type_lower:
-            color = 'skyblue'; size = 80; label = "Fly Ball"
-        elif "ground" in hit_type_lower:
-            color = 'green'; size = 80; label = "Ground Ball"
-        elif "popup" in hit_type_lower or "pop" in hit_type_lower:
-            color = 'purple'; size = 60; label = "Pop Up"
-        elif "error" in result_lower:
-            color = 'orange'; size = 80; label = "Error"
+    # Define wall distances (matching hitter app)
+    angles = np.linspace(45, 135, 100)
+    wall_data = []
+    for angle in angles:
+        if angle <= 90:
+            t = (angle - 45) / (90 - 45)
+            dist = 335 + t * (395 - 335)
         else:
-            color = 'gray'; size = 60; label = "Out"
+            t = (angle - 90) / (135 - 90)
+            dist = 395 + t * (325 - 395)
+        wall_data.append((angle, dist))
+    
+    # Draw field
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=100, custom_wall_distances=wall_data)
+    
+    # Draw outfield wall
+    wall_x = [dist * np.cos(np.radians(ang)) for ang, dist in wall_data]
+    wall_y = [dist * np.sin(np.radians(ang)) for ang, dist in wall_data]
+    ax.plot(wall_x, wall_y, 'k-', linewidth=3, zorder=10)
+    
+    # Add distance markers
+    for angle, dist, label in [(45, 335, '335'), (90, 395, '395'), (135, 325, '325')]:
+        rad = np.radians(angle)
+        x = dist * np.cos(rad)
+        y = dist * np.sin(rad)
+        ax.text(x, y, label, ha='center', va='center', fontsize=11, 
+                fontweight='bold', bbox=dict(boxstyle='round,pad=0.4', 
+                facecolor='yellow', edgecolor='black', linewidth=2, alpha=0.9), zorder=11)
+    
+    # Categorize hit types and determine colors
+    def categorize_hit_type(hit_type):
+        if pd.isna(hit_type):
+            return 'Other'
+        ht = str(hit_type).lower()
+        if 'ground' in ht:
+            return 'GroundBall'
+        elif 'line' in ht:
+            return 'LineDrive'
+        elif 'fly' in ht:
+            return 'FlyBall'
+        elif 'popup' in ht or 'pop' in ht:
+            return 'Popup'
+        else:
+            return 'Other'
+    
+    bip['HitCategory'] = bip.get(type_col, pd.Series(dtype=object)).apply(categorize_hit_type)
+    
+    # Color scheme matching hitter app
+    hit_type_colors = {
+        'GroundBall': '#DC143C',  # Crimson red
+        'LineDrive': '#FFD700',   # Gold
+        'FlyBall': '#1E90FF',     # Dodger blue
+        'Popup': '#FF69B4',       # Hot pink
+        'Other': '#A9A9A9'        # Dark gray
+    }
+    
+    # Plot each batted ball
+    for idx, row in bip.iterrows():
+        hit_cat = row['HitCategory']
+        play_result = str(row.get(result_col, ''))
         
-        colors_list.append(color)
-        sizes_list.append(size)
-        labels_list.append(label)
+        marker_size = 120
+        
+        # Thicker edge for hits
+        if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
+            edgecolor = 'black'
+            linewidth = 2
+        else:
+            edgecolor = 'black'
+            linewidth = 1
+        
+        ax.scatter(row['x'], row['y'], 
+                  c=hit_type_colors.get(hit_cat, '#A9A9A9'), 
+                  s=marker_size, 
+                  marker='o',
+                  edgecolors=edgecolor, 
+                  linewidths=linewidth,
+                  alpha=0.85,
+                  zorder=20)
     
-    if ev_col:
-        ev = pd.to_numeric(bip[ev_col], errors="coerce")
-        alpha_vals = ((ev - 70) / 50).clip(0.3, 1.0).fillna(0.5).values
-    else:
-        alpha_vals = [0.7] * len(bip)
+    # Create legend
+    legend_elements = []
     
-    for i, (xi, yi) in enumerate(zip(x, y)):
-        ax.scatter(xi, yi, c=colors_list[i], s=sizes_list[i], 
-                  alpha=alpha_vals[i], edgecolors='white', linewidths=1)
+    for hit_type in ['GroundBall', 'LineDrive', 'FlyBall', 'Popup']:
+        count = (bip['HitCategory'] == hit_type).sum()
+        if count > 0:
+            label = hit_type.replace('GroundBall', 'Ground Ball').replace('LineDrive', 'Line Drive').replace('FlyBall', 'Fly Ball')
+            legend_elements.append(
+                Line2D([0], [0], marker='o', color='w', 
+                       markerfacecolor=hit_type_colors[hit_type], 
+                       markersize=10,
+                       markeredgecolor='black', 
+                       markeredgewidth=1.5,
+                       label=f'{label} ({count})')
+            )
     
-    fence_radius = 400
-    theta_fence = np.linspace(-45, 45, 100)
-    theta_rad_fence = np.radians(theta_fence)
-    fence_x = fence_radius * np.sin(theta_rad_fence)
-    fence_y = fence_radius * np.cos(theta_rad_fence)
-    ax.plot(fence_x, fence_y, 'k-', linewidth=2, label='Outfield Fence')
+    legend_elements.extend([
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
+               markersize=10, markeredgecolor='black', markeredgewidth=2,
+               label='Hit (thick edge)'),
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
+               markersize=10, markeredgecolor='black', markeredgewidth=1,
+               label='Out (thin edge)')
+    ])
     
-    ax.plot([0, -fence_radius*np.sin(np.radians(45))], 
-           [0, fence_radius*np.cos(np.radians(45))], 
-           'k--', linewidth=1.5, alpha=0.6)
-    ax.plot([0, fence_radius*np.sin(np.radians(45))], 
-           [0, fence_radius*np.cos(np.radians(45))], 
-           'k--', linewidth=1.5, alpha=0.6)
+    ax.legend(handles=legend_elements, loc='upper left', 
+             bbox_to_anchor=(0.02, 0.98), frameon=True, 
+             fancybox=True, shadow=True, fontsize=10)
     
-    infield = Circle((0, 0), 130, fill=False, edgecolor='brown', 
-                     linewidth=2, linestyle=':', alpha=0.5)
-    ax.add_patch(infield)
-    
-    legend_elements = [
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label='Home Run'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='gold', markersize=10, label='Hit'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='orange', markersize=8, label='Line Drive'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='skyblue', markersize=8, label='Fly Ball'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=8, label='Ground Ball'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', markersize=8, label='Out'),
-    ]
-    ax.legend(handles=legend_elements, loc='upper right', fontsize=9, framealpha=0.9)
-    
-    ax.set_xlim(-450, 450)
-    ax.set_ylim(-50, 450)
+    # Set axis limits
+    max_dist = max(bip['Distance'].max(), 400)
+    ax.set_xlim(-max_dist * 0.85, max_dist * 0.85)
+    ax.set_ylim(-30, max_dist * 1.1)
     ax.set_aspect('equal')
-    ax.set_xlabel('Horizontal Distance (ft)', fontsize=11, fontweight='500')
-    ax.set_ylabel('Distance from Home (ft)', fontsize=11, fontweight='500')
-    ax.set_title(f'Spray Chart: {canonicalize_person_name(pitcher_name)}\n{season_label}', 
-                fontsize=14, fontweight='bold', pad=15)
-    ax.grid(True, alpha=0.2, linestyle=':')
+    
+    ax.set_title(f"{canonicalize_person_name(pitcher_name)} — Hits Allowed (Batter's View)\n{season_label}", 
+                fontsize=16, fontweight='bold', pad=20)
     
     plt.tight_layout()
     
+    # Create summary table
     summary_data = []
-    for label in set(labels_list):
-        mask = np.array(labels_list) == label
+    for label in set(bip['HitCategory']):
+        mask = bip['HitCategory'] == label
         count = mask.sum()
-        avg_dist = distance[bip.index[mask]].mean() if count > 0 else np.nan
+        avg_dist = bip.loc[mask, 'Distance'].mean() if count > 0 else np.nan
         
         if ev_col:
-            ev_subset = pd.to_numeric(bip.loc[bip.index[mask], ev_col], errors="coerce")
+            ev_subset = pd.to_numeric(bip.loc[mask, ev_col], errors="coerce")
             avg_ev = ev_subset.mean() if len(ev_subset.dropna()) > 0 else np.nan
             max_ev = ev_subset.max() if len(ev_subset.dropna()) > 0 else np.nan
         else:
             avg_ev = max_ev = np.nan
         
         summary_data.append({
-            'Type': label,
+            'Type': label.replace('GroundBall', 'Ground Ball').replace('LineDrive', 'Line Drive').replace('FlyBall', 'Fly Ball'),
             'Count': int(count),
             'Avg Distance': round(avg_dist, 1) if pd.notna(avg_dist) else np.nan,
             'Avg Exit Velo': round(avg_ev, 1) if pd.notna(avg_ev) else np.nan,
@@ -1308,59 +1564,6 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
     summary_df = pd.DataFrame(summary_data).sort_values('Count', ascending=False)
     
     return fig, summary_df
-
-def create_simplified_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = "Season"):
-    """Fallback spray chart when Bearing/Distance not available."""
-    df_p = subset_by_pitcher_if_possible(df, pitcher_name)
-    
-    result_col = pick_col(df_p, "PlayResult", "Result", "Event", "PAResult")
-    call_col = pick_col(df_p, "PitchCall", "Pitch Call", "Call")
-    
-    if call_col:
-        bip = df_p[df_p[call_col].eq('InPlay')].copy()
-    else:
-        bip = df_p.copy()
-    
-    if bip.empty or not result_col:
-        return None, pd.DataFrame()
-    
-    result = bip[result_col].astype(str).str.lower()
-    
-    categories = {
-        'Single': result.str.contains('single'),
-        'Double': result.str.contains('double'),
-        'Triple': result.str.contains('triple'),
-        'Home Run': result.str.contains('home run') | result.eq('hr'),
-        'Out': ~(result.str.contains('single|double|triple|home run|hr', regex=True))
-    }
-    
-    data = []
-    for cat, mask in categories.items():
-        count = mask.sum()
-        if count > 0:
-            data.append({'Outcome': cat, 'Count': int(count)})
-    
-    if not data:
-        return None, pd.DataFrame()
-    
-    chart_df = pd.DataFrame(data)
-    
-    fig, ax = plt.subplots(figsize=(8, 6))
-    colors_map = {
-        'Home Run': 'red', 'Triple': 'purple', 'Double': 'orange',
-        'Single': 'gold', 'Out': 'gray'
-    }
-    colors = [colors_map.get(x, 'blue') for x in chart_df['Outcome']]
-    
-    ax.bar(chart_df['Outcome'], chart_df['Count'], color=colors, edgecolor='white', linewidth=1.5)
-    ax.set_ylabel('Count', fontsize=11, fontweight='500')
-    ax.set_title(f'Batted Ball Outcomes: {canonicalize_person_name(pitcher_name)}\n{season_label}',
-                fontsize=14, fontweight='bold', pad=15)
-    ax.grid(axis='y', alpha=0.3, linestyle=':')
-    
-    plt.tight_layout()
-    
-    return fig
 
 # ─── NEW: Pitch Sequencing Analysis ───────────────────────────────────────────
 def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):

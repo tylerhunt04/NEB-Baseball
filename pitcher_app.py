@@ -1,6 +1,8 @@
 # pitcher_app.py — COMPLETE VERSION WITH ALL FEATURES
 # Part 1 of 6: Imports, Configuration, CSS, and Basic Helpers
 
+import math
+from matplotlib.patches import Wedge, Polygon
 import os, gc, re, base64
 import numpy as np
 import pandas as pd
@@ -2024,7 +2026,7 @@ with tabs[1]:
     
     professional_divider()
     
-    # ═══════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════
     # NEW: SPRAY CHART
     # ═══════════════════════════════════════════════════════════════════════════
     section_header("Spray Chart: Hits Allowed")
@@ -2032,15 +2034,16 @@ with tabs[1]:
     fig_spray, summary_spray = create_spray_chart(df_pitcher_all, pitcher_choice, season_label_display)
     
     if fig_spray:
-        col1, col2 = st.columns([2, 1])
+        # Center the spray chart
+        col_left, col_center, col_right = st.columns([0.5, 3, 0.5])
         
-        with col1:
+        with col_center:
             show_and_close(fig_spray, use_container_width=True)
         
-        with col2:
-            if summary_spray is not None and not summary_spray.empty:
-                st.markdown("#### Batted Ball Summary")
-                st.dataframe(themed_table(summary_spray), use_container_width=True, hide_index=True)
+        # Summary table below
+        if summary_spray is not None and not summary_spray.empty:
+            st.markdown("#### Batted Ball Summary")
+            st.dataframe(themed_table(summary_spray), use_container_width=True, hide_index=True)
     else:
         info_message("Spray chart not available. Requires batted ball location data (Bearing/Distance).")
     

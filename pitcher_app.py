@@ -1854,6 +1854,13 @@ else:
 
 df_pitcher_all = subset_by_pitcher_if_possible(df_pitcher_all, pitcher_choice)
 
+# Apply game filter (specific dates selected)
+if selected_game_dates and "Date" in df_pitcher_all.columns:
+    df_pitcher_all = df_pitcher_all[
+        pd.to_datetime(df_pitcher_all["Date"], errors="coerce").dt.date.isin(selected_game_dates)
+    ].copy()
+
+# Apply batter handedness filter
 if batter_side_choice != "All":
     side_col = pick_col(df_pitcher_all, "BatterSide","Batter Side","Bats","Stand","BatSide")
     if side_col:
@@ -1861,9 +1868,19 @@ if batter_side_choice != "All":
         target = "R" if batter_side_choice == "RHH" else "L"
         df_pitcher_all = df_pitcher_all[side_norm == target].copy()
 
+# Apply month/day/lastN filters
 df_pitcher_all, season_label_display = apply_month_day_lastN(
     df_pitcher_all, months_sel, day_choices, last_n_games
 )
+
+# Build better season label if games were selected
+if selected_game_dates:
+    if len(selected_game_dates) == 1:
+        season_label_display = format_date_long(selected_game_dates[0])
+    else:
+        season_label_display = f"{len(selected_game_dates)} selected games"
+elif game_choices:  # Games were selected but resulted in no data
+    season_label_display = "Selected games"
 
 if df_pitcher_all.empty:
     st.warning("No data matches the current filter selection.")

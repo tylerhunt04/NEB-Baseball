@@ -2101,6 +2101,8 @@ tabs = st.tabs(["📈 Standard", "👤 Profiles", "🏆 Rankings", "🍂 Fall Su
 
 # End of Part 5# Part 6 of 6: Main Tabs Implementation (Standard, Profiles, Rankings, Fall Summary)
 
+# Part 6 of 6: Main Tabs Implementation (Standard, Profiles, Rankings, Fall Summary)
+
 # ───────────────────────────────────────────────────────────────────────────────
 # TAB 1: STANDARD
 # ───────────────────────────────────────────────────────────────────────────────
@@ -2123,9 +2125,54 @@ with tabs[0]:
         show_and_close(fig_movement, use_container_width=True)
     else:
         st.info("Movement profile not available for current selection.")
+    
+    professional_divider()
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # PITCH-BY-PITCH BREAKDOWN (MOVED FROM PROFILES TAB)
+    # ═══════════════════════════════════════════════════════════════════════════
+    section_header("Pitch-by-Pitch Breakdown")
+    
+    pbp_df = build_pitch_by_inning_pa_table(df_pitcher_all)
+    
+    if not pbp_df.empty and "Inning #" in pbp_df.columns:
+        style_pbp_expanders()
+        st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
+        
+        innings = sorted(pbp_df["Inning #"].dropna().unique())
+        
+        for inn in innings:
+            inn_data = pbp_df[pbp_df["Inning #"] == inn]
+            
+            with st.expander(f"⚾ Inning {inn}", expanded=False):
+                if "AB #" in inn_data.columns:
+                    abs = sorted(inn_data["AB #"].dropna().unique())
+                    
+                    for ab_num in abs:
+                        pa_data = inn_data[inn_data["AB #"] == ab_num]
+                        
+                        batter_name = pa_data["Batter"].iloc[0] if "Batter" in pa_data.columns else "Unknown"
+                        pa_result = pa_data["PA Result"].iloc[0] if "PA Result" in pa_data.columns else "—"
+                        
+                        with st.expander(f"AB #{int(ab_num)}: {batter_name} ({pa_result})", expanded=False):
+                            fig_pa = pa_interactive_strikezone(pa_data, title=f"AB #{int(ab_num)}: {batter_name}")
+                            if fig_pa:
+                                st.plotly_chart(fig_pa, use_container_width=True)
+                            
+                            display_cols = [c for c in pa_data.columns 
+                                          if c not in ["PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX",
+                                                      "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ"]]
+                            pa_display = pa_data[display_cols]
+                            st.dataframe(themed_table(pa_display), use_container_width=True)
+                else:
+                    st.dataframe(themed_table(inn_data), use_container_width=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.info("No pitch-by-pitch data available for current selection.")
 
 # ───────────────────────────────────────────────────────────────────────────────
-# TAB 2: PROFILES (WITH ALL NEW FEATURES)
+# TAB 2: PROFILES (PITCH-BY-PITCH REMOVED)
 # ───────────────────────────────────────────────────────────────────────────────
 with tabs[1]:
     section_header(f"Pitcher Profile: {canonicalize_person_name(pitcher_choice)}")
@@ -2166,7 +2213,7 @@ with tabs[1]:
     
     professional_divider()
     
- # ═══════════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════════════
     # NEW: COUNT LEVERAGING HEATMAPS (3-panel matching hitter app)
     # ═══════════════════════════════════════════════════════════════════════════
     section_header("Count Leveraging Heatmaps")
@@ -2179,7 +2226,7 @@ with tabs[1]:
     else:
         info_message("Count leveraging heatmaps not available. Requires count and location data.")
     
-    # ADD THIS NEW SECTION FOR PERFORMANCE BY COUNT
+    # ADD PERFORMANCE BY COUNT TABLE
     st.markdown("#### Performance by Count Situation")
     count_performance = create_count_situation_comparison(df_pitcher_all)
     
@@ -2189,6 +2236,7 @@ with tabs[1]:
         info_message("Count situation performance data not available.")
     
     professional_divider()
+    
     # ═══════════════════════════════════════════════════════════════════════════
     # NEW: SPRAY CHART (matching hitter app style)
     # ═══════════════════════════════════════════════════════════════════════════
@@ -2264,51 +2312,6 @@ with tabs[1]:
                 st.info("Transition matrix not available.")
     else:
         info_message("Pitch sequencing requires multiple pitches per at-bat. Not enough sequence data available.")
-    
-    professional_divider()
-    
-    # ═══════════════════════════════════════════════════════════════════════════
-    # PITCH-BY-PITCH BREAKDOWN
-    # ═══════════════════════════════════════════════════════════════════════════
-    section_header("Pitch-by-Pitch Breakdown")
-    
-    pbp_df = build_pitch_by_inning_pa_table(df_pitcher_all)
-    
-    if not pbp_df.empty and "Inning #" in pbp_df.columns:
-        style_pbp_expanders()
-        st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
-        
-        innings = sorted(pbp_df["Inning #"].dropna().unique())
-        
-        for inn in innings:
-            inn_data = pbp_df[pbp_df["Inning #"] == inn]
-            
-            with st.expander(f"⚾ Inning {inn}", expanded=False):
-                if "AB #" in inn_data.columns:
-                    abs = sorted(inn_data["AB #"].dropna().unique())
-                    
-                    for ab_num in abs:
-                        pa_data = inn_data[inn_data["AB #"] == ab_num]
-                        
-                        batter_name = pa_data["Batter"].iloc[0] if "Batter" in pa_data.columns else "Unknown"
-                        pa_result = pa_data["PA Result"].iloc[0] if "PA Result" in pa_data.columns else "—"
-                        
-                        with st.expander(f"AB #{int(ab_num)}: {batter_name} ({pa_result})", expanded=False):
-                            fig_pa = pa_interactive_strikezone(pa_data, title=f"AB #{int(ab_num)}: {batter_name}")
-                            if fig_pa:
-                                st.plotly_chart(fig_pa, use_container_width=True)
-                            
-                            display_cols = [c for c in pa_data.columns 
-                                          if c not in ["PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX",
-                                                      "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ"]]
-                            pa_display = pa_data[display_cols]
-                            st.dataframe(themed_table(pa_display), use_container_width=True)
-                else:
-                    st.dataframe(themed_table(inn_data), use_container_width=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-    else:
-        st.info("No pitch-by-pitch data available for current selection.")
 
 # ───────────────────────────────────────────────────────────────────────────────
 # TAB 3: RANKINGS

@@ -1417,7 +1417,7 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
     bip['y'] = [c[1] for c in coords]
     
     # Create figure
-    fig, ax = plt.subplots(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=(4, 6))
     
     # Define wall distances (matching hitter app)
     angles = np.linspace(45, 135, 100)

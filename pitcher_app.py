@@ -1373,7 +1373,6 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str):
     plt.tight_layout()
     return fig
 
-# ─── NEW: Spray Chart (matching hitter app style) ────────────────────────────
 def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = "Season"):
     """
     Creates a spray chart showing hits allowed (from batter's perspective).
@@ -1416,8 +1415,8 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
     bip['x'] = [c[0] for c in coords]
     bip['y'] = [c[1] for c in coords]
     
-    # Create figure
-    fig, ax = plt.subplots(figsize=(4, 6))
+    # Create figure - SMALLER SIZE
+    fig, ax = plt.subplots(figsize=(8, 8))
     
     # Define wall distances (matching hitter app)
     angles = np.linspace(45, 135, 100)
@@ -1431,22 +1430,22 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
             dist = 395 + t * (325 - 395)
         wall_data.append((angle, dist))
     
-    # Draw field
-    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=100, custom_wall_distances=wall_data)
+    # Draw field - SMALLER SIZE (reduced from 100 to 70)
+    draw_dirt_diamond(ax, origin=(0.0, 0.0), size=70, custom_wall_distances=wall_data)
     
-    # Draw outfield wall
+    # Draw outfield wall - THINNER LINE
     wall_x = [dist * np.cos(np.radians(ang)) for ang, dist in wall_data]
     wall_y = [dist * np.sin(np.radians(ang)) for ang, dist in wall_data]
-    ax.plot(wall_x, wall_y, 'k-', linewidth=3, zorder=10)
+    ax.plot(wall_x, wall_y, 'k-', linewidth=2, zorder=10)  # Changed from 3 to 2
     
-    # Add distance markers
+    # Add distance markers - SMALLER TEXT
     for angle, dist, label in [(45, 335, '335'), (90, 395, '395'), (135, 325, '325')]:
         rad = np.radians(angle)
         x = dist * np.cos(rad)
         y = dist * np.sin(rad)
-        ax.text(x, y, label, ha='center', va='center', fontsize=11, 
-                fontweight='bold', bbox=dict(boxstyle='round,pad=0.4', 
-                facecolor='yellow', edgecolor='black', linewidth=2, alpha=0.9), zorder=11)
+        ax.text(x, y, label, ha='center', va='center', fontsize=9,  # Changed from 11 to 9
+                fontweight='bold', bbox=dict(boxstyle='round,pad=0.3',  # Changed from 0.4 to 0.3
+                facecolor='yellow', edgecolor='black', linewidth=1.5, alpha=0.9), zorder=11)  # Changed from 2 to 1.5
     
     # Categorize hit types and determine colors
     def categorize_hit_type(hit_type):
@@ -1475,20 +1474,20 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
         'Other': '#A9A9A9'        # Dark gray
     }
     
-    # Plot each batted ball
+    # Plot each batted ball - SMALLER MARKERS
     for idx, row in bip.iterrows():
         hit_cat = row['HitCategory']
         play_result = str(row.get(result_col, ''))
         
-        marker_size = 120
+        marker_size = 80  # Changed from 120 to 80
         
         # Thicker edge for hits
         if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
             edgecolor = 'black'
-            linewidth = 2
+            linewidth = 1.5  # Changed from 2 to 1.5
         else:
             edgecolor = 'black'
-            linewidth = 1
+            linewidth = 0.8  # Changed from 1 to 0.8
         
         ax.scatter(row['x'], row['y'], 
                   c=hit_type_colors.get(hit_cat, '#A9A9A9'), 
@@ -1499,7 +1498,7 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
                   alpha=0.85,
                   zorder=20)
     
-    # Create legend
+    # Create legend - SMALLER
     legend_elements = []
     
     for hit_type in ['GroundBall', 'LineDrive', 'FlyBall', 'Popup']:
@@ -1509,24 +1508,24 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
             legend_elements.append(
                 Line2D([0], [0], marker='o', color='w', 
                        markerfacecolor=hit_type_colors[hit_type], 
-                       markersize=10,
+                       markersize=7,  # Changed from 10 to 7
                        markeredgecolor='black', 
-                       markeredgewidth=1.5,
+                       markeredgewidth=1,  # Changed from 1.5 to 1
                        label=f'{label} ({count})')
             )
     
     legend_elements.extend([
         Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
-               markersize=10, markeredgecolor='black', markeredgewidth=2,
+               markersize=7, markeredgecolor='black', markeredgewidth=1.5,  # Changed from 10/2 to 7/1.5
                label='Hit (thick edge)'),
         Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
-               markersize=10, markeredgecolor='black', markeredgewidth=1,
+               markersize=7, markeredgecolor='black', markeredgewidth=0.8,  # Changed from 10/1 to 7/0.8
                label='Out (thin edge)')
     ])
     
     ax.legend(handles=legend_elements, loc='upper left', 
              bbox_to_anchor=(0.02, 0.98), frameon=True, 
-             fancybox=True, shadow=True, fontsize=10)
+             fancybox=True, shadow=True, fontsize=8)  # Changed from 10 to 8
     
     # Set axis limits
     max_dist = max(bip['Distance'].max(), 400)
@@ -1534,8 +1533,9 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
     ax.set_ylim(-30, max_dist * 1.1)
     ax.set_aspect('equal')
     
+    # SMALLER TITLE
     ax.set_title(f"{canonicalize_person_name(pitcher_name)} — Hits Allowed (Batter's View)\n{season_label}", 
-                fontsize=16, fontweight='bold', pad=20)
+                fontsize=13, fontweight='bold', pad=15)  # Changed from 16 to 13, pad from 20 to 15
     
     plt.tight_layout()
     

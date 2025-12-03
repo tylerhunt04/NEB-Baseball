@@ -2179,8 +2179,16 @@ with tabs[1]:
     else:
         info_message("Count leveraging heatmaps not available. Requires count and location data.")
     
-    professional_divider()
+    # ADD THIS NEW SECTION FOR PERFORMANCE BY COUNT
+    st.markdown("#### Performance by Count Situation")
+    count_performance = create_count_situation_comparison(df_pitcher_all)
     
+    if not count_performance.empty:
+        st.dataframe(themed_table(count_performance), use_container_width=True, hide_index=True)
+    else:
+        info_message("Count situation performance data not available.")
+    
+    professional_divider()
     # ═══════════════════════════════════════════════════════════════════════════
     # NEW: SPRAY CHART (matching hitter app style)
     # ═══════════════════════════════════════════════════════════════════════════

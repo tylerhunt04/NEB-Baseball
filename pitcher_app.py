@@ -220,9 +220,7 @@ def pick_col(df: pd.DataFrame, *cands) -> str | None:
     return None
 
 SEGMENT_DEFS = {
-    "2025 Season":        {"start": "2025-02-01", "end": "2025-08-01", "types": ["game"]},
     "2025/26 Scrimmages": {"start": "2025-08-01", "end": "2026-02-01", "types": ["scrimmage"]},
-    "2025/26 Bullpens":   {"start": "2025-08-01", "end": "2026-02-01", "types": ["bullpen"]},
     "2026 Season":        {"start": "2026-02-01", "end": "2026-08-01", "types": ["game"]},
 }
 

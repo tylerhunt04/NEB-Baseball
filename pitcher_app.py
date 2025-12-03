@@ -1027,18 +1027,19 @@ def create_count_leverage_heatmap(df: pd.DataFrame, metric: str = "Strike%"):
                     bip_count = bip.sum()
                     matrix[b, s] = (hard.sum() / bip_count * 100) if bip_count > 0 else np.nan
     
-    fig, ax = plt.subplots(figsize=(8, 6))
+    # Create figure with single heatmap (larger)
+    fig, ax = plt.subplots(figsize=(10, 8))
     cmap = plt.cm.RdYlGn
     im = ax.imshow(matrix, cmap=cmap, aspect='auto', vmin=0, vmax=100)
     
     ax.set_xticks(np.arange(3))
     ax.set_yticks(np.arange(4))
-    ax.set_xticklabels(['0', '1', '2'])
-    ax.set_yticklabels(['0', '1', '2', '3'])
+    ax.set_xticklabels(['0', '1', '2'], fontsize=12, fontweight='600')
+    ax.set_yticklabels(['0', '1', '2', '3'], fontsize=12, fontweight='600')
     
-    ax.set_xlabel('Strikes', fontsize=12, fontweight='600')
-    ax.set_ylabel('Balls', fontsize=12, fontweight='600')
-    ax.set_title(f'{metric} by Count', fontsize=14, fontweight='bold', pad=15)
+    ax.set_xlabel('Strikes', fontsize=14, fontweight='700')
+    ax.set_ylabel('Balls', fontsize=14, fontweight='700')
+    ax.set_title(f'{metric} by Count', fontsize=16, fontweight='bold', pad=20)
     
     for b in range(4):
         for s in range(3):
@@ -1053,10 +1054,11 @@ def create_count_leverage_heatmap(df: pd.DataFrame, metric: str = "Strike%"):
                 color = 'gray'
             
             ax.text(s, b, text, ha="center", va="center", 
-                   color=color, fontsize=10, fontweight='500')
+                   color=color, fontsize=11, fontweight='600')
     
     cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label(metric, rotation=270, labelpad=20, fontsize=11, fontweight='600')
+    cbar.set_label(metric, rotation=270, labelpad=25, fontsize=13, fontweight='700')
+    cbar.ax.tick_params(labelsize=11)
     
     plt.tight_layout()
     
@@ -1073,7 +1075,7 @@ def create_count_leverage_heatmap(df: pd.DataFrame, metric: str = "Strike%"):
     summary_df = pd.DataFrame(summary_rows).sort_values(metric, ascending=False)
     
     return fig, summary_df
-
+    
 def create_count_situation_comparison(df: pd.DataFrame):
     """Compare pitcher effectiveness across count situations."""
     if df is None or df.empty:

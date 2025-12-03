@@ -1963,84 +1963,32 @@ with tabs[1]:
     
     professional_divider()
     
+ # ═══════════════════════════════════════════════════════════════════════════
+    # NEW: COUNT LEVERAGING HEATMAPS (3-panel matching hitter app)
     # ═══════════════════════════════════════════════════════════════════════════
-    # NEW: COUNT LEVERAGING ANALYSIS (ENHANCED)
-    # ═══════════════════════════════════════════════════════════════════════════
-    section_header("Count Leveraging Analysis")
+    section_header("Count Leveraging Heatmaps")
+    st.caption("Pitch location density by count situation")
     
-    metric_choice = st.selectbox(
-        "Select Metric",
-        options=["Strike%", "Whiff%", "Chase%", "InPlay%", "HardHit%"],
-        index=0,
-        key="count_metric"
-    )
+    fig_heatmaps = create_count_leverage_heatmaps(df_pitcher_all, pitcher_choice)
     
-    st.markdown("#### Overall Count Performance")
-    fig_count, summary_count = create_count_leverage_heatmap(df_pitcher_all, metric_choice)
-    
-    if fig_count:
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            show_and_close(fig_count, use_container_width=True)
-        
-        with col2:
-            if not summary_count.empty:
-                st.markdown("**Best Counts**")
-                top_counts = summary_count.head(5)
-                st.dataframe(themed_table(top_counts), use_container_width=True, hide_index=True)
-                
-                st.markdown("**Worst Counts**")
-                bottom_counts = summary_count.tail(5)
-                st.dataframe(themed_table(bottom_counts), use_container_width=True, hide_index=True)
-        
-        st.markdown("#### Performance by Count Situation")
-        situation_df = create_count_situation_comparison(df_pitcher_all)
-        if not situation_df.empty:
-            st.dataframe(themed_table(situation_df), use_container_width=True, hide_index=True)
-        
-        # By pitch type breakdown
-        with st.expander("📊 Count Performance by Pitch Type"):
-            type_col = type_col_in_df(df_pitcher_all)
-            if type_col and type_col in df_pitcher_all.columns:
-                pitch_types = sorted(df_pitcher_all[type_col].dropna().unique())
-                
-                for ptype in pitch_types:
-                    st.markdown(f"##### {ptype}")
-                    subset = df_pitcher_all[df_pitcher_all[type_col] == ptype]
-                    fig_pt, summary_pt = create_count_leverage_heatmap(subset, metric_choice)
-                    
-                    if fig_pt and not summary_pt.empty:
-                        col1, col2 = st.columns([2, 1])
-                        with col1:
-                            show_and_close(fig_pt, use_container_width=True)
-                        with col2:
-                            st.dataframe(themed_table(summary_pt.head(3)), 
-                                       use_container_width=True, hide_index=True)
-                    else:
-                        st.info(f"Insufficient data for {ptype}")
-            else:
-                st.info("Pitch type information not available.")
+    if fig_heatmaps:
+        show_and_close(fig_heatmaps, use_container_width=True)
     else:
-        info_message("Count leveraging data not available. Requires ball/strike count information.")
+        info_message("Count leveraging heatmaps not available. Requires count and location data.")
     
     professional_divider()
     
-  # ═══════════════════════════════════════════════════════════════════════════
-    # NEW: SPRAY CHART
+    # ═══════════════════════════════════════════════════════════════════════════
+    # NEW: SPRAY CHART (matching hitter app style)
     # ═══════════════════════════════════════════════════════════════════════════
     section_header("Spray Chart: Hits Allowed")
+    st.caption("⚠️ Note: Spray chart shows hits from opponent batter's perspective")
     
     fig_spray, summary_spray = create_spray_chart(df_pitcher_all, pitcher_choice, season_label_display)
     
     if fig_spray:
-        # Center the spray chart
-        col_left, col_center, col_right = st.columns([0.5, 3, 0.5])
+        show_and_close(fig_spray, use_container_width=True)
         
-        with col_center:
-            show_and_close(fig_spray, use_container_width=True)
-        
-        # Summary table below
         if summary_spray is not None and not summary_spray.empty:
             st.markdown("#### Batted Ball Summary")
             st.dataframe(themed_table(summary_spray), use_container_width=True, hide_index=True)

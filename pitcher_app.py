@@ -1794,7 +1794,11 @@ def analyze_sequence_by_count(df: pd.DataFrame, pitcher_name: str):
     usage = df_p.groupby([type_col, 'Count_Situation']).size().unstack(fill_value=0)
     usage_pct = usage.div(usage.sum(axis=0), axis=1) * 100
     
-    return usage_pct.round(1)
+    # Round and add % signs
+    usage_pct = usage_pct.round(1)
+    usage_pct = usage_pct.applymap(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
+    
+    return usage_pct
 
 # Part 5 of 6: Data Loading, Sidebar Filters, and Main App Structure
 
@@ -2409,7 +2413,8 @@ with tabs[1]:
         
         seq_by_count = analyze_sequence_by_count(df_pitcher_all, pitcher_choice)
         if not seq_by_count.empty:
-            st.dataframe(themed_table(seq_by_count), use_container_width=True)
+            # Display without themed_table since values already have % signs
+            st.dataframe(seq_by_count, use_container_width=True)
         else:
             st.info("Count situation data not available.")
     else:
@@ -2455,23 +2460,75 @@ with tabs[2]:
         professional_divider()
         
         st.markdown("### Individual Pitcher Rankings")
+        st.caption("Green = Better than D1 average | Red = Below D1 average")
         
-        sort_col = st.selectbox(
-            "Sort by",
-            options=["WHIP", "SO", "Strike%", "Whiff%", "HH%", "Barrel%", "IP"],
-            index=0
-        )
+        # D1 Average benchmarks
+        D1_AVERAGES = {
+            'WHIP': 1.35,      # Lower is better
+            'H9': 8.5,         # Lower is better
+            'Strike%': 64.0,   # Higher is better
+            'Whiff%': 25.0,    # Higher is better
+            'Zone%': 45.0,     # Higher is better
+            'Zwhiff%': 28.0,   # Higher is better
+            'Chase%': 30.0,    # Higher is better
+            'HH%': 35.0,       # Lower is better
+            'Barrel%': 8.0,    # Lower is better
+            'BB%': 10.0,       # Lower is better
+            'SO%': 23.0,       # Higher is better
+        }
         
-        if sort_col == "IP":
-            rankings_display = rankings_df.sort_values("_IP_num", ascending=False)
-        elif sort_col in ["WHIP", "HH%", "Barrel%"]:
-            rankings_display = rankings_df.sort_values(sort_col, ascending=True, na_position="last")
-        else:
-            rankings_display = rankings_df.sort_values(sort_col, ascending=False, na_position="last")
+        def color_by_d1_average(val, col_name):
+            """Color cells based on D1 averages. Green = better, Red = worse."""
+            if pd.isna(val) or col_name not in D1_AVERAGES:
+                return ''
+            
+            try:
+                val_num = float(val)
+                benchmark = D1_AVERAGES[col_name]
+                
+                # Lower is better metrics
+                if col_name in ['WHIP', 'H9', 'HH%', 'Barrel%', 'BB%']:
+                    if val_num < benchmark * 0.95:  # 5% better
+                        return 'background-color: rgba(0, 200, 0, 0.3)'
+                    elif val_num > benchmark * 1.05:  # 5% worse
+                        return 'background-color: rgba(255, 0, 0, 0.3)'
+                # Higher is better metrics
+                else:
+                    if val_num > benchmark * 1.05:  # 5% better
+                        return 'background-color: rgba(0, 200, 0, 0.3)'
+                    elif val_num < benchmark * 0.95:  # 5% worse
+                        return 'background-color: rgba(255, 0, 0, 0.3)'
+            except:
+                pass
+            
+            return ''
         
+        # Sort by WHIP (ascending) by default
+        rankings_display = rankings_df.sort_values("WHIP", ascending=True, na_position="last")
         rankings_display = rankings_display.drop(columns=["_IP_num"])
         
-        st.dataframe(themed_table(rankings_display), use_container_width=True, hide_index=True)
+        # Apply color coding
+        styled_rankings = rankings_display.style.hide(axis="index")
+        
+        # Apply color coding to relevant columns
+        for col in D1_AVERAGES.keys():
+            if col in rankings_display.columns:
+                styled_rankings = styled_rankings.applymap(
+                    lambda val, c=col: color_by_d1_average(val, c),
+                    subset=[col]
+                )
+        
+        # Format numeric columns
+        format_dict = {}
+        for col in rankings_display.columns:
+            if col in ['WHIP', 'H9']:
+                format_dict[col] = '{:.2f}'
+            elif col.endswith('%'):
+                format_dict[col] = '{:.1f}'
+        
+        styled_rankings = styled_rankings.format(format_dict, na_rep="—")
+        
+        st.dataframe(styled_rankings, use_container_width=True)
         
         csv = rankings_display.to_csv(index=False)
         st.download_button(

@@ -2460,7 +2460,7 @@ with tabs[2]:
         professional_divider()
         
         st.markdown("### Individual Pitcher Rankings")
-        st.caption("Green = Better than D1 average | Red = Below D1 average")
+        st.caption("D1 Average shown in gray | Color intensity shows distance from average | Darker green = better | Darker red = worse")
         
         # D1 Average benchmarks (calculated from 2024 D1 data)
         D1_AVERAGES = {
@@ -2478,7 +2478,10 @@ with tabs[2]:
         }
         
         def color_by_d1_average(val, col_name):
-            """Color cells based on D1 averages. Green = better, Red = worse."""
+            """
+            Progressive color gradient based on distance from D1 average.
+            Darker green = better performance, Darker red = worse performance
+            """
             if pd.isna(val) or col_name not in D1_AVERAGES:
                 return ''
             
@@ -2486,18 +2489,42 @@ with tabs[2]:
                 val_num = float(val)
                 benchmark = D1_AVERAGES[col_name]
                 
-                # Lower is better metrics
-                if col_name in ['WHIP', 'H9', 'HH%', 'Barrel%', 'BB%']:
-                    if val_num < benchmark * 0.95:  # 5% better
-                        return 'background-color: rgba(0, 200, 0, 0.3)'
-                    elif val_num > benchmark * 1.05:  # 5% worse
-                        return 'background-color: rgba(255, 0, 0, 0.3)'
-                # Higher is better metrics
+                # Calculate percentage difference from benchmark
+                pct_diff = (val_num - benchmark) / benchmark
+                
+                # Determine if lower or higher is better
+                lower_is_better = col_name in ['WHIP', 'H9', 'HH%', 'Barrel%', 'BB%']
+                
+                # For "lower is better" metrics, flip the sign
+                # Positive pct_diff means better if lower_is_better = True
+                if lower_is_better:
+                    performance = -pct_diff  # negative value (below average) = good
                 else:
-                    if val_num > benchmark * 1.05:  # 5% better
-                        return 'background-color: rgba(0, 200, 0, 0.3)'
-                    elif val_num < benchmark * 0.95:  # 5% worse
-                        return 'background-color: rgba(255, 0, 0, 0.3)'
+                    performance = pct_diff   # positive value (above average) = good
+                
+                # Map performance to color intensity (0 = white, 1 = full color)
+                # Use threshold of ±20% for full color intensity
+                max_threshold = 0.20
+                intensity = min(abs(performance) / max_threshold, 1.0)
+                
+                # No color if very close to average (within 2%)
+                if abs(performance) < 0.02:
+                    return ''
+                
+                # Generate color based on performance
+                if performance > 0:  # Better than average
+                    # Green: RGB(0, 128, 0) for dark green
+                    # Progressive from light to dark
+                    green_value = int(180 - (100 * intensity))  # 180 to 80
+                    alpha = 0.3 + (0.5 * intensity)  # 0.3 to 0.8
+                    return f'background-color: rgba(0, {green_value}, 0, {alpha});'
+                else:  # Worse than average
+                    # Red: RGB(220, 0, 0) for dark red
+                    # Progressive from light to dark
+                    red_value = int(255 - (35 * intensity))  # 255 to 220
+                    alpha = 0.2 + (0.5 * intensity)  # 0.2 to 0.7
+                    return f'background-color: rgba({red_value}, 0, 0, {alpha});'
+                    
             except:
                 pass
             
@@ -2507,22 +2534,75 @@ with tabs[2]:
         rankings_display = rankings_df.sort_values("WHIP", ascending=True, na_position="last")
         rankings_display = rankings_display.drop(columns=["_IP_num"])
         
-        # Apply color coding
+        # When filtering by pitch type, remove App and IP columns (not meaningful for single pitch)
+        if pitch_types_filter:
+            cols_to_drop = [c for c in ["App", "IP"] if c in rankings_display.columns]
+            if cols_to_drop:
+                rankings_display = rankings_display.drop(columns=cols_to_drop)
+        
+        # Add D1 Average row at the top
+        d1_row = pd.DataFrame([{
+            'Pitcher': 'D1 Average',
+            'App': '—' if 'App' in rankings_display.columns else None,
+            'IP': '—' if 'IP' in rankings_display.columns else None,
+            'H': '—',
+            'HR': '—',
+            'BB': '—',
+            'HBP': '—',
+            'SO': '—',
+            'WHIP': D1_AVERAGES.get('WHIP', np.nan),
+            'H9': D1_AVERAGES.get('H9', np.nan),
+            'BB%': D1_AVERAGES.get('BB%', np.nan),
+            'SO%': D1_AVERAGES.get('SO%', np.nan),
+            'Strike%': D1_AVERAGES.get('Strike%', np.nan),
+            'HH%': D1_AVERAGES.get('HH%', np.nan),
+            'Barrel%': D1_AVERAGES.get('Barrel%', np.nan),
+            'Zone%': D1_AVERAGES.get('Zone%', np.nan),
+            'Zwhiff%': D1_AVERAGES.get('Zwhiff%', np.nan),
+            'Chase%': D1_AVERAGES.get('Chase%', np.nan),
+            'Whiff%': D1_AVERAGES.get('Whiff%', np.nan),
+        }])
+        
+        # Keep only columns that exist in rankings_display
+        d1_row = d1_row[[c for c in d1_row.columns if c in rankings_display.columns]]
+        
+        # Prepend D1 row
+        rankings_display = pd.concat([d1_row, rankings_display], ignore_index=True)
+        
+        # Apply color coding (skip first row which is D1 average)
         styled_rankings = rankings_display.style.hide(axis="index")
         
-        # Apply color coding to relevant columns
+        # Apply color coding to relevant columns (skip row 0)
         for col in D1_AVERAGES.keys():
             if col in rankings_display.columns:
-                styled_rankings = styled_rankings.applymap(
-                    lambda val, c=col: color_by_d1_average(val, c),
-                    subset=[col]
+                # Create a series with colors, leaving first row empty
+                def apply_color_skip_first(s):
+                    colors = [''] * len(s)  # Start with no color
+                    for idx in range(1, len(s)):  # Skip index 0 (D1 average row)
+                        colors[idx] = color_by_d1_average(s.iloc[idx], col)
+                    return colors
+                
+                styled_rankings = styled_rankings.apply(
+                    apply_color_skip_first,
+                    subset=[col],
+                    axis=0
                 )
+        
+        # Highlight D1 Average row with light gray background
+        def highlight_d1_row(row):
+            if row['Pitcher'] == 'D1 Average':
+                return ['background-color: rgba(200, 200, 200, 0.3); font-weight: 600'] * len(row)
+            return [''] * len(row)
+        
+        styled_rankings = styled_rankings.apply(highlight_d1_row, axis=1)
         
         # Format numeric columns
         format_dict = {}
         for col in rankings_display.columns:
-            if col in ['WHIP', 'H9']:
+            if col in ['WHIP']:
                 format_dict[col] = '{:.2f}'
+            elif col in ['H9']:
+                format_dict[col] = '{:.1f}'
             elif col.endswith('%'):
                 format_dict[col] = '{:.1f}'
         

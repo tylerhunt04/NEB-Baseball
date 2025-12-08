@@ -32,7 +32,6 @@ st.set_page_config(
 )
 st.set_option("client.showErrorDetails", True)
 
-DATA_PATH_MAIN  = "pitcher_columns.csv"
 DATA_PATH_SCRIM = "Scrimmage(28).csv"
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
@@ -225,7 +224,6 @@ def pick_col(df: pd.DataFrame, *cands) -> str | None:
 
 SEGMENT_DEFS = {
     "2025/26 Scrimmages": {"start": "2025-08-01", "end": "2026-02-01", "types": ["scrimmage"]},
-    "2026 Season":        {"start": "2026-02-01", "end": "2026-08-01", "types": ["game"]},
 }
 
 def filter_by_segment(df: pd.DataFrame, segment_name: str, scrimmage_pitchers: set = None) -> pd.DataFrame:
@@ -248,10 +246,8 @@ def filter_by_segment(df: pd.DataFrame, segment_name: str, scrimmage_pitchers: s
     return out
 
 def type_col_in_df(df: pd.DataFrame) -> str:
-    seg = st.session_state.get("segment_choice", "")
-    if "Scrimmages" in str(seg):
-        return (pick_col(df, "TaggedPitchType","Tagged Pitch Type","PitchType") or "TaggedPitchType")
-    return (pick_col(df, "AutoPitchType","Auto Pitch Type","PitchType") or "AutoPitchType")
+    # Always use TaggedPitchType since we only have scrimmage data
+    return (pick_col(df, "TaggedPitchType","Tagged Pitch Type","PitchType") or "TaggedPitchType")
 
 # ─── Strike zone & pitch color helpers ────────────────────────────────────────
 def get_zone_bounds(): return -0.83, 1.17, 1.66, 2.75
@@ -1975,21 +1971,6 @@ def style_pbp_expanders():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data
-def load_main_csv():
-    if not os.path.exists(DATA_PATH_MAIN):
-        return pd.DataFrame()
-    df = pd.read_csv(DATA_PATH_MAIN, low_memory=False)
-    df = ensure_date_column(df)
-    
-    pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name")
-    if pitcher_col:
-        df["PitcherDisplay"] = df[pitcher_col].map(canonicalize_person_name)
-    else:
-        df["PitcherDisplay"] = "Unknown"
-    
-    return df
-
-@st.cache_data
 def load_scrimmage_csv():
     if not os.path.exists(DATA_PATH_SCRIM):
         return pd.DataFrame()
@@ -2004,11 +1985,10 @@ def load_scrimmage_csv():
     
     return df
 
-df_main = load_main_csv()
 df_scrim = load_scrimmage_csv()
 
-if df_main.empty and df_scrim.empty:
-    st.error("No data files found. Please ensure pitcher_columns.csv or Scrimmage(28).csv are present.")
+if df_scrim.empty:
+    st.error("No data file found. Please ensure Scrimmage(28).csv is present.")
     st.stop()
 
 # Get scrimmage pitchers for filtering
@@ -2016,7 +1996,7 @@ scrimmage_pitchers = set()
 if not df_scrim.empty:
     scrimmage_pitchers = set(df_scrim[df_scrim.get('PitcherTeam','') == 'NEB']['PitcherDisplay'].dropna().unique())
 
-df_all = pd.concat([df_main, df_scrim], ignore_index=True) if not df_scrim.empty else df_main.copy()
+df_all = df_scrim.copy()
 df_all = ensure_date_column(df_all)
 
 neb_pitchers = sorted(df_all[df_all.get('PitcherTeam','') == 'NEB']['PitcherDisplay'].dropna().unique())
@@ -2035,23 +2015,12 @@ with st.sidebar:
     
     st.markdown("### Data Filters")
     
-    segment_choice = st.selectbox(
-        "Season/Segment",
-        options=["All Data"] + list(SEGMENT_DEFS.keys()),
-        index=0,
-        key="segment_choice"
-    )
-    
-    # Filter pitcher list based on segment
-    if segment_choice == "2025/26 Scrimmages":
-        # Only show pitchers from scrimmage CSV
-        available_pitchers = sorted(list(scrimmage_pitchers))
-    else:
-        available_pitchers = neb_pitchers
+    # Note: Only scrimmage data is loaded
+    st.caption("Data: 2025/26 Fall Scrimmages")
     
     pitcher_choice = st.selectbox(
         "Select Pitcher",
-        options=available_pitchers,
+        options=neb_pitchers,
         index=0,
         key="pitcher_choice"
     )
@@ -2066,13 +2035,8 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Date Filters")
     
-    # Filter data by segment and pitcher to get available dates
-    if segment_choice == "All Data":
-        df_for_date_filter = df_all.copy()
-    else:
-        df_for_date_filter = filter_by_segment(df_all, segment_choice, scrimmage_pitchers)
-    
-    df_for_date_filter = subset_by_pitcher_if_possible(df_for_date_filter, pitcher_choice)
+    # Filter data by pitcher to get available dates
+    df_for_date_filter = subset_by_pitcher_if_possible(df_all.copy(), pitcher_choice)
     
     # Get unique dates for this pitcher
     if "Date" in df_for_date_filter.columns:
@@ -2132,10 +2096,8 @@ with st.sidebar:
 # APPLY FILTERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-if segment_choice == "All Data":
-    df_pitcher_all = df_all.copy()
-else:
-    df_pitcher_all = filter_by_segment(df_all, segment_choice, scrimmage_pitchers)
+# Start with all scrimmage data
+df_pitcher_all = df_all.copy()
 
 df_pitcher_all = subset_by_pitcher_if_possible(df_pitcher_all, pitcher_choice)
 
@@ -2463,33 +2425,22 @@ with tabs[1]:
 # ───────────────────────────────────────────────────────────────────────────────
 with tabs[2]:
     section_header("Team Rankings")
+    st.caption("Fall 2025/26 Scrimmages")
     
     st.markdown("### Filter Options")
     
-    col1, col2 = st.columns(2)
+    # Use all scrimmage data
+    df_rank_base = df_all.copy()
     
-    with col1:
-        rank_segment = st.selectbox(
-            "Segment",
-            options=["All Data"] + list(SEGMENT_DEFS.keys()),
-            index=0,
-            key="rank_segment"
-        )
+    type_col_rank = type_col_in_df(df_rank_base)
+    available_types = sorted(df_rank_base[type_col_rank].dropna().unique()) if type_col_rank in df_rank_base.columns else []
     
-    with col2:
-        if rank_segment == "All Data":
-            df_rank_base = df_all.copy()
-        else:
-            df_rank_base = filter_by_segment(df_all, rank_segment, scrimmage_pitchers)
-        
-        type_col_rank = type_col_in_df(df_rank_base)
-        available_types = sorted(df_rank_base[type_col_rank].dropna().unique()) if type_col_rank in df_rank_base.columns else []
-        
-        pitch_types_filter = st.multiselect(
-            "Pitch Type(s)",
-            options=available_types,
-            default=[]
-        )
+    pitch_types_filter = st.multiselect(
+        "Pitch Type(s)",
+        options=available_types,
+        default=[],
+        help="Filter rankings by specific pitch type(s)"
+    )
     
     professional_divider()
     
@@ -2531,7 +2482,7 @@ with tabs[2]:
         st.download_button(
             label="Download Rankings CSV",
             data=csv,
-            file_name=f"nebraska_pitcher_rankings_{rank_segment.replace(' ', '_')}.csv",
+            file_name="nebraska_pitcher_rankings_fall_scrimmages.csv",
             mime="text/csv"
         )
     else:
@@ -2543,7 +2494,7 @@ with tabs[2]:
 with tabs[3]:
     section_header("Fall 2025/26 Summary")
     
-    df_fall = filter_by_segment(df_all, "2025/26 Scrimmages", scrimmage_pitchers)
+    df_fall = df_all.copy()
     
     if df_fall.empty:
         st.info("No fall scrimmage data available.")

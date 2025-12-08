@@ -958,9 +958,9 @@ def create_overall_performance_table(df: pd.DataFrame):
     
     return result
 
-# ─── NEW: Usage By Count For Each Pitch Type ──────────────────────────────────
-def create_usage_by_count_table(df: pd.DataFrame):
-    """Creates a table showing pitch type usage and performance by count."""
+# ─── NEW: Count Situation Comparison with Pitch Type Filter ──────────────────
+def create_count_situation_comparison(df: pd.DataFrame, pitch_type_filter: str = None):
+    """Compare pitcher effectiveness across count situations, optionally filtered by pitch type."""
     if df is None or df.empty:
         return pd.DataFrame()
     
@@ -970,80 +970,82 @@ def create_usage_by_count_table(df: pd.DataFrame):
     call_col = pick_col(df, "PitchCall", "Pitch Call", "Call", "PitchResult")
     x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
     y_col = pick_col(df, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
+    ev_col = pick_col(df, "ExitSpeed", "Exit Velo", "ExitVelocity", "EV", "LaunchSpeed")
     
-    if not type_col or not balls_col or not strikes_col or type_col not in df.columns:
+    if not balls_col or not strikes_col:
         return pd.DataFrame()
     
-    balls = pd.to_numeric(df[balls_col], errors="coerce")
-    strikes = pd.to_numeric(df[strikes_col], errors="coerce")
+    # Filter by pitch type if specified
+    work = df.copy()
+    if pitch_type_filter and pitch_type_filter != "Overall" and type_col and type_col in work.columns:
+        work = work[work[type_col].astype(str) == pitch_type_filter].copy()
     
-    valid = balls.between(0, 3) & strikes.between(0, 2)
-    work = df[valid].copy()
-    work["Balls"] = balls[valid].astype(int)
-    work["Strikes"] = strikes[valid].astype(int)
-    work["Count"] = work["Balls"].astype(str) + "-" + work["Strikes"].astype(str)
+    balls = pd.to_numeric(work[balls_col], errors="coerce")
+    strikes = pd.to_numeric(work[strikes_col], errors="coerce")
     
-    if work.empty:
-        return pd.DataFrame()
+    work["Balls"] = balls
+    work["Strikes"] = strikes
     
-    # Get pitch types
-    pitch_types = sorted(work[type_col].dropna().unique())
+    situations = {
+        'First Pitch (0-0)': (balls == 0) & (strikes == 0),
+        'Ahead in Count': strikes > balls,
+        'Even Count': (strikes == balls) & ((balls + strikes) > 0),
+        'Behind in Count': balls > strikes,
+        'Two Strikes': strikes == 2,
+        'Three Balls': balls == 3,
+    }
     
     rows = []
-    for count_val in ["0-0", "0-1", "0-2", "1-0", "1-1", "1-2", "2-0", "2-1", "2-2", "3-0", "3-1", "3-2"]:
-        count_data = work[work["Count"] == count_val]
+    for sit_name, mask in situations.items():
+        subset = work[mask & balls.notna() & strikes.notna()]
+        n = len(subset)
         
-        if count_data.empty:
+        if n == 0:
             continue
         
-        total_in_count = len(count_data)
-        row = {'Count': count_val}
+        row = {'Situation': sit_name, 'Pitches': n}
         
-        for ptype in pitch_types:
-            ptype_data = count_data[count_data[type_col] == ptype]
-            n = len(ptype_data)
-            usage_pct = (n / total_in_count * 100) if total_in_count > 0 else 0
+        if call_col:
+            is_strike = subset[call_col].isin(['StrikeCalled','StrikeSwinging',
+                                               'FoulBallNotFieldable','FoulBallFieldable','InPlay'])
+            row['Strike%'] = round(is_strike.mean() * 100, 1)
             
-            # Calculate metrics for this pitch type in this count
-            if n > 0 and call_col:
-                is_strike = ptype_data[call_col].isin(['StrikeCalled','StrikeSwinging',
-                                                       'FoulBallNotFieldable','FoulBallFieldable','InPlay'])
-                strike_pct = is_strike.mean() * 100
-                
-                is_swing = ptype_data[call_col].isin(['StrikeSwinging','FoulBallNotFieldable',
-                                                      'FoulBallFieldable','InPlay'])
-                is_whiff = ptype_data[call_col].eq('StrikeSwinging')
-                swings = is_swing.sum()
-                whiff_pct = (is_whiff.sum() / swings * 100) if swings > 0 else np.nan
-                
-                zone_pct = np.nan
-                chase_pct = np.nan
-                if x_col and y_col:
-                    xs = pd.to_numeric(ptype_data[x_col], errors="coerce")
-                    ys = pd.to_numeric(ptype_data[y_col], errors="coerce")
-                    l, b_zone, w, h = get_zone_bounds()
-                    in_zone = xs.between(l, l+w) & ys.between(b_zone, b_zone+h)
-                    zone_pct = in_zone.mean() * 100 if in_zone.notna().any() else np.nan
-                    
-                    out_zone = ~in_zone & xs.notna() & ys.notna()
-                    chases = (is_swing & out_zone).sum()
-                    out_zone_pitches = out_zone.sum()
-                    chase_pct = (chases / out_zone_pitches * 100) if out_zone_pitches > 0 else np.nan
-                
-                # Format: "Usage% (Strike% / Whiff% / Zone% / Chase%)"
-                metrics_str = f"{usage_pct:.1f}% ({strike_pct:.1f} / {whiff_pct:.1f} / {zone_pct:.1f} / {chase_pct:.1f})"
-            else:
-                metrics_str = f"{usage_pct:.1f}%"
-            
-            row[str(ptype)] = metrics_str
+            is_swing = subset[call_col].isin(['StrikeSwinging','FoulBallNotFieldable',
+                                              'FoulBallFieldable','InPlay'])
+            is_whiff = subset[call_col].eq('StrikeSwinging')
+            swings = is_swing.sum()
+            row['Whiff%'] = round((is_whiff.sum() / swings * 100), 1) if swings > 0 else np.nan
+        
+        if x_col and y_col:
+            xs = pd.to_numeric(subset[x_col], errors="coerce")
+            ys = pd.to_numeric(subset[y_col], errors="coerce")
+            l, b_zone, w, h = get_zone_bounds()
+            in_zone = xs.between(l, l+w) & ys.between(b_zone, b_zone+h)
+            row['Zone%'] = round(in_zone.mean() * 100, 1) if in_zone.notna().any() else np.nan
+        
+        if call_col and x_col and y_col:
+            is_swing = subset[call_col].isin(['StrikeSwinging','FoulBallNotFieldable',
+                                              'FoulBallFieldable','InPlay'])
+            xs = pd.to_numeric(subset[x_col], errors="coerce")
+            ys = pd.to_numeric(subset[y_col], errors="coerce")
+            l, b_zone, w, h = get_zone_bounds()
+            in_zone = xs.between(l, l+w) & ys.between(b_zone, b_zone+h)
+            out_zone = ~in_zone & xs.notna() & ys.notna()
+            chases = (is_swing & out_zone).sum()
+            out_zone_pitches = out_zone.sum()
+            row['Chase%'] = round((chases / out_zone_pitches * 100), 1) if out_zone_pitches > 0 else np.nan
+        
+        if call_col and ev_col:
+            is_inplay = subset[call_col].eq('InPlay')
+            ev = pd.to_numeric(subset[ev_col], errors="coerce")
+            bip = is_inplay & ev.notna()
+            hard = (ev >= 95.0) & bip
+            bip_count = bip.sum()
+            row['HardHit%'] = round((hard.sum() / bip_count * 100), 1) if bip_count > 0 else np.nan
         
         rows.append(row)
     
-    if not rows:
-        return pd.DataFrame()
-    
-    result = pd.DataFrame(rows)
-    return result
+    return pd.DataFrame(rows).sort_values('Pitches', ascending=False)
 
 # ─── NEW: DENSITY COMPUTATION ─────────────────────────────────────────────────
 def compute_density_pitcher(x, y, xi_m, yi_m):
@@ -1161,14 +1163,16 @@ def create_outcome_heatmaps(df: pd.DataFrame, pitcher_name: str):
     return fig
 
 # ─── NEW: Count Leveraging Heatmaps (3-panel matching hitter app) ────────────
-def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str):
+def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_type_filter: str = None):
     """
     Creates 3-panel heatmaps showing pitcher performance in different count situations.
     Matches the visual style of the hitter app heatmaps.
+    Can be filtered by pitch type.
     """
     if df is None or df.empty:
         return None
     
+    type_col = type_col_in_df(df)
     balls_col = pick_col(df, "Balls", "Ball Count", "BallCount", "balls")
     strikes_col = pick_col(df, "Strikes", "Strike Count", "StrikeCount", "strikes")
     call_col = pick_col(df, "PitchCall", "Pitch Call", "Call", "PitchResult")
@@ -1178,10 +1182,14 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str):
     if not balls_col or not strikes_col or not x_col or not y_col:
         return None
     
-    balls = pd.to_numeric(df[balls_col], errors="coerce")
-    strikes = pd.to_numeric(df[strikes_col], errors="coerce")
-    
+    # Filter by pitch type if specified
     work = df.copy()
+    if pitch_type_filter and pitch_type_filter != "Overall" and type_col and type_col in work.columns:
+        work = work[work[type_col].astype(str) == pitch_type_filter].copy()
+    
+    balls = pd.to_numeric(work[balls_col], errors="coerce")
+    strikes = pd.to_numeric(work[strikes_col], errors="coerce")
+    
     work["Balls"] = balls
     work["Strikes"] = strikes
     
@@ -2212,27 +2220,54 @@ with tabs[1]:
     # ═══════════════════════════════════════════════════════════════════════════
     section_header("Count Analysis")
     
-    # Usage by count for each pitch type
-    st.markdown("#### Usage by Count for Each Pitch Type")
-    st.caption("Format: Usage% (Strike% / Whiff% / Zone% / Chase%)")
+    # Get available pitch types for filtering
+    type_col = type_col_in_df(df_pitcher_all)
+    available_pitch_types = ["Overall"]
+    if type_col and type_col in df_pitcher_all.columns:
+        available_pitch_types += sorted(df_pitcher_all[type_col].dropna().unique().tolist())
     
-    usage_by_count = create_usage_by_count_table(df_pitcher_all)
+    # Pitch type filter
+    count_pitch_filter = st.selectbox(
+        "Filter by Pitch Type",
+        options=available_pitch_types,
+        index=0,
+        key="count_pitch_filter",
+        help="Filter count analysis by specific pitch type or view overall performance"
+    )
     
-    if not usage_by_count.empty:
-        st.dataframe(themed_table(usage_by_count), use_container_width=True, hide_index=True)
-    else:
-        info_message("Count usage data not available.")
+    st.markdown("---")
     
-    # Count leveraging heatmaps
+    # Count leveraging heatmaps (FIRST)
     st.markdown("#### Count Leveraging Heatmaps")
-    st.caption("Pitch location density by count situation")
+    filter_display = f" - {count_pitch_filter}" if count_pitch_filter != "Overall" else ""
+    st.caption(f"Pitch location density by count situation{filter_display}")
     
-    fig_heatmaps = create_count_leverage_heatmaps(df_pitcher_all, pitcher_choice)
+    fig_heatmaps = create_count_leverage_heatmaps(
+        df_pitcher_all, 
+        pitcher_choice,
+        pitch_type_filter=count_pitch_filter
+    )
     
     if fig_heatmaps:
         show_and_close(fig_heatmaps, use_container_width=True)
     else:
         info_message("Count leveraging heatmaps not available. Requires count and location data.")
+    
+    st.markdown("---")
+    
+    # Performance by count table (SECOND)
+    st.markdown("#### Performance by Count Situation")
+    st.caption(f"Performance metrics across different count situations{filter_display}")
+    
+    count_performance = create_count_situation_comparison(
+        df_pitcher_all,
+        pitch_type_filter=count_pitch_filter
+    )
+    
+    if not count_performance.empty:
+        st.dataframe(themed_table(count_performance), use_container_width=True, hide_index=True)
+    else:
+        info_message("Count situation performance data not available.")
     
     professional_divider()
     

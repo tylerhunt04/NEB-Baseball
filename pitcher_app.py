@@ -2402,21 +2402,16 @@ with tabs[1]:
         else:
             info_message("Insufficient data for sequence effectiveness analysis (minimum 5 occurrences required).")
         
-        with st.expander("Sequencing Strategy by Count"):
-            seq_by_count = analyze_sequence_by_count(df_pitcher_all, pitcher_choice)
-            if not seq_by_count.empty:
-                st.dataframe(themed_table(seq_by_count), use_container_width=True)
-            else:
-                st.info("Count situation data not available.")
+        st.markdown("---")
         
-        with st.expander("Full Pitch Transition Matrix"):
-            if trans_matrix is not None and not trans_matrix.empty:
-                styled_matrix = trans_matrix.style.background_gradient(
-                    cmap='YlGn', axis=None
-                ).format("{:.1f}%")
-                st.dataframe(styled_matrix, use_container_width=True)
-            else:
-                st.info("Transition matrix not available.")
+        st.markdown("#### Pitch Usage by Count")
+        st.caption("Percentage of each pitch type used in different count situations")
+        
+        seq_by_count = analyze_sequence_by_count(df_pitcher_all, pitcher_choice)
+        if not seq_by_count.empty:
+            st.dataframe(themed_table(seq_by_count), use_container_width=True)
+        else:
+            st.info("Count situation data not available.")
     else:
         info_message("Pitch sequencing requires multiple pitches per at-bat. Not enough sequence data available.")
 

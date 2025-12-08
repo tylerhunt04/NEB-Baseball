@@ -2462,19 +2462,19 @@ with tabs[2]:
         st.markdown("### Individual Pitcher Rankings")
         st.caption("Green = Better than D1 average | Red = Below D1 average")
         
-        # D1 Average benchmarks
+        # D1 Average benchmarks (calculated from 2024 D1 data)
         D1_AVERAGES = {
-            'WHIP': 1.35,      # Lower is better
-            'H9': 8.5,         # Lower is better
-            'Strike%': 64.0,   # Higher is better
-            'Whiff%': 25.0,    # Higher is better
-            'Zone%': 45.0,     # Higher is better
-            'Zwhiff%': 28.0,   # Higher is better
-            'Chase%': 30.0,    # Higher is better
-            'HH%': 35.0,       # Lower is better
-            'Barrel%': 8.0,    # Lower is better
-            'BB%': 10.0,       # Lower is better
-            'SO%': 23.0,       # Higher is better
+            'WHIP': 1.64,      # Lower is better
+            'H9': 9.90,        # Lower is better
+            'Strike%': 60.7,   # Higher is better
+            'Whiff%': 23.0,    # Higher is better
+            'Zone%': 45.5,     # Higher is better
+            'Zwhiff%': 15.7,   # Higher is better
+            'Chase%': 24.3,    # Higher is better
+            'HH%': 36.0,       # Lower is better
+            'Barrel%': 17.3,   # Lower is better
+            'BB%': 11.3,       # Lower is better
+            'SO%': 19.3,       # Higher is better
         }
         
         def color_by_d1_average(val, col_name):

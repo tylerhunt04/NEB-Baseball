@@ -975,6 +975,13 @@ def create_count_situation_comparison(df: pd.DataFrame, pitch_type_filter: str =
     if not balls_col or not strikes_col:
         return pd.DataFrame()
     
+    # Keep original data for usage calculation
+    original_df = df.copy()
+    orig_balls = pd.to_numeric(original_df[balls_col], errors="coerce")
+    orig_strikes = pd.to_numeric(original_df[strikes_col], errors="coerce")
+    original_df["Balls"] = orig_balls
+    original_df["Strikes"] = orig_strikes
+    
     # Filter by pitch type if specified
     work = df.copy()
     if pitch_type_filter and pitch_type_filter != "Overall" and type_col and type_col in work.columns:
@@ -1004,6 +1011,32 @@ def create_count_situation_comparison(df: pd.DataFrame, pitch_type_filter: str =
             continue
         
         row = {'Situation': sit_name, 'Pitches': n}
+        
+        # Calculate usage % if pitch type is selected
+        if pitch_type_filter and pitch_type_filter != "Overall":
+            # Get total pitches in this situation from original data
+            orig_mask_balls = orig_balls.notna() & orig_strikes.notna()
+            if sit_name == 'First Pitch (0-0)':
+                orig_mask = (orig_balls == 0) & (orig_strikes == 0) & orig_mask_balls
+            elif sit_name == 'Ahead in Count':
+                orig_mask = (orig_strikes > orig_balls) & orig_mask_balls
+            elif sit_name == 'Even Count':
+                orig_mask = (orig_strikes == orig_balls) & ((orig_balls + orig_strikes) > 0) & orig_mask_balls
+            elif sit_name == 'Behind in Count':
+                orig_mask = (orig_balls > orig_strikes) & orig_mask_balls
+            elif sit_name == 'Two Strikes':
+                orig_mask = (orig_strikes == 2) & orig_mask_balls
+            elif sit_name == 'Three Balls':
+                orig_mask = (orig_balls == 3) & orig_mask_balls
+            else:
+                orig_mask = pd.Series(False, index=original_df.index)
+            
+            total_in_situation = int(orig_mask.sum())
+            if total_in_situation > 0:
+                usage_pct = (n / total_in_situation) * 100
+                row['Usage%'] = round(usage_pct, 1)
+            else:
+                row['Usage%'] = np.nan
         
         if call_col:
             is_strike = subset[call_col].isin(['StrikeCalled','StrikeSwinging',
@@ -1045,7 +1078,17 @@ def create_count_situation_comparison(df: pd.DataFrame, pitch_type_filter: str =
         
         rows.append(row)
     
-    return pd.DataFrame(rows).sort_values('Pitches', ascending=False)
+    result = pd.DataFrame(rows).sort_values('Pitches', ascending=False)
+    
+    # Reorder columns to put Usage% after Pitches if it exists
+    if 'Usage%' in result.columns:
+        cols = result.columns.tolist()
+        # Move Usage% to be second column (after Situation)
+        cols.remove('Usage%')
+        cols.insert(2, 'Usage%')  # Insert after Situation and Pitches
+        result = result[cols]
+    
+    return result
 
 # ─── NEW: DENSITY COMPUTATION ─────────────────────────────────────────────────
 def compute_density_pitcher(x, y, xi_m, yi_m):
@@ -1062,11 +1105,12 @@ def compute_density_pitcher(x, y, xi_m, yi_m):
         return np.zeros(xi_m.shape)
 
 # ─── NEW: Three Heatmaps (Whiffs, Contact, Hard Hits) ─────────────────────────
-def create_outcome_heatmaps(df: pd.DataFrame, pitcher_name: str):
-    """Creates three heatmaps: Whiffs, Contact, and Hard Hits."""
+def create_outcome_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_type_filter: str = None):
+    """Creates three heatmaps: Whiffs, Contact, and Hard Hits. Can be filtered by pitch type."""
     if df is None or df.empty:
         return None
     
+    type_col = type_col_in_df(df)
     call_col = pick_col(df, "PitchCall", "Pitch Call", "Call", "PitchResult")
     x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
     y_col = pick_col(df, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
@@ -1075,19 +1119,24 @@ def create_outcome_heatmaps(df: pd.DataFrame, pitcher_name: str):
     if not call_col or not x_col or not y_col:
         return None
     
-    xs = pd.to_numeric(df[x_col], errors="coerce")
-    ys = pd.to_numeric(df[y_col], errors="coerce")
+    # Filter by pitch type if specified
+    work = df.copy()
+    if pitch_type_filter and pitch_type_filter != "Overall" and type_col and type_col in work.columns:
+        work = work[work[type_col].astype(str) == pitch_type_filter].copy()
+    
+    xs = pd.to_numeric(work[x_col], errors="coerce")
+    ys = pd.to_numeric(work[y_col], errors="coerce")
     
     # Define masks
-    is_whiff = df[call_col].eq('StrikeSwinging')
-    is_contact = df[call_col].isin(['FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay'])
+    is_whiff = work[call_col].eq('StrikeSwinging')
+    is_contact = work[call_col].isin(['FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay'])
     
     # Hard hits (requires exit velo)
     if ev_col:
-        ev = pd.to_numeric(df[ev_col], errors="coerce")
-        is_hardhit = (ev >= 95.0) & df[call_col].eq('InPlay')
+        ev = pd.to_numeric(work[ev_col], errors="coerce")
+        is_hardhit = (ev >= 95.0) & work[call_col].eq('InPlay')
     else:
-        is_hardhit = pd.Series(False, index=df.index)
+        is_hardhit = pd.Series(False, index=work.index)
     
     # Create figure with 3 panels
     fig = plt.figure(figsize=(18, 6))
@@ -1156,8 +1205,12 @@ def create_outcome_heatmaps(df: pd.DataFrame, pitcher_name: str):
     ax3 = fig.add_subplot(gs[0, 2])
     _panel(ax3, "Hard Hit Locations (95+ mph)", is_hardhit & xs.notna() & ys.notna())
     
-    plt.suptitle(f"{canonicalize_person_name(pitcher_name)} - Outcome Heatmaps", 
-                fontsize=16, fontweight='bold', y=0.98)
+    # Title with pitch filter indication
+    title_text = f"{canonicalize_person_name(pitcher_name)} - Outcome Heatmaps"
+    if pitch_type_filter and pitch_type_filter != "Overall":
+        title_text += f" ({pitch_type_filter})"
+    
+    plt.suptitle(title_text, fontsize=16, fontweight='bold', y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     
     return fig
@@ -1269,7 +1322,14 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_ty
     ax3 = fig.add_subplot(gs[0, 2])
     _panel(ax3, "Two Strike Counts", two_strike_mask & balls.notna() & strikes.notna())
     
-    plt.tight_layout()
+    # Title with pitch filter indication
+    title_text = f"{canonicalize_person_name(pitcher_name)} - Count Leveraging"
+    if pitch_type_filter and pitch_type_filter != "Overall":
+        title_text += f" ({pitch_type_filter})"
+    
+    plt.suptitle(title_text, fontsize=16, fontweight='bold', y=0.98)
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    
     return fig
 
 # Part 4 continues with spray charts and pitch sequencing...
@@ -2213,6 +2273,42 @@ with tabs[1]:
     else:
         info_message("Performance metrics not available.")
     
+    st.markdown("---")
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # OUTCOME HEATMAPS
+    # ═══════════════════════════════════════════════════════════════════════════
+    st.markdown("#### Outcome Heatmaps")
+    st.caption("Location patterns for different pitch outcomes")
+    
+    # Get available pitch types for filtering
+    type_col = type_col_in_df(df_pitcher_all)
+    available_pitch_types_outcomes = ["Overall"]
+    if type_col and type_col in df_pitcher_all.columns:
+        available_pitch_types_outcomes += sorted(df_pitcher_all[type_col].dropna().unique().tolist())
+    
+    # Pitch type filter for outcome heatmaps
+    outcome_pitch_filter = st.selectbox(
+        "Filter by Pitch Type",
+        options=available_pitch_types_outcomes,
+        index=0,
+        key="outcome_pitch_filter",
+        help="Filter outcome heatmaps by specific pitch type or view overall outcomes"
+    )
+    
+    filter_display_outcomes = f" - {outcome_pitch_filter}" if outcome_pitch_filter != "Overall" else ""
+    
+    fig_outcomes = create_outcome_heatmaps(
+        df_pitcher_all, 
+        pitcher_choice,
+        pitch_type_filter=outcome_pitch_filter
+    )
+    
+    if fig_outcomes:
+        show_and_close(fig_outcomes, use_container_width=True)
+    else:
+        info_message("Outcome heatmaps not available. Requires location and result data.")
+    
     professional_divider()
     
     # ═══════════════════════════════════════════════════════════════════════════
@@ -2257,7 +2353,10 @@ with tabs[1]:
     
     # Performance by count table (SECOND)
     st.markdown("#### Performance by Count Situation")
-    st.caption(f"Performance metrics across different count situations{filter_display}")
+    if count_pitch_filter != "Overall":
+        st.caption(f"Performance metrics for {count_pitch_filter} across different count situations{filter_display}")
+    else:
+        st.caption(f"Performance metrics across different count situations{filter_display}")
     
     count_performance = create_count_situation_comparison(
         df_pitcher_all,
@@ -2268,21 +2367,6 @@ with tabs[1]:
         st.dataframe(themed_table(count_performance), use_container_width=True, hide_index=True)
     else:
         info_message("Count situation performance data not available.")
-    
-    professional_divider()
-    
-    # ═══════════════════════════════════════════════════════════════════════════
-    # OUTCOME HEATMAPS (NEW)
-    # ═══════════════════════════════════════════════════════════════════════════
-    section_header("Outcome Heatmaps")
-    st.caption("Location patterns for different pitch outcomes")
-    
-    fig_outcomes = create_outcome_heatmaps(df_pitcher_all, pitcher_choice)
-    
-    if fig_outcomes:
-        show_and_close(fig_outcomes, use_container_width=True)
-    else:
-        info_message("Outcome heatmaps not available. Requires location and result data.")
     
     professional_divider()
     

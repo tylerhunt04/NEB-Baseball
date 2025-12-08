@@ -32,6 +32,7 @@ st.set_page_config(
 )
 st.set_option("client.showErrorDetails", True)
 
+DATA_PATH_MAIN  = "pitcher_columns.csv"
 DATA_PATH_SCRIM = "Scrimmage(28).csv"
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
@@ -123,7 +124,7 @@ def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 280
         }}
         .hero-bg {{
             position: absolute; inset: 0;
-            background: linear-gradient(135deg, rgba(0,0,0,0.5) 0%, rgba(230,0,38,0.3) 100%),
+            background: linear-gradient(135deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.4) 100%),
                         url('data:image/jpeg;base64,{b64}');
             background-size: cover; background-position: center;
         }}
@@ -132,12 +133,14 @@ def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 280
             flex-direction: column; color: #fff; text-align: center; z-index: 10;
         }}
         .hero-title {{ 
-            font-size: 48px; font-weight: 800; letter-spacing: 1px; 
+            font-size: 42px; font-weight: 700; letter-spacing: 0.5px; 
             text-shadow: 0 4px 12px rgba(0,0,0,0.6); margin: 0; text-transform: uppercase;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
         }}
         .hero-sub {{ 
-            font-size: 20px; font-weight: 500; opacity: .95; margin-top: 8px;
-            text-shadow: 0 2px 8px rgba(0,0,0,0.5); letter-spacing: 0.5px;
+            font-size: 18px; font-weight: 400; opacity: .95; margin-top: 8px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.5); letter-spacing: 0.3px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
         }}
         </style>
         <div class="hero-wrap"><div class="hero-bg"></div>
@@ -877,12 +880,18 @@ def create_overall_performance_table(df: pd.DataFrame):
     if not call_col:
         return pd.DataFrame()
     
+    total_pitches = len(df)
+    
     def calc_metrics(subset):
         n = len(subset)
         if n == 0:
             return {}
         
         row = {'Pitches': n}
+        
+        # Calculate usage %
+        usage_pct = (n / total_pitches) * 100
+        row['Usage%'] = round(usage_pct, 1)
         
         is_strike = subset[call_col].isin(['StrikeCalled','StrikeSwinging',
                                            'FoulBallNotFieldable','FoulBallFieldable','InPlay'])
@@ -945,7 +954,7 @@ def create_overall_performance_table(df: pd.DataFrame):
     
     result = pd.DataFrame(rows)
     
-    cols = ['Pitch Type', 'Pitches', 'Strike%', 'Whiff%', 'Zone%', 'Chase%', 
+    cols = ['Pitch Type', 'Pitches', 'Usage%', 'Strike%', 'Whiff%', 'Zone%', 'Chase%', 
             'Zone Contact%', 'InPlay%', 'HardHit%', 'Avg EV']
     cols = [c for c in cols if c in result.columns]
     result = result[cols]
@@ -983,8 +992,10 @@ def create_count_situation_comparison(df: pd.DataFrame, pitch_type_filter: str =
     
     # Filter by pitch type if specified
     work = df.copy()
+    is_filtered = False
     if pitch_type_filter and pitch_type_filter != "Overall" and type_col and type_col in work.columns:
         work = work[work[type_col].astype(str) == pitch_type_filter].copy()
+        is_filtered = True
     
     balls = pd.to_numeric(work[balls_col], errors="coerce")
     strikes = pd.to_numeric(work[strikes_col], errors="coerce")
@@ -1011,8 +1022,8 @@ def create_count_situation_comparison(df: pd.DataFrame, pitch_type_filter: str =
         
         row = {'Situation': sit_name, 'Pitches': n}
         
-        # Calculate usage % if pitch type is selected
-        if pitch_type_filter and pitch_type_filter != "Overall":
+        # Calculate usage % if pitch type is selected (always show if filtered)
+        if is_filtered:
             # Get total pitches in this situation from original data
             orig_mask_balls = orig_balls.notna() & orig_strikes.notna()
             if sit_name == 'First Pitch (0-0)':
@@ -1035,7 +1046,7 @@ def create_count_situation_comparison(df: pd.DataFrame, pitch_type_filter: str =
                 usage_pct = (n / total_in_situation) * 100
                 row['Usage%'] = round(usage_pct, 1)
             else:
-                row['Usage%'] = np.nan
+                row['Usage%'] = 0.0
         
         if call_col:
             is_strike = subset[call_col].isin(['StrikeCalled','StrikeSwinging',
@@ -1082,9 +1093,10 @@ def create_count_situation_comparison(df: pd.DataFrame, pitch_type_filter: str =
     # Reorder columns to put Usage% after Pitches if it exists
     if 'Usage%' in result.columns:
         cols = result.columns.tolist()
-        # Move Usage% to be second column (after Situation)
+        # Remove Usage% and reinsert after Pitches
         cols.remove('Usage%')
-        cols.insert(2, 'Usage%')  # Insert after Situation and Pitches
+        pitches_idx = cols.index('Pitches')
+        cols.insert(pitches_idx + 1, 'Usage%')
         result = result[cols]
     
     return result
@@ -2258,6 +2270,7 @@ with tabs[1]:
             return [''] * len(row)
         
         styled_perf = perf_table.style.apply(highlight_overall, axis=1).hide(axis="index").format({
+            'Usage%': '{:.1f}',
             'Strike%': '{:.1f}',
             'Whiff%': '{:.1f}',
             'Zone%': '{:.1f}',

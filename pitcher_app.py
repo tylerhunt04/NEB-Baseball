@@ -1657,6 +1657,9 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
     
     effectiveness_data = []
     
+    # Get exit velocity column for hard hit calculation
+    ev_col = pick_col(df_p, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", "ExitVel", "EV", "LaunchSpeed", "Launch_Speed")
+    
     for (curr, nxt), grp in sequences.groupby(['_current_pitch', '_next_pitch']):
         n = len(grp)
         if n < 3:
@@ -1678,7 +1681,19 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
             is_inplay = next_pitches[call_col].eq('InPlay')
             inplay_pct = is_inplay.mean() * 100
             
-            effectiveness = (strike_pct * 0.4) + (whiff_pct * 0.4) - (inplay_pct * 0.2)
+            # Calculate HardHit% (EV >= 95 mph on balls in play)
+            hardhit_pct = 0
+            if ev_col and ev_col in next_pitches.columns:
+                ev = pd.to_numeric(next_pitches[ev_col], errors="coerce")
+                bip_count = is_inplay.sum()
+                if bip_count > 0:
+                    hard_hits = ((ev >= 95.0) & is_inplay & ev.notna()).sum()
+                    hardhit_pct = (hard_hits / bip_count) * 100
+            
+            # Updated effectiveness formula:
+            # Rewards: Strike% and Whiff%
+            # Penalizes: HardHit% (quality of contact matters!)
+            effectiveness = (strike_pct * 0.35) + (whiff_pct * 0.35) - (hardhit_pct * 0.30)
             
             effectiveness_data.append({
                 'Sequence': f"{curr} -> {nxt}",
@@ -1686,6 +1701,7 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
                 'Strike%': round(strike_pct, 1),
                 'Whiff%': round(whiff_pct, 1),
                 'InPlay%': round(inplay_pct, 1),
+                'HardHit%': round(hardhit_pct, 1) if hardhit_pct > 0 else np.nan,
                 'Effectiveness Score': round(effectiveness, 1),
                 '_current': curr,
                 '_next': nxt
@@ -1718,12 +1734,12 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
         values.append(row['Count'])
         
         eff = row['Effectiveness Score']
-        if eff > 60:
-            color = 'rgba(0, 200, 0, 0.4)'
-        elif eff > 40:
-            color = 'rgba(255, 255, 0, 0.4)'
+        if eff > 50:
+            color = 'rgba(0, 200, 0, 0.4)'  # Green for effective sequences
+        elif eff > 30:
+            color = 'rgba(255, 255, 0, 0.4)'  # Yellow for moderate sequences
         else:
-            color = 'rgba(255, 0, 0, 0.4)'
+            color = 'rgba(255, 0, 0, 0.4)'  # Red for ineffective sequences
         colors_link.append(color)
     
     node_colors = []
@@ -1768,7 +1784,7 @@ def find_best_sequences(df: pd.DataFrame, pitcher_name: str, min_count: int = 5)
     best = effectiveness_df[effectiveness_df['Count'] >= min_count].copy()
     best = best.sort_values('Effectiveness Score', ascending=False)
     
-    return best[['Sequence', 'Count', 'Strike%', 'Whiff%', 'InPlay%', 'Effectiveness Score']]
+    return best[['Sequence', 'Count', 'Strike%', 'Whiff%', 'InPlay%', 'HardHit%', 'Effectiveness Score']]
 
 def analyze_sequence_by_count(df: pd.DataFrame, pitcher_name: str):
     """Show pitch usage % by count situation."""
@@ -2378,16 +2394,17 @@ with tabs[1]:
         st.plotly_chart(sankey_fig, use_container_width=True)
         
         st.markdown("#### Most Effective Sequences")
+        st.caption("Effectiveness Score = (Strike% × 0.35) + (Whiff% × 0.35) - (HardHit% × 0.30) | Higher is better")
         best_sequences = find_best_sequences(df_pitcher_all, pitcher_choice, min_count=5)
         
         if not best_sequences.empty:
             def style_effectiveness(val):
                 try:
                     v = float(val)
-                    if v > 60:
-                        return 'background-color: rgba(0, 200, 0, 0.3)'
-                    elif v < 40:
-                        return 'background-color: rgba(255, 0, 0, 0.3)'
+                    if v > 50:
+                        return 'background-color: rgba(0, 200, 0, 0.3)'  # Green
+                    elif v < 30:
+                        return 'background-color: rgba(255, 0, 0, 0.3)'  # Red
                 except:
                     pass
                 return ''
@@ -2399,6 +2416,7 @@ with tabs[1]:
                 'Strike%': '{:.1f}',
                 'Whiff%': '{:.1f}',
                 'InPlay%': '{:.1f}',
+                'HardHit%': '{:.1f}',
                 'Effectiveness Score': '{:.1f}'
             }, na_rep="—")
             

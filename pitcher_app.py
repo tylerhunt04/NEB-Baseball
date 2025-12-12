@@ -1657,8 +1657,9 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
     
     effectiveness_data = []
     
-    # Get exit velocity column for hard hit calculation
+    # Get columns needed for effectiveness calculation
     ev_col = pick_col(df_p, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", "ExitVel", "EV", "LaunchSpeed", "Launch_Speed")
+    play_result_col = pick_col(df_p, "PlayResult", "Play Result", "KorBB", "PAResult", "PA_Result")
     
     for (curr, nxt), grp in sequences.groupby(['_current_pitch', '_next_pitch']):
         n = len(grp)
@@ -1667,41 +1668,71 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
         
         if call_col:
             next_pitches = df_p[df_p.index.isin(grp.index + 1)]
+            total_count = len(next_pitches)
             
-            is_strike = next_pitches[call_col].isin(['StrikeCalled','StrikeSwinging',
-                                                     'FoulBallNotFieldable','FoulBallFieldable','InPlay'])
-            strike_pct = is_strike.mean() * 100
-            
-            is_swing = next_pitches[call_col].isin(['StrikeSwinging','FoulBallNotFieldable',
-                                                    'FoulBallFieldable','InPlay'])
+            # Calculate all outcome percentages
             is_whiff = next_pitches[call_col].eq('StrikeSwinging')
-            swings = is_swing.sum()
-            whiff_pct = (is_whiff.sum() / swings * 100) if swings > 0 else 0
+            whiff_pct = (is_whiff.sum() / total_count * 100) if total_count > 0 else 0
+            
+            is_called_strike = next_pitches[call_col].eq('StrikeCalled')
+            called_strike_pct = (is_called_strike.sum() / total_count * 100) if total_count > 0 else 0
+            
+            is_foul = next_pitches[call_col].isin(['FoulBallNotFieldable', 'FoulBallFieldable'])
+            foul_pct = (is_foul.sum() / total_count * 100) if total_count > 0 else 0
             
             is_inplay = next_pitches[call_col].eq('InPlay')
-            inplay_pct = is_inplay.mean() * 100
+            inplay_pct = (is_inplay.sum() / total_count * 100) if total_count > 0 else 0
             
-            # Calculate HardHit% (EV >= 95 mph on balls in play)
-            hardhit_pct = 0
+            # Calculate Strike% (for display only, not in formula)
+            is_strike = next_pitches[call_col].isin(['StrikeCalled','StrikeSwinging',
+                                                     'FoulBallNotFieldable','FoulBallFieldable','InPlay'])
+            strike_pct = (is_strike.sum() / total_count * 100) if total_count > 0 else 0
+            
+            # Calculate Weak Contact% (EV < 80 mph on balls in play)
+            weak_contact_pct = 0
             if ev_col and ev_col in next_pitches.columns:
                 ev = pd.to_numeric(next_pitches[ev_col], errors="coerce")
                 bip_count = is_inplay.sum()
                 if bip_count > 0:
-                    hard_hits = ((ev >= 95.0) & is_inplay & ev.notna()).sum()
-                    hardhit_pct = (hard_hits / bip_count) * 100
+                    weak_contacts = ((ev < 80.0) & is_inplay & ev.notna()).sum()
+                    weak_contact_pct = (weak_contacts / total_count) * 100
             
-            # Updated effectiveness formula:
-            # Rewards: Strike% and Whiff%
-            # Penalizes: HardHit% (quality of contact matters!)
-            effectiveness = (strike_pct * 0.35) + (whiff_pct * 0.35) - (hardhit_pct * 0.30)
+            # Calculate HardHit% (EV >= 95 mph on total pitches, not just BIP)
+            hardhit_pct = 0
+            if ev_col and ev_col in next_pitches.columns:
+                ev = pd.to_numeric(next_pitches[ev_col], errors="coerce")
+                hard_hits = ((ev >= 95.0) & is_inplay & ev.notna()).sum()
+                hardhit_pct = (hard_hits / total_count) * 100
+            
+            # Calculate Hit% (actual hits on total pitches)
+            hit_pct = 0
+            if play_result_col and play_result_col in next_pitches.columns:
+                is_hit = next_pitches[play_result_col].isin(['Single', 'Double', 'Triple', 'HomeRun'])
+                hit_pct = (is_hit.sum() / total_count) * 100
+            
+            # NEW EFFECTIVENESS FORMULA:
+            # Rewards: Whiff, Called Strike, Weak Contact, Foul
+            # Penalizes: Hit, Hard Hit
+            effectiveness = (
+                (whiff_pct * 0.45) + 
+                (called_strike_pct * 0.30) + 
+                (weak_contact_pct * 0.15) + 
+                (foul_pct * 0.10) - 
+                (hit_pct * 0.60) - 
+                (hardhit_pct * 0.40)
+            )
             
             effectiveness_data.append({
                 'Sequence': f"{curr} -> {nxt}",
                 'Count': n,
                 'Strike%': round(strike_pct, 1),
                 'Whiff%': round(whiff_pct, 1),
+                'Called Strike%': round(called_strike_pct, 1),
+                'Weak Contact%': round(weak_contact_pct, 1),
+                'Foul%': round(foul_pct, 1),
                 'InPlay%': round(inplay_pct, 1),
-                'HardHit%': round(hardhit_pct, 1) if hardhit_pct > 0 else np.nan,
+                'Hit%': round(hit_pct, 1),
+                'HardHit%': round(hardhit_pct, 1),
                 'Effectiveness Score': round(effectiveness, 1),
                 '_current': curr,
                 '_next': nxt
@@ -1734,9 +1765,9 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
         values.append(row['Count'])
         
         eff = row['Effectiveness Score']
-        if eff > 50:
+        if eff > 40:
             color = 'rgba(0, 200, 0, 0.4)'  # Green for effective sequences
-        elif eff > 30:
+        elif eff > 20:
             color = 'rgba(255, 255, 0, 0.4)'  # Yellow for moderate sequences
         else:
             color = 'rgba(255, 0, 0, 0.4)'  # Red for ineffective sequences
@@ -1784,7 +1815,9 @@ def find_best_sequences(df: pd.DataFrame, pitcher_name: str, min_count: int = 5)
     best = effectiveness_df[effectiveness_df['Count'] >= min_count].copy()
     best = best.sort_values('Effectiveness Score', ascending=False)
     
-    return best[['Sequence', 'Count', 'Strike%', 'Whiff%', 'InPlay%', 'HardHit%', 'Effectiveness Score']]
+    # Return key metrics: keep Strike% for context, show all formula components
+    return best[['Sequence', 'Count', 'Strike%', 'Whiff%', 'Called Strike%', 
+                 'Weak Contact%', 'Foul%', 'Hit%', 'HardHit%', 'Effectiveness Score']]
 
 def analyze_sequence_by_count(df: pd.DataFrame, pitcher_name: str):
     """Show pitch usage % by count situation."""
@@ -2394,16 +2427,16 @@ with tabs[1]:
         st.plotly_chart(sankey_fig, use_container_width=True)
         
         st.markdown("#### Most Effective Sequences")
-        st.caption("Effectiveness Score = (Strike% × 0.35) + (Whiff% × 0.35) - (HardHit% × 0.30) | Higher is better")
+        st.caption("Effectiveness = (Whiff%×0.45) + (Called Strike%×0.30) + (Weak Contact%×0.15) + (Foul%×0.10) - (Hit%×0.60) - (HardHit%×0.40)")
         best_sequences = find_best_sequences(df_pitcher_all, pitcher_choice, min_count=5)
         
         if not best_sequences.empty:
             def style_effectiveness(val):
                 try:
                     v = float(val)
-                    if v > 50:
+                    if v > 40:
                         return 'background-color: rgba(0, 200, 0, 0.3)'  # Green
-                    elif v < 30:
+                    elif v < 20:
                         return 'background-color: rgba(255, 0, 0, 0.3)'  # Red
                 except:
                     pass
@@ -2415,7 +2448,10 @@ with tabs[1]:
             ).hide(axis="index").format({
                 'Strike%': '{:.1f}',
                 'Whiff%': '{:.1f}',
-                'InPlay%': '{:.1f}',
+                'Called Strike%': '{:.1f}',
+                'Weak Contact%': '{:.1f}',
+                'Foul%': '{:.1f}',
+                'Hit%': '{:.1f}',
                 'HardHit%': '{:.1f}',
                 'Effectiveness Score': '{:.1f}'
             }, na_rep="—")

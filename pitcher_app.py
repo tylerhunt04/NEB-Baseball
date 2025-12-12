@@ -1710,14 +1710,13 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
                 is_hit = next_pitches[play_result_col].isin(['Single', 'Double', 'Triple', 'HomeRun'])
                 hit_pct = (is_hit.sum() / total_count) * 100
             
-            # NEW EFFECTIVENESS FORMULA:
-            # Rewards: Whiff, Called Strike, Weak Contact, Foul
+            # EFFECTIVENESS FORMULA (removed Foul%, redistributed weight):
+            # Rewards: Whiff (increased), Called Strike (increased), Weak Contact
             # Penalizes: Hit, Hard Hit
             effectiveness = (
-                (whiff_pct * 0.45) + 
-                (called_strike_pct * 0.30) + 
-                (weak_contact_pct * 0.15) + 
-                (foul_pct * 0.10) - 
+                (whiff_pct * 0.50) + 
+                (called_strike_pct * 0.35) + 
+                (weak_contact_pct * 0.15) - 
                 (hit_pct * 0.60) - 
                 (hardhit_pct * 0.40)
             )
@@ -1729,7 +1728,6 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
                 'Whiff%': round(whiff_pct, 1),
                 'Called Strike%': round(called_strike_pct, 1),
                 'Weak Contact%': round(weak_contact_pct, 1),
-                'Foul%': round(foul_pct, 1),
                 'InPlay%': round(inplay_pct, 1),
                 'Hit%': round(hit_pct, 1),
                 'HardHit%': round(hardhit_pct, 1),
@@ -1765,12 +1763,12 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
         values.append(row['Count'])
         
         eff = row['Effectiveness Score']
-        if eff > 40:
-            color = 'rgba(0, 200, 0, 0.4)'  # Green for effective sequences
-        elif eff > 20:
-            color = 'rgba(255, 255, 0, 0.4)'  # Yellow for moderate sequences
+        if eff > 12:
+            color = 'rgba(0, 200, 0, 0.4)'  # Green - pitcher winning decisively
+        elif eff >= 0:
+            color = 'rgba(255, 255, 0, 0.4)'  # Yellow - marginal edge to pitcher
         else:
-            color = 'rgba(255, 0, 0, 0.4)'  # Red for ineffective sequences
+            color = 'rgba(255, 0, 0, 0.4)'  # Red - batter winning
         colors_link.append(color)
     
     node_colors = []
@@ -1815,9 +1813,9 @@ def find_best_sequences(df: pd.DataFrame, pitcher_name: str, min_count: int = 5)
     best = effectiveness_df[effectiveness_df['Count'] >= min_count].copy()
     best = best.sort_values('Effectiveness Score', ascending=False)
     
-    # Return key metrics: keep Strike% for context, show all formula components
+    # Return key metrics: keep Strike% for context, show all formula components (removed Foul%)
     return best[['Sequence', 'Count', 'Strike%', 'Whiff%', 'Called Strike%', 
-                 'Weak Contact%', 'Foul%', 'Hit%', 'HardHit%', 'Effectiveness Score']]
+                 'Weak Contact%', 'Hit%', 'HardHit%', 'Effectiveness Score']]
 
 def analyze_sequence_by_count(df: pd.DataFrame, pitcher_name: str):
     """Show pitch usage % by count situation."""
@@ -2427,17 +2425,19 @@ with tabs[1]:
         st.plotly_chart(sankey_fig, use_container_width=True)
         
         st.markdown("#### Most Effective Sequences")
-        st.caption("Effectiveness = (Whiff%×0.45) + (Called Strike%×0.30) + (Weak Contact%×0.15) + (Foul%×0.10) - (Hit%×0.60) - (HardHit%×0.40)")
+        st.caption("Effectiveness = (Whiff%×0.50) + (Called Strike%×0.35) + (Weak Contact%×0.15) - (Hit%×0.60) - (HardHit%×0.40) | Green > 12 | Yellow 0-12 | Red < 0")
         best_sequences = find_best_sequences(df_pitcher_all, pitcher_choice, min_count=5)
         
         if not best_sequences.empty:
             def style_effectiveness(val):
                 try:
                     v = float(val)
-                    if v > 40:
-                        return 'background-color: rgba(0, 200, 0, 0.3)'  # Green
-                    elif v < 20:
-                        return 'background-color: rgba(255, 0, 0, 0.3)'  # Red
+                    if v > 12:
+                        return 'background-color: rgba(0, 200, 0, 0.3)'  # Green - pitcher winning decisively
+                    elif v < 0:
+                        return 'background-color: rgba(255, 0, 0, 0.3)'  # Red - batter winning
+                    else:
+                        return 'background-color: rgba(255, 255, 0, 0.3)'  # Yellow - marginal edge to pitcher
                 except:
                     pass
                 return ''
@@ -2450,7 +2450,6 @@ with tabs[1]:
                 'Whiff%': '{:.1f}',
                 'Called Strike%': '{:.1f}',
                 'Weak Contact%': '{:.1f}',
-                'Foul%': '{:.1f}',
                 'Hit%': '{:.1f}',
                 'HardHit%': '{:.1f}',
                 'Effectiveness Score': '{:.1f}'

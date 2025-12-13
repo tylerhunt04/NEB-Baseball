@@ -1417,17 +1417,12 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
                    markeredgecolor='white', markeredgewidth=2, zorder=15, 
                    label='Average')
         
-        # Set title
-        ax.text(0.5, 1.08, pitch_type, transform=ax.transAxes,
-               fontsize=18, fontweight='bold', color='#2c3e50',
-               ha='center', va='bottom')
-        
-        # Add stats box below
-        stats_text = f"{n_pitches_type} pitches  |  Zone: {zone_pct:.1f}%"
-        ax.text(0.5, -0.08, stats_text, transform=ax.transAxes,
-               fontsize=13, color='#555', ha='center', va='top',
-               bbox=dict(boxstyle='round,pad=0.6', facecolor='white', 
-                        edgecolor='#ddd', linewidth=1.5, alpha=0.9))
+        # Add stats box below with pitch type name
+        stats_text = f"{pitch_type}\n{n_pitches_type} pitches  |  Zone: {zone_pct:.1f}%"
+        ax.text(0.5, -0.12, stats_text, transform=ax.transAxes,
+               fontsize=14, color='#2c3e50', ha='center', va='top', fontweight='bold',
+               bbox=dict(boxstyle='round,pad=0.8', facecolor='white', 
+                        edgecolor='#bbb', linewidth=2, alpha=0.95))
         
         # Set view bounds
         xmin, xmax, ymin, ymax = get_view_bounds()
@@ -1451,12 +1446,12 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
     
     # Main title with better styling
     title_suffix = " (Top 3 Pitches)" if pitch_types_to_show is None else ""
-    fig.text(0.5, 0.97, f"{canonicalize_person_name(pitcher_name)} - Pitch Location Analysis{title_suffix}",
+    fig.text(0.5, 0.98, f"{canonicalize_person_name(pitcher_name)} - Pitch Location Analysis{title_suffix}",
             fontsize=22, fontweight='bold', color='#2c3e50', ha='center', va='top')
-    fig.text(0.5, 0.945, "(Pitcher's Perspective)",
+    fig.text(0.5, 0.955, "(Pitcher's Perspective)",
             fontsize=14, color='#7f8c8d', ha='center', va='top', style='italic')
     
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.tight_layout(rect=[0, 0, 1, 0.94])
     return fig
 
 # Part 4 continues with spray charts and pitch sequencing...

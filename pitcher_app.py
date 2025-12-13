@@ -2188,93 +2188,32 @@ if df_pitcher_all.empty:
 # MAIN TABS SETUP
 # ═══════════════════════════════════════════════════════════════════════════════
 
-tabs = st.tabs(["Standard", "Profiles", "Rankings", "Fall Summary"])
+tabs = st.tabs(["Overview", "Pitch Arsenal", "Performance", "Location", "Rankings"])
 
-# Part 6 of 6: Main Tabs Implementation (Standard, Profiles, Rankings, Fall Summary)
+# Part 6 of 6: Main Tabs Implementation
 
-# ───────────────────────────────────────────────────────────────────────────────
-# TAB 1: STANDARD
-# ───────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 1: OVERVIEW
+# ═══════════════════════════════════════════════════════════════════════════════
 with tabs[0]:
-    section_header("Season Overview")
+    section_header("Pitcher Overview")
+    st.caption(f"**{season_label_display}** • Batter: {batter_side_choice}")
     
+    # Season stats summary
     summary_table = make_outing_overall_summary(df_pitcher_all)
     st.dataframe(themed_table(summary_table), use_container_width=True)
     
     professional_divider()
     
-    section_header("Movement Profile & Metrics")
-    
-    logo_img = load_logo_img()
-    fig_movement, summary_movement = combined_pitcher_report(
-        df_pitcher_all, pitcher_choice, logo_img, season_label=season_label_display
-    )
-    
-    if fig_movement:
-        show_and_close(fig_movement, use_container_width=True)
-    else:
-        st.info("Movement profile not available for current selection.")
-    
-    professional_divider()
-    
-    section_header("Pitch-by-Pitch Breakdown")
-    
-    pbp_df = build_pitch_by_inning_pa_table(df_pitcher_all)
-    
-    if not pbp_df.empty and "Inning #" in pbp_df.columns:
-        style_pbp_expanders()
-        st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
-        
-        innings = sorted(pbp_df["Inning #"].dropna().unique())
-        
-        for inn in innings:
-            inn_data = pbp_df[pbp_df["Inning #"] == inn]
-            
-            with st.expander(f"Inning {inn}", expanded=False):
-                if "AB #" in inn_data.columns:
-                    abs = sorted(inn_data["AB #"].dropna().unique())
-                    
-                    for ab_num in abs:
-                        pa_data = inn_data[inn_data["AB #"] == ab_num]
-                        
-                        batter_name = pa_data["Batter"].iloc[0] if "Batter" in pa_data.columns else "Unknown"
-                        pa_result = pa_data["PA Result"].iloc[0] if "PA Result" in pa_data.columns else "—"
-                        
-                        with st.expander(f"AB #{int(ab_num)}: {batter_name} ({pa_result})", expanded=False):
-                            fig_pa = pa_interactive_strikezone(pa_data, title=f"AB #{int(ab_num)}: {batter_name}")
-                            if fig_pa:
-                                st.plotly_chart(fig_pa, use_container_width=True)
-                            
-                            display_cols = [c for c in pa_data.columns 
-                                          if c not in ["PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX",
-                                                      "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ"]]
-                            pa_display = pa_data[display_cols]
-                            st.dataframe(themed_table(pa_display), use_container_width=True)
-                else:
-                    st.dataframe(themed_table(inn_data), use_container_width=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-    else:
-        st.info("No pitch-by-pitch data available for current selection.")
-
-# ───────────────────────────────────────────────────────────────────────────────
-# TAB 2: PROFILES
-# ───────────────────────────────────────────────────────────────────────────────
-with tabs[1]:
-    section_header(f"Pitcher Profile: {canonicalize_person_name(pitcher_choice)}")
-    st.caption(f"**{season_label_display}** • Batter: {batter_side_choice}")
-    
     # Outcome summary
+    section_header("Outcomes Summary")
     outcome_table = make_pitcher_outcome_summary_table(df_pitcher_all)
     st.dataframe(themed_table(outcome_table), use_container_width=True)
     
     professional_divider()
     
-    # ═══════════════════════════════════════════════════════════════════════════
-    # OVERALL PERFORMANCE METRICS
-    # ═══════════════════════════════════════════════════════════════════════════
+    # Overall performance metrics
     section_header("Overall Performance Metrics")
-    
     perf_table = create_overall_performance_table(df_pitcher_all)
     if not perf_table.empty:
         def highlight_overall(row):
@@ -2297,49 +2236,48 @@ with tabs[1]:
         st.dataframe(styled_perf, use_container_width=True)
     else:
         info_message("Performance metrics not available.")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 2: PITCH ARSENAL
+# ═══════════════════════════════════════════════════════════════════════════════
+with tabs[1]:
+    section_header("Pitch Arsenal")
+    st.caption(f"Movement profile and usage patterns")
     
-    st.markdown("---")
-    
-    # ═══════════════════════════════════════════════════════════════════════════
-    # OUTCOME HEATMAPS
-    # ═══════════════════════════════════════════════════════════════════════════
-    st.markdown("#### Outcome Heatmaps")
-    st.caption("Location patterns for different pitch outcomes")
-    
-    # Get available pitch types for filtering
-    type_col = type_col_in_df(df_pitcher_all)
-    available_pitch_types_outcomes = ["Overall"]
-    if type_col and type_col in df_pitcher_all.columns:
-        available_pitch_types_outcomes += sorted(df_pitcher_all[type_col].dropna().unique().tolist())
-    
-    # Pitch type filter for outcome heatmaps
-    outcome_pitch_filter = st.selectbox(
-        "Filter by Pitch Type",
-        options=available_pitch_types_outcomes,
-        index=0,
-        key="outcome_pitch_filter",
-        help="Filter outcome heatmaps by specific pitch type or view overall outcomes"
+    # Movement profile
+    logo_img = load_logo_img()
+    fig_movement, summary_movement = combined_pitcher_report(
+        df_pitcher_all, pitcher_choice, logo_img, season_label=season_label_display
     )
     
-    filter_display_outcomes = f" - {outcome_pitch_filter}" if outcome_pitch_filter != "Overall" else ""
-    
-    fig_outcomes = create_outcome_heatmaps(
-        df_pitcher_all, 
-        pitcher_choice,
-        pitch_type_filter=outcome_pitch_filter
-    )
-    
-    if fig_outcomes:
-        show_and_close(fig_outcomes, use_container_width=True)
+    if fig_movement:
+        show_and_close(fig_movement, use_container_width=True)
     else:
-        info_message("Outcome heatmaps not available. Requires location and result data.")
+        st.info("Movement profile not available for current selection.")
     
     professional_divider()
     
-    # ═══════════════════════════════════════════════════════════════════════════
-    # COUNT ANALYSIS SECTION
-    # ═══════════════════════════════════════════════════════════════════════════
-    section_header("Count Analysis")
+    # Pitch usage by count
+    section_header("Pitch Usage by Count Situation")
+    st.caption("Percentage of each pitch type used in different count situations")
+    
+    seq_by_count = analyze_sequence_by_count(df_pitcher_all, pitcher_choice)
+    if not seq_by_count.empty:
+        st.dataframe(seq_by_count, use_container_width=True)
+    else:
+        st.info("Count situation data not available.")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 3: PERFORMANCE
+# ═══════════════════════════════════════════════════════════════════════════════
+with tabs[2]:
+    section_header("Performance Analysis")
+    st.caption(f"Effectiveness metrics and situational performance")
+    
+    # ───────────────────────────────────────────────────────────────────────────
+    # COUNT ANALYSIS
+    # ───────────────────────────────────────────────────────────────────────────
+    st.markdown("### Count Situation Analysis")
     
     # Get available pitch types for filtering
     type_col = type_col_in_df(df_pitcher_all)
@@ -2358,8 +2296,8 @@ with tabs[1]:
     
     st.markdown("---")
     
-    # Count leveraging heatmaps (FIRST)
-    st.markdown("#### Count Leveraging Heatmaps")
+    # Count leveraging heatmaps
+    st.markdown("#### Location by Count Situation")
     filter_display = f" - {count_pitch_filter}" if count_pitch_filter != "Overall" else ""
     st.caption(f"Pitch location density by count situation{filter_display}")
     
@@ -2376,12 +2314,12 @@ with tabs[1]:
     
     st.markdown("---")
     
-    # Performance by count table (SECOND)
+    # Performance by count table
     st.markdown("#### Performance by Count Situation")
     if count_pitch_filter != "Overall":
-        st.caption(f"Performance metrics for {count_pitch_filter} across different count situations{filter_display}")
+        st.caption(f"Performance metrics for {count_pitch_filter} across different count situations")
     else:
-        st.caption(f"Performance metrics across different count situations{filter_display}")
+        st.caption(f"Performance metrics across different count situations")
     
     count_performance = create_count_situation_comparison(
         df_pitcher_all,
@@ -2395,28 +2333,9 @@ with tabs[1]:
     
     professional_divider()
     
-    # ═══════════════════════════════════════════════════════════════════════════
-    # SPRAY CHART
-    # ═══════════════════════════════════════════════════════════════════════════
-    section_header("Spray Chart: Hits Allowed")
-    st.caption("Note: Spray chart shows hits from opponent batter's perspective")
-    
-    fig_spray, summary_spray = create_spray_chart(df_pitcher_all, pitcher_choice, season_label_display)
-    
-    if fig_spray:
-        show_and_close(fig_spray, use_container_width=True)
-        
-        if summary_spray is not None and not summary_spray.empty:
-            st.markdown("#### Batted Ball Summary")
-            st.dataframe(themed_table(summary_spray), use_container_width=True, hide_index=True)
-    else:
-        info_message("Spray chart not available. Requires batted ball location data (Bearing/Distance).")
-    
-    professional_divider()
-    
-    # ═══════════════════════════════════════════════════════════════════════════
+    # ───────────────────────────────────────────────────────────────────────────
     # PITCH SEQUENCING
-    # ═══════════════════════════════════════════════════════════════════════════
+    # ───────────────────────────────────────────────────────────────────────────
     section_header("Pitch Sequencing Analysis")
     
     trans_matrix, effectiveness, sankey_fig = analyze_pitch_sequences(df_pitcher_all, pitcher_choice)
@@ -2458,25 +2377,71 @@ with tabs[1]:
             st.dataframe(styled, use_container_width=True)
         else:
             info_message("Insufficient data for sequence effectiveness analysis (minimum 5 occurrences required).")
-        
-        st.markdown("---")
-        
-        st.markdown("#### Pitch Usage by Count")
-        st.caption("Percentage of each pitch type used in different count situations")
-        
-        seq_by_count = analyze_sequence_by_count(df_pitcher_all, pitcher_choice)
-        if not seq_by_count.empty:
-            # Display without themed_table since values already have % signs
-            st.dataframe(seq_by_count, use_container_width=True)
-        else:
-            st.info("Count situation data not available.")
     else:
         info_message("Pitch sequencing requires multiple pitches per at-bat. Not enough sequence data available.")
+    
+    professional_divider()
+    
+    # ───────────────────────────────────────────────────────────────────────────
+    # OUTCOME HEATMAPS
+    # ───────────────────────────────────────────────────────────────────────────
+    st.markdown("### Outcome Heatmaps")
+    st.caption("Location patterns for different pitch outcomes")
+    
+    # Get available pitch types for outcome filtering
+    type_col = type_col_in_df(df_pitcher_all)
+    available_pitch_types_outcomes = ["Overall"]
+    if type_col and type_col in df_pitcher_all.columns:
+        available_pitch_types_outcomes += sorted(df_pitcher_all[type_col].dropna().unique().tolist())
+    
+    # Pitch type filter for outcome heatmaps
+    outcome_pitch_filter = st.selectbox(
+        "Filter by Pitch Type",
+        options=available_pitch_types_outcomes,
+        index=0,
+        key="outcome_pitch_filter",
+        help="Filter outcome heatmaps by specific pitch type or view overall outcomes"
+    )
+    
+    filter_display_outcomes = f" - {outcome_pitch_filter}" if outcome_pitch_filter != "Overall" else ""
+    
+    fig_outcomes = create_outcome_heatmaps(
+        df_pitcher_all, 
+        pitcher_choice,
+        pitch_type_filter=outcome_pitch_filter
+    )
+    
+    if fig_outcomes:
+        show_and_close(fig_outcomes, use_container_width=True)
+    else:
+        info_message("Outcome heatmaps not available. Requires location and result data.")
 
-# ───────────────────────────────────────────────────────────────────────────────
-# TAB 3: RANKINGS
-# ───────────────────────────────────────────────────────────────────────────────
-with tabs[2]:
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 4: LOCATION
+# ═══════════════════════════════════════════════════════════════════════════════
+with tabs[3]:
+    section_header("Pitch Location Analysis")
+    st.caption("Spatial distribution of batted balls")
+    
+    # Spray chart
+    st.markdown("### Spray Chart: Hits Allowed")
+    st.caption("Note: Spray chart shows hits from opponent batter's perspective")
+    
+    fig_spray, summary_spray = create_spray_chart(df_pitcher_all, pitcher_choice, season_label_display)
+    
+    if fig_spray:
+        show_and_close(fig_spray, use_container_width=True)
+        
+        if summary_spray is not None and not summary_spray.empty:
+            st.markdown("#### Batted Ball Summary")
+            st.dataframe(themed_table(summary_spray), use_container_width=True, hide_index=True)
+    else:
+        info_message("Spray chart not available. Requires batted ball location data (Bearing/Distance).")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 5: RANKINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+with tabs[4]:
     section_header("Team Rankings")
     st.caption("Fall 2025/26 Scrimmages")
     
@@ -2672,48 +2637,6 @@ with tabs[2]:
         )
     else:
         st.info("No ranking data available for the selected filters.")
-
-# ───────────────────────────────────────────────────────────────────────────────
-# TAB 4: FALL SUMMARY
-# ───────────────────────────────────────────────────────────────────────────────
-with tabs[3]:
-    section_header("Fall 2025/26 Summary")
-    
-    df_fall = df_all.copy()
-    
-    if df_fall.empty:
-        st.info("No fall scrimmage data available.")
-    else:
-        st.markdown(f"### Data Summary: {len(df_fall)} pitches from fall scrimmages")
-        
-        fall_pitchers = sorted(df_fall[df_fall.get('PitcherTeam','') == 'NEB']['PitcherDisplay'].dropna().unique())
-        
-        if fall_pitchers:
-            selected_fall = st.selectbox(
-                "Select Pitcher",
-                options=fall_pitchers,
-                key="fall_pitcher"
-            )
-            
-            df_fall_p = subset_by_pitcher_if_possible(df_fall, selected_fall)
-            
-            professional_divider()
-            
-            logo_img = load_logo_img()
-            fig_fall, summary_fall = combined_pitcher_report(
-                df_fall_p, selected_fall, logo_img, season_label="Fall 2025/26"
-            )
-            
-            if fig_fall:
-                show_and_close(fig_fall, use_container_width=True)
-            
-            professional_divider()
-            
-            st.markdown("### Outing Summary")
-            fall_summary = make_outing_overall_summary(df_fall_p)
-            st.dataframe(themed_table(fall_summary), use_container_width=True)
-        else:
-            st.info("No Nebraska pitchers found in fall data.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # FOOTER

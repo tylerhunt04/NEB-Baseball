@@ -1495,6 +1495,167 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
     plt.tight_layout(rect=[0, 0, 1, 0.93])
     return fig
 
+def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_types_to_show: list = None, show_top_n: int = 3):
+    """
+    Creates heatmaps showing where pitches MISS (called balls) for each pitch type.
+    Helps identify command issues and miss tendencies.
+    Displayed from PITCHER'S PERSPECTIVE (horizontally flipped from catcher's view).
+    
+    Args:
+        df: DataFrame with pitch data
+        pitcher_name: Name of pitcher
+        pitch_types_to_show: List of specific pitch types to show (None = use top N)
+        show_top_n: If pitch_types_to_show is None, show top N most-used pitches
+    """
+    if df is None or df.empty:
+        return None
+    
+    type_col = type_col_in_df(df)
+    x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
+    y_col = pick_col(df, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
+    call_col = pick_col(df, "PitchCall", "Pitch Call", "Call", "PitchResult")
+    
+    if not type_col or not x_col or not y_col or not call_col:
+        return None
+    
+    work = subset_by_pitcher_if_possible(df, pitcher_name)
+    
+    # Filter to only BALLS (called balls, not swings)
+    work = work[work[call_col].astype(str).str.lower().isin(['ball', 'ballcalled'])].copy()
+    
+    if work.empty:
+        return None
+    
+    # Get pitch types - either specified or top N by usage
+    if pitch_types_to_show is None:
+        # Get top N most-used pitch types
+        pitch_counts = work[type_col].value_counts()
+        pitch_types = pitch_counts.head(show_top_n).index.tolist()
+    else:
+        pitch_types = pitch_types_to_show
+    
+    if len(pitch_types) == 0:
+        return None
+    
+    # Get location data (FLIP X for pitcher's perspective)
+    xs_raw = pd.to_numeric(work[x_col], errors="coerce")
+    xs = xs_raw * -1  # Flip horizontally for pitcher's view
+    ys = pd.to_numeric(work[y_col], errors="coerce")
+    
+    # Determine grid layout (max 3 per row)
+    n_pitches = len(pitch_types)
+    n_cols = min(3, n_pitches)
+    n_rows = (n_pitches + n_cols - 1) // n_cols
+    
+    # Create figure with more height for stats
+    fig = plt.figure(figsize=(7 * n_cols, 8 * n_rows), facecolor='white')
+    gs = GridSpec(n_rows, n_cols, figure=fig, wspace=0.3, hspace=0.4)
+    
+    def _panel(ax, pitch_type):
+        """Draw a single pitch type miss heatmap"""
+        # Add subtle background
+        ax.set_facecolor('#f8f9fa')
+        
+        # Draw strike zone
+        l, b, w, h = get_zone_bounds()
+        zone_rect = Rectangle((l, b), w, h, fill=False, linewidth=3, 
+                              edgecolor='#2c3e50', zorder=10)
+        ax.add_patch(zone_rect)
+        
+        # Draw thirds with better styling
+        dx, dy = w/3, h/3
+        for i in (1, 2):
+            ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', 
+                              color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
+            ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', 
+                              color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
+        
+        # Filter by pitch type
+        mask = work[type_col].astype(str) == pitch_type
+        subset_x = xs[mask].to_numpy()
+        subset_y = ys[mask].to_numpy()
+        
+        valid_mask = np.isfinite(subset_x) & np.isfinite(subset_y)
+        subset_x = subset_x[valid_mask]
+        subset_y = subset_y[valid_mask]
+        
+        n_misses = len(subset_x)
+        
+        # Calculate miss percentages by direction
+        l, b, w, h = get_zone_bounds()
+        out_of_zone = ~((subset_x >= l) & (subset_x <= l+w) & 
+                        (subset_y >= b) & (subset_y <= b+h))
+        
+        # Calculate average miss location
+        avg_x = np.mean(subset_x) if n_misses > 0 else 0
+        avg_y = np.mean(subset_y) if n_misses > 0 else 0
+        
+        if n_misses < 5:
+            # Plot individual misses if too few
+            pitch_color = get_pitch_color(pitch_type)
+            ax.plot(subset_x, subset_y, 'o', color='#e74c3c', alpha=0.8, 
+                   markersize=12, markeredgecolor='white', markeredgewidth=2, zorder=5)
+        else:
+            # Create density heatmap
+            xi = np.linspace(-3, 3, 200)
+            yi = np.linspace(0, 5, 200)
+            xi_m, yi_m = np.meshgrid(xi, yi)
+            zi = compute_density_pitcher(subset_x, subset_y, xi_m, yi_m)
+            
+            ax.imshow(zi, origin='lower', extent=[-3, 3, 0, 5], 
+                     aspect='equal', cmap=custom_cmap, alpha=0.9, zorder=1)
+            
+            # Redraw strike zone on top
+            zone_rect = Rectangle((l, b), w, h, fill=False, linewidth=3, 
+                                  edgecolor='#2c3e50', zorder=10)
+            ax.add_patch(zone_rect)
+            for i in (1, 2):
+                ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', 
+                                  color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
+                ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', 
+                                  color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
+            
+            # Plot average miss location marker
+            ax.plot(avg_x, avg_y, 'X', color='#c0392b', markersize=15, 
+                   markeredgecolor='white', markeredgewidth=2, zorder=15)
+        
+        # Add stats box below with pitch type name
+        stats_text = f"{pitch_type}\n{n_misses} misses (called balls)"
+        ax.text(0.5, -0.12, stats_text, transform=ax.transAxes,
+               fontsize=14, color='#c0392b', ha='center', va='top', fontweight='bold',
+               bbox=dict(boxstyle='round,pad=0.8', facecolor='white', 
+                        edgecolor='#e74c3c', linewidth=2, alpha=0.95))
+        
+        # Set view bounds
+        xmin, xmax, ymin, ymax = get_view_bounds()
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(ymin, ymax)
+        ax.set_aspect('equal', adjustable='box')
+        ax.axis('off')
+        
+        # Add subtle border around entire panel
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_edgecolor('#e0e0e0')
+            spine.set_linewidth(2)
+    
+    # Create panels for each pitch type
+    for idx, pitch_type in enumerate(pitch_types):
+        row = idx // n_cols
+        col = idx % n_cols
+        ax = fig.add_subplot(gs[row, col])
+        _panel(ax, pitch_type)
+    
+    # Main title with better styling and proper spacing
+    title_suffix = " (Top 3 Pitches)" if pitch_types_to_show is None else ""
+    fig.text(0.5, 0.985, f"{canonicalize_person_name(pitcher_name)} - Miss Locations{title_suffix}",
+            fontsize=20, fontweight='bold', color='#c0392b', ha='center', va='top')
+    fig.text(0.5, 0.965, "(Where Called Balls Land - Pitcher's Perspective)",
+            fontsize=12, color='#7f8c8d', ha='center', va='top', style='italic')
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.93])
+    return fig
+
 # Part 4 continues with spray charts and pitch sequencing...
 # (Continuing from previous parts - spray charts and sequencing remain the same but without emojis)
 
@@ -2413,18 +2574,6 @@ with tabs[1]:
     
     professional_divider()
     
-    # Pitch usage by count
-    section_header("Pitch Usage by Count Situation")
-    st.caption("Percentage of each pitch type used in different count situations")
-    
-    seq_by_count = analyze_sequence_by_count(df_pitcher_all, pitcher_choice)
-    if not seq_by_count.empty:
-        st.dataframe(seq_by_count, use_container_width=True)
-    else:
-        st.info("Count situation data not available.")
-    
-    professional_divider()
-    
     # Pitch location heatmaps by pitch type
     section_header("Pitch Location Patterns")
     st.caption("Heat maps showing where each pitch type is located")
@@ -2464,6 +2613,33 @@ with tabs[1]:
         show_and_close(fig_pitch_locations, use_container_width=True)
     else:
         info_message("Pitch location heatmaps not available. Requires location data.")
+    
+    professional_divider()
+    
+    # Miss location heatmaps
+    section_header("Miss Locations (Called Balls)")
+    st.caption("Heat maps showing where pitches miss the zone")
+    
+    # Use same checkbox state for miss locations
+    if show_all_pitches and len(all_pitch_types) > 0:
+        fig_miss_locations = create_miss_location_heatmaps(
+            df_pitcher_all, 
+            pitcher_choice, 
+            pitch_types_to_show=pitches_to_display
+        )
+    else:
+        # Show top 3 by default
+        fig_miss_locations = create_miss_location_heatmaps(
+            df_pitcher_all, 
+            pitcher_choice, 
+            pitch_types_to_show=None,
+            show_top_n=3
+        )
+    
+    if fig_miss_locations:
+        show_and_close(fig_miss_locations, use_container_width=True)
+    else:
+        info_message("Miss location heatmaps not available. Requires location and pitch call data.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 3: PERFORMANCE
@@ -2528,6 +2704,18 @@ with tabs[2]:
         st.dataframe(themed_table(count_performance), use_container_width=True, hide_index=True)
     else:
         info_message("Count situation performance data not available.")
+    
+    st.markdown("---")
+    
+    # Pitch usage by count
+    st.markdown("#### Pitch Usage by Count Situation")
+    st.caption("Percentage of each pitch type used in different count situations")
+    
+    seq_by_count = analyze_sequence_by_count(df_pitcher_all, pitcher_choice)
+    if not seq_by_count.empty:
+        st.dataframe(seq_by_count, use_container_width=True)
+    else:
+        st.info("Count situation data not available.")
     
     professional_divider()
     

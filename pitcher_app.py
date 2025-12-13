@@ -2351,6 +2351,19 @@ def load_scrimmage_csv():
     else:
         df["PitcherDisplay"] = "Unknown"
     
+    # ═══════════════════════════════════════════════════════════════════════════
+    # PITCH TYPE CORRECTIONS
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Auden Pankonin: Convert all Fastballs to Sinkers (he only throws sinkers)
+    type_col = type_col_in_df(df)
+    if type_col and "PitcherDisplay" in df.columns:
+        pankonin_mask = df["PitcherDisplay"] == "Auden Pankonin"
+        fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
+        correction_mask = pankonin_mask & fastball_mask
+        
+        if correction_mask.any():
+            df.loc[correction_mask, type_col] = "Sinker"
+    
     return df
 
 df_scrim = load_scrimmage_csv()

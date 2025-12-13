@@ -1297,46 +1297,101 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_ty
             
             ax.imshow(zi, origin='lower', extent=[-3, 3, 0, 5], 
                      aspect='equal', cmap=custom_cmap, alpha=0.8)
+
+def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str):
+    """
+    Creates heatmaps showing location patterns for each pitch type in the pitcher's arsenal.
+    Shows all pitch types side-by-side to see location tendencies for each pitch.
+    """
+    if df is None or df.empty:
+        return None
+    
+    type_col = type_col_in_df(df)
+    x_col = pick_col(df, "PlateLocSide", "Plate Loc Side", "PlateSide", "px", "PlateLocX")
+    y_col = pick_col(df, "PlateLocHeight", "Plate Loc Height", "PlateHeight", "pz", "PlateLocZ")
+    
+    if not type_col or not x_col or not y_col:
+        return None
+    
+    work = subset_by_pitcher_if_possible(df, pitcher_name)
+    
+    # Get pitch types
+    pitch_types = sorted(work[type_col].dropna().unique())
+    
+    if len(pitch_types) == 0:
+        return None
+    
+    # Get location data
+    xs = pd.to_numeric(work[x_col], errors="coerce")
+    ys = pd.to_numeric(work[y_col], errors="coerce")
+    
+    # Determine grid layout (max 4 per row)
+    n_pitches = len(pitch_types)
+    n_cols = min(4, n_pitches)
+    n_rows = (n_pitches + n_cols - 1) // n_cols
+    
+    fig = plt.figure(figsize=(5 * n_cols, 5 * n_rows))
+    gs = GridSpec(n_rows, n_cols, figure=fig, wspace=0.3, hspace=0.3)
+    
+    def _panel(ax, pitch_type):
+        """Draw a single pitch type heatmap"""
+        # Draw strike zone
+        l, b, w, h = get_zone_bounds()
+        ax.add_patch(Rectangle((l, b), w, h, fill=False, linewidth=2, color='black'))
+        
+        # Draw thirds
+        dx, dy = w/3, h/3
+        for i in (1, 2):
+            ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', color='gray', linewidth=1))
+            ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', color='gray', linewidth=1))
+        
+        # Filter by pitch type
+        mask = work[type_col].astype(str) == pitch_type
+        subset_x = xs[mask].to_numpy()
+        subset_y = ys[mask].to_numpy()
+        
+        valid_mask = np.isfinite(subset_x) & np.isfinite(subset_y)
+        subset_x = subset_x[valid_mask]
+        subset_y = subset_y[valid_mask]
+        
+        n_pitches = len(subset_x)
+        
+        if n_pitches < 10:
+            # Plot individual pitches if too few
+            pitch_color = get_pitch_color(pitch_type)
+            ax.plot(subset_x, subset_y, 'o', color=pitch_color, alpha=0.7, markersize=8)
+        else:
+            # Create density heatmap
+            xi = np.linspace(-3, 3, 200)
+            yi = np.linspace(0, 5, 200)
+            xi_m, yi_m = np.meshgrid(xi, yi)
+            zi = compute_density_pitcher(subset_x, subset_y, xi_m, yi_m)
             
-            # Redraw strike zone on top
-            ax.add_patch(Rectangle((l, b), w, h, fill=False, linewidth=2, color='black'))
-            for i in (1, 2):
-                ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', color='gray', linewidth=1))
-                ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', color='gray', linewidth=1))
+            ax.imshow(zi, origin='lower', extent=[-3, 3, 0, 5], 
+                     aspect='equal', cmap=custom_cmap, alpha=0.8)
         
-        ax.set_xlim(-3, 3)
-        ax.set_ylim(0, 5)
-        ax.set_aspect('equal', 'box')
-        ax.set_title(title, fontsize=12, pad=8, fontweight='bold')
-        ax.set_xticks([])
-        ax.set_yticks([])
+        # Set title with pitch count
+        ax.set_title(f"{pitch_type} ({n_pitches} pitches)", 
+                    fontsize=14, fontweight='bold', color=DARK_GRAY, pad=10)
         
-        # Add pitch count to title
-        n_pitches = mask.sum()
-        ax.text(0.5, 0.02, f"n = {n_pitches}", transform=ax.transAxes,
-               ha='center', va='bottom', fontsize=10, style='italic',
-               bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8))
+        # Set view bounds
+        xmin, xmax, ymin, ymax = get_view_bounds()
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(ymin, ymax)
+        ax.set_aspect('equal', adjustable='box')
+        ax.axis('off')
     
-    # Panel 1: Pitcher Ahead
-    ax1 = fig.add_subplot(gs[0, 0])
-    _panel(ax1, "Pitcher Ahead in Count", ahead_mask & balls.notna() & strikes.notna())
+    # Create panels for each pitch type
+    for idx, pitch_type in enumerate(pitch_types):
+        row = idx // n_cols
+        col = idx % n_cols
+        ax = fig.add_subplot(gs[row, col])
+        _panel(ax, pitch_type)
     
-    # Panel 2: Hitter Ahead  
-    ax2 = fig.add_subplot(gs[0, 1])
-    _panel(ax2, "Hitter Ahead in Count", behind_mask & balls.notna() & strikes.notna())
+    fig.suptitle(f"Pitch Location by Type: {canonicalize_person_name(pitcher_name)}",
+                fontsize=16, fontweight='bold', color=DARK_GRAY, y=0.98)
     
-    # Panel 3: Two Strikes
-    ax3 = fig.add_subplot(gs[0, 2])
-    _panel(ax3, "Two Strike Counts", two_strike_mask & balls.notna() & strikes.notna())
-    
-    # Title with pitch filter indication
-    title_text = f"{canonicalize_person_name(pitcher_name)} - Count Leveraging"
-    if pitch_type_filter and pitch_type_filter != "Overall":
-        title_text += f" ({pitch_type_filter})"
-    
-    plt.suptitle(title_text, fontsize=16, fontweight='bold', y=0.98)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    
+    plt.tight_layout()
     return fig
 
 # Part 4 continues with spray charts and pitch sequencing...
@@ -2269,36 +2324,14 @@ with tabs[1]:
     
     professional_divider()
     
-    # Pitch location heatmaps
+    # Pitch location heatmaps by pitch type
     section_header("Pitch Location Patterns")
-    st.caption("Heat maps showing where pitches are located in the strike zone")
+    st.caption("Heat maps showing where each pitch type is located")
     
-    # Get available pitch types for filtering
-    type_col = type_col_in_df(df_pitcher_all)
-    available_pitch_types_location = ["Overall"]
-    if type_col and type_col in df_pitcher_all.columns:
-        available_pitch_types_location += sorted(df_pitcher_all[type_col].dropna().unique().tolist())
+    fig_pitch_locations = create_pitch_type_location_heatmaps(df_pitcher_all, pitcher_choice)
     
-    # Pitch type filter for location heatmaps
-    location_pitch_filter = st.selectbox(
-        "Filter by Pitch Type",
-        options=available_pitch_types_location,
-        index=0,
-        key="location_pitch_filter",
-        help="View location patterns for specific pitch type or all pitches"
-    )
-    
-    # Use count leverage heatmaps but show by count situation for the selected pitch
-    filter_display_location = f" - {location_pitch_filter}" if location_pitch_filter != "Overall" else ""
-    
-    fig_location = create_count_leverage_heatmaps(
-        df_pitcher_all,
-        pitcher_choice,
-        pitch_type_filter=location_pitch_filter
-    )
-    
-    if fig_location:
-        show_and_close(fig_location, use_container_width=True)
+    if fig_pitch_locations:
+        show_and_close(fig_pitch_locations, use_container_width=True)
     else:
         info_message("Pitch location heatmaps not available. Requires location data.")
 

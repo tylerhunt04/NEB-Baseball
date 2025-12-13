@@ -2339,7 +2339,7 @@ def style_pbp_expanders():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data
-def load_scrimmage_csv(_correction_version=2):  # Increment this to force cache refresh
+def load_scrimmage_csv(_correction_version=3):  # Increment this to force cache refresh
     """
     Load scrimmage data with pitch type corrections.
     
@@ -2372,11 +2372,11 @@ def load_scrimmage_csv(_correction_version=2):  # Increment this to force cache 
         
         # Kevin Mannel: Convert all Fastballs to Sinkers (he only throws sinkers)
         mannel_mask = df["PitcherDisplay"] == "Kevin Mannel"
-        fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
-        correction_mask = mannel_mask & fastball_mask
+        mannel_fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
+        mannel_correction_mask = mannel_mask & mannel_fastball_mask
         
-        if correction_mask.any():
-            df.loc[correction_mask, type_col] = "Sinker"
+        if mannel_correction_mask.any():
+            df.loc[mannel_correction_mask, type_col] = "Sinker"
     
     return df
 

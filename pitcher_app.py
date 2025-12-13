@@ -2188,7 +2188,7 @@ if df_pitcher_all.empty:
 # MAIN TABS SETUP
 # ═══════════════════════════════════════════════════════════════════════════════
 
-tabs = st.tabs(["Overview", "Pitch Arsenal", "Performance", "Location", "Rankings"])
+tabs = st.tabs(["Overview", "Pitch Arsenal", "Performance", "Rankings"])
 
 # Part 6 of 6: Main Tabs Implementation
 
@@ -2266,6 +2266,41 @@ with tabs[1]:
         st.dataframe(seq_by_count, use_container_width=True)
     else:
         st.info("Count situation data not available.")
+    
+    professional_divider()
+    
+    # Pitch location heatmaps
+    section_header("Pitch Location Patterns")
+    st.caption("Heat maps showing where pitches are located in the strike zone")
+    
+    # Get available pitch types for filtering
+    type_col = type_col_in_df(df_pitcher_all)
+    available_pitch_types_location = ["Overall"]
+    if type_col and type_col in df_pitcher_all.columns:
+        available_pitch_types_location += sorted(df_pitcher_all[type_col].dropna().unique().tolist())
+    
+    # Pitch type filter for location heatmaps
+    location_pitch_filter = st.selectbox(
+        "Filter by Pitch Type",
+        options=available_pitch_types_location,
+        index=0,
+        key="location_pitch_filter",
+        help="View location patterns for specific pitch type or all pitches"
+    )
+    
+    # Use count leverage heatmaps but show by count situation for the selected pitch
+    filter_display_location = f" - {location_pitch_filter}" if location_pitch_filter != "Overall" else ""
+    
+    fig_location = create_count_leverage_heatmaps(
+        df_pitcher_all,
+        pitcher_choice,
+        pitch_type_filter=location_pitch_filter
+    )
+    
+    if fig_location:
+        show_and_close(fig_location, use_container_width=True)
+    else:
+        info_message("Pitch location heatmaps not available. Requires location data.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 3: PERFORMANCE
@@ -2415,16 +2450,13 @@ with tabs[2]:
         show_and_close(fig_outcomes, use_container_width=True)
     else:
         info_message("Outcome heatmaps not available. Requires location and result data.")
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 4: LOCATION
-# ═══════════════════════════════════════════════════════════════════════════════
-with tabs[3]:
-    section_header("Pitch Location Analysis")
-    st.caption("Spatial distribution of batted balls")
     
-    # Spray chart
-    st.markdown("### Spray Chart: Hits Allowed")
+    professional_divider()
+    
+    # ───────────────────────────────────────────────────────────────────────────
+    # SPRAY CHART
+    # ───────────────────────────────────────────────────────────────────────────
+    section_header("Spray Chart: Hits Allowed")
     st.caption("Note: Spray chart shows hits from opponent batter's perspective")
     
     fig_spray, summary_spray = create_spray_chart(df_pitcher_all, pitcher_choice, season_label_display)
@@ -2439,9 +2471,9 @@ with tabs[3]:
         info_message("Spray chart not available. Requires batted ball location data (Bearing/Distance).")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 5: RANKINGS
+# TAB 4: RANKINGS
 # ═══════════════════════════════════════════════════════════════════════════════
-with tabs[4]:
+with tabs[3]:
     section_header("Team Rankings")
     st.caption("Fall 2025/26 Scrimmages")
     

@@ -1343,7 +1343,6 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
     """
     Creates heatmaps showing location patterns for each pitch type in the pitcher's arsenal.
     Shows all pitch types side-by-side to see location tendencies for each pitch.
-    Displayed from PITCHER'S PERSPECTIVE (horizontally flipped from catcher's view).
     
     Args:
         df: DataFrame with pitch data
@@ -1374,9 +1373,8 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
     if len(pitch_types) == 0:
         return None
     
-    # Get location data (FLIP X for pitcher's perspective)
-    xs_raw = pd.to_numeric(work[x_col], errors="coerce")
-    xs = xs_raw * -1  # Flip horizontally for pitcher's view
+    # Get location data - no flip needed
+    xs = pd.to_numeric(work[x_col], errors="coerce")
     ys = pd.to_numeric(work[y_col], errors="coerce")
     
     # Determine grid layout (max 3 per row)
@@ -1489,17 +1487,14 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
     title_suffix = " (Top 3 Pitches)" if pitch_types_to_show is None else ""
     fig.text(0.5, 0.985, f"{canonicalize_person_name(pitcher_name)} - Pitch Location Analysis{title_suffix}",
             fontsize=20, fontweight='bold', color='#2c3e50', ha='center', va='top')
-    fig.text(0.5, 0.965, "(Pitcher's Perspective)",
-            fontsize=12, color='#7f8c8d', ha='center', va='top', style='italic')
     
-    plt.tight_layout(rect=[0, 0, 1, 0.93])
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig
 
 def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_types_to_show: list = None, show_top_n: int = 3):
     """
     Creates heatmaps showing where pitches MISS (called balls) for each pitch type.
     Helps identify command issues and miss tendencies.
-    Displayed from PITCHER'S PERSPECTIVE (horizontally flipped from catcher's view).
     
     Args:
         df: DataFrame with pitch data
@@ -1537,9 +1532,8 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
     if len(pitch_types) == 0:
         return None
     
-    # Get location data (FLIP X for pitcher's perspective)
-    xs_raw = pd.to_numeric(work[x_col], errors="coerce")
-    xs = xs_raw * -1  # Flip horizontally for pitcher's view
+    # Get location data - no flip needed
+    xs = pd.to_numeric(work[x_col], errors="coerce")
     ys = pd.to_numeric(work[y_col], errors="coerce")
     
     # Determine grid layout (max 3 per row)
@@ -1650,10 +1644,8 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
     title_suffix = " (Top 3 Pitches)" if pitch_types_to_show is None else ""
     fig.text(0.5, 0.985, f"{canonicalize_person_name(pitcher_name)} - Miss Locations{title_suffix}",
             fontsize=20, fontweight='bold', color='#c0392b', ha='center', va='top')
-    fig.text(0.5, 0.965, "(Where Called Balls Land - Pitcher's Perspective)",
-            fontsize=12, color='#7f8c8d', ha='center', va='top', style='italic')
     
-    plt.tight_layout(rect=[0, 0, 1, 0.93])
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig
 
 # Part 4 continues with spray charts and pitch sequencing...

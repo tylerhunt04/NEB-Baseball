@@ -1373,8 +1373,10 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
     if len(pitch_types) == 0:
         return None
     
-    # Get location data - no flip needed
-    xs = pd.to_numeric(work[x_col], errors="coerce")
+    # Get location data - flip for pitcher's perspective
+    # Note: Slider data is already in pitcher's perspective and will be flipped back in _panel
+    xs_raw = pd.to_numeric(work[x_col], errors="coerce")
+    xs_flipped = xs_raw * -1  # Default flip for most pitches
     ys = pd.to_numeric(work[y_col], errors="coerce")
     
     # Determine grid layout (max 3 per row)
@@ -1407,7 +1409,13 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
         
         # Filter by pitch type
         mask = work[type_col].astype(str) == pitch_type
-        subset_x = xs[mask].to_numpy()
+        
+        # Use raw X for Slider (already in pitcher's perspective), flipped X for others
+        if pitch_type.lower() == 'slider':
+            subset_x = xs_raw[mask].to_numpy()
+        else:
+            subset_x = xs_flipped[mask].to_numpy()
+        
         subset_y = ys[mask].to_numpy()
         
         valid_mask = np.isfinite(subset_x) & np.isfinite(subset_y)
@@ -1487,8 +1495,10 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
     title_suffix = " (Top 3 Pitches)" if pitch_types_to_show is None else ""
     fig.text(0.5, 0.985, f"{canonicalize_person_name(pitcher_name)} - Pitch Location Analysis{title_suffix}",
             fontsize=20, fontweight='bold', color='#2c3e50', ha='center', va='top')
+    fig.text(0.5, 0.965, "(Pitcher's Perspective)",
+            fontsize=12, color='#7f8c8d', ha='center', va='top', style='italic')
     
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.tight_layout(rect=[0, 0, 1, 0.93])
     return fig
 
 def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_types_to_show: list = None, show_top_n: int = 3):
@@ -1532,8 +1542,10 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
     if len(pitch_types) == 0:
         return None
     
-    # Get location data - no flip needed
-    xs = pd.to_numeric(work[x_col], errors="coerce")
+    # Get location data - flip for pitcher's perspective
+    # Note: Slider data is already in pitcher's perspective and will be flipped back in _panel
+    xs_raw = pd.to_numeric(work[x_col], errors="coerce")
+    xs_flipped = xs_raw * -1  # Default flip for most pitches
     ys = pd.to_numeric(work[y_col], errors="coerce")
     
     # Determine grid layout (max 3 per row)
@@ -1566,7 +1578,13 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
         
         # Filter by pitch type
         mask = work[type_col].astype(str) == pitch_type
-        subset_x = xs[mask].to_numpy()
+        
+        # Use raw X for Slider (already in pitcher's perspective), flipped X for others
+        if pitch_type.lower() == 'slider':
+            subset_x = xs_raw[mask].to_numpy()
+        else:
+            subset_x = xs_flipped[mask].to_numpy()
+        
         subset_y = ys[mask].to_numpy()
         
         valid_mask = np.isfinite(subset_x) & np.isfinite(subset_y)
@@ -1644,8 +1662,10 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
     title_suffix = " (Top 3 Pitches)" if pitch_types_to_show is None else ""
     fig.text(0.5, 0.985, f"{canonicalize_person_name(pitcher_name)} - Miss Locations{title_suffix}",
             fontsize=20, fontweight='bold', color='#c0392b', ha='center', va='top')
+    fig.text(0.5, 0.965, "(Where Called Balls Land - Pitcher's Perspective)",
+            fontsize=12, color='#7f8c8d', ha='center', va='top', style='italic')
     
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.tight_layout(rect=[0, 0, 1, 0.93])
     return fig
 
 # Part 4 continues with spray charts and pitch sequencing...

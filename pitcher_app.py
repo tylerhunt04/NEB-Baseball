@@ -1297,6 +1297,47 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_ty
             
             ax.imshow(zi, origin='lower', extent=[-3, 3, 0, 5], 
                      aspect='equal', cmap=custom_cmap, alpha=0.8)
+            
+            # Redraw strike zone on top
+            ax.add_patch(Rectangle((l, b), w, h, fill=False, linewidth=2, color='black'))
+            for i in (1, 2):
+                ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', color='gray', linewidth=1))
+                ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', color='gray', linewidth=1))
+        
+        ax.set_xlim(-3, 3)
+        ax.set_ylim(0, 5)
+        ax.set_aspect('equal', 'box')
+        ax.set_title(title, fontsize=12, pad=8, fontweight='bold')
+        ax.set_xticks([])
+        ax.set_yticks([])
+        
+        # Add pitch count to title
+        n_pitches = mask.sum()
+        ax.text(0.5, 0.02, f"n = {n_pitches}", transform=ax.transAxes,
+               ha='center', va='bottom', fontsize=10, style='italic',
+               bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8))
+    
+    # Panel 1: Pitcher Ahead
+    ax1 = fig.add_subplot(gs[0, 0])
+    _panel(ax1, "Pitcher Ahead in Count", ahead_mask & balls.notna() & strikes.notna())
+    
+    # Panel 2: Hitter Ahead  
+    ax2 = fig.add_subplot(gs[0, 1])
+    _panel(ax2, "Hitter Ahead in Count", behind_mask & balls.notna() & strikes.notna())
+    
+    # Panel 3: Two Strikes
+    ax3 = fig.add_subplot(gs[0, 2])
+    _panel(ax3, "Two Strike Counts", two_strike_mask & balls.notna() & strikes.notna())
+    
+    # Title with pitch filter indication
+    title_text = f"{canonicalize_person_name(pitcher_name)} - Count Leveraging"
+    if pitch_type_filter and pitch_type_filter != "Overall":
+        title_text += f" ({pitch_type_filter})"
+    
+    plt.suptitle(title_text, fontsize=16, fontweight='bold', y=0.98)
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    
+    return fig
 
 def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_types_to_show: list = None, show_top_n: int = 3):
     """

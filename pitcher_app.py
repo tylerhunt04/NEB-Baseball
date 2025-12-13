@@ -1373,10 +1373,8 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
     if len(pitch_types) == 0:
         return None
     
-    # Get location data - flip for pitcher's perspective
-    # Note: Slider data is already in pitcher's perspective and will be flipped back in _panel
-    xs_raw = pd.to_numeric(work[x_col], errors="coerce")
-    xs_flipped = xs_raw * -1  # Default flip for most pitches
+    # Get location data - use raw data as-is (should already be pitcher's perspective)
+    xs = pd.to_numeric(work[x_col], errors="coerce")
     ys = pd.to_numeric(work[y_col], errors="coerce")
     
     # Determine grid layout (max 3 per row)
@@ -1410,8 +1408,8 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
         # Filter by pitch type
         mask = work[type_col].astype(str) == pitch_type
         
-        # All pitch data is in catcher's perspective - flip to pitcher's view
-        subset_x = xs_flipped[mask].to_numpy()
+        # Use raw data as-is
+        subset_x = xs[mask].to_numpy()
         subset_y = ys[mask].to_numpy()
         
         valid_mask = np.isfinite(subset_x) & np.isfinite(subset_y)
@@ -1538,10 +1536,8 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
     if len(pitch_types) == 0:
         return None
     
-    # Get location data - flip for pitcher's perspective
-    # Note: Slider data is already in pitcher's perspective and will be flipped back in _panel
-    xs_raw = pd.to_numeric(work[x_col], errors="coerce")
-    xs_flipped = xs_raw * -1  # Default flip for most pitches
+    # Get location data - use raw data as-is (should already be pitcher's perspective)
+    xs = pd.to_numeric(work[x_col], errors="coerce")
     ys = pd.to_numeric(work[y_col], errors="coerce")
     
     # Determine grid layout (max 3 per row)
@@ -1575,8 +1571,8 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
         # Filter by pitch type
         mask = work[type_col].astype(str) == pitch_type
         
-        # All pitch data is in catcher's perspective - flip to pitcher's view
-        subset_x = xs_flipped[mask].to_numpy()
+        # Use raw data as-is
+        subset_x = xs[mask].to_numpy()
         subset_y = ys[mask].to_numpy()
         
         valid_mask = np.isfinite(subset_x) & np.isfinite(subset_y)

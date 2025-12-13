@@ -1444,14 +1444,14 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
         ax = fig.add_subplot(gs[row, col])
         _panel(ax, pitch_type)
     
-    # Main title with better styling
+    # Main title with better styling and proper spacing
     title_suffix = " (Top 3 Pitches)" if pitch_types_to_show is None else ""
-    fig.text(0.5, 0.98, f"{canonicalize_person_name(pitcher_name)} - Pitch Location Analysis{title_suffix}",
-            fontsize=22, fontweight='bold', color='#2c3e50', ha='center', va='top')
-    fig.text(0.5, 0.955, "(Pitcher's Perspective)",
-            fontsize=14, color='#7f8c8d', ha='center', va='top', style='italic')
+    fig.text(0.5, 0.985, f"{canonicalize_person_name(pitcher_name)} - Pitch Location Analysis{title_suffix}",
+            fontsize=20, fontweight='bold', color='#2c3e50', ha='center', va='top')
+    fig.text(0.5, 0.965, "(Pitcher's Perspective)",
+            fontsize=12, color='#7f8c8d', ha='center', va='top', style='italic')
     
-    plt.tight_layout(rect=[0, 0, 1, 0.94])
+    plt.tight_layout(rect=[0, 0, 1, 0.93])
     return fig
 
 # Part 4 continues with spray charts and pitch sequencing...

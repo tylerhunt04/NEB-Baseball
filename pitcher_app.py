@@ -1323,28 +1323,37 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str):
         return None
     
     # Get location data (FLIP X for pitcher's perspective)
-    xs = pd.to_numeric(work[x_col], errors="coerce") * -1  # Flip horizontally for pitcher's view
+    xs_raw = pd.to_numeric(work[x_col], errors="coerce")
+    xs = xs_raw * -1  # Flip horizontally for pitcher's view
     ys = pd.to_numeric(work[y_col], errors="coerce")
     
-    # Determine grid layout (max 3 per row for better balance)
+    # Determine grid layout (max 3 per row)
     n_pitches = len(pitch_types)
     n_cols = min(3, n_pitches)
     n_rows = (n_pitches + n_cols - 1) // n_cols
     
-    fig = plt.figure(figsize=(6 * n_cols, 6 * n_rows))
-    gs = GridSpec(n_rows, n_cols, figure=fig, wspace=0.25, hspace=0.35)
+    # Create figure with more height for stats
+    fig = plt.figure(figsize=(7 * n_cols, 8 * n_rows), facecolor='white')
+    gs = GridSpec(n_rows, n_cols, figure=fig, wspace=0.3, hspace=0.4)
     
     def _panel(ax, pitch_type):
-        """Draw a single pitch type heatmap"""
+        """Draw a single pitch type heatmap with stats"""
+        # Add subtle background
+        ax.set_facecolor('#f8f9fa')
+        
         # Draw strike zone
         l, b, w, h = get_zone_bounds()
-        ax.add_patch(Rectangle((l, b), w, h, fill=False, linewidth=2.5, color='black'))
+        zone_rect = Rectangle((l, b), w, h, fill=False, linewidth=3, 
+                              edgecolor='#2c3e50', zorder=10)
+        ax.add_patch(zone_rect)
         
-        # Draw thirds
+        # Draw thirds with better styling
         dx, dy = w/3, h/3
         for i in (1, 2):
-            ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', color='gray', linewidth=1.5, alpha=0.6))
-            ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', color='gray', linewidth=1.5, alpha=0.6))
+            ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', 
+                              color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
+            ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', 
+                              color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
         
         # Filter by pitch type
         mask = work[type_col].astype(str) == pitch_type
@@ -1357,11 +1366,21 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str):
         
         n_pitches_type = len(subset_x)
         
+        # Calculate zone percentage
+        l, b, w, h = get_zone_bounds()
+        in_zone = ((subset_x >= l) & (subset_x <= l+w) & 
+                   (subset_y >= b) & (subset_y <= b+h))
+        zone_pct = (in_zone.sum() / n_pitches_type * 100) if n_pitches_type > 0 else 0
+        
+        # Calculate average location
+        avg_x = np.mean(subset_x) if n_pitches_type > 0 else 0
+        avg_y = np.mean(subset_y) if n_pitches_type > 0 else 0
+        
         if n_pitches_type < 10:
             # Plot individual pitches if too few
             pitch_color = get_pitch_color(pitch_type)
-            ax.plot(subset_x, subset_y, 'o', color=pitch_color, alpha=0.8, markersize=10, 
-                   markeredgecolor='white', markeredgewidth=1.5)
+            ax.plot(subset_x, subset_y, 'o', color=pitch_color, alpha=0.8, 
+                   markersize=12, markeredgecolor='white', markeredgewidth=2, zorder=5)
         else:
             # Create density heatmap
             xi = np.linspace(-3, 3, 200)
@@ -1370,17 +1389,34 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str):
             zi = compute_density_pitcher(subset_x, subset_y, xi_m, yi_m)
             
             ax.imshow(zi, origin='lower', extent=[-3, 3, 0, 5], 
-                     aspect='equal', cmap=custom_cmap, alpha=0.85)
+                     aspect='equal', cmap=custom_cmap, alpha=0.9, zorder=1)
             
             # Redraw strike zone on top
-            ax.add_patch(Rectangle((l, b), w, h, fill=False, linewidth=2.5, color='black'))
+            zone_rect = Rectangle((l, b), w, h, fill=False, linewidth=3, 
+                                  edgecolor='#2c3e50', zorder=10)
+            ax.add_patch(zone_rect)
             for i in (1, 2):
-                ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', color='gray', linewidth=1.5, alpha=0.6))
-                ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', color='gray', linewidth=1.5, alpha=0.6))
+                ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', 
+                                  color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
+                ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', 
+                                  color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
+            
+            # Plot average location marker
+            ax.plot(avg_x, avg_y, 'X', color='#2c3e50', markersize=15, 
+                   markeredgecolor='white', markeredgewidth=2, zorder=15, 
+                   label='Average')
         
-        # Set title with pitch count
-        ax.set_title(f"{pitch_type}\n({n_pitches_type} pitches)", 
-                    fontsize=15, fontweight='bold', color=DARK_GRAY, pad=12)
+        # Set title
+        ax.text(0.5, 1.08, pitch_type, transform=ax.transAxes,
+               fontsize=18, fontweight='bold', color='#2c3e50',
+               ha='center', va='bottom')
+        
+        # Add stats box below
+        stats_text = f"{n_pitches_type} pitches  |  Zone: {zone_pct:.1f}%"
+        ax.text(0.5, -0.08, stats_text, transform=ax.transAxes,
+               fontsize=13, color='#555', ha='center', va='top',
+               bbox=dict(boxstyle='round,pad=0.6', facecolor='white', 
+                        edgecolor='#ddd', linewidth=1.5, alpha=0.9))
         
         # Set view bounds
         xmin, xmax, ymin, ymax = get_view_bounds()
@@ -1388,6 +1424,12 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str):
         ax.set_ylim(ymin, ymax)
         ax.set_aspect('equal', adjustable='box')
         ax.axis('off')
+        
+        # Add subtle border around entire panel
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_edgecolor('#e0e0e0')
+            spine.set_linewidth(2)
     
     # Create panels for each pitch type
     for idx, pitch_type in enumerate(pitch_types):
@@ -1396,10 +1438,13 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str):
         ax = fig.add_subplot(gs[row, col])
         _panel(ax, pitch_type)
     
-    fig.suptitle(f"Pitch Location by Type: {canonicalize_person_name(pitcher_name)}\n(Pitcher's Perspective)",
-                fontsize=18, fontweight='bold', color=DARK_GRAY, y=0.98)
+    # Main title with better styling
+    fig.text(0.5, 0.97, f"{canonicalize_person_name(pitcher_name)} - Pitch Location Analysis",
+            fontsize=22, fontweight='bold', color='#2c3e50', ha='center', va='top')
+    fig.text(0.5, 0.945, "(Pitcher's Perspective)",
+            fontsize=14, color='#7f8c8d', ha='center', va='top', style='italic')
     
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
 
 # Part 4 continues with spray charts and pitch sequencing...

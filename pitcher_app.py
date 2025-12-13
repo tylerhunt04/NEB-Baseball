@@ -2354,12 +2354,20 @@ def load_scrimmage_csv():
     # ═══════════════════════════════════════════════════════════════════════════
     # PITCH TYPE CORRECTIONS
     # ═══════════════════════════════════════════════════════════════════════════
-    # Auden Pankonin: Convert all Fastballs to Sinkers (he only throws sinkers)
     type_col = type_col_in_df(df)
     if type_col and "PitcherDisplay" in df.columns:
+        # Auden Pankonin: Convert all Fastballs to Sinkers (he only throws sinkers)
         pankonin_mask = df["PitcherDisplay"] == "Auden Pankonin"
         fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
         correction_mask = pankonin_mask & fastball_mask
+        
+        if correction_mask.any():
+            df.loc[correction_mask, type_col] = "Sinker"
+        
+        # Kevin Mannel: Convert all Fastballs to Sinkers (he only throws sinkers)
+        mannel_mask = df["PitcherDisplay"] == "Kevin Mannel"
+        fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
+        correction_mask = mannel_mask & fastball_mask
         
         if correction_mask.any():
             df.loc[correction_mask, type_col] = "Sinker"

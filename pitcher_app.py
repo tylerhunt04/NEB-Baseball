@@ -2995,32 +2995,28 @@ with tabs[3]:
         # Prepend D1 row
         rankings_display = pd.concat([d1_row, rankings_display], ignore_index=True)
         
-        # Apply color coding (skip first row which is D1 average)
+        # Apply all styling at once to avoid conflicts
+        def style_cell(val, row_idx, col_name):
+            """Apply both D1 row highlighting and performance coloring"""
+            # First check if this is D1 average row
+            if row_idx == 0:
+                return 'background-color: rgba(200, 200, 200, 0.3); font-weight: 600'
+            
+            # Otherwise apply performance coloring for metric columns
+            if col_name in D1_AVERAGES:
+                return color_by_d1_average(val, col_name)
+            
+            return ''
+        
+        # Apply styling using applymap with row index awareness
         styled_rankings = rankings_display.style.hide(axis="index")
         
-        # Apply color coding to relevant columns (skip row 0)
-        for col in D1_AVERAGES.keys():
-            if col in rankings_display.columns:
-                # Create a series with colors, leaving first row empty
-                def apply_color_skip_first(s):
-                    colors = [''] * len(s)  # Start with no color
-                    for idx in range(1, len(s)):  # Skip index 0 (D1 average row)
-                        colors[idx] = color_by_d1_average(s.iloc[idx], col)
-                    return colors
-                
-                styled_rankings = styled_rankings.apply(
-                    apply_color_skip_first,
-                    subset=[col],
-                    axis=0
-                )
-        
-        # Highlight D1 Average row with light gray background
-        def highlight_d1_row(row):
-            if row['Pitcher'] == 'D1 Average':
-                return ['background-color: rgba(200, 200, 200, 0.3); font-weight: 600'] * len(row)
-            return [''] * len(row)
-        
-        styled_rankings = styled_rankings.apply(highlight_d1_row, axis=1)
+        for col in rankings_display.columns:
+            styled_rankings = styled_rankings.apply(
+                lambda s: [style_cell(s.iloc[i], i, col) for i in range(len(s))],
+                subset=[col],
+                axis=0
+            )
         
         # Format numeric columns
         format_dict = {}

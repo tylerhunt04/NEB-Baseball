@@ -1298,11 +1298,17 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_ty
             ax.imshow(zi, origin='lower', extent=[-3, 3, 0, 5], 
                      aspect='equal', cmap=custom_cmap, alpha=0.8)
 
-def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str):
+def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_types_to_show: list = None, show_top_n: int = 3):
     """
     Creates heatmaps showing location patterns for each pitch type in the pitcher's arsenal.
     Shows all pitch types side-by-side to see location tendencies for each pitch.
     Displayed from PITCHER'S PERSPECTIVE (horizontally flipped from catcher's view).
+    
+    Args:
+        df: DataFrame with pitch data
+        pitcher_name: Name of pitcher
+        pitch_types_to_show: List of specific pitch types to show (None = use top N)
+        show_top_n: If pitch_types_to_show is None, show top N most-used pitches
     """
     if df is None or df.empty:
         return None
@@ -1316,8 +1322,13 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str):
     
     work = subset_by_pitcher_if_possible(df, pitcher_name)
     
-    # Get pitch types
-    pitch_types = sorted(work[type_col].dropna().unique())
+    # Get pitch types - either specified or top N by usage
+    if pitch_types_to_show is None:
+        # Get top N most-used pitch types
+        pitch_counts = work[type_col].value_counts()
+        pitch_types = pitch_counts.head(show_top_n).index.tolist()
+    else:
+        pitch_types = pitch_types_to_show
     
     if len(pitch_types) == 0:
         return None
@@ -1439,7 +1450,8 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str):
         _panel(ax, pitch_type)
     
     # Main title with better styling
-    fig.text(0.5, 0.97, f"{canonicalize_person_name(pitcher_name)} - Pitch Location Analysis",
+    title_suffix = " (Top 3 Pitches)" if pitch_types_to_show is None else ""
+    fig.text(0.5, 0.97, f"{canonicalize_person_name(pitcher_name)} - Pitch Location Analysis{title_suffix}",
             fontsize=22, fontweight='bold', color='#2c3e50', ha='center', va='top')
     fig.text(0.5, 0.945, "(Pitcher's Perspective)",
             fontsize=14, color='#7f8c8d', ha='center', va='top', style='italic')
@@ -2381,7 +2393,36 @@ with tabs[1]:
     section_header("Pitch Location Patterns")
     st.caption("Heat maps showing where each pitch type is located")
     
-    fig_pitch_locations = create_pitch_type_location_heatmaps(df_pitcher_all, pitcher_choice)
+    # Get all available pitch types
+    type_col = type_col_in_df(df_pitcher_all)
+    all_pitch_types = []
+    if type_col and type_col in df_pitcher_all.columns:
+        all_pitch_types = sorted(df_pitcher_all[type_col].dropna().unique().tolist())
+    
+    # Option to show all pitches
+    show_all_pitches = st.checkbox(
+        "Show all pitch types",
+        value=False,
+        key="show_all_pitch_locations",
+        help="By default, shows top 3 most-used pitches. Check to see all pitches."
+    )
+    
+    # Determine which pitches to show
+    if show_all_pitches and len(all_pitch_types) > 0:
+        pitches_to_display = all_pitch_types
+        fig_pitch_locations = create_pitch_type_location_heatmaps(
+            df_pitcher_all, 
+            pitcher_choice, 
+            pitch_types_to_show=pitches_to_display
+        )
+    else:
+        # Show top 3 by default
+        fig_pitch_locations = create_pitch_type_location_heatmaps(
+            df_pitcher_all, 
+            pitcher_choice, 
+            pitch_types_to_show=None,
+            show_top_n=3
+        )
     
     if fig_pitch_locations:
         show_and_close(fig_pitch_locations, use_container_width=True)

@@ -1410,12 +1410,8 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
         # Filter by pitch type
         mask = work[type_col].astype(str) == pitch_type
         
-        # Use raw X for Slider (already in pitcher's perspective), flipped X for others
-        if pitch_type.lower() == 'slider':
-            subset_x = xs_raw[mask].to_numpy()
-        else:
-            subset_x = xs_flipped[mask].to_numpy()
-        
+        # All pitch data is in catcher's perspective - flip to pitcher's view
+        subset_x = xs_flipped[mask].to_numpy()
         subset_y = ys[mask].to_numpy()
         
         valid_mask = np.isfinite(subset_x) & np.isfinite(subset_y)
@@ -1579,12 +1575,8 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
         # Filter by pitch type
         mask = work[type_col].astype(str) == pitch_type
         
-        # Use raw X for Slider (already in pitcher's perspective), flipped X for others
-        if pitch_type.lower() == 'slider':
-            subset_x = xs_raw[mask].to_numpy()
-        else:
-            subset_x = xs_flipped[mask].to_numpy()
-        
+        # All pitch data is in catcher's perspective - flip to pitcher's view
+        subset_x = xs_flipped[mask].to_numpy()
         subset_y = ys[mask].to_numpy()
         
         valid_mask = np.isfinite(subset_x) & np.isfinite(subset_y)

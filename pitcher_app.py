@@ -2886,7 +2886,7 @@ with tabs[3]:
         professional_divider()
         
         st.markdown("### Individual Pitcher Rankings")
-        st.caption("D1 Average shown in gray | Color intensity shows distance from average | Darker green = better | Darker red = worse")
+        st.caption("D1 Average shown in gray for comparison")
         
         # D1 Average benchmarks (calculated from 2024 D1 data)
         D1_AVERAGES = {
@@ -2903,58 +2903,6 @@ with tabs[3]:
             'SO%': 19.3,       # Higher is better
         }
         
-        def color_by_d1_average(val, col_name):
-            """
-            Progressive color gradient based on distance from D1 average.
-            Darker green = better performance, Darker red = worse performance
-            """
-            if pd.isna(val) or col_name not in D1_AVERAGES:
-                return ''
-            
-            try:
-                val_num = float(val)
-                benchmark = D1_AVERAGES[col_name]
-                
-                # Calculate percentage difference from benchmark
-                pct_diff = (val_num - benchmark) / benchmark
-                
-                # Determine if lower or higher is better
-                lower_is_better = col_name in ['WHIP', 'H9', 'HH%', 'Barrel%', 'BB%']
-                
-                # For "lower is better" metrics, flip the sign
-                # Positive pct_diff means better if lower_is_better = True
-                if lower_is_better:
-                    performance = -pct_diff  # negative value (below average) = good
-                else:
-                    performance = pct_diff   # positive value (above average) = good
-                
-                # Map performance to color intensity (0 = white, 1 = full color)
-                # Use threshold of ±20% for full color intensity
-                max_threshold = 0.20
-                intensity = min(abs(performance) / max_threshold, 1.0)
-                
-                # No color if very close to average (within 2%)
-                if abs(performance) < 0.02:
-                    return ''
-                
-                # Generate color based on performance
-                if performance > 0:  # Better than average
-                    # Green: RGB(0, 128, 0) for dark green
-                    # Progressive from light to dark
-                    green_value = int(180 - (100 * intensity))  # 180 to 80
-                    alpha = 0.3 + (0.5 * intensity)  # 0.3 to 0.8
-                    return f'background-color: rgba(0, {green_value}, 0, {alpha});'
-                else:  # Worse than average
-                    # Red: RGB(220, 0, 0) for dark red
-                    # Progressive from light to dark
-                    red_value = int(255 - (35 * intensity))  # 255 to 220
-                    alpha = 0.2 + (0.5 * intensity)  # 0.2 to 0.7
-                    return f'background-color: rgba({red_value}, 0, 0, {alpha});'
-                    
-            except:
-                pass
-            
-            return ''
         
         # Sort by WHIP (ascending) by default
         rankings_display = rankings_df.sort_values("WHIP", ascending=True, na_position="last")
@@ -2995,28 +2943,15 @@ with tabs[3]:
         # Prepend D1 row
         rankings_display = pd.concat([d1_row, rankings_display], ignore_index=True)
         
-        # Apply all styling at once to avoid conflicts
-        def style_cell(val, row_idx, col_name):
-            """Apply both D1 row highlighting and performance coloring"""
-            # First check if this is D1 average row
-            if row_idx == 0:
-                return 'background-color: rgba(200, 200, 200, 0.3); font-weight: 600'
-            
-            # Otherwise apply performance coloring for metric columns
-            if col_name in D1_AVERAGES:
-                return color_by_d1_average(val, col_name)
-            
-            return ''
-        
-        # Apply styling using applymap with row index awareness
+        # Apply simple styling - just bold the D1 average row
         styled_rankings = rankings_display.style.hide(axis="index")
         
-        for col in rankings_display.columns:
-            styled_rankings = styled_rankings.apply(
-                lambda s: [style_cell(s.iloc[i], i, col) for i in range(len(s))],
-                subset=[col],
-                axis=0
-            )
+        def highlight_d1_row(row):
+            if row['Pitcher'] == 'D1 Average':
+                return ['background-color: rgba(200, 200, 200, 0.3); font-weight: 600'] * len(row)
+            return [''] * len(row)
+        
+        styled_rankings = styled_rankings.apply(highlight_d1_row, axis=1)
         
         # Format numeric columns
         format_dict = {}

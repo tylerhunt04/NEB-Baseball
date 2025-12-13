@@ -2339,7 +2339,13 @@ def style_pbp_expanders():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data
-def load_scrimmage_csv():
+def load_scrimmage_csv(_correction_version=2):  # Increment this to force cache refresh
+    """
+    Load scrimmage data with pitch type corrections.
+    
+    NOTE: When adding new pitch type corrections, increment _correction_version
+    to invalidate the cache and force the corrections to apply.
+    """
     if not os.path.exists(DATA_PATH_SCRIM):
         return pd.DataFrame()
     df = pd.read_csv(DATA_PATH_SCRIM, low_memory=False)

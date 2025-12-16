@@ -1,3 +1,29 @@
+# wOBA CONSTANTS (FanGraphs 2025)
+WOBAC_2025 = {
+    "wBB": 0.693, "wHBP": 0.723,
+    "w1B": 0.883, "w2B": 1.253, "w3B": 1.585, "wHR": 2.037,
+    "wOBAScale": 1.23,
+    "lg_wOBA": 0.314,
+}
+
+# D1 AVERAGES FOR COMPARISON
+D1_AVERAGES = {
+    "ZWhiff%": 15.7,
+    "ZContact%": 84.3,  # Derived from 100 - ZWhiff%
+    "Whiff%": 22.9,
+    "Barrel%": 17.4,
+    "wOBA": 0.364,
+    "K%": 19.2,
+    "BB%": 11.4,
+    "Chase%": 24.2,
+    "AVG": 0.280,
+    "OBP": 0.385,
+    "SLG": 0.442,
+    "OPS": 0.827,
+    "HardHit%": 36.0,
+    "Avg Exit Velocity": 86.2,
+    "Max Exit Velocity": 103.1,
+}
 # hitter_app.py
 
 import os
@@ -20,226 +46,7 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Nebraska Baseball — Hitter Analytics",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-# Color scheme
-HUSKER_RED = "#E60026"
-DARK_GRAY = "#2B2B2B"
-LIGHT_GRAY = "#F5F5F5"
-HUSKER_CREAM = "#FEFDFA"
-
-# ──────────────────────────────────────────────────────────────────────────────
-# PROFESSIONAL UI STYLING (MATCHING PITCHER APP)
-# ──────────────────────────────────────────────────────────────────────────────
-st.markdown(f"""
-<style>
-    /* Global Styles */
-    .main .block-container {{
-        padding-top: 1rem;
-        padding-bottom: 2rem;
-        max-width: 1400px;
-    }}
-    
-    /* Hide Streamlit branding */
-    #MainMenu {{visibility: hidden;}}
-    footer {{visibility: hidden;}}
-    
-    /* Section Headers */
-    .section-header {{
-        background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%);
-        color: white;
-        padding: 15px 20px;
-        border-radius: 8px;
-        font-size: 20px;
-        font-weight: 700;
-        margin: 25px 0 15px 0;
-        box-shadow: 0 2px 8px rgba(230, 0, 38, 0.2);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }}
-    
-    .subsection-header {{
-        color: {DARK_GRAY};
-        font-size: 18px;
-        font-weight: 600;
-        margin: 20px 0 12px 0;
-        padding-bottom: 8px;
-        border-bottom: 3px solid {HUSKER_RED};
-    }}
-    
-    /* Tables */
-    .dataframe {{
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    }}
-    
-    .dataframe thead tr th {{
-        background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%) !important;
-        color: white !important;
-        font-weight: 600 !important;
-        padding: 12px !important;
-        text-align: left !important;
-        border: none !important;
-    }}
-    
-    .dataframe tbody tr:hover {{
-        background-color: #F8F9FA !important;
-    }}
-    
-    .dataframe tbody td {{
-        padding: 10px !important;
-        border-bottom: 1px solid #E0E0E0 !important;
-    }}
-    
-    /* Filter Section */
-    .filter-section {{
-        background-color: {LIGHT_GRAY};
-        border-radius: 8px;
-        padding: 20px;
-        margin: 15px 0;
-        border: 1px solid #E0E0E0;
-    }}
-    
-    /* Buttons */
-    .stDownloadButton > button {{
-        background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%);
-        color: white;
-        border: none;
-        border-radius: 6px;
-        padding: 10px 24px;
-        font-weight: 600;
-        transition: all 0.3s;
-        box-shadow: 0 2px 6px rgba(230, 0, 38, 0.2);
-    }}
-    
-    .stDownloadButton > button:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(230, 0, 38, 0.3);
-    }}
-    
-    /* Selectbox */
-    .stSelectbox > div > div {{
-        border-radius: 6px;
-        border: 2px solid #E0E0E0;
-    }}
-    
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {{
-        background-color: {LIGHT_GRAY};
-        border-radius: 8px;
-        padding: 5px;
-        gap: 5px;
-    }}
-    
-    .stTabs [data-baseweb="tab"] {{
-        background-color: white;
-        border-radius: 6px;
-        padding: 10px 20px;
-        border: 1px solid #E0E0E0;
-        font-weight: 500;
-    }}
-    
-    .stTabs [aria-selected="true"] {{
-        background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%);
-        color: white;
-        border: none;
-    }}
-    
-    /* Divider */
-    .professional-divider {{
-        height: 2px;
-        background: linear-gradient(90deg, transparent 0%, {HUSKER_RED} 50%, transparent 100%);
-        margin: 30px 0;
-        border: none;
-    }}
-    
-    /* Info/Warning Boxes */
-    .info-box {{
-        background-color: #F0F7FF;
-        border-left: 4px solid #1E88E5;
-        border-radius: 6px;
-        padding: 15px 20px;
-        margin: 15px 0;
-        color: #1565C0;
-    }}
-    
-    .warning-box {{
-        background-color: #FFF8E1;
-        border-left: 4px solid #FFA726;
-        border-radius: 6px;
-        padding: 15px 20px;
-        margin: 15px 0;
-        color: #EF6C00;
-    }}
-    
-    /* Player Header Card */
-    .player-header {{
-        background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%);
-        color: white;
-        padding: 25px;
-        border-radius: 10px;
-        text-align: center;
-        margin: 20px 0;
-        box-shadow: 0 4px 12px rgba(230, 0, 38, 0.3);
-    }}
-    
-    .player-name {{
-        font-size: 32px;
-        font-weight: 700;
-        margin-bottom: 5px;
-    }}
-    
-    .player-subtitle {{
-        font-size: 16px;
-        opacity: 0.9;
-    }}
-    
-    /* Color Guide Box */
-    .color-guide {{
-        background-color: {LIGHT_GRAY};
-        padding: 15px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        border-left: 4px solid {HUSKER_RED};
-    }}
-    
-    /* Caption Text */
-    .caption-text {{
-        color: #666;
-        font-size: 13px;
-        font-style: italic;
-        margin: 8px 0;
-    }}
-</style>
-""", unsafe_allow_html=True)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# UI HELPER FUNCTIONS
-# ──────────────────────────────────────────────────────────────────────────────
-def section_header(text: str):
-    """Display a major section header with Nebraska branding"""
-    st.markdown(f'<div class="section-header">{text}</div>', unsafe_allow_html=True)
-
-def subsection_header(text: str):
-    """Display a subsection header"""
-    st.markdown(f'<div class="subsection-header">{text}</div>', unsafe_allow_html=True)
-
-def info_message(text: str):
-    """Display an info message box"""
-    st.markdown(f'<div class="info-box">ℹ️ {text}</div>', unsafe_allow_html=True)
-
-def warning_message(text: str):
-    """Display a warning message box"""
-    st.markdown(f'<div class="warning-box">⚠️ {text}</div>', unsafe_allow_html=True)
-
-def professional_divider():
-    """Display a professional divider line"""
-    st.markdown('<hr class="professional-divider">', unsafe_allow_html=True)
+st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")
 
 # Default data paths per period
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
@@ -248,11 +55,12 @@ DATA_PATH_2026   = "B10C26_hitter_app_columns.csv"
 
 PROB_LOOKUP_PATH = "EV_LA_probabilities.csv"
 
-# Asset paths for logo
-LOGO_CANDIDATES = [
-    "Nebraska-Cornhuskers-Logo.png",
-    "/mnt/data/Nebraska-Cornhuskers-Logo.png",
+BANNER_CANDIDATES = [
+    "NebraskaChampions.jpg",
+    "/mnt/data/NebraskaChampions.jpg",
 ]
+
+HUSKER_RED = "#E60026"
 
 # Big Ten / opponents pretty names
 TEAM_NAME_MAP = {
@@ -276,18 +84,9 @@ TEAM_NAME_MAP = {
     "WIC_SHO": "Wichita State",
 }
 
-# wOBA CONSTANTS (FanGraphs 2025)
-WOBAC_2025 = {
-    "wBB": 0.693, "wHBP": 0.723,
-    "w1B": 0.883, "w2B": 1.253, "w3B": 1.585, "wHR": 2.037,
-    "wOBAScale": 1.23,
-    "lg_wOBA": 0.314,
-}
-
 # D1 AVERAGES FOR COMPARISON
 D1_AVERAGES = {
     "ZWhiff%": 15.7,
-    "ZContact%": 84.3,
     "Whiff%": 22.9,
     "Barrel%": 17.4,
     "wOBA": 0.364,
@@ -298,36 +97,39 @@ D1_AVERAGES = {
     "OBP": 0.385,
     "SLG": 0.442,
     "OPS": 0.827,
-    "HardHit%": 36.0,
-    "Avg Exit Velocity": 86.2,
-    "Max Exit Velocity": 103.1,
 }
 
 def get_performance_color_gradient(stat_name: str, value: float) -> str:
-    """Return a background color based on how the value compares to D1 average."""
+    """
+    Return a background color based on how the value compares to D1 average.
+    Returns a hex color - greener for better, redder for worse, white for average
+    """
     if pd.isna(value) or stat_name not in D1_AVERAGES:
-        return "#ffffff"
+        return "#ffffff"  # white for no comparison
     
     avg = D1_AVERAGES[stat_name]
     
+    # For stats where LOWER is better (strikeouts, whiffs, chase)
     if stat_name in ["K%", "Whiff%", "Chase%", "ZWhiff%"]:
-        diff_pct = (avg - value) / avg
+        diff_pct = (avg - value) / avg  # Positive if player is better (lower)
+    # For stats where HIGHER is better (including HardHit%, exit velocities, ZContact%)
     else:
-        diff_pct = (value - avg) / avg
+        diff_pct = (value - avg) / avg  # Positive if player is better (higher)
     
-    if diff_pct >= 0.20:
+    # Create gradient based on difference
+    if diff_pct >= 0.20:  # 20%+ better - darkest green
         return "#28a745"
-    elif diff_pct >= 0.10:
+    elif diff_pct >= 0.10:  # 10-20% better - medium green
         return "#5cb85c"
-    elif diff_pct >= 0.05:
+    elif diff_pct >= 0.05:  # 5-10% better - light green
         return "#90ee90"
-    elif diff_pct >= -0.05:
+    elif diff_pct >= -0.05:  # Within 5% - white/neutral
         return "#ffffff"
-    elif diff_pct >= -0.10:
+    elif diff_pct >= -0.10:  # 5-10% worse - light red
         return "#ffb3b3"
-    elif diff_pct >= -0.20:
+    elif diff_pct >= -0.20:  # 10-20% worse - medium red
         return "#ff8080"
-    else:
+    else:  # 20%+ worse - darkest red
         return "#dc3545"
 
 def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.DataFrame:
@@ -336,6 +138,7 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
         stat_name = row[stat_name_col]
         value_str = row['Value']
         
+        # Map display names to D1_AVERAGES keys
         stat_mapping = {
             'Avg Exit Velocity': 'Avg Exit Velocity',
             'Max Exit Velocity': 'Max Exit Velocity',
@@ -356,8 +159,10 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
             'Z-Whiff%': 'ZWhiff%'
         }
         
+        # Get the correct key for D1_AVERAGES lookup
         d1_key = stat_mapping.get(stat_name, stat_name)
         
+        # Extract numeric value from string
         try:
             if '%' in value_str:
                 value = float(value_str.replace('%', ''))
@@ -374,6 +179,7 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
         
         bg_color = get_performance_color_gradient(d1_key, value)
         
+        # Make text white if background is dark
         if bg_color in ["#28a745", "#dc3545"]:
             text_color = "white"
         else:
@@ -384,6 +190,7 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
     
     styled = df.style.apply(apply_color, axis=1)
     
+    # Apply Husker Red header
     header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
     styled = styled.set_table_styles([
         {'selector': 'thead th', 'props': header_props},
@@ -601,8 +408,31 @@ def compute_density_hitter(x, y, xi_m, yi_m):
         return np.zeros(xi_m.shape)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TABLE STYLE
+# FORMATTERS / TABLE STYLE
 # ──────────────────────────────────────────────────────────────────────────────
+def fmt_pct(x, decimals=1):
+    try:
+        if pd.isna(x): return "—"
+        return f"{round(float(x), decimals)}%"
+    except Exception:
+        return "—"
+
+def fmt_pct2(x):
+    try:
+        if pd.isna(x): return "—"
+        return f"{round(float(x), 2)}%"
+    except Exception:
+        return "—"
+
+def fmt_avg3(x):
+    try:
+        if pd.isna(x): return "—"
+        val = float(x)
+        out = f"{val:.3f}"
+        return out[1:] if val < 1 else out
+    except Exception:
+        return "—"
+
 def themed_styler(df: pd.DataFrame, nowrap=True):
     header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
     styles = [
@@ -617,7 +447,7 @@ def themed_styler(df: pd.DataFrame, nowrap=True):
             .set_table_styles(styles))
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HEADER WITH LOGO
+# BANNER
 # ──────────────────────────────────────────────────────────────────────────────
 def _img_to_b64(path: str):
     try:
@@ -626,38 +456,28 @@ def _img_to_b64(path: str):
     except Exception:
         return None
 
-def render_header_with_logo():
-    """Render header with Nebraska logo matching pitcher app style"""
-    logo_b64 = None
-    for p in LOGO_CANDIDATES:
-        logo_b64 = _img_to_b64(p)
-        if logo_b64:
+def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Baseball", height_px=180):
+    b64 = None
+    for p in image_candidates:
+        b64 = _img_to_b64(p)
+        if b64:
             break
-    
-    if logo_b64:
-        st.markdown(
-            f"""
-            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px; padding: 20px; background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%); border-radius: 10px; box-shadow: 0 4px 12px rgba(230, 0, 38, 0.3);">
-                <img src="data:image/png;base64,{logo_b64}" style="height: 80px; margin-right: 20px;" />
-                <div style="text-align: center;">
-                    <div style="font-size: 36px; font-weight: 800; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.3);">NEBRASKA BASEBALL</div>
-                    <div style="font-size: 18px; font-weight: 500; color: white; opacity: 0.95; margin-top: 5px;">Hitter Analytics Platform</div>
-                </div>
+    if not b64:
+        return
+    st.markdown(
+        f"""
+        <div style="position: relative; width: 100%; height: {height_px}px; border-radius: 12px; overflow: hidden; margin-bottom: 10px;">
+          <img src="data:image/jpeg;base64,{b64}" style="width:100%; height:100%; object-fit:cover; filter: brightness(0.6);" />
+          <div style="position:absolute; inset:0; background: rgba(0,0,0,0.35);"></div>
+          <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
+            <div style="font-size:40px; font-weight:800; color:white; text-shadow: 0 2px 12px rgba(0,0,0,.9);">
+              {title}
             </div>
-            """,
-            unsafe_allow_html=True
-        )
-    else:
-        # Fallback if logo not found
-        st.markdown(
-            f"""
-            <div style="text-align: center; padding: 30px; background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%); border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(230, 0, 38, 0.3);">
-                <div style="font-size: 36px; font-weight: 800; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.3);">NEBRASKA BASEBALL</div>
-                <div style="font-size: 18px; font-weight: 500; color: white; opacity: 0.95; margin-top: 5px;">Hitter Analytics Platform</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # BATTED BALL / DISCIPLINE / STATS
@@ -1217,8 +1037,10 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
     if len(dates) < 2:
         return None
     
+    # Calculate cumulative stats up to each date
     stats_by_date = []
     for i, date in enumerate(dates):
+        # Get all games up to and including this date
         cumulative_df = df[df['DateOnly'].isin(dates[:i+1])]
         stats = _compute_split_core(cumulative_df)
         stats_by_date.append({
@@ -1241,6 +1063,7 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
     ax.plot(dates_plot, metric_values, marker='o', linewidth=2.5, 
             markersize=8, color=HUSKER_RED, label=metric)
     
+    # Final value line
     final_val = metric_values[-1]
     ax.axhline(y=final_val, color='gray', linestyle='--', linewidth=1.5, 
                alpha=0.7, label=f'Final: {final_val:.3f}')
@@ -1259,6 +1082,35 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
 # ──────────────────────────────────────────────────────────────────────────────
 # PROFILE TABLES
 # ──────────────────────────────────────────────────────────────────────────────
+def _pretty_pitch_name(p: str) -> str:
+    alias_map = {
+        "FourSeamFastBall":"Fastball",
+        "FourSeam":"Fastball",
+        "FS":"Fastball",
+        "SL":"Slider",
+        "CH":"Changeup",
+        "CU":"Curveball",
+    }
+    name = alias_map.get(p, p)
+    name = re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
+    return name
+
+def _sorted_unique_pitches(series: pd.Series) -> list:
+    preferred = ["Fastball","FourSeam","TwoSeam","Sinker","Cutter","Slider","Curveball","Changeup","Splitter","Sweeper","Knuckleball","Other"]
+    vals = series.astype(str).dropna().tolist()
+    uniq = [v for v in sorted(set(vals)) if v and v.lower() != "nan"]
+    def key(p):
+        name = _pretty_pitch_name(p)
+        try:
+            base = name.replace(" ", "")
+            for pref in preferred:
+                if pref.lower() in [name.lower(), base.lower()]:
+                    return (preferred.index(pref), name)
+        except ValueError:
+            pass
+        return (len(preferred)+1, name)
+    return sorted(uniq, key=key)
+
 def build_profile_tables(df_profiles: pd.DataFrame):
     if df_profiles.empty:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -1341,7 +1193,7 @@ RANKABLE_COLS = [
     "AVG","OBP","SLG","OPS",
     "wOBA","xwOBA",
     "Avg EV","Max EV","HardHit%","Barrel%",
-    "ZWhiff%","Chase%", "Whiff%"
+    "ZWhiff%","Chase%" , "Whiff%"
 ]
 
 def build_rankings_numeric(df_player_scope: pd.DataFrame, display_name_by_key: dict) -> pd.DataFrame:
@@ -1424,11 +1276,11 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     inplay = df_game[df_game.get('PitchCall') == 'InPlay'].copy()
     
     if inplay.empty:
-        warning_message("No balls in play found for this game.")
+        st.warning("No balls in play found for this game.")
         return None
     
     if 'Bearing' not in inplay.columns or 'Distance' not in inplay.columns:
-        warning_message("Missing 'Bearing' or 'Distance' columns in data.")
+        st.warning("Missing 'Bearing' or 'Distance' columns in data.")
         return None
     
     inplay['Bearing'] = pd.to_numeric(inplay['Bearing'], errors='coerce')
@@ -1436,7 +1288,7 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     inplay = inplay.dropna(subset=['Bearing', 'Distance'])
     
     if inplay.empty:
-        warning_message("No balls in play with valid Bearing and Distance data.")
+        st.warning("No balls in play with valid Bearing and Distance data.")
         return None
     
     inplay = inplay.sort_values(['GameID', 'Inning', 'Top/Bottom', 'PAofInning', 'PitchofPA'])
@@ -1567,7 +1419,7 @@ def create_spray_chart(df_game: pd.DataFrame, batter_display_name: str):
     ax.set_aspect('equal')
     
     date_str = format_date_long(inplay['Date'].iloc[0]) if 'Date' in inplay.columns else ""
-    ax.set_title(f"{batter_display_name} — Spray Chart\n{date_str}", 
+    ax.set_title(f"{batter_display_name} - Spray Chart\n{date_str}", 
                 fontsize=16, fontweight='bold', pad=20)
     
     plt.tight_layout()
@@ -1701,7 +1553,7 @@ def create_profile_spray_chart(df_profiles: pd.DataFrame, batter_display_name: s
     ax.set_ylim(-30, max_dist * 1.1)
     ax.set_aspect('equal')
     
-    ax.set_title(f"{batter_display_name} — Spray Chart (All Batted Balls)", 
+    ax.set_title(f"{batter_display_name} - Spray Chart (All Batted Balls)", 
                 fontsize=16, fontweight='bold', pad=20)
     
     plt.tight_layout()
@@ -1977,27 +1829,19 @@ def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_202
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN APP
 # ══════════════════════════════════════════════════════════════════════════════
+render_nb_banner(title="Nebraska Baseball")
 
-# Render header with logo
-render_header_with_logo()
+period = st.selectbox(
+    "Time Period",
+    options=["2025 season", "2025/26 Scrimmages", "2026 season"],
+    index=0
+)
 
-section_header("Configuration")
-
-col_period, col_expand = st.columns([2, 3])
-
-with col_period:
-    period = st.selectbox(
-        "📅 Time Period",
-        options=["2025 season", "2025/26 Scrimmages", "2026 season"],
-        index=0
-    )
-
-with col_expand:
-    with st.expander("⚙️ Data Paths (optional quick edit)", expanded=False):
-        st.caption("Paste a CSV path, a directory path, or a glob pattern.")
-        path_2025  = st.text_input("2025 season path", value=DATA_PATH_2025,  key="path_2025")
-        path_scrim = st.text_input("2025/26 Scrimmages path/pattern", value=DATA_PATH_SCRIM, key="path_scrim")
-        path_2026  = st.text_input("2026 season path/pattern", value=DATA_PATH_2026,  key="path_2026")
+with st.expander("Data paths (optional quick edit)"):
+    st.caption("Paste a CSV path, a directory path, or a glob pattern.")
+    path_2025  = st.text_input("2025 season path", value=DATA_PATH_2025,  key="path_2025")
+    path_scrim = st.text_input("2025/26 Scrimmages path/pattern", value=DATA_PATH_SCRIM, key="path_scrim")
+    path_2026  = st.text_input("2026 season path/pattern", value=DATA_PATH_2026,  key="path_2026")
 
 path_2025  = st.session_state.get("path_2025", DATA_PATH_2025)
 path_scrim = st.session_state.get("path_scrim", DATA_PATH_SCRIM)
@@ -2038,31 +1882,20 @@ display_name_by_key = (
     .to_dict()
 )
 
-professional_divider()
-
 # ══════════════════════════════════════════════════════════════════════════════
 # VIEW MODE SELECTOR
 # ══════════════════════════════════════════════════════════════════════════════
-section_header("View Selection")
-view_mode = st.radio(
-    "Select View Mode",
-    ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary"],
-    horizontal=True
-)
-
-professional_divider()
+view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary"], horizontal=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STANDARD HITTER REPORT
 # ══════════════════════════════════════════════════════════════════════════════
 if view_mode == "Standard Hitter Report":
-    section_header("Standard Hitter Report")
-    
-    st.markdown('<div class="filter-section">', unsafe_allow_html=True)
+    st.markdown("### Nebraska Hitter Reports")
     colB, colD = st.columns([1, 1])
 
     batter_key_std = colB.selectbox(
-        "👤 Select Player",
+        "Player",
         options=batters_keys,
         index=0,
         format_func=lambda k: display_name_by_key.get(k, k)
@@ -2089,13 +1922,11 @@ if view_mode == "Standard Hitter Report":
         date_opts, date_labels = [], {}
 
     selected_date = colD.selectbox(
-        "📅 Select Game Date",
+        "Game Date",
         options=date_opts,
         format_func=lambda d: date_labels.get(d, format_date_long(d)),
         index=len(date_opts)-1 if date_opts else 0
     ) if date_opts else None
-    
-    st.markdown('</div>', unsafe_allow_html=True)
 
     if batter_key_std and selected_date:
         df_date = df_b_all[df_b_all["DateOnly"] == selected_date].copy()
@@ -2105,49 +1936,34 @@ if view_mode == "Standard Hitter Report":
     batter_display = display_name_by_key.get(batter_key_std, batter_key_std)
 
     if df_date.empty:
-        info_message("Select a player and game date to see the Standard Hitter Report.")
+        st.info("Select a player and game date to see the Standard Hitter Report.")
     else:
-        professional_divider()
-        
-        # Player header card
-        st.markdown(f"""
-        <div class="player-header">
-            <div class="player-name">{batter_display}</div>
-            <div class="player-subtitle">{format_date_long(selected_date)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        subsection_header("Pitch-by-Pitch Analysis")
+        st.markdown("### Standard Hitter Report")
         fig_std = create_hitter_report(df_date, batter_display, ncols=3)
         if fig_std:
             st.pyplot(fig_std)
-            plt.close(fig_std)
         
-        professional_divider()
-        
-        subsection_header("Spray Chart")
+        st.markdown("### Spray Chart")
         fig_spray = create_spray_chart(df_date, batter_display)
         if fig_spray:
             st.pyplot(fig_spray)
-            plt.close(fig_spray)
         else:
-            info_message("No balls in play with valid location data for this game.")
+            st.info("No balls in play with valid location data for this game.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PROFILES & HEATMAPS
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Profiles & Heatmaps":
-    section_header("Profiles & Heatmaps")
+    st.markdown("### Profiles & Heatmaps")
 
     batter_key = st.selectbox(
-        "👤 Select Player",
+        "Player",
         options=batters_keys,
         index=0,
         format_func=lambda k: display_name_by_key.get(k, k)
     )
 
-    subsection_header("Filters")
-    st.markdown('<div class="filter-section">', unsafe_allow_html=True)
+    st.markdown("#### Filters")
     colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
     if batter_key:
@@ -2161,7 +1977,7 @@ elif view_mode == "Profiles & Heatmaps":
         present_months = []
 
     sel_months = colM.multiselect(
-        "📅 Months",
+        "Months",
         options=present_months,
         format_func=lambda n: MONTH_NAME_BY_NUM.get(n, str(n)),
         default=[],
@@ -2176,12 +1992,10 @@ elif view_mode == "Profiles & Heatmaps":
     else:
         present_days = []
 
-    sel_days = colD2.multiselect("📆 Days", options=present_days, default=[], key="prof_days")
+    sel_days = colD2.multiselect("Days", options=present_days, default=[], key="prof_days")
 
-    lastN = int(colN.number_input("🎯 Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
-    hand_choice = colH.radio("⚾ Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+    lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
+    hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
 
     if sel_months:
         mask_m = pd.to_datetime(df_player_all["Date"], errors="coerce").dt.month.isin(sel_months)
@@ -2205,66 +2019,45 @@ elif view_mode == "Profiles & Heatmaps":
         df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
     if batter_key and df_profiles.empty:
-        info_message("No rows for the selected filters.")
+        st.info("No rows for the selected filters.")
     elif batter_key:
-        professional_divider()
-        
         season_label = {
             "2025 season": "2025",
             "2025/26 Scrimmages": "2025/26 Scrimmages",
             "2026 season": "2026",
         }.get(period, "—")
-        
-        # Player header
-        st.markdown(f"""
-        <div class="player-header">
-            <div class="player-name">{display_name_by_key.get(batter_key,batter_key)}</div>
-            <div class="player-subtitle">Split Profiles — {season_label}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f"#### Split Profiles — {display_name_by_key.get(batter_key,batter_key)} ({season_label})")
 
         t1_counts, t2_rates, t3_batted = build_profile_tables(df_profiles)
 
-        subsection_header("Summary")
-        st.dataframe(themed_styler(t1_counts, nowrap=True), use_container_width=True, hide_index=True)
+        st.markdown("**Summary**")
+        st.table(themed_styler(t1_counts, nowrap=True))
 
-        professional_divider()
+        st.markdown("**Plate Discipline**")
+        st.table(themed_styler(t2_rates, nowrap=True))
 
-        subsection_header("Plate Discipline")
-        st.dataframe(themed_styler(t2_rates, nowrap=True), use_container_width=True, hide_index=True)
+        st.markdown("**Batted Ball Distribution**")
+        st.table(themed_styler(t3_batted, nowrap=True))
 
-        professional_divider()
-
-        subsection_header("Batted Ball Distribution")
-        st.dataframe(themed_styler(t3_batted, nowrap=True), use_container_width=True, hide_index=True)
-
-        professional_divider()
-
-        subsection_header("Spray Chart")
+        st.markdown("#### Spray Chart")
         fig_spray = create_profile_spray_chart(df_profiles, display_name_by_key.get(batter_key, batter_key))
         if fig_spray:
             st.pyplot(fig_spray)
-            plt.close(fig_spray)
         else:
-            info_message("No balls in play with valid location data for the selected filters.")
+            st.info("No balls in play with valid location data for the selected filters.")
 
-        professional_divider()
-
-        subsection_header("Hitter Heatmaps")
-        st.markdown('<p class="caption-text">Density maps showing contact, whiffs, and hard-hit balls</p>', unsafe_allow_html=True)
+        st.markdown("#### Hitter Heatmaps")
         fig_hm = hitter_heatmaps(df_profiles, batter_key)
         if fig_hm:
             st.pyplot(fig_hm)
-            plt.close(fig_hm)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RANKINGS
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Rankings":
-    section_header("Team Rankings")
+    st.markdown("### Rankings")
 
-    subsection_header("Filters")
-    st.markdown('<div class="filter-section">', unsafe_allow_html=True)
+    st.markdown("#### Filters")
     colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
 
     df_scope = df_neb_bat.copy()
@@ -2272,7 +2065,7 @@ elif view_mode == "Rankings":
     dates_all = pd.to_datetime(df_scope["Date"], errors="coerce").dropna().dt.date
     present_months = sorted(pd.Series(dates_all).map(lambda d: d.month).unique().tolist())
     sel_months = colM.multiselect(
-        "📅 Months",
+        "Months",
         options=present_months,
         format_func=lambda n: MONTH_NAME_BY_NUM.get(n, str(n)),
         default=[],
@@ -2283,12 +2076,10 @@ elif view_mode == "Rankings":
     if sel_months:
         dser = dser[pd.Series(dser).map(lambda d: d.month if pd.notna(d) else None).isin(sel_months)]
     present_days = sorted(pd.Series(dser).dropna().map(lambda d: d.day).unique().tolist())
-    sel_days = colD2.multiselect("📆 Days", options=present_days, default=[], key="rk_days")
+    sel_days = colD2.multiselect("Days", options=present_days, default=[], key="rk_days")
 
-    lastN = int(colN.number_input("🎯 Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="rk_lastn"))
-    hand_choice = colH.radio("⚾ Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="rk_hand")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+    lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="rk_lastn"))
+    hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="rk_hand")
 
     if sel_months:
         mask_m = pd.to_datetime(df_scope["Date"], errors="coerce").dt.month.isin(sel_months)
@@ -2312,21 +2103,16 @@ elif view_mode == "Rankings":
         df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
     if df_scope.empty:
-        info_message("No rows for the selected filters.")
+        st.info("No rows for the selected filters.")
         st.stop()
 
-    professional_divider()
-
     rankings_df = build_rankings_numeric(df_scope, display_name_by_key)
-    min_pa = int(st.number_input("🎯 Minimum PA Filter", min_value=0, value=0, step=1, key="rk_min_pa"))
+    min_pa = int(st.number_input("Min PA", min_value=0, value=0, step=1, key="rk_min_pa"))
     if min_pa > 0:
         rankings_df = rankings_df[rankings_df["PA"] >= min_pa]
 
     styled = style_rankings(rankings_df)
 
-    subsection_header("Player Rankings")
-    st.markdown('<p class="caption-text">Green = team leader | Red = team last place</p>', unsafe_allow_html=True)
-    
     st.dataframe(
         styled,
         use_container_width=True,
@@ -2335,11 +2121,11 @@ elif view_mode == "Rankings":
     )
     
     if period == "2025/26 Scrimmages":
-        professional_divider()
-        subsection_header("Complete Fall Scrimmage Statistics")
-        st.markdown('<p class="caption-text">Full season stats for all players during fall scrimmages</p>', unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("#### Complete Fall Scrimmage Statistics")
+        st.markdown("*Full season stats for all players during fall scrimmages*")
         
-        min_pa_complete = int(st.number_input("🎯 Min PA for Complete Table", min_value=0, value=10, step=1, key="complete_min_pa"))
+        min_pa_complete = int(st.number_input("Min PA for Complete Table", min_value=0, value=10, step=1, key="complete_min_pa"))
         complete_rankings = rankings_df.copy()
         if min_pa_complete > 0:
             complete_rankings = complete_rankings[complete_rankings["PA"] >= min_pa_complete]
@@ -2357,15 +2143,16 @@ elif view_mode == "Rankings":
 # ══════════════════════════════════════════════════════════════════════════════
 else:
     if period != "2025/26 Scrimmages":
-        info_message("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")
+        st.info("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")
         st.stop()
     
-    section_header("Fall 2025 Performance Summary")
+    st.markdown("<h1 style='text-align: center;'>Fall 2025 Performance Summary</h1>", unsafe_allow_html=True)
+    st.markdown("---")
     
     col_left, col_center, col_right = st.columns([1, 2, 1])
     with col_center:
         batter_key = st.selectbox(
-            "👤 Select Player",
+            "Select Player",
             options=batters_keys,
             index=0,
             format_func=lambda k: display_name_by_key.get(k, k),
@@ -2373,32 +2160,26 @@ else:
         )
     
     if not batter_key:
-        info_message("Select a player to view their fall summary.")
+        st.info("Select a player to view their fall summary.")
         st.stop()
     
     df_player_fall = df_neb_bat[df_neb_bat["BatterKey"] == batter_key].copy()
     
     if df_player_fall.empty:
-        warning_message(f"No fall scrimmage data found for {display_name_by_key.get(batter_key, batter_key)}.")
+        st.warning(f"No fall scrimmage data found for {display_name_by_key.get(batter_key, batter_key)}.")
         st.stop()
     
     player_display = display_name_by_key.get(batter_key, batter_key)
     
-    # Player header
-    st.markdown(f"""
-    <div class="player-header">
-        <div class="player-name">{player_display}</div>
-        <div class="player-subtitle">Fall 2025 Performance Summary</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    professional_divider()
+    st.markdown(f"<h2 style='text-align: center; color: {HUSKER_RED};'>{player_display}</h2>", 
+                unsafe_allow_html=True)
+    st.markdown("---")
     
     player_stats = _compute_split_core(df_player_fall)
     
-    # Color guide
+    # Add color key at the top
     st.markdown("""
-    <div class="color-guide">
+    <div style='background-color: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #E60026;'>
         <p style='margin: 0 0 5px 0; font-size: 14px; color: #666;'>
             <strong>Color Guide:</strong> 
             <span style='background-color: #28a745; color: white; padding: 2px 8px; border-radius: 3px; margin: 0 4px;'>Green</span> 
@@ -2414,9 +2195,10 @@ else:
     </div>
     """, unsafe_allow_html=True)
     
-    # SECTION 1: OVERALL PERFORMANCE
-    subsection_header("Overall Performance")
+    # SECTION 1: OVERALL PERFORMANCE - Clean Table Layout with Color Gradient
+    st.markdown("### Overall Performance")
     
+    # Create structured data for display (without D1 Avg column)
     perf_data_1 = pd.DataFrame({
         'Metric': ['AVG', 'OBP', 'SLG', 'OPS'],
         'Value': [
@@ -2437,10 +2219,16 @@ else:
         ]
     })
     
+    # Display in two columns
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown('<div class="subsection-header">Batting Statistics</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
+            <h4 style='margin: 0; color: white; text-align: center;'>Batting Statistics</h4>
+        </div>
+        """, unsafe_allow_html=True)
+        
         st.dataframe(
             style_performance_table(perf_data_1),
             use_container_width=True,
@@ -2448,15 +2236,24 @@ else:
         )
     
     with col2:
-        st.markdown('<div class="subsection-header">Advanced Metrics</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
+            <h4 style='margin: 0; color: white; text-align: center;'>Advanced Metrics</h4>
+        </div>
+        """, unsafe_allow_html=True)
+        
         st.dataframe(
             style_performance_table(perf_data_2),
             use_container_width=True,
             height=200
         )
     
-    # Extra Base Hits
-    st.markdown('<div class="subsection-header">Extra Base Hits</div>', unsafe_allow_html=True)
+    # Extra Base Hits - no scrolling
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; margin-top: 15px;'>
+        <h4 style='margin: 0; color: white; text-align: center;'>Extra Base Hits</h4>
+    </div>
+    """, unsafe_allow_html=True)
     
     xbh_data = pd.DataFrame({
         'Metric': ['Hits', 'Doubles', 'Triples', 'Home Runs'],
@@ -2468,16 +2265,25 @@ else:
         ]
     })
     
+    # Style without color gradient (counting stats don't have D1 averages)
+    header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
+    xbh_styled = xbh_data.style.set_table_styles([
+        {'selector': 'thead th', 'props': header_props},
+        {'selector': 'th.col_heading', 'props': header_props},
+        {'selector': 'th', 'props': header_props},
+        {'selector': 'td', 'props': 'white-space: nowrap;'}
+    ]).hide(axis="index")
+    
     st.dataframe(
-        themed_styler(xbh_data, nowrap=True),
+        xbh_styled,
         use_container_width=True,
         height=200
     )
     
-    professional_divider()
+    st.markdown("---")
     
-    # SECTION 2: BATTED BALL QUALITY
-    subsection_header("Batted Ball Quality")
+    # SECTION 2: BATTED BALL QUALITY - Clean Table Layout with Color Gradient
+    st.markdown("### Batted Ball Quality")
     
     bb_data = pd.DataFrame({
         'Metric': ['Avg Exit Velocity', 'Max Exit Velocity', 'Avg Launch Angle', 'Hard Hit%', 'Barrel%'],
@@ -2490,16 +2296,22 @@ else:
         ]
     })
     
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
+        <h4 style='margin: 0; color: white; text-align: center;'>Contact Quality Metrics</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.dataframe(
         style_performance_table(bb_data),
         use_container_width=True,
         height=230
     )
     
-    professional_divider()
+    st.markdown("---")
     
-    # SECTION 3: PLATE DISCIPLINE
-    subsection_header("Plate Discipline")
+    # SECTION 3: PLATE DISCIPLINE - Clean Table Layout with Color Gradient
+    st.markdown("### Plate Discipline")
     
     pd_data = pd.DataFrame({
         'Metric': ['Swing%', 'Whiff%', 'Chase%', 'Z-Swing%', 'Z-Contact%', 'Z-Whiff%'],
@@ -2513,16 +2325,22 @@ else:
         ]
     })
     
+    st.markdown("""
+    <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
+        <h4 style='margin: 0; color: white; text-align: center;'>Discipline Metrics</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.dataframe(
         style_performance_table(pd_data),
         use_container_width=True,
         height=260
     )
     
-    professional_divider()
+    st.markdown("---")
     
     # SECTION 4: GAME-BY-GAME PERFORMANCE
-    subsection_header("Game-by-Game Performance")
+    st.markdown("### Game-by-Game Performance")
     
     game_table = create_game_by_game_table(df_player_fall)
     if not game_table.empty:
@@ -2532,13 +2350,14 @@ else:
             height=400
         )
     else:
-        info_message("No game-by-game data available.")
+        st.info("No game-by-game data available.")
     
-    professional_divider()
+    st.markdown("---")
     
     # SECTION 5: PERFORMANCE SPLITS
-    subsection_header("Performance Splits")
+    st.markdown("### Performance Splits")
     
+    # Filter selector
     split_type = st.selectbox(
         "Select Split Type",
         options=["vs Pitch Type", "vs Pitcher Handedness", "By Count Situation"],
@@ -2559,36 +2378,33 @@ else:
             height=300
         )
     else:
-        info_message("No split data available.")
+        st.info("No split data available.")
     
-    professional_divider()
+    st.markdown("---")
     
     # SECTION 6: VISUALIZATIONS
-    subsection_header("Visualizations")
+    st.markdown("### Visualizations")
     
-    tab1, tab2 = st.tabs(["📊 Spray Chart", "🔥 Heatmaps"])
+    tab1, tab2 = st.tabs(["Spray Chart", "Heatmaps"])
     
     with tab1:
         fig_spray = create_profile_spray_chart(df_player_fall, player_display)
         if fig_spray:
             st.pyplot(fig_spray)
-            plt.close(fig_spray)
         else:
-            info_message("No balls in play with valid location data for fall scrimmages.")
+            st.info("No balls in play with valid location data for fall scrimmages.")
     
     with tab2:
         fig_hm = hitter_heatmaps(df_player_fall, batter_key)
         if fig_hm:
             st.pyplot(fig_hm)
-            plt.close(fig_hm)
         else:
-            info_message("Not enough data for heatmaps.")
+            st.info("Not enough data for heatmaps.")
     
-    professional_divider()
+    st.markdown("---")
     
-    # SECTION 7: PROGRESS TRACKER
-    subsection_header("Progress Tracker")
-    st.markdown('<p class="caption-text">Track performance metrics across the fall season</p>', unsafe_allow_html=True)
+    # SECTION 7: PROGRESS TRACKER (AT THE BOTTOM)
+    st.markdown("### Progress Tracker")
     
     metric_choice = st.selectbox(
         "Select Metric to Track",
@@ -2599,15 +2415,5 @@ else:
     fig_progress = create_progress_chart(df_player_fall, metric=metric_choice)
     if fig_progress:
         st.pyplot(fig_progress)
-        plt.close(fig_progress)
     else:
-        info_message("Not enough games to show progression chart.")
-
-# Footer
-professional_divider()
-st.markdown(f"""
-<div style='text-align: center; color: #999; font-size: 12px; padding: 20px 0;'>
-    Nebraska Baseball Hitter Analytics Platform • {period}<br>
-    Powered by Trackman Data
-</div>
-""", unsafe_allow_html=True)
+        st.info("Not enough games to show progression chart.")

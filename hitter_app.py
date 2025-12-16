@@ -1,29 +1,3 @@
-# wOBA CONSTANTS (FanGraphs 2025)
-WOBAC_2025 = {
-    "wBB": 0.693, "wHBP": 0.723,
-    "w1B": 0.883, "w2B": 1.253, "w3B": 1.585, "wHR": 2.037,
-    "wOBAScale": 1.23,
-    "lg_wOBA": 0.314,
-}
-
-# D1 AVERAGES FOR COMPARISON
-D1_AVERAGES = {
-    "ZWhiff%": 15.7,
-    "ZContact%": 84.3,  # Derived from 100 - ZWhiff%
-    "Whiff%": 22.9,
-    "Barrel%": 17.4,
-    "wOBA": 0.364,
-    "K%": 19.2,
-    "BB%": 11.4,
-    "Chase%": 24.2,
-    "AVG": 0.280,
-    "OBP": 0.385,
-    "SLG": 0.442,
-    "OPS": 0.827,
-    "HardHit%": 36.0,
-    "Avg Exit Velocity": 86.2,
-    "Max Exit Velocity": 103.1,
-}
 # hitter_app.py
 
 import os
@@ -46,7 +20,11 @@ from matplotlib import colors
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIG
 # ──────────────────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Nebraska Hitter Reports", layout="centered")
+st.set_page_config(
+    page_title="Nebraska Hitter Reports",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # Default data paths per period
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
@@ -97,6 +75,9 @@ D1_AVERAGES = {
     "OBP": 0.385,
     "SLG": 0.442,
     "OPS": 0.827,
+    "HardHit%": 36.0,
+    "Avg Exit Velocity": 86.2,
+    "Max Exit Velocity": 103.1,
 }
 
 def get_performance_color_gradient(stat_name: str, value: float) -> str:
@@ -456,28 +437,37 @@ def _img_to_b64(path: str):
     except Exception:
         return None
 
-def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Baseball", height_px=180):
+def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Baseball", height_px=120):
     b64 = None
     for p in image_candidates:
         b64 = _img_to_b64(p)
         if b64:
             break
-    if not b64:
-        return
-    st.markdown(
-        f"""
-        <div style="position: relative; width: 100%; height: {height_px}px; border-radius: 12px; overflow: hidden; margin-bottom: 10px;">
-          <img src="data:image/jpeg;base64,{b64}" style="width:100%; height:100%; object-fit:cover; filter: brightness(0.6);" />
-          <div style="position:absolute; inset:0; background: rgba(0,0,0,0.35);"></div>
-          <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
-            <div style="font-size:40px; font-weight:800; color:white; text-shadow: 0 2px 12px rgba(0,0,0,.9);">
-              {title}
+    
+    if b64:
+        st.markdown(
+            f"""
+            <div style="position: relative; width: 100%; height: {height_px}px; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+              <img src="data:image/jpeg;base64,{b64}" style="width:100%; height:100%; object-fit:cover; filter: brightness(0.7);" />
+              <div style="position:absolute; inset:0; background: linear-gradient(to right, rgba(0,0,0,0.6), rgba(0,0,0,0.3));"></div>
+              <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:flex-start; padding-left: 40px;">
+                <div style="font-size:36px; font-weight:700; color:white; text-shadow: 0 2px 8px rgba(0,0,0,.8); letter-spacing: 1px;">
+                  {title}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f"""
+            <div style="background: linear-gradient(135deg, {HUSKER_RED} 0%, #c40020 100%); padding: 30px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <h1 style="color: white; margin: 0; text-align: center; font-weight: 700; letter-spacing: 1px;">{title}</h1>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # BATTED BALL / DISCIPLINE / STATS
@@ -623,6 +613,13 @@ def college_barrel_mask(ev_series: pd.Series, la_series: pd.Series) -> pd.Series
 # ──────────────────────────────────────────────────────────────────────────────
 # xwOBA SUPPORT
 # ──────────────────────────────────────────────────────────────────────────────
+WOBAC_2025 = {
+    "wBB": 0.693, "wHBP": 0.723,
+    "w1B": 0.883, "w2B": 1.253, "w3B": 1.585, "wHR": 2.037,
+    "wOBAScale": 1.23,
+    "lg_wOBA": 0.314,
+}
+
 @st.cache_data(show_spinner=False)
 def load_prob_lookup(path: str):
     try:
@@ -1586,7 +1583,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
 
         kor = str(korbb.iloc[-1]) if not korbb.empty else ""
         if kor == "Walk":
-            return {"label": "▶ PA Result: Walk 🚶", "klass": "Walk", "k_type": None, "res": None, "ev": None, "tag": None}
+            return {"label": "PA Result: Walk", "klass": "Walk", "k_type": None, "res": None, "ev": None, "tag": None}
         if kor == "Strikeout":
             last_call = str(s_call.iloc[-1]) if not s_call.empty else ""
             if last_call == "StrikeSwinging":
@@ -1595,7 +1592,7 @@ def create_hitter_report(df, batter_display_name, ncols=3):
                 k_type = "Looking"
             else:
                 k_type = "Unknown"
-            return {"label": f"▶ PA Result: Strikeout ({k_type}) 💥", "klass": "K", "k_type": k_type, "res": None, "ev": None, "tag": None}
+            return {"label": f"PA Result: Strikeout ({k_type})", "klass": "K", "k_type": k_type, "res": None, "ev": None, "tag": None}
 
         strikes = 0
         balls = 0
@@ -1613,12 +1610,12 @@ def create_hitter_report(df, batter_display_name, ncols=3):
             elif call == "BallCalled":
                 balls += 1
                 if balls == 4:
-                    return {"label": "▶ PA Result: Walk 🚶", "klass": "Walk", "k_type": None, "res": None, "ev": None, "tag": None}
+                    return {"label": "PA Result: Walk", "klass": "Walk", "k_type": None, "res": None, "ev": None, "tag": None}
             elif call == "HitByPitch":
-                return {"label": "▶ PA Result: HBP", "klass": "Other", "k_type": None, "res": None, "ev": None, "tag": None}
+                return {"label": "PA Result: HBP", "klass": "Other", "k_type": None, "res": None, "ev": None, "tag": None}
 
         if strikes >= 3:
-            return {"label": f"▶ PA Result: Strikeout ({k_type or 'Unknown'}) 💥", "klass": "K", "k_type": k_type or "Unknown",
+            return {"label": f"PA Result: Strikeout ({k_type or 'Unknown'})", "klass": "K", "k_type": k_type or "Unknown",
                     "res": None, "ev": None, "tag": None}
 
         inplay = pa_df[s_call == 'InPlay']
@@ -1632,10 +1629,10 @@ def create_hitter_report(df, batter_display_name, ncols=3):
                 bits[-1] = f"{bits[-1]} ({float(es):.1f} MPH)"
             if tag:
                 bits.append(f"— {tag}")
-            return {"label": f"▶ PA Result: {' '.join(bits)}", "klass": "InPlay", "k_type": None,
+            return {"label": f"PA Result: {' '.join(bits)}", "klass": "InPlay", "k_type": None,
                     "res": res, "ev": float(es) if pd.notna(es) else None, "tag": tag}
 
-        return {"label": "▶ PA Result: —", "klass": "Other", "k_type": None, "res": None, "ev": None, "tag": None}
+        return {"label": "PA Result: —", "klass": "Other", "k_type": None, "res": None, "ev": None, "tag": None}
 
     descriptions = []
     for _, pa_df in pa_groups:
@@ -1829,15 +1826,21 @@ def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_202
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN APP
 # ══════════════════════════════════════════════════════════════════════════════
-render_nb_banner(title="Nebraska Baseball")
+render_nb_banner(title="Nebraska Baseball Hitter Reports")
 
-period = st.selectbox(
+# SIDEBAR CONFIGURATION
+st.sidebar.title("Filters & Settings")
+st.sidebar.markdown("---")
+
+# Time Period Selection
+period = st.sidebar.selectbox(
     "Time Period",
     options=["2025 season", "2025/26 Scrimmages", "2026 season"],
     index=0
 )
 
-with st.expander("Data paths (optional quick edit)"):
+# Data paths in sidebar expander
+with st.sidebar.expander("Data Paths", expanded=False):
     st.caption("Paste a CSV path, a directory path, or a glob pattern.")
     path_2025  = st.text_input("2025 season path", value=DATA_PATH_2025,  key="path_2025")
     path_scrim = st.text_input("2025/26 Scrimmages path/pattern", value=DATA_PATH_SCRIM, key="path_scrim")
@@ -1849,7 +1852,7 @@ path_2026  = st.session_state.get("path_2026", DATA_PATH_2026)
 
 df_all = load_for_period(period, path_2025, path_scrim, path_2026)
 if df_all.empty:
-    st.error(f"No data loaded for '{period}'. Check the path(s) above.")
+    st.error(f"No data loaded for '{period}'. Check the path(s) in the sidebar.")
     st.stop()
 
 # Build hitter keyspace
@@ -1883,22 +1886,32 @@ display_name_by_key = (
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# VIEW MODE SELECTOR
+# VIEW MODE SELECTOR IN MAIN AREA
 # ══════════════════════════════════════════════════════════════════════════════
-view_mode = st.radio("View", ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary"], horizontal=True)
+view_mode = st.radio(
+    "Select Report Type",
+    ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary"],
+    horizontal=True,
+    key="view_mode"
+)
+
+st.markdown("---")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STANDARD HITTER REPORT
 # ══════════════════════════════════════════════════════════════════════════════
 if view_mode == "Standard Hitter Report":
-    st.markdown("### Nebraska Hitter Reports")
-    colB, colD = st.columns([1, 1])
-
-    batter_key_std = colB.selectbox(
-        "Player",
+    st.markdown("## Standard Hitter Report")
+    
+    # Player selection in sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Player Selection")
+    batter_key_std = st.sidebar.selectbox(
+        "Select Player",
         options=batters_keys,
         index=0,
-        format_func=lambda k: display_name_by_key.get(k, k)
+        format_func=lambda k: display_name_by_key.get(k, k),
+        key="std_player"
     )
 
     if batter_key_std:
@@ -1921,11 +1934,12 @@ if view_mode == "Standard Hitter Report":
         df_b_all = df_neb_bat.iloc[0:0].copy()
         date_opts, date_labels = [], {}
 
-    selected_date = colD.selectbox(
+    selected_date = st.sidebar.selectbox(
         "Game Date",
         options=date_opts,
         format_func=lambda d: date_labels.get(d, format_date_long(d)),
-        index=len(date_opts)-1 if date_opts else 0
+        index=len(date_opts)-1 if date_opts else 0,
+        key="std_date"
     ) if date_opts else None
 
     if batter_key_std and selected_date:
@@ -1936,13 +1950,13 @@ if view_mode == "Standard Hitter Report":
     batter_display = display_name_by_key.get(batter_key_std, batter_key_std)
 
     if df_date.empty:
-        st.info("Select a player and game date to see the Standard Hitter Report.")
+        st.info("Select a player and game date from the sidebar to view the Standard Hitter Report.")
     else:
-        st.markdown("### Standard Hitter Report")
         fig_std = create_hitter_report(df_date, batter_display, ncols=3)
         if fig_std:
             st.pyplot(fig_std)
         
+        st.markdown("---")
         st.markdown("### Spray Chart")
         fig_spray = create_spray_chart(df_date, batter_display)
         if fig_spray:
@@ -1954,17 +1968,22 @@ if view_mode == "Standard Hitter Report":
 # PROFILES & HEATMAPS
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Profiles & Heatmaps":
-    st.markdown("### Profiles & Heatmaps")
+    st.markdown("## Profiles & Heatmaps")
 
-    batter_key = st.selectbox(
-        "Player",
+    # Player selection in sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Player Selection")
+    batter_key = st.sidebar.selectbox(
+        "Select Player",
         options=batters_keys,
         index=0,
-        format_func=lambda k: display_name_by_key.get(k, k)
+        format_func=lambda k: display_name_by_key.get(k, k),
+        key="prof_player"
     )
 
-    st.markdown("#### Filters")
-    colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
+    # Filters in sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Filters")
 
     if batter_key:
         df_b_all = df_neb_bat[df_neb_bat["BatterKey"] == batter_key].copy()
@@ -1976,7 +1995,7 @@ elif view_mode == "Profiles & Heatmaps":
         df_player_all = df_b_all.copy()
         present_months = []
 
-    sel_months = colM.multiselect(
+    sel_months = st.sidebar.multiselect(
         "Months",
         options=present_months,
         format_func=lambda n: MONTH_NAME_BY_NUM.get(n, str(n)),
@@ -1992,10 +2011,9 @@ elif view_mode == "Profiles & Heatmaps":
     else:
         present_days = []
 
-    sel_days = colD2.multiselect("Days", options=present_days, default=[], key="prof_days")
-
-    lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
-    hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="prof_hand")
+    sel_days = st.sidebar.multiselect("Days", options=present_days, default=[], key="prof_days")
+    lastN = int(st.sidebar.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="prof_lastn"))
+    hand_choice = st.sidebar.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, key="prof_hand")
 
     if sel_months:
         mask_m = pd.to_datetime(df_player_all["Date"], errors="coerce").dt.month.isin(sel_months)
@@ -2019,52 +2037,64 @@ elif view_mode == "Profiles & Heatmaps":
         df_profiles = df_profiles[df_profiles.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
     if batter_key and df_profiles.empty:
-        st.info("No rows for the selected filters.")
+        st.info("No rows for the selected filters. Adjust filters in the sidebar.")
     elif batter_key:
         season_label = {
             "2025 season": "2025",
             "2025/26 Scrimmages": "2025/26 Scrimmages",
             "2026 season": "2026",
         }.get(period, "—")
-        st.markdown(f"#### Split Profiles — {display_name_by_key.get(batter_key,batter_key)} ({season_label})")
+        
+        st.markdown(f"### {display_name_by_key.get(batter_key,batter_key)} ({season_label})")
 
         t1_counts, t2_rates, t3_batted = build_profile_tables(df_profiles)
 
-        st.markdown("**Summary**")
-        st.table(themed_styler(t1_counts, nowrap=True))
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Summary Statistics")
+            st.table(themed_styler(t1_counts, nowrap=True))
 
-        st.markdown("**Plate Discipline**")
-        st.table(themed_styler(t2_rates, nowrap=True))
+        with col2:
+            st.markdown("#### Plate Discipline")
+            st.table(themed_styler(t2_rates, nowrap=True))
 
-        st.markdown("**Batted Ball Distribution**")
+        st.markdown("#### Batted Ball Distribution")
         st.table(themed_styler(t3_batted, nowrap=True))
 
-        st.markdown("#### Spray Chart")
-        fig_spray = create_profile_spray_chart(df_profiles, display_name_by_key.get(batter_key, batter_key))
-        if fig_spray:
-            st.pyplot(fig_spray)
-        else:
-            st.info("No balls in play with valid location data for the selected filters.")
+        st.markdown("---")
+        
+        tab1, tab2 = st.tabs(["Spray Chart", "Heatmaps"])
+        
+        with tab1:
+            fig_spray = create_profile_spray_chart(df_profiles, display_name_by_key.get(batter_key, batter_key))
+            if fig_spray:
+                st.pyplot(fig_spray)
+            else:
+                st.info("No balls in play with valid location data for the selected filters.")
 
-        st.markdown("#### Hitter Heatmaps")
-        fig_hm = hitter_heatmaps(df_profiles, batter_key)
-        if fig_hm:
-            st.pyplot(fig_hm)
+        with tab2:
+            fig_hm = hitter_heatmaps(df_profiles, batter_key)
+            if fig_hm:
+                st.pyplot(fig_hm)
+            else:
+                st.info("Not enough data for heatmaps.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RANKINGS
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Rankings":
-    st.markdown("### Rankings")
+    st.markdown("## Team Rankings")
 
-    st.markdown("#### Filters")
-    colM, colD2, colN, colH = st.columns([1.2, 1.2, 0.9, 1.9])
+    # Filters in sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Filters")
 
     df_scope = df_neb_bat.copy()
 
     dates_all = pd.to_datetime(df_scope["Date"], errors="coerce").dropna().dt.date
     present_months = sorted(pd.Series(dates_all).map(lambda d: d.month).unique().tolist())
-    sel_months = colM.multiselect(
+    sel_months = st.sidebar.multiselect(
         "Months",
         options=present_months,
         format_func=lambda n: MONTH_NAME_BY_NUM.get(n, str(n)),
@@ -2076,10 +2106,11 @@ elif view_mode == "Rankings":
     if sel_months:
         dser = dser[pd.Series(dser).map(lambda d: d.month if pd.notna(d) else None).isin(sel_months)]
     present_days = sorted(pd.Series(dser).dropna().map(lambda d: d.day).unique().tolist())
-    sel_days = colD2.multiselect("Days", options=present_days, default=[], key="rk_days")
+    sel_days = st.sidebar.multiselect("Days", options=present_days, default=[], key="rk_days")
 
-    lastN = int(colN.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="rk_lastn"))
-    hand_choice = colH.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, horizontal=True, key="rk_hand")
+    lastN = int(st.sidebar.number_input("Last N games", min_value=0, max_value=50, step=1, value=0, format="%d", key="rk_lastn"))
+    hand_choice = st.sidebar.radio("Pitcher Hand", ["Both","LHP","RHP"], index=0, key="rk_hand")
+    min_pa = int(st.sidebar.number_input("Minimum PA", min_value=0, value=0, step=1, key="rk_min_pa"))
 
     if sel_months:
         mask_m = pd.to_datetime(df_scope["Date"], errors="coerce").dt.month.isin(sel_months)
@@ -2103,11 +2134,10 @@ elif view_mode == "Rankings":
         df_scope = df_scope[df_scope.get('PitcherThrows').astype(str).str.upper().str.startswith('R')].copy()
 
     if df_scope.empty:
-        st.info("No rows for the selected filters.")
+        st.info("No rows for the selected filters. Adjust filters in the sidebar.")
         st.stop()
 
     rankings_df = build_rankings_numeric(df_scope, display_name_by_key)
-    min_pa = int(st.number_input("Min PA", min_value=0, value=0, step=1, key="rk_min_pa"))
     if min_pa > 0:
         rankings_df = rankings_df[rankings_df["PA"] >= min_pa]
 
@@ -2117,26 +2147,8 @@ elif view_mode == "Rankings":
         styled,
         use_container_width=True,
         hide_index=True,
-        height=520
+        height=600
     )
-    
-    if period == "2025/26 Scrimmages":
-        st.markdown("---")
-        st.markdown("#### Complete Fall Scrimmage Statistics")
-        st.markdown("*Full season stats for all players during fall scrimmages*")
-        
-        min_pa_complete = int(st.number_input("Min PA for Complete Table", min_value=0, value=10, step=1, key="complete_min_pa"))
-        complete_rankings = rankings_df.copy()
-        if min_pa_complete > 0:
-            complete_rankings = complete_rankings[complete_rankings["PA"] >= min_pa_complete]
-        
-        styled_complete = style_rankings(complete_rankings)
-        st.dataframe(
-            styled_complete,
-            use_container_width=True,
-            hide_index=True,
-            height=520
-        )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FALL SUMMARY
@@ -2146,21 +2158,22 @@ else:
         st.info("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")
         st.stop()
     
-    st.markdown("<h1 style='text-align: center;'>Fall 2025 Performance Summary</h1>", unsafe_allow_html=True)
+    st.markdown("# Fall 2025 Performance Summary")
     st.markdown("---")
     
-    col_left, col_center, col_right = st.columns([1, 2, 1])
-    with col_center:
-        batter_key = st.selectbox(
-            "Select Player",
-            options=batters_keys,
-            index=0,
-            format_func=lambda k: display_name_by_key.get(k, k),
-            key="fall_player"
-        )
+    # Player selection in sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Player Selection")
+    batter_key = st.sidebar.selectbox(
+        "Select Player",
+        options=batters_keys,
+        index=0,
+        format_func=lambda k: display_name_by_key.get(k, k),
+        key="fall_player"
+    )
     
     if not batter_key:
-        st.info("Select a player to view their fall summary.")
+        st.info("Select a player from the sidebar to view their fall summary.")
         st.stop()
     
     df_player_fall = df_neb_bat[df_neb_bat["BatterKey"] == batter_key].copy()
@@ -2171,23 +2184,22 @@ else:
     
     player_display = display_name_by_key.get(batter_key, batter_key)
     
-    st.markdown(f"<h2 style='text-align: center; color: {HUSKER_RED};'>{player_display}</h2>", 
-                unsafe_allow_html=True)
+    st.markdown(f"## {player_display}")
     st.markdown("---")
     
     player_stats = _compute_split_core(df_player_fall)
     
-    # Add color key at the top
+    # Color key
     st.markdown("""
     <div style='background-color: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #E60026;'>
         <p style='margin: 0 0 5px 0; font-size: 14px; color: #666;'>
             <strong>Color Guide:</strong> 
             <span style='background-color: #28a745; color: white; padding: 2px 8px; border-radius: 3px; margin: 0 4px;'>Green</span> 
-            = Above D1 Average | 
+            Above D1 Average | 
             <span style='background-color: #ffffff; color: black; padding: 2px 8px; border-radius: 3px; border: 1px solid #ddd; margin: 0 4px;'>White</span> 
-            = Near D1 Average | 
+            Near D1 Average | 
             <span style='background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 3px; margin: 0 4px;'>Red</span> 
-            = Below D1 Average
+            Below D1 Average
         </p>
         <p style='margin: 5px 0 0 0; font-size: 12px; color: #888; font-style: italic;'>
             Note: PA, Hits, Doubles, Triples, Home Runs, Avg Launch Angle, Swing%, and Z-Swing% are not color-coded
@@ -2195,10 +2207,9 @@ else:
     </div>
     """, unsafe_allow_html=True)
     
-    # SECTION 1: OVERALL PERFORMANCE - Clean Table Layout with Color Gradient
+    # SECTION 1: OVERALL PERFORMANCE
     st.markdown("### Overall Performance")
     
-    # Create structured data for display (without D1 Avg column)
     perf_data_1 = pd.DataFrame({
         'Metric': ['AVG', 'OBP', 'SLG', 'OPS'],
         'Value': [
@@ -2219,16 +2230,10 @@ else:
         ]
     })
     
-    # Display in two columns
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("""
-        <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
-            <h4 style='margin: 0; color: white; text-align: center;'>Batting Statistics</h4>
-        </div>
-        """, unsafe_allow_html=True)
-        
+        st.markdown("#### Batting Statistics")
         st.dataframe(
             style_performance_table(perf_data_1),
             use_container_width=True,
@@ -2236,25 +2241,14 @@ else:
         )
     
     with col2:
-        st.markdown("""
-        <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
-            <h4 style='margin: 0; color: white; text-align: center;'>Advanced Metrics</h4>
-        </div>
-        """, unsafe_allow_html=True)
-        
+        st.markdown("#### Advanced Metrics")
         st.dataframe(
             style_performance_table(perf_data_2),
             use_container_width=True,
             height=200
         )
     
-    # Extra Base Hits - no scrolling
-    st.markdown("""
-    <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; margin-top: 15px;'>
-        <h4 style='margin: 0; color: white; text-align: center;'>Extra Base Hits</h4>
-    </div>
-    """, unsafe_allow_html=True)
-    
+    st.markdown("#### Extra Base Hits")
     xbh_data = pd.DataFrame({
         'Metric': ['Hits', 'Doubles', 'Triples', 'Home Runs'],
         'Value': [
@@ -2265,7 +2259,6 @@ else:
         ]
     })
     
-    # Style without color gradient (counting stats don't have D1 averages)
     header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
     xbh_styled = xbh_data.style.set_table_styles([
         {'selector': 'thead th', 'props': header_props},
@@ -2282,7 +2275,7 @@ else:
     
     st.markdown("---")
     
-    # SECTION 2: BATTED BALL QUALITY - Clean Table Layout with Color Gradient
+    # SECTION 2: BATTED BALL QUALITY
     st.markdown("### Batted Ball Quality")
     
     bb_data = pd.DataFrame({
@@ -2296,12 +2289,6 @@ else:
         ]
     })
     
-    st.markdown("""
-    <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
-        <h4 style='margin: 0; color: white; text-align: center;'>Contact Quality Metrics</h4>
-    </div>
-    """, unsafe_allow_html=True)
-    
     st.dataframe(
         style_performance_table(bb_data),
         use_container_width=True,
@@ -2310,7 +2297,7 @@ else:
     
     st.markdown("---")
     
-    # SECTION 3: PLATE DISCIPLINE - Clean Table Layout with Color Gradient
+    # SECTION 3: PLATE DISCIPLINE
     st.markdown("### Plate Discipline")
     
     pd_data = pd.DataFrame({
@@ -2324,12 +2311,6 @@ else:
             f"{player_stats['ZWhiff%']:.1f}%" if pd.notna(player_stats['ZWhiff%']) else "—"
         ]
     })
-    
-    st.markdown("""
-    <div style='background: linear-gradient(135deg, #E60026 0%, #c40020 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;'>
-        <h4 style='margin: 0; color: white; text-align: center;'>Discipline Metrics</h4>
-    </div>
-    """, unsafe_allow_html=True)
     
     st.dataframe(
         style_performance_table(pd_data),
@@ -2357,7 +2338,6 @@ else:
     # SECTION 5: PERFORMANCE SPLITS
     st.markdown("### Performance Splits")
     
-    # Filter selector
     split_type = st.selectbox(
         "Select Split Type",
         options=["vs Pitch Type", "vs Pitcher Handedness", "By Count Situation"],
@@ -2403,7 +2383,7 @@ else:
     
     st.markdown("---")
     
-    # SECTION 7: PROGRESS TRACKER (AT THE BOTTOM)
+    # SECTION 7: PROGRESS TRACKER
     st.markdown("### Progress Tracker")
     
     metric_choice = st.selectbox(

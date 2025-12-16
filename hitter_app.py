@@ -33,16 +33,20 @@ LIGHT_GRAY = "#F5F5F5"
 HUSKER_CREAM = "#FEFDFA"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PROFESSIONAL UI STYLING
+# PROFESSIONAL UI STYLING (MATCHING PITCHER APP)
 # ──────────────────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
     /* Global Styles */
     .main .block-container {{
-        padding-top: 2rem;
+        padding-top: 1rem;
         padding-bottom: 2rem;
         max-width: 1400px;
     }}
+    
+    /* Hide Streamlit branding */
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
     
     /* Section Headers */
     .section-header {{
@@ -65,72 +69,6 @@ st.markdown(f"""
         margin: 20px 0 12px 0;
         padding-bottom: 8px;
         border-bottom: 3px solid {HUSKER_RED};
-    }}
-    
-    /* Metric Cards */
-    .metric-card {{
-        background: linear-gradient(135deg, white 0%, {LIGHT_GRAY} 100%);
-        border-left: 4px solid {HUSKER_RED};
-        border-radius: 8px;
-        padding: 20px;
-        margin: 10px 0;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-        transition: transform 0.2s, box-shadow 0.2s;
-    }}
-    
-    .metric-card:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-    }}
-    
-    .metric-label {{
-        color: #666;
-        font-size: 12px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 5px;
-    }}
-    
-    .metric-value {{
-        color: {DARK_GRAY};
-        font-size: 28px;
-        font-weight: 700;
-        margin: 5px 0;
-    }}
-    
-    .metric-sublabel {{
-        color: #888;
-        font-size: 11px;
-        margin-top: 5px;
-    }}
-    
-    /* Filter Section */
-    .filter-section {{
-        background-color: {LIGHT_GRAY};
-        border-radius: 8px;
-        padding: 20px;
-        margin: 15px 0;
-        border: 1px solid #E0E0E0;
-    }}
-    
-    /* Info/Warning Boxes */
-    .info-box {{
-        background-color: #F0F7FF;
-        border-left: 4px solid #1E88E5;
-        border-radius: 6px;
-        padding: 15px 20px;
-        margin: 15px 0;
-        color: #1565C0;
-    }}
-    
-    .warning-box {{
-        background-color: #FFF8E1;
-        border-left: 4px solid #FFA726;
-        border-radius: 6px;
-        padding: 15px 20px;
-        margin: 15px 0;
-        color: #EF6C00;
     }}
     
     /* Tables */
@@ -158,6 +96,15 @@ st.markdown(f"""
         border-bottom: 1px solid #E0E0E0 !important;
     }}
     
+    /* Filter Section */
+    .filter-section {{
+        background-color: {LIGHT_GRAY};
+        border-radius: 8px;
+        padding: 20px;
+        margin: 15px 0;
+        border: 1px solid #E0E0E0;
+    }}
+    
     /* Buttons */
     .stDownloadButton > button {{
         background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%);
@@ -173,13 +120,6 @@ st.markdown(f"""
     .stDownloadButton > button:hover {{
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(230, 0, 38, 0.3);
-    }}
-    
-    /* Radio Buttons */
-    .stRadio > div {{
-        background-color: {LIGHT_GRAY};
-        border-radius: 8px;
-        padding: 10px;
     }}
     
     /* Selectbox */
@@ -218,12 +158,23 @@ st.markdown(f"""
         border: none;
     }}
     
-    /* Caption Text */
-    .caption-text {{
-        color: #666;
-        font-size: 13px;
-        font-style: italic;
-        margin: 8px 0;
+    /* Info/Warning Boxes */
+    .info-box {{
+        background-color: #F0F7FF;
+        border-left: 4px solid #1E88E5;
+        border-radius: 6px;
+        padding: 15px 20px;
+        margin: 15px 0;
+        color: #1565C0;
+    }}
+    
+    .warning-box {{
+        background-color: #FFF8E1;
+        border-left: 4px solid #FFA726;
+        border-radius: 6px;
+        padding: 15px 20px;
+        margin: 15px 0;
+        color: #EF6C00;
     }}
     
     /* Player Header Card */
@@ -257,16 +208,12 @@ st.markdown(f"""
         border-left: 4px solid {HUSKER_RED};
     }}
     
-    /* Expander */
-    .streamlit-expanderHeader {{
-        background-color: white;
-        border: 1px solid #E0E0E0;
-        border-radius: 8px;
-        font-weight: 600;
-    }}
-    
-    .streamlit-expanderHeader:hover {{
-        border-color: {HUSKER_RED};
+    /* Caption Text */
+    .caption-text {{
+        color: #666;
+        font-size: 13px;
+        font-style: italic;
+        margin: 8px 0;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -282,17 +229,6 @@ def subsection_header(text: str):
     """Display a subsection header"""
     st.markdown(f'<div class="subsection-header">{text}</div>', unsafe_allow_html=True)
 
-def metric_card(label: str, value: str, sublabel: str = ""):
-    """Display a metric in a styled card"""
-    sublabel_html = f'<div class="metric-sublabel">{sublabel}</div>' if sublabel else ''
-    st.markdown(f"""
-    <div class="metric-card">
-        <div class="metric-label">{label}</div>
-        <div class="metric-value">{value}</div>
-        {sublabel_html}
-    </div>
-    """, unsafe_allow_html=True)
-
 def info_message(text: str):
     """Display an info message box"""
     st.markdown(f'<div class="info-box">ℹ️ {text}</div>', unsafe_allow_html=True)
@@ -305,10 +241,6 @@ def professional_divider():
     """Display a professional divider line"""
     st.markdown('<hr class="professional-divider">', unsafe_allow_html=True)
 
-def themed_table(df: pd.DataFrame):
-    """Apply themed styling to a dataframe for display"""
-    return df
-
 # Default data paths per period
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
 DATA_PATH_SCRIM  = "Scrimmage(27).csv"
@@ -316,9 +248,10 @@ DATA_PATH_2026   = "B10C26_hitter_app_columns.csv"
 
 PROB_LOOKUP_PATH = "EV_LA_probabilities.csv"
 
-BANNER_CANDIDATES = [
-    "NebraskaChampions.jpg",
-    "/mnt/data/NebraskaChampions.jpg",
+# Asset paths for logo
+LOGO_CANDIDATES = [
+    "Nebraska-Cornhuskers-Logo.png",
+    "/mnt/data/Nebraska-Cornhuskers-Logo.png",
 ]
 
 # Big Ten / opponents pretty names
@@ -354,7 +287,7 @@ WOBAC_2025 = {
 # D1 AVERAGES FOR COMPARISON
 D1_AVERAGES = {
     "ZWhiff%": 15.7,
-    "ZContact%": 84.3,  # Derived from 100 - ZWhiff%
+    "ZContact%": 84.3,
     "Whiff%": 22.9,
     "Barrel%": 17.4,
     "wOBA": 0.364,
@@ -371,36 +304,30 @@ D1_AVERAGES = {
 }
 
 def get_performance_color_gradient(stat_name: str, value: float) -> str:
-    """
-    Return a background color based on how the value compares to D1 average.
-    Returns a hex color - greener for better, redder for worse, white for average
-    """
+    """Return a background color based on how the value compares to D1 average."""
     if pd.isna(value) or stat_name not in D1_AVERAGES:
-        return "#ffffff"  # white for no comparison
+        return "#ffffff"
     
     avg = D1_AVERAGES[stat_name]
     
-    # For stats where LOWER is better (strikeouts, whiffs, chase)
     if stat_name in ["K%", "Whiff%", "Chase%", "ZWhiff%"]:
-        diff_pct = (avg - value) / avg  # Positive if player is better (lower)
-    # For stats where HIGHER is better (including HardHit%, exit velocities, ZContact%)
+        diff_pct = (avg - value) / avg
     else:
-        diff_pct = (value - avg) / avg  # Positive if player is better (higher)
+        diff_pct = (value - avg) / avg
     
-    # Create gradient based on difference
-    if diff_pct >= 0.20:  # 20%+ better - darkest green
+    if diff_pct >= 0.20:
         return "#28a745"
-    elif diff_pct >= 0.10:  # 10-20% better - medium green
+    elif diff_pct >= 0.10:
         return "#5cb85c"
-    elif diff_pct >= 0.05:  # 5-10% better - light green
+    elif diff_pct >= 0.05:
         return "#90ee90"
-    elif diff_pct >= -0.05:  # Within 5% - white/neutral
+    elif diff_pct >= -0.05:
         return "#ffffff"
-    elif diff_pct >= -0.10:  # 5-10% worse - light red
+    elif diff_pct >= -0.10:
         return "#ffb3b3"
-    elif diff_pct >= -0.20:  # 10-20% worse - medium red
+    elif diff_pct >= -0.20:
         return "#ff8080"
-    else:  # 20%+ worse - darkest red
+    else:
         return "#dc3545"
 
 def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.DataFrame:
@@ -409,7 +336,6 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
         stat_name = row[stat_name_col]
         value_str = row['Value']
         
-        # Map display names to D1_AVERAGES keys
         stat_mapping = {
             'Avg Exit Velocity': 'Avg Exit Velocity',
             'Max Exit Velocity': 'Max Exit Velocity',
@@ -430,10 +356,8 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
             'Z-Whiff%': 'ZWhiff%'
         }
         
-        # Get the correct key for D1_AVERAGES lookup
         d1_key = stat_mapping.get(stat_name, stat_name)
         
-        # Extract numeric value from string
         try:
             if '%' in value_str:
                 value = float(value_str.replace('%', ''))
@@ -450,7 +374,6 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
         
         bg_color = get_performance_color_gradient(d1_key, value)
         
-        # Make text white if background is dark
         if bg_color in ["#28a745", "#dc3545"]:
             text_color = "white"
         else:
@@ -461,7 +384,6 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
     
     styled = df.style.apply(apply_color, axis=1)
     
-    # Apply Husker Red header
     header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
     styled = styled.set_table_styles([
         {'selector': 'thead th', 'props': header_props},
@@ -679,31 +601,8 @@ def compute_density_hitter(x, y, xi_m, yi_m):
         return np.zeros(xi_m.shape)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# FORMATTERS / TABLE STYLE
+# TABLE STYLE
 # ──────────────────────────────────────────────────────────────────────────────
-def fmt_pct(x, decimals=1):
-    try:
-        if pd.isna(x): return "—"
-        return f"{round(float(x), decimals)}%"
-    except Exception:
-        return "—"
-
-def fmt_pct2(x):
-    try:
-        if pd.isna(x): return "—"
-        return f"{round(float(x), 2)}%"
-    except Exception:
-        return "—"
-
-def fmt_avg3(x):
-    try:
-        if pd.isna(x): return "—"
-        val = float(x)
-        out = f"{val:.3f}"
-        return out[1:] if val < 1 else out
-    except Exception:
-        return "—"
-
 def themed_styler(df: pd.DataFrame, nowrap=True):
     header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
     styles = [
@@ -718,7 +617,7 @@ def themed_styler(df: pd.DataFrame, nowrap=True):
             .set_table_styles(styles))
 
 # ──────────────────────────────────────────────────────────────────────────────
-# BANNER
+# HEADER WITH LOGO
 # ──────────────────────────────────────────────────────────────────────────────
 def _img_to_b64(path: str):
     try:
@@ -727,33 +626,38 @@ def _img_to_b64(path: str):
     except Exception:
         return None
 
-def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Baseball", subtitle="Hitter Analytics Platform", height_px=280):
-    b64 = None
-    for p in image_candidates:
-        b64 = _img_to_b64(p)
-        if b64:
+def render_header_with_logo():
+    """Render header with Nebraska logo matching pitcher app style"""
+    logo_b64 = None
+    for p in LOGO_CANDIDATES:
+        logo_b64 = _img_to_b64(p)
+        if logo_b64:
             break
-    if not b64:
-        return
-    st.markdown(
-        f"""
-        <div style="position: relative; width: 100%; height: {height_px}px; border-radius: 12px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);">
-          <img src="data:image/jpeg;base64,{b64}" style="width:100%; height:100%; object-fit:cover;" />
-          <div style="position:absolute; inset:0; background: linear-gradient(rgba(0,0,0,0.5), rgba(230,0,38,0.3));"></div>
-          <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-            <div style="font-size:48px; font-weight:800; color:white; text-shadow: 0 2px 12px rgba(0,0,0,.9); text-transform:uppercase; letter-spacing:1px;">
-              {title}
+    
+    if logo_b64:
+        st.markdown(
+            f"""
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px; padding: 20px; background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%); border-radius: 10px; box-shadow: 0 4px 12px rgba(230, 0, 38, 0.3);">
+                <img src="data:image/png;base64,{logo_b64}" style="height: 80px; margin-right: 20px;" />
+                <div style="text-align: center;">
+                    <div style="font-size: 36px; font-weight: 800; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.3);">NEBRASKA BASEBALL</div>
+                    <div style="font-size: 18px; font-weight: 500; color: white; opacity: 0.95; margin-top: 5px;">Hitter Analytics Platform</div>
+                </div>
             </div>
-            <div style="font-size:20px; font-weight:500; color:white; text-shadow: 0 2px 8px rgba(0,0,0,.7); margin-top:10px; letter-spacing:0.5px;">
-              {subtitle}
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        # Fallback if logo not found
+        st.markdown(
+            f"""
+            <div style="text-align: center; padding: 30px; background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%); border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(230, 0, 38, 0.3);">
+                <div style="font-size: 36px; font-weight: 800; color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.3);">NEBRASKA BASEBALL</div>
+                <div style="font-size: 18px; font-weight: 500; color: white; opacity: 0.95; margin-top: 5px;">Hitter Analytics Platform</div>
             </div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# [Rest of the helper functions remain the same: batted ball, discipline, stats, barrel mask, xwOBA, pitch type helpers, split metrics, fall summary functions, profile tables, rankings, spray charts, hitter report, heatmaps, and loaders]
+            """,
+            unsafe_allow_html=True
+        )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # BATTED BALL / DISCIPLINE / STATS
@@ -1313,10 +1217,8 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
     if len(dates) < 2:
         return None
     
-    # Calculate cumulative stats up to each date
     stats_by_date = []
     for i, date in enumerate(dates):
-        # Get all games up to and including this date
         cumulative_df = df[df['DateOnly'].isin(dates[:i+1])]
         stats = _compute_split_core(cumulative_df)
         stats_by_date.append({
@@ -1339,7 +1241,6 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
     ax.plot(dates_plot, metric_values, marker='o', linewidth=2.5, 
             markersize=8, color=HUSKER_RED, label=metric)
     
-    # Final value line
     final_val = metric_values[-1]
     ax.axhline(y=final_val, color='gray', linestyle='--', linewidth=1.5, 
                alpha=0.7, label=f'Final: {final_val:.3f}')
@@ -1358,35 +1259,6 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
 # ──────────────────────────────────────────────────────────────────────────────
 # PROFILE TABLES
 # ──────────────────────────────────────────────────────────────────────────────
-def _pretty_pitch_name(p: str) -> str:
-    alias_map = {
-        "FourSeamFastBall":"Fastball",
-        "FourSeam":"Fastball",
-        "FS":"Fastball",
-        "SL":"Slider",
-        "CH":"Changeup",
-        "CU":"Curveball",
-    }
-    name = alias_map.get(p, p)
-    name = re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
-    return name
-
-def _sorted_unique_pitches(series: pd.Series) -> list:
-    preferred = ["Fastball","FourSeam","TwoSeam","Sinker","Cutter","Slider","Curveball","Changeup","Splitter","Sweeper","Knuckleball","Other"]
-    vals = series.astype(str).dropna().tolist()
-    uniq = [v for v in sorted(set(vals)) if v and v.lower() != "nan"]
-    def key(p):
-        name = _pretty_pitch_name(p)
-        try:
-            base = name.replace(" ", "")
-            for pref in preferred:
-                if pref.lower() in [name.lower(), base.lower()]:
-                    return (preferred.index(pref), name)
-        except ValueError:
-            pass
-        return (len(preferred)+1, name)
-    return sorted(uniq, key=key)
-
 def build_profile_tables(df_profiles: pd.DataFrame):
     if df_profiles.empty:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -2105,7 +1977,9 @@ def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_202
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN APP
 # ══════════════════════════════════════════════════════════════════════════════
-render_nb_banner(title="Nebraska Baseball", subtitle="Hitter Analytics Platform")
+
+# Render header with logo
+render_header_with_logo()
 
 section_header("Configuration")
 

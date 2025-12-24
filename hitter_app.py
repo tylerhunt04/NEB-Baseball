@@ -2049,7 +2049,7 @@ elif view_mode == "Profiles & Heatmaps":
 
         t1_counts, t2_rates, t3_batted = build_profile_tables(df_profiles)
 
-     st.markdown("#### Summary Statistics")
+        st.markdown("#### Summary Statistics")
         st.table(themed_styler(t1_counts, nowrap=True))
 
         st.markdown("#### Plate Discipline")

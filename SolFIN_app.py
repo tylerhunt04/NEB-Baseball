@@ -168,20 +168,38 @@ with st.sidebar:
     st.title("💰 Finance Tracker")
     st.markdown("---")
     
-    st.subheader("Add Transaction")
+    # Add Income Section
+    st.subheader("💵 Add Income")
     
-    with st.form("transaction_form", clear_on_submit=True):
-        trans_date = st.date_input("Date", value=date.today())
-        trans_type = st.selectbox("Type", ["Expense", "Income"])
-        trans_amount = st.number_input("Amount ($)", min_value=0.01, step=0.01)
-        trans_category = st.selectbox("Category", DEFAULT_CATEGORIES)
-        trans_description = st.text_input("Description (optional)")
+    with st.form("income_form", clear_on_submit=True):
+        income_date = st.date_input("Date", value=date.today(), key="income_date")
+        income_amount = st.number_input("Amount ($)", min_value=0.01, step=0.01, key="income_amount")
+        income_category = st.selectbox("Category", DEFAULT_CATEGORIES, key="income_category")
+        income_description = st.text_input("Description (optional)", key="income_description")
         
-        submitted = st.form_submit_button("Add Transaction")
+        income_submitted = st.form_submit_button("Add Income")
         
-        if submitted:
-            save_transaction(trans_date, trans_amount, trans_category, trans_type, trans_description)
-            st.success("Transaction added!")
+        if income_submitted:
+            save_transaction(income_date, income_amount, income_category, "Income", income_description)
+            st.success("Income added!")
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # Add Expense Section
+    st.subheader("💳 Add Expense")
+    
+    with st.form("expense_form", clear_on_submit=True):
+        expense_date = st.date_input("Date", value=date.today(), key="expense_date")
+        expense_amount = st.number_input("Amount ($)", min_value=0.01, step=0.01, key="expense_amount")
+        expense_category = st.selectbox("Category", DEFAULT_CATEGORIES, key="expense_category")
+        expense_description = st.text_input("Description (optional)", key="expense_description")
+        
+        expense_submitted = st.form_submit_button("Add Expense")
+        
+        if expense_submitted:
+            save_transaction(expense_date, expense_amount, expense_category, "Expense", expense_description)
+            st.success("Expense added!")
             st.rerun()
 
 # Load current data

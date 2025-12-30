@@ -149,6 +149,14 @@ def save_transaction(date_val, amount, category, trans_type, description):
     df['date'] = df['date'].dt.strftime('%Y-%m-%d')
     df.to_csv(TRANSACTIONS_FILE, index=False)
 
+def delete_transaction(index):
+    df = load_transactions()
+    df = df.drop(index)
+    df = df.reset_index(drop=True)
+    # Make sure dates are strings before saving
+    df['date'] = df['date'].dt.strftime('%Y-%m-%d')
+    df.to_csv(TRANSACTIONS_FILE, index=False)
+
 def save_budgets(budgets_df):
     budgets_df.to_csv(BUDGETS_FILE, index=False)
 
@@ -296,17 +304,32 @@ if not transactions_df.empty:
     st.subheader("Recent Transactions")
     
     recent_df = transactions_df.sort_values('date', ascending=False).head(10)
-    recent_df['date'] = recent_df['date'].dt.strftime('%Y-%m-%d')
-    recent_df['amount'] = recent_df.apply(
-        lambda x: f"${x['amount']:.2f}" if x['type'] == 'Income' else f"-${x['amount']:.2f}", 
-        axis=1
-    )
     
-    st.dataframe(
-        recent_df[['date', 'type', 'category', 'amount', 'description']], 
-        use_container_width=True,
-        hide_index=True
-    )
+    if not recent_df.empty:
+        for idx, row in recent_df.iterrows():
+            col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
+            
+            with col1:
+                st.write(row['date'].strftime('%Y-%m-%d'))
+            with col2:
+                st.write(row['type'])
+            with col3:
+                st.write(row['category'])
+            with col4:
+                if row['type'] == 'Income':
+                    st.markdown(f"**:green[+${row['amount']:.2f}]**")
+                else:
+                    st.markdown(f"**:red[-${row['amount']:.2f}]**")
+            with col5:
+                st.write(row['description'] if row['description'] else "-")
+            with col6:
+                if st.button("🗑️", key=f"delete_{idx}", help="Delete transaction"):
+                    delete_transaction(idx)
+                    st.rerun()
+            
+            st.markdown("---")
+    else:
+        st.info("No transactions yet.")
 
 else:
     st.info("👋 Welcome! Start by adding your first transaction using the sidebar.")

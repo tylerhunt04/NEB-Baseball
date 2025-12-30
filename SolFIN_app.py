@@ -120,8 +120,12 @@ def initialize_files():
 def load_transactions():
     if os.path.exists(TRANSACTIONS_FILE):
         df = pd.read_csv(TRANSACTIONS_FILE)
-        if not df.empty:
-            df['date'] = pd.to_datetime(df['date'])
+        if not df.empty and 'date' in df.columns:
+            try:
+                df['date'] = pd.to_datetime(df['date'])
+            except Exception:
+                # If date parsing fails, return empty dataframe
+                return pd.DataFrame(columns=['date', 'amount', 'category', 'type', 'description'])
         return df
     return pd.DataFrame(columns=['date', 'amount', 'category', 'type', 'description'])
 

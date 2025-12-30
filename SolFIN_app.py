@@ -121,11 +121,9 @@ def load_transactions():
     if os.path.exists(TRANSACTIONS_FILE):
         df = pd.read_csv(TRANSACTIONS_FILE)
         if not df.empty and 'date' in df.columns:
-            try:
-                df['date'] = pd.to_datetime(df['date'])
-            except Exception:
-                # If date parsing fails, return empty dataframe
-                return pd.DataFrame(columns=['date', 'amount', 'category', 'type', 'description'])
+            df['date'] = pd.to_datetime(df['date'], errors='coerce')
+            # Remove any rows with invalid dates
+            df = df.dropna(subset=['date'])
         return df
     return pd.DataFrame(columns=['date', 'amount', 'category', 'type', 'description'])
 
@@ -135,16 +133,20 @@ def load_budgets():
     return pd.DataFrame(columns=['category', 'budget'])
 
 # Save data
-def save_transaction(date, amount, category, trans_type, description):
+def save_transaction(date_val, amount, category, trans_type, description):
     df = load_transactions()
+    # Convert date to string in consistent format
+    date_str = pd.to_datetime(date_val).strftime('%Y-%m-%d')
     new_row = pd.DataFrame([{
-        'date': date,
+        'date': date_str,
         'amount': amount,
         'category': category,
         'type': trans_type,
         'description': description
     }])
     df = pd.concat([df, new_row], ignore_index=True)
+    # Make sure dates are strings before saving
+    df['date'] = df['date'].dt.strftime('%Y-%m-%d')
     df.to_csv(TRANSACTIONS_FILE, index=False)
 
 def save_budgets(budgets_df):

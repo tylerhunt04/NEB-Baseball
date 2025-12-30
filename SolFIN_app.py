@@ -306,6 +306,24 @@ if not transactions_df.empty:
     recent_df = transactions_df.sort_values('date', ascending=False).head(10)
     
     if not recent_df.empty:
+        # Column headers
+        col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
+        with col1:
+            st.markdown("**Date**")
+        with col2:
+            st.markdown("**Type**")
+        with col3:
+            st.markdown("**Category**")
+        with col4:
+            st.markdown("**Amount**")
+        with col5:
+            st.markdown("**Description**")
+        with col6:
+            st.markdown("**Delete**")
+        
+        st.markdown("---")
+        
+        # Transaction rows
         for idx, row in recent_df.iterrows():
             col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
             

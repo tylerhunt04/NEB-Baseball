@@ -7,7 +7,7 @@ import os
 
 # Page config
 st.set_page_config(
-    page_title="Solana's Finance Tracker",
+    page_title="",
     page_icon="✨",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -152,6 +152,31 @@ st.markdown("""
         font-family: 'Lato', sans-serif !important;
     }
     
+    /* Dropdown options */
+    option {
+        background: #ffffff !important;
+        color: #1a1a1a !important;
+    }
+    
+    /* Streamlit selectbox */
+    [data-baseweb="select"] {
+        background: rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    [data-baseweb="select"] > div {
+        background: rgba(255, 255, 255, 0.9) !important;
+        color: #1a1a1a !important;
+    }
+    
+    [data-baseweb="popover"] {
+        background: #ffffff !important;
+    }
+    
+    [role="option"] {
+        background: #ffffff !important;
+        color: #1a1a1a !important;
+    }
+    
     /* Dataframe/table styling */
     [data-testid="stDataFrame"] {
         background: #ffffff;
@@ -286,7 +311,7 @@ transactions_df = load_transactions()
 budgets_df = load_budgets()
 
 # Main content
-st.title("Solana's Finances")
+st.title("✨ Solana's Finances")
 
 # Poetry rotation
 import random
@@ -484,9 +509,6 @@ if not transactions_df.empty:
             st.markdown("---")
     else:
         st.info("No transactions yet.")
-
-else:
-    st.info("👋 Welcome! Start by adding your first transaction using the sidebar.")
 
 # Budget Settings Section
 st.markdown("---")

@@ -296,6 +296,24 @@ EXPENSE_CATEGORIES = [
     "Savings", "Other"
 ]
 
+# Color wheel palette for categories
+CATEGORY_COLORS = {
+    "Groceries": "#FF6B6B",       # Red
+    "Rent/Mortgage": "#4ECDC4",   # Teal
+    "Utilities": "#45B7D1",       # Blue
+    "Transportation": "#FFA07A",  # Light Salmon
+    "Entertainment": "#98D8C8",   # Mint
+    "Dining Out": "#F7DC6F",      # Yellow
+    "Shopping": "#BB8FCE",        # Purple
+    "Healthcare": "#85C1E2",      # Sky Blue
+    "Savings": "#52C41A",         # Green
+    "Other": "#95A5A6"            # Gray
+}
+
+def get_category_color(category):
+    """Get consistent color for a category"""
+    return CATEGORY_COLORS.get(category, "#95A5A6")
+
 # Initialize data files
 def initialize_files():
     if not os.path.exists(TRANSACTIONS_FILE):
@@ -495,12 +513,15 @@ if not current_month_df.empty:
         category_spending = expense_df.groupby('category')['amount'].sum().reset_index()
         category_spending = category_spending.sort_values('amount', ascending=False)
         
+        # Get colors for each category in the chart
+        colors = [get_category_color(cat) for cat in category_spending['category']]
+        
         fig = px.pie(
             category_spending, 
             values='amount', 
             names='category',
             hole=0.4,
-            color_discrete_sequence=['#FFD700', '#FFC700', '#9c7d43', '#806437', '#1a1a1a', '#2d2d2d', '#c9a961', '#a88f4b']
+            color_discrete_sequence=colors
         )
         fig.update_traces(
             textposition='inside', 
@@ -557,8 +578,8 @@ if not budgets_df.empty and not current_month_df.empty:
         hovertemplate='<b>%{y}</b><br>Budget: $%{x:.2f}<extra></extra>'
     ))
     
-    # Add spent bars (green if under budget, red if over)
-    colors = ['#dc3545' if row['Over'] > 0 else '#28a745' for _, row in budget_df_chart.iterrows()]
+    # Add spent bars using category colors
+    colors = [get_category_color(cat) for cat in budget_df_chart['Category']]
     
     fig.add_trace(go.Bar(
         y=budget_df_chart['Category'],

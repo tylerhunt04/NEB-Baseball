@@ -437,6 +437,12 @@ st.markdown(f"""
 current_month = datetime.now().month
 current_year = datetime.now().year
 
+# Initialize default values
+total_income = 0
+total_expenses = 0
+net_income = 0
+current_month_df = pd.DataFrame()
+
 if not transactions_df.empty:
     current_month_df = transactions_df[
         (transactions_df['date'].dt.month == current_month) & 
@@ -446,42 +452,44 @@ if not transactions_df.empty:
     total_income = current_month_df[current_month_df['type'] == 'Income']['amount'].sum()
     total_expenses = current_month_df[current_month_df['type'] == 'Expense']['amount'].sum()
     net_income = total_income - total_expenses
+
+# Top metrics - always show
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.markdown(f"""
+    <div class="income-card">
+        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Income This Month</h3>
+        <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_income:,.2f}</h2>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col2:
+    st.markdown(f"""
+    <div class="spending-card">
+        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Spent This Month</h3>
+        <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_expenses:,.2f}</h2>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col3:
+    remaining_class = "remaining-card-green" if net_income >= 20 else "remaining-card-red"
+    st.markdown(f"""
+    <div class="{remaining_class}">
+        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Remaining</h3>
+        <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${net_income:,.2f}</h2>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+# Spending by Category
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    st.subheader("Spending by Category")
     
-    # Top metrics
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown(f"""
-        <div class="income-card">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Income This Month</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_income:,.2f}</h2>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-        <div class="spending-card">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Spent This Month</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_expenses:,.2f}</h2>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        remaining_class = "remaining-card-green" if net_income >= 20 else "remaining-card-red"
-        st.markdown(f"""
-        <div class="{remaining_class}">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Remaining</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${net_income:,.2f}</h2>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # Spending by Category
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.subheader("Spending by Category")
+    if not current_month_df.empty:
         expense_df = current_month_df[current_month_df['type'] == 'Expense']
         
         if not expense_df.empty:
@@ -510,63 +518,67 @@ if not transactions_df.empty:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No expenses recorded this month yet.")
+    else:
+        st.info("No expenses recorded this month yet.")
+
+with col2:
+    st.subheader("Budget Progress")
     
-    with col2:
-        st.subheader("Budget Progress")
+    if not budgets_df.empty and not current_month_df.empty:
+        expense_df = current_month_df[current_month_df['type'] == 'Expense']
+        budget_progress = []
         
-        if not budgets_df.empty:
-            budget_progress = []
+        for _, budget_row in budgets_df.iterrows():
+            category = budget_row['category']
+            budget_amount = budget_row['budget']
             
-            for _, budget_row in budgets_df.iterrows():
-                category = budget_row['category']
-                budget_amount = budget_row['budget']
-                
-                spent = expense_df[expense_df['category'] == category]['amount'].sum()
-                remaining = budget_amount - spent
-                progress = (spent / budget_amount * 100) if budget_amount > 0 else 0
-                
-                budget_progress.append({
-                    'category': category,
-                    'budget': budget_amount,
-                    'spent': spent,
-                    'remaining': remaining,
-                    'progress': min(progress, 100)
-                })
+            spent = expense_df[expense_df['category'] == category]['amount'].sum()
+            remaining = budget_amount - spent
+            progress = (spent / budget_amount * 100) if budget_amount > 0 else 0
             
-            for item in budget_progress:
-                st.markdown(f"**{item['category']}**")
-                st.markdown(f"${item['spent']:.2f} of ${item['budget']:.2f}")
-                st.progress(item['progress'] / 100)
-                
-                if item['remaining'] < 0:
-                    st.error(f"⚠️ Over budget by ${abs(item['remaining']):.2f}")
-                else:
-                    st.success(f"${item['remaining']:.2f} remaining")
-                st.markdown("---")
-        else:
-            st.info("Set budgets below to track your spending limits.")
-    
-    # Recent transactions
-    st.markdown("---")
-    st.subheader("Recent Transactions")
-    
-    # Column headers - always show
-    col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
-    with col1:
-        st.markdown("**Date**")
-    with col2:
-        st.markdown("**Type**")
-    with col3:
-        st.markdown("**Category**")
-    with col4:
-        st.markdown("**Amount**")
-    with col5:
-        st.markdown("**Description**")
-    with col6:
-        st.markdown("**Delete**")
-    
-    st.markdown("---")
-    
+            budget_progress.append({
+                'category': category,
+                'budget': budget_amount,
+                'spent': spent,
+                'remaining': remaining,
+                'progress': min(progress, 100)
+            })
+        
+        for item in budget_progress:
+            st.markdown(f"**{item['category']}**")
+            st.markdown(f"${item['spent']:.2f} of ${item['budget']:.2f}")
+            st.progress(item['progress'] / 100)
+            
+            if item['remaining'] < 0:
+                st.error(f"⚠️ Over budget by ${abs(item['remaining']):.2f}")
+            else:
+                st.success(f"${item['remaining']:.2f} remaining")
+            st.markdown("---")
+    else:
+        st.info("Set budgets below to track your spending limits.")
+
+# Recent transactions
+st.markdown("---")
+st.subheader("Recent Transactions")
+
+# Column headers - always show
+col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
+with col1:
+    st.markdown("**Date**")
+with col2:
+    st.markdown("**Type**")
+with col3:
+    st.markdown("**Category**")
+with col4:
+    st.markdown("**Amount**")
+with col5:
+    st.markdown("**Description**")
+with col6:
+    st.markdown("**Delete**")
+
+st.markdown("---")
+
+if not transactions_df.empty:
     recent_df = transactions_df.sort_values('date', ascending=False).head(10)
     
     if not recent_df.empty:

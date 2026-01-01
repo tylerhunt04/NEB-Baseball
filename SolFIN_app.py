@@ -57,23 +57,43 @@ st.markdown("""
     }
     
     .spending-card {
-        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-        color: #FFD700;
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
         padding: 1.5rem;
         border-radius: 12px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        border: 2px solid #FFD700;
+        box-shadow: 0 4px 20px rgba(220, 53, 69, 0.3);
+        border: 2px solid #dc3545;
     }
     
     .income-card {
-        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-        color: #FFD700;
+        background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+        color: white;
         padding: 1.5rem;
         border-radius: 12px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        border: 2px solid #FFD700;
+        box-shadow: 0 4px 20px rgba(40, 167, 69, 0.3);
+        border: 2px solid #28a745;
+    }
+    
+    .remaining-card-green {
+        background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        box-shadow: 0 4px 20px rgba(40, 167, 69, 0.3);
+        border: 2px solid #28a745;
+    }
+    
+    .remaining-card-red {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        box-shadow: 0 4px 20px rgba(220, 53, 69, 0.3);
+        border: 2px solid #dc3545;
     }
     
     .poetry-card {
@@ -433,24 +453,25 @@ if not transactions_df.empty:
     with col1:
         st.markdown(f"""
         <div class="income-card">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #FFD700;">Income This Month</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #FFD700;">${total_income:,.2f}</h2>
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Income This Month</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_income:,.2f}</h2>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
         st.markdown(f"""
         <div class="spending-card">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #FFD700;">Spent This Month</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #FFD700;">${total_expenses:,.2f}</h2>
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Spent This Month</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_expenses:,.2f}</h2>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
+        remaining_class = "remaining-card-green" if net_income >= 20 else "remaining-card-red"
         st.markdown(f"""
-        <div class="budget-card">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #FFD700;">Remaining</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #FFD700;">${net_income:,.2f}</h2>
+        <div class="{remaining_class}">
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Remaining</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${net_income:,.2f}</h2>
         </div>
         """, unsafe_allow_html=True)
     
@@ -529,26 +550,26 @@ if not transactions_df.empty:
     st.markdown("---")
     st.subheader("Recent Transactions")
     
+    # Column headers - always show
+    col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
+    with col1:
+        st.markdown("**Date**")
+    with col2:
+        st.markdown("**Type**")
+    with col3:
+        st.markdown("**Category**")
+    with col4:
+        st.markdown("**Amount**")
+    with col5:
+        st.markdown("**Description**")
+    with col6:
+        st.markdown("**Delete**")
+    
+    st.markdown("---")
+    
     recent_df = transactions_df.sort_values('date', ascending=False).head(10)
     
     if not recent_df.empty:
-        # Column headers
-        col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
-        with col1:
-            st.markdown("**Date**")
-        with col2:
-            st.markdown("**Type**")
-        with col3:
-            st.markdown("**Category**")
-        with col4:
-            st.markdown("**Amount**")
-        with col5:
-            st.markdown("**Description**")
-        with col6:
-            st.markdown("**Delete**")
-        
-        st.markdown("---")
-        
         # Transaction rows
         for idx, row in recent_df.iterrows():
             col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
@@ -572,8 +593,6 @@ if not transactions_df.empty:
                     st.rerun()
             
             st.markdown("---")
-    else:
-        st.info("No transactions yet.")
 
 # Budget Settings Section
 st.markdown("---")

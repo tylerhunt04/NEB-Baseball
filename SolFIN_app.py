@@ -332,18 +332,20 @@ def save_transaction(date_val, amount, category, trans_type, description):
         'description': description
     }])
     df = pd.concat([df, new_row], ignore_index=True)
-    # Only format dates if they're datetime objects, otherwise they're already strings
-    if not df.empty and pd.api.types.is_datetime64_any_dtype(df['date']):
-        df['date'] = df['date'].dt.strftime('%Y-%m-%d')
+    # Convert all dates to strings before saving
+    if not df.empty:
+        # Handle both datetime and string dates
+        df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
     df.to_csv(TRANSACTIONS_FILE, index=False)
 
 def delete_transaction(index):
     df = load_transactions()
     df = df.drop(index)
     df = df.reset_index(drop=True)
-    # Only format dates if they're datetime objects, otherwise they're already strings
-    if not df.empty and pd.api.types.is_datetime64_any_dtype(df['date']):
-        df['date'] = df['date'].dt.strftime('%Y-%m-%d')
+    # Convert all dates to strings before saving
+    if not df.empty:
+        # Handle both datetime and string dates
+        df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
     df.to_csv(TRANSACTIONS_FILE, index=False)
 
 def save_budgets(budgets_df):

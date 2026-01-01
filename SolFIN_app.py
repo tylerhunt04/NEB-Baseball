@@ -134,7 +134,7 @@ st.markdown("""
     /* Button styling */
     .stButton>button {
         background: linear-gradient(135deg, #d4af37 0%, #b8964f 100%);
-        color: #1a1a1a;
+        color: #1a1a1a !important;
         border: none;
         border-radius: 8px;
         padding: 0.5rem 2rem;
@@ -146,6 +146,12 @@ st.markdown("""
     .stButton>button:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
+        color: #1a1a1a !important;
+    }
+    
+    /* Force button text to be black */
+    .stButton>button p {
+        color: #1a1a1a !important;
     }
     
     /* Progress bar */
@@ -286,7 +292,7 @@ initialize_files()
 # Sidebar - Add Transaction
 with st.sidebar:
     st.subheader("Income and Expenses")
-    st.markdown("---")
+    st.markdown('<div style="height: 2px; background: linear-gradient(90deg, #d4af37 0%, #b8964f 100%); margin: 0.5rem 0 1rem 0; border-radius: 2px;"></div>', unsafe_allow_html=True)
     
     # Add Income Section
     st.subheader("💵 Add Income")
@@ -304,7 +310,7 @@ with st.sidebar:
             st.success("Income added!")
             st.rerun()
     
-    st.markdown("---")
+    st.markdown('<div style="height: 2px; background: linear-gradient(90deg, #d4af37 0%, #b8964f 100%); margin: 1rem 0; border-radius: 2px;"></div>', unsafe_allow_html=True)
     
     # Add Expense Section
     st.subheader("💳 Add Expense")

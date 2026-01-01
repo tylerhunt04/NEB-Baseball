@@ -103,7 +103,9 @@ TRANSACTIONS_FILE = "transactions.csv"
 BUDGETS_FILE = "budgets.csv"
 
 # Default categories
-DEFAULT_CATEGORIES = [
+INCOME_CATEGORIES = ["Work"]
+
+EXPENSE_CATEGORIES = [
     "Groceries", "Rent/Mortgage", "Utilities", "Transportation", 
     "Entertainment", "Dining Out", "Shopping", "Healthcare", 
     "Savings", "Other"
@@ -174,7 +176,7 @@ with st.sidebar:
     with st.form("income_form", clear_on_submit=True):
         income_date = st.date_input("Date", value=date.today(), key="income_date")
         income_amount = st.number_input("Amount ($)", min_value=0.01, step=0.01, key="income_amount")
-        income_category = st.selectbox("Category", DEFAULT_CATEGORIES, key="income_category")
+        income_category = st.selectbox("Category", INCOME_CATEGORIES, key="income_category")
         income_description = st.text_input("Description (optional)", key="income_description")
         
         income_submitted = st.form_submit_button("Add Income")
@@ -192,7 +194,7 @@ with st.sidebar:
     with st.form("expense_form", clear_on_submit=True):
         expense_date = st.date_input("Date", value=date.today(), key="expense_date")
         expense_amount = st.number_input("Amount ($)", min_value=0.01, step=0.01, key="expense_amount")
-        expense_category = st.selectbox("Category", DEFAULT_CATEGORIES, key="expense_category")
+        expense_category = st.selectbox("Category", EXPENSE_CATEGORIES, key="expense_category")
         expense_description = st.text_input("Description (optional)", key="expense_description")
         
         expense_submitted = st.form_submit_button("Add Expense")
@@ -382,7 +384,7 @@ with st.expander("Set Monthly Budgets by Category", expanded=False):
     budget_inputs = {}
     cols = st.columns(2)
     
-    for idx, category in enumerate(DEFAULT_CATEGORIES):
+    for idx, category in enumerate(EXPENSE_CATEGORIES):
         current_budget = 0
         if not budgets_df.empty:
             existing = budgets_df[budgets_df['category'] == category]

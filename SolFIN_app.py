@@ -18,66 +18,66 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Cormorant+Garamond:wght@300;400;500&display=swap');
     
-    /* Main styling */
+    /* Main styling - Light Mode */
     .main {
-        background: linear-gradient(135deg, #0f2557 0%, #1a3a6e 50%, #0f2557 100%);
-        color: #f5f5f5;
+        background: linear-gradient(135deg, #ffffff 0%, #f8f8f8 100%);
+        color: #1a1a1a;
     }
     
     /* Headers */
     h1, h2, h3 {
         font-family: 'Playfair Display', serif;
         color: #d4af37;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        text-shadow: 0 1px 2px rgba(0,0,0,0.1);
     }
     
     p, div, span, label {
         font-family: 'Cormorant Garamond', serif;
-        color: #f5f5f5;
+        color: #1a1a1a;
     }
     
     /* Cards */
     .metric-card {
-        background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(26, 58, 110, 0.3) 100%);
+        background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
         padding: 1.5rem;
         border-radius: 12px;
-        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.2);
-        border: 1px solid rgba(212, 175, 55, 0.3);
+        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.15);
+        border: 2px solid #d4af37;
         margin-bottom: 1rem;
     }
     
     .budget-card {
-        background: linear-gradient(135deg, #1a3a6e 0%, #0f2557 100%);
+        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
         color: #d4af37;
         padding: 1.5rem;
         border-radius: 12px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.3);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
         border: 2px solid #d4af37;
     }
     
     .spending-card {
-        background: linear-gradient(135deg, #0f2557 0%, #1a3a6e 100%);
+        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
         color: #d4af37;
         padding: 1.5rem;
         border-radius: 12px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.3);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
         border: 2px solid #d4af37;
     }
     
     .income-card {
-        background: linear-gradient(135deg, #1a3a6e 0%, #0f2557 100%);
+        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
         color: #d4af37;
         padding: 1.5rem;
         border-radius: 12px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.3);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
         border: 2px solid #d4af37;
     }
     
     .poetry-card {
-        background: linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(26, 58, 110, 0.4) 100%);
+        background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
         padding: 2rem;
         border-radius: 12px;
         margin: 2rem 0;
@@ -89,7 +89,7 @@ st.markdown("""
         font-family: 'Cormorant Garamond', serif;
         font-size: 1.2rem;
         font-style: italic;
-        color: #d4af37;
+        color: #1a1a1a;
         line-height: 1.8;
         text-align: center;
     }
@@ -97,14 +97,14 @@ st.markdown("""
     .poetry-author {
         font-family: 'Cormorant Garamond', serif;
         font-size: 0.9rem;
-        color: #b8964f;
+        color: #4a4a4a;
         text-align: right;
         margin-top: 1rem;
     }
     
     /* Sidebar styling */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0f2557 0%, #1a3a6e 100%);
+        background: linear-gradient(180deg, #1a1a1a 0%, #2d2d2d 100%);
     }
     
     [data-testid="stSidebar"] h1,
@@ -122,7 +122,7 @@ st.markdown("""
     /* Button styling */
     .stButton>button {
         background: linear-gradient(135deg, #d4af37 0%, #b8964f 100%);
-        color: #0f2557;
+        color: #1a1a1a;
         border: none;
         border-radius: 8px;
         padding: 0.5rem 2rem;
@@ -143,17 +143,22 @@ st.markdown("""
     
     /* Input fields */
     input, textarea, select {
-        background: rgba(26, 58, 110, 0.3) !important;
-        color: #f5f5f5 !important;
-        border: 1px solid rgba(212, 175, 55, 0.3) !important;
+        background: rgba(255, 255, 255, 0.9) !important;
+        color: #1a1a1a !important;
+        border: 1px solid rgba(212, 175, 55, 0.5) !important;
         border-radius: 8px !important;
     }
     
     /* Dataframe/table styling */
     [data-testid="stDataFrame"] {
-        background: rgba(26, 58, 110, 0.3);
+        background: #ffffff;
         border-radius: 12px;
         border: 1px solid rgba(212, 175, 55, 0.3);
+    }
+    
+    /* Make sure text is readable */
+    .stMarkdown, .stText {
+        color: #1a1a1a;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -269,7 +274,7 @@ transactions_df = load_transactions()
 budgets_df = load_budgets()
 
 # Main content
-st.title("✨ Solana's Financial Journey")
+st.title("Income and Expenses")
 
 # Poetry rotation
 import random
@@ -365,7 +370,7 @@ if not transactions_df.empty:
                 values='amount', 
                 names='category',
                 hole=0.4,
-                color_discrete_sequence=['#d4af37', '#b8964f', '#9c7d43', '#806437', '#1a3a6e', '#0f2557', '#c9a961', '#a88f4b']
+                color_discrete_sequence=['#d4af37', '#b8964f', '#9c7d43', '#806437', '#1a1a1a', '#2d2d2d', '#c9a961', '#a88f4b']
             )
             fig.update_traces(
                 textposition='inside', 
@@ -377,7 +382,7 @@ if not transactions_df.empty:
                 height=400,
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#d4af37', family='Cormorant Garamond')
+                font=dict(color='#1a1a1a', family='Cormorant Garamond')
             )
             st.plotly_chart(fig, use_container_width=True)
         else:

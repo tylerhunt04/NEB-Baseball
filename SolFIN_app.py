@@ -121,6 +121,16 @@ st.markdown("""
         font-family: 'Lato', sans-serif !important;
     }
     
+    /* Force selectbox text to be black */
+    [data-testid="stSidebar"] [data-baseweb="select"] span,
+    [data-testid="stSidebar"] [data-baseweb="select"] div {
+        color: #1a1a1a !important;
+    }
+    
+    [data-testid="stSidebar"] input {
+        color: #1a1a1a !important;
+    }
+    
     /* Button styling */
     .stButton>button {
         background: linear-gradient(135deg, #d4af37 0%, #b8964f 100%);
@@ -168,12 +178,21 @@ st.markdown("""
         color: #1a1a1a !important;
     }
     
+    [data-baseweb="select"] span {
+        color: #1a1a1a !important;
+    }
+    
     [data-baseweb="popover"] {
         background: #ffffff !important;
     }
     
     [role="option"] {
         background: #ffffff !important;
+        color: #1a1a1a !important;
+    }
+    
+    [role="option"]:hover {
+        background: #f0f0f0 !important;
         color: #1a1a1a !important;
     }
     
@@ -266,9 +285,6 @@ initialize_files()
 
 # Sidebar - Add Transaction
 with st.sidebar:
-    st.title("✨ Solana's Finance Tracker")
-    st.markdown("---")
-    
     st.subheader("Income and Expenses")
     st.markdown("---")
     

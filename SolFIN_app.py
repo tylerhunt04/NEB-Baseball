@@ -7,8 +7,8 @@ import os
 
 # Page config
 st.set_page_config(
-    page_title="Personal Finance Tracker",
-    page_icon="💰",
+    page_title="Solana's Finance Tracker",
+    page_icon="✨",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -16,84 +16,144 @@ st.set_page_config(
 # Custom CSS for styling
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Cormorant+Garamond:wght@300;400;500&display=swap');
     
     /* Main styling */
     .main {
-        background: linear-gradient(135deg, #f5f7fa 0%, #f0f2f5 100%);
+        background: linear-gradient(135deg, #0f2557 0%, #1a3a6e 50%, #0f2557 100%);
+        color: #f5f5f5;
     }
     
     /* Headers */
     h1, h2, h3 {
         font-family: 'Playfair Display', serif;
-        color: #2c3e50;
+        color: #d4af37;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    p, div, span, label {
+        font-family: 'Cormorant Garamond', serif;
+        color: #f5f5f5;
     }
     
     /* Cards */
     .metric-card {
-        background: white;
+        background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(26, 58, 110, 0.3) 100%);
         padding: 1.5rem;
         border-radius: 12px;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-        border-left: 4px solid #6c63ff;
+        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.2);
+        border: 1px solid rgba(212, 175, 55, 0.3);
         margin-bottom: 1rem;
     }
     
     .budget-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        background: linear-gradient(135deg, #1a3a6e 0%, #0f2557 100%);
+        color: #d4af37;
         padding: 1.5rem;
         border-radius: 12px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.3);
+        border: 2px solid #d4af37;
     }
     
     .spending-card {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        color: white;
+        background: linear-gradient(135deg, #0f2557 0%, #1a3a6e 100%);
+        color: #d4af37;
         padding: 1.5rem;
         border-radius: 12px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 15px rgba(240, 147, 251, 0.3);
+        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.3);
+        border: 2px solid #d4af37;
     }
     
     .income-card {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        color: white;
+        background: linear-gradient(135deg, #1a3a6e 0%, #0f2557 100%);
+        color: #d4af37;
         padding: 1.5rem;
         border-radius: 12px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.3);
+        border: 2px solid #d4af37;
+    }
+    
+    .poetry-card {
+        background: linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(26, 58, 110, 0.4) 100%);
+        padding: 2rem;
+        border-radius: 12px;
+        margin: 2rem 0;
+        border-left: 4px solid #d4af37;
+        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.2);
+    }
+    
+    .poetry-text {
+        font-family: 'Cormorant Garamond', serif;
+        font-size: 1.2rem;
+        font-style: italic;
+        color: #d4af37;
+        line-height: 1.8;
+        text-align: center;
+    }
+    
+    .poetry-author {
+        font-family: 'Cormorant Garamond', serif;
+        font-size: 0.9rem;
+        color: #b8964f;
+        text-align: right;
+        margin-top: 1rem;
     }
     
     /* Sidebar styling */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(180deg, #0f2557 0%, #1a3a6e 100%);
     }
     
-    [data-testid="stSidebar"] * {
-        color: white !important;
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
+        color: #d4af37 !important;
+    }
+    
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] div {
+        color: #f5f5f5 !important;
     }
     
     /* Button styling */
     .stButton>button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        background: linear-gradient(135deg, #d4af37 0%, #b8964f 100%);
+        color: #0f2557;
         border: none;
         border-radius: 8px;
         padding: 0.5rem 2rem;
-        font-weight: 500;
+        font-weight: 600;
+        font-family: 'Playfair Display', serif;
         transition: transform 0.2s;
     }
     
     .stButton>button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
     }
     
     /* Progress bar */
     .stProgress > div > div > div {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #d4af37 0%, #b8964f 100%);
+    }
+    
+    /* Input fields */
+    input, textarea, select {
+        background: rgba(26, 58, 110, 0.3) !important;
+        color: #f5f5f5 !important;
+        border: 1px solid rgba(212, 175, 55, 0.3) !important;
+        border-radius: 8px !important;
+    }
+    
+    /* Dataframe/table styling */
+    [data-testid="stDataFrame"] {
+        background: rgba(26, 58, 110, 0.3);
+        border-radius: 12px;
+        border: 1px solid rgba(212, 175, 55, 0.3);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -167,7 +227,7 @@ initialize_files()
 
 # Sidebar - Add Transaction
 with st.sidebar:
-    st.title("💰 Finance Tracker")
+    st.title("✨ Solana's Finance Tracker")
     st.markdown("---")
     
     # Add Income Section
@@ -209,7 +269,42 @@ transactions_df = load_transactions()
 budgets_df = load_budgets()
 
 # Main content
-st.title("📊 Financial Overview")
+st.title("✨ Solana's Financial Journey")
+
+# Poetry rotation
+import random
+
+poems = [
+    {
+        "text": "A penny saved is not a penny earned,\nBut wisdom gained and lessons learned.\nFor wealth is more than coins in hand—\nIt's knowing how to wisely plan.",
+        "author": "— On Financial Wisdom"
+    },
+    {
+        "text": "Count your blessings, count your change,\nBoth require care to arrange.\nThe former fills the soul with light,\nThe latter keeps your future bright.",
+        "author": "— On Gratitude & Growth"
+    },
+    {
+        "text": "Small streams make mighty rivers flow,\nSmall savings help your wealth to grow.\nPatience is the golden key,\nTo financial serenity.",
+        "author": "— On Patience & Prosperity"
+    },
+    {
+        "text": "Not all that glitters must be bought,\nSome treasures can't be sold or sought.\nTrue wealth lies in mindful choice,\nNot silencing your inner voice.",
+        "author": "— On Mindful Spending"
+    },
+    {
+        "text": "Track the moments, track the spending,\nEvery journey has a beginning.\nWith each choice you write your story,\nOf financial health and glory.",
+        "author": "— On Your Journey"
+    }
+]
+
+selected_poem = random.choice(poems)
+
+st.markdown(f"""
+<div class="poetry-card">
+    <div class="poetry-text">{selected_poem['text']}</div>
+    <div class="poetry-author">{selected_poem['author']}</div>
+</div>
+""", unsafe_allow_html=True)
 
 # Calculate current month metrics
 current_month = datetime.now().month
@@ -231,25 +326,24 @@ if not transactions_df.empty:
     with col1:
         st.markdown(f"""
         <div class="income-card">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9;">Income This Month</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem;">${total_income:,.2f}</h2>
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #d4af37;">Income This Month</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #d4af37;">${total_income:,.2f}</h2>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
         st.markdown(f"""
         <div class="spending-card">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9;">Spent This Month</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem;">${total_expenses:,.2f}</h2>
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #d4af37;">Spent This Month</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #d4af37;">${total_expenses:,.2f}</h2>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
-        net_color = "income-card" if net_income >= 0 else "spending-card"
         st.markdown(f"""
-        <div class="{net_color}">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9;">Remaining</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem;">${net_income:,.2f}</h2>
+        <div class="budget-card">
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #d4af37;">Remaining</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #d4af37;">${net_income:,.2f}</h2>
         </div>
         """, unsafe_allow_html=True)
     
@@ -271,14 +365,19 @@ if not transactions_df.empty:
                 values='amount', 
                 names='category',
                 hole=0.4,
-                color_discrete_sequence=px.colors.sequential.Purples_r
+                color_discrete_sequence=['#d4af37', '#b8964f', '#9c7d43', '#806437', '#1a3a6e', '#0f2557', '#c9a961', '#a88f4b']
             )
-            fig.update_traces(textposition='inside', textinfo='percent+label')
+            fig.update_traces(
+                textposition='inside', 
+                textinfo='percent+label',
+                textfont=dict(color='white', size=12, family='Cormorant Garamond')
+            )
             fig.update_layout(
                 showlegend=False,
                 height=400,
                 paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)'
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#d4af37', family='Cormorant Garamond')
             )
             st.plotly_chart(fig, use_container_width=True)
         else:

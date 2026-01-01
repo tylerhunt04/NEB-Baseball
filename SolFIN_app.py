@@ -131,7 +131,7 @@ st.markdown("""
         color: #1a1a1a !important;
     }
     
-    /* Button styling */
+    /* Button styling - FORCE ALL BUTTON TEXT TO BLACK */
     .stButton>button {
         background: linear-gradient(135deg, #FFD700 0%, #FFC700 100%);
         color: #000000 !important;
@@ -149,7 +149,15 @@ st.markdown("""
         color: #000000 !important;
     }
     
-    /* Force button text to be black - multiple selectors */
+    /* Force ALL button text to be black - every possible selector */
+    button {
+        color: #000000 !important;
+    }
+    
+    button * {
+        color: #000000 !important;
+    }
+    
     .stButton>button p {
         color: #000000 !important;
     }
@@ -167,6 +175,23 @@ st.markdown("""
     }
     
     button[kind="primary"] * {
+        color: #000000 !important;
+    }
+    
+    /* Specifically target form submit buttons */
+    button[type="submit"] {
+        color: #000000 !important;
+    }
+    
+    button[type="submit"] * {
+        color: #000000 !important;
+    }
+    
+    .stFormSubmitButton button {
+        color: #000000 !important;
+    }
+    
+    .stFormSubmitButton button * {
         color: #000000 !important;
     }
     

@@ -16,7 +16,7 @@ st.set_page_config(
 # Custom CSS for styling
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Cormorant+Garamond:wght@300;400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Lato:wght@300;400;700&display=swap');
     
     /* Main styling - Light Mode */
     .main {
@@ -26,13 +26,13 @@ st.markdown("""
     
     /* Headers */
     h1, h2, h3 {
-        font-family: 'Playfair Display', serif;
+        font-family: 'Montserrat', sans-serif;
         color: #d4af37;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        font-weight: 600;
     }
     
     p, div, span, label {
-        font-family: 'Cormorant Garamond', serif;
+        font-family: 'Lato', sans-serif;
         color: #1a1a1a;
     }
     
@@ -86,8 +86,8 @@ st.markdown("""
     }
     
     .poetry-text {
-        font-family: 'Cormorant Garamond', serif;
-        font-size: 1.2rem;
+        font-family: 'Lato', sans-serif;
+        font-size: 1.1rem;
         font-style: italic;
         color: #1a1a1a;
         line-height: 1.8;
@@ -95,7 +95,7 @@ st.markdown("""
     }
     
     .poetry-author {
-        font-family: 'Cormorant Garamond', serif;
+        font-family: 'Lato', sans-serif;
         font-size: 0.9rem;
         color: #4a4a4a;
         text-align: right;
@@ -111,12 +111,14 @@ st.markdown("""
     [data-testid="stSidebar"] h2,
     [data-testid="stSidebar"] h3 {
         color: #d4af37 !important;
+        font-family: 'Montserrat', sans-serif !important;
     }
     
     [data-testid="stSidebar"] label,
     [data-testid="stSidebar"] p,
     [data-testid="stSidebar"] div {
         color: #f5f5f5 !important;
+        font-family: 'Lato', sans-serif !important;
     }
     
     /* Button styling */
@@ -127,7 +129,7 @@ st.markdown("""
         border-radius: 8px;
         padding: 0.5rem 2rem;
         font-weight: 600;
-        font-family: 'Playfair Display', serif;
+        font-family: 'Montserrat', sans-serif;
         transition: transform 0.2s;
     }
     
@@ -147,6 +149,7 @@ st.markdown("""
         color: #1a1a1a !important;
         border: 1px solid rgba(212, 175, 55, 0.5) !important;
         border-radius: 8px !important;
+        font-family: 'Lato', sans-serif !important;
     }
     
     /* Dataframe/table styling */
@@ -159,6 +162,12 @@ st.markdown("""
     /* Make sure text is readable */
     .stMarkdown, .stText {
         color: #1a1a1a;
+        font-family: 'Lato', sans-serif;
+    }
+    
+    /* Ensure Streamlit's default theme doesn't override */
+    .stApp {
+        background: #ffffff;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -235,6 +244,9 @@ with st.sidebar:
     st.title("✨ Solana's Finance Tracker")
     st.markdown("---")
     
+    st.subheader("Income and Expenses")
+    st.markdown("---")
+    
     # Add Income Section
     st.subheader("💵 Add Income")
     
@@ -274,7 +286,7 @@ transactions_df = load_transactions()
 budgets_df = load_budgets()
 
 # Main content
-st.title("Income and Expenses")
+st.title("Solana's Finances")
 
 # Poetry rotation
 import random
@@ -375,14 +387,14 @@ if not transactions_df.empty:
             fig.update_traces(
                 textposition='inside', 
                 textinfo='percent+label',
-                textfont=dict(color='white', size=12, family='Cormorant Garamond')
+                textfont=dict(color='white', size=12, family='Lato')
             )
             fig.update_layout(
                 showlegend=False,
                 height=400,
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#1a1a1a', family='Cormorant Garamond')
+                font=dict(color='#1a1a1a', family='Lato')
             )
             st.plotly_chart(fig, use_container_width=True)
         else:

@@ -27,7 +27,7 @@ st.markdown("""
     /* Headers */
     h1, h2, h3 {
         font-family: 'Montserrat', sans-serif;
-        color: #d4af37;
+        color: #FFD700;
         font-weight: 600;
     }
     
@@ -42,38 +42,38 @@ st.markdown("""
         padding: 1.5rem;
         border-radius: 12px;
         box-shadow: 0 4px 20px rgba(212, 175, 55, 0.15);
-        border: 2px solid #d4af37;
+        border: 2px solid #FFD700;
         margin-bottom: 1rem;
     }
     
     .budget-card {
         background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-        color: #d4af37;
+        color: #FFD700;
         padding: 1.5rem;
         border-radius: 12px;
         margin-bottom: 1rem;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        border: 2px solid #d4af37;
+        border: 2px solid #FFD700;
     }
     
     .spending-card {
         background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-        color: #d4af37;
+        color: #FFD700;
         padding: 1.5rem;
         border-radius: 12px;
         margin-bottom: 1rem;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        border: 2px solid #d4af37;
+        border: 2px solid #FFD700;
     }
     
     .income-card {
         background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-        color: #d4af37;
+        color: #FFD700;
         padding: 1.5rem;
         border-radius: 12px;
         margin-bottom: 1rem;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        border: 2px solid #d4af37;
+        border: 2px solid #FFD700;
     }
     
     .poetry-card {
@@ -81,7 +81,7 @@ st.markdown("""
         padding: 2rem;
         border-radius: 12px;
         margin: 2rem 0;
-        border-left: 4px solid #d4af37;
+        border-left: 4px solid #FFD700;
         box-shadow: 0 4px 20px rgba(212, 175, 55, 0.2);
     }
     
@@ -110,7 +110,7 @@ st.markdown("""
     [data-testid="stSidebar"] h1,
     [data-testid="stSidebar"] h2,
     [data-testid="stSidebar"] h3 {
-        color: #d4af37 !important;
+        color: #FFD700 !important;
         font-family: 'Montserrat', sans-serif !important;
     }
     
@@ -133,8 +133,8 @@ st.markdown("""
     
     /* Button styling */
     .stButton>button {
-        background: linear-gradient(135deg, #d4af37 0%, #b8964f 100%);
-        color: #1a1a1a !important;
+        background: linear-gradient(135deg, #FFD700 0%, #FFC700 100%);
+        color: #000000 !important;
         border: none;
         border-radius: 8px;
         padding: 0.5rem 2rem;
@@ -145,18 +145,34 @@ st.markdown("""
     
     .stButton>button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
-        color: #1a1a1a !important;
+        box-shadow: 0 6px 20px rgba(255, 215, 0, 0.4);
+        color: #000000 !important;
     }
     
-    /* Force button text to be black */
+    /* Force button text to be black - multiple selectors */
     .stButton>button p {
-        color: #1a1a1a !important;
+        color: #000000 !important;
+    }
+    
+    .stButton>button span {
+        color: #000000 !important;
+    }
+    
+    .stButton>button div {
+        color: #000000 !important;
+    }
+    
+    button[kind="primary"] {
+        color: #000000 !important;
+    }
+    
+    button[kind="primary"] * {
+        color: #000000 !important;
     }
     
     /* Progress bar */
     .stProgress > div > div > div {
-        background: linear-gradient(135deg, #d4af37 0%, #b8964f 100%);
+        background: linear-gradient(135deg, #FFD700 0%, #FFC700 100%);
     }
     
     /* Input fields */
@@ -292,7 +308,7 @@ initialize_files()
 # Sidebar - Add Transaction
 with st.sidebar:
     st.subheader("Income and Expenses")
-    st.markdown('<div style="height: 2px; background: linear-gradient(90deg, #d4af37 0%, #b8964f 100%); margin: 0.5rem 0 1rem 0; border-radius: 2px;"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="height: 2px; background: linear-gradient(90deg, #FFD700 0%, #FFC700 100%); margin: 0.5rem 0 1rem 0; border-radius: 2px;"></div>', unsafe_allow_html=True)
     
     # Add Income Section
     st.subheader("💵 Add Income")
@@ -310,7 +326,7 @@ with st.sidebar:
             st.success("Income added!")
             st.rerun()
     
-    st.markdown('<div style="height: 2px; background: linear-gradient(90deg, #d4af37 0%, #b8964f 100%); margin: 1rem 0; border-radius: 2px;"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="height: 2px; background: linear-gradient(90deg, #FFD700 0%, #FFC700 100%); margin: 1rem 0; border-radius: 2px;"></div>', unsafe_allow_html=True)
     
     # Add Expense Section
     st.subheader("💳 Add Expense")
@@ -390,24 +406,24 @@ if not transactions_df.empty:
     with col1:
         st.markdown(f"""
         <div class="income-card">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #d4af37;">Income This Month</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #d4af37;">${total_income:,.2f}</h2>
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #FFD700;">Income This Month</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #FFD700;">${total_income:,.2f}</h2>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
         st.markdown(f"""
         <div class="spending-card">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #d4af37;">Spent This Month</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #d4af37;">${total_expenses:,.2f}</h2>
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #FFD700;">Spent This Month</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #FFD700;">${total_expenses:,.2f}</h2>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
         st.markdown(f"""
         <div class="budget-card">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #d4af37;">Remaining</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #d4af37;">${net_income:,.2f}</h2>
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #FFD700;">Remaining</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #FFD700;">${net_income:,.2f}</h2>
         </div>
         """, unsafe_allow_html=True)
     
@@ -429,7 +445,7 @@ if not transactions_df.empty:
                 values='amount', 
                 names='category',
                 hole=0.4,
-                color_discrete_sequence=['#d4af37', '#b8964f', '#9c7d43', '#806437', '#1a1a1a', '#2d2d2d', '#c9a961', '#a88f4b']
+                color_discrete_sequence=['#FFD700', '#FFC700', '#9c7d43', '#806437', '#1a1a1a', '#2d2d2d', '#c9a961', '#a88f4b']
             )
             fig.update_traces(
                 textposition='inside', 

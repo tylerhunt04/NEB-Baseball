@@ -486,78 +486,128 @@ with col3:
 st.markdown("---")
 
 # Spending by Category
-col1, col2 = st.columns([1, 1])
+st.subheader("Spending by Category")
 
-with col1:
-    st.subheader("Spending by Category")
+if not current_month_df.empty:
+    expense_df = current_month_df[current_month_df['type'] == 'Expense']
     
-    if not current_month_df.empty:
-        expense_df = current_month_df[current_month_df['type'] == 'Expense']
+    if not expense_df.empty:
+        category_spending = expense_df.groupby('category')['amount'].sum().reset_index()
+        category_spending = category_spending.sort_values('amount', ascending=False)
         
-        if not expense_df.empty:
-            category_spending = expense_df.groupby('category')['amount'].sum().reset_index()
-            category_spending = category_spending.sort_values('amount', ascending=False)
-            
-            fig = px.pie(
-                category_spending, 
-                values='amount', 
-                names='category',
-                hole=0.4,
-                color_discrete_sequence=['#FFD700', '#FFC700', '#9c7d43', '#806437', '#1a1a1a', '#2d2d2d', '#c9a961', '#a88f4b']
-            )
-            fig.update_traces(
-                textposition='inside', 
-                textinfo='percent+label',
-                textfont=dict(color='white', size=12, family='Lato')
-            )
-            fig.update_layout(
-                showlegend=False,
-                height=400,
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#1a1a1a', family='Lato')
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No expenses recorded this month yet.")
+        fig = px.pie(
+            category_spending, 
+            values='amount', 
+            names='category',
+            hole=0.4,
+            color_discrete_sequence=['#FFD700', '#FFC700', '#9c7d43', '#806437', '#1a1a1a', '#2d2d2d', '#c9a961', '#a88f4b']
+        )
+        fig.update_traces(
+            textposition='inside', 
+            textinfo='percent+label',
+            textfont=dict(color='white', size=12, family='Lato')
+        )
+        fig.update_layout(
+            showlegend=False,
+            height=400,
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='#1a1a1a', family='Lato')
+        )
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No expenses recorded this month yet.")
+else:
+    st.info("No expenses recorded this month yet.")
 
-with col2:
-    st.subheader("Budget Progress")
+st.markdown("---")
+
+# Budget Overview Section
+st.subheader("Budget Overview")
+
+if not budgets_df.empty and not current_month_df.empty:
+    expense_df = current_month_df[current_month_df['type'] == 'Expense']
     
-    if not budgets_df.empty and not current_month_df.empty:
-        expense_df = current_month_df[current_month_df['type'] == 'Expense']
-        budget_progress = []
+    budget_data = []
+    for _, budget_row in budgets_df.iterrows():
+        category = budget_row['category']
+        budget_amount = budget_row['budget']
+        spent = expense_df[expense_df['category'] == category]['amount'].sum()
         
-        for _, budget_row in budgets_df.iterrows():
-            category = budget_row['category']
-            budget_amount = budget_row['budget']
-            
-            spent = expense_df[expense_df['category'] == category]['amount'].sum()
-            remaining = budget_amount - spent
-            progress = (spent / budget_amount * 100) if budget_amount > 0 else 0
-            
-            budget_progress.append({
-                'category': category,
-                'budget': budget_amount,
-                'spent': spent,
-                'remaining': remaining,
-                'progress': min(progress, 100)
-            })
-        
-        for item in budget_progress:
-            st.markdown(f"**{item['category']}**")
-            st.markdown(f"${item['spent']:.2f} of ${item['budget']:.2f}")
-            st.progress(item['progress'] / 100)
-            
-            if item['remaining'] < 0:
-                st.error(f"⚠️ Over budget by ${abs(item['remaining']):.2f}")
-            else:
-                st.success(f"${item['remaining']:.2f} remaining")
-            st.markdown("---")
-    else:
-        st.info("Set budgets below to track your spending limits.")
+        budget_data.append({
+            'Category': category,
+            'Budget': budget_amount,
+            'Spent': spent,
+            'Remaining': max(0, budget_amount - spent),
+            'Over': max(0, spent - budget_amount)
+        })
+    
+    budget_df_chart = pd.DataFrame(budget_data)
+    
+    # Create horizontal bar chart
+    fig = go.Figure()
+    
+    # Add budget bars (lighter background)
+    fig.add_trace(go.Bar(
+        y=budget_df_chart['Category'],
+        x=budget_df_chart['Budget'],
+        name='Budget',
+        orientation='h',
+        marker=dict(color='rgba(200, 200, 200, 0.3)'),
+        hovertemplate='<b>%{y}</b><br>Budget: $%{x:.2f}<extra></extra>'
+    ))
+    
+    # Add spent bars (green if under budget, red if over)
+    colors = ['#dc3545' if row['Over'] > 0 else '#28a745' for _, row in budget_df_chart.iterrows()]
+    
+    fig.add_trace(go.Bar(
+        y=budget_df_chart['Category'],
+        x=budget_df_chart['Spent'],
+        name='Spent',
+        orientation='h',
+        marker=dict(color=colors),
+        hovertemplate='<b>%{y}</b><br>Spent: $%{x:.2f}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        barmode='overlay',
+        height=max(300, len(budget_df_chart) * 40),
+        margin=dict(l=20, r=20, t=20, b=20),
+        xaxis=dict(title='Amount ($)', gridcolor='rgba(200, 200, 200, 0.2)'),
+        yaxis=dict(title=''),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#1a1a1a', family='Lato'),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Summary stats below the chart
+    col1, col2, col3 = st.columns(3)
+    total_budget = budget_df_chart['Budget'].sum()
+    total_spent = budget_df_chart['Spent'].sum()
+    total_remaining = total_budget - total_spent
+    
+    with col1:
+        st.metric("Total Budget", f"${total_budget:,.2f}")
+    with col2:
+        st.metric("Total Spent", f"${total_spent:,.2f}")
+    with col3:
+        st.metric("Remaining", f"${total_remaining:,.2f}", 
+                 delta=f"{(total_remaining/total_budget*100):.1f}%" if total_budget > 0 else "0%")
+    
+elif not budgets_df.empty:
+    st.info("No expenses this month yet to compare against budgets.")
+else:
+    st.info("Set budgets below to track your spending limits.")
 
 # Recent transactions
 st.markdown("---")

@@ -362,7 +362,7 @@ with st.sidebar:
     
     with st.form("income_form", clear_on_submit=True):
         income_date = st.date_input("Date", value=date.today(), key="income_date")
-        income_amount = st.number_input("Amount ($)", min_value=0.01, step=0.01, key="income_amount")
+        income_amount = st.number_input("Amount ($)", min_value=0.01, step=5.00, key="income_amount")
         income_category = st.selectbox("Category", INCOME_CATEGORIES, key="income_category")
         income_description = st.text_input("Description (optional)", key="income_description")
         
@@ -380,7 +380,7 @@ with st.sidebar:
     
     with st.form("expense_form", clear_on_submit=True):
         expense_date = st.date_input("Date", value=date.today(), key="expense_date")
-        expense_amount = st.number_input("Amount ($)", min_value=0.01, step=0.01, key="expense_amount")
+        expense_amount = st.number_input("Amount ($)", min_value=0.01, step=5.00, key="expense_amount")
         expense_category = st.selectbox("Category", EXPENSE_CATEGORIES, key="expense_category")
         expense_description = st.text_input("Description (optional)", key="expense_description")
         

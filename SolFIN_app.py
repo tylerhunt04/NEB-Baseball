@@ -354,9 +354,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# File paths
-TRANSACTIONS_FILE = "transactions.csv"
-BUDGETS_FILE = "budgets.csv"
+# File paths - store in a persistent location
+import os
+from pathlib import Path
+
+# Create data directory in user's home folder
+DATA_DIR = Path.home() / ".solana_finance_tracker"
+DATA_DIR.mkdir(exist_ok=True)
+
+TRANSACTIONS_FILE = str(DATA_DIR / "transactions.csv")
+BUDGETS_FILE = str(DATA_DIR / "budgets.csv")
 
 # Default categories
 INCOME_CATEGORIES = ["Work"]
@@ -524,11 +531,47 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Calculate current month metrics
-current_month = datetime.now().month
-current_year = datetime.now().year
+# Month Selector for Budget and Spending Overview
+st.markdown("---")
 
-# Initialize default values
+# Get available months from transaction data
+if not transactions_df.empty:
+    transactions_df['year_month'] = transactions_df['date'].dt.to_period('M')
+    available_months = sorted(transactions_df['year_month'].unique(), reverse=True)
+    
+    if len(available_months) > 0:
+        # Create readable month options
+        month_options = {str(month): month.strftime('%B %Y') for month in available_months}
+        
+        # Default to current month if available, otherwise most recent
+        current_period = pd.Period(datetime.now(), freq='M')
+        if current_period in available_months:
+            default_month = str(current_period)
+        else:
+            default_month = str(available_months[0])
+        
+        # Month selector
+        col1, col2, col3 = st.columns([2, 3, 2])
+        with col2:
+            selected_month_str = st.selectbox(
+                "📅 Select Month to View",
+                options=list(month_options.keys()),
+                format_func=lambda x: month_options[x],
+                index=list(month_options.keys()).index(default_month) if default_month in month_options else 0,
+                key="month_selector"
+            )
+        
+        selected_period = pd.Period(selected_month_str)
+        selected_month = selected_period.month
+        selected_year = selected_period.year
+    else:
+        selected_month = datetime.now().month
+        selected_year = datetime.now().year
+else:
+    selected_month = datetime.now().month
+    selected_year = datetime.now().year
+
+# Calculate metrics for selected month
 total_income = 0
 total_expenses = 0
 net_income = 0
@@ -536,8 +579,8 @@ current_month_df = pd.DataFrame()
 
 if not transactions_df.empty:
     current_month_df = transactions_df[
-        (transactions_df['date'].dt.month == current_month) & 
-        (transactions_df['date'].dt.year == current_year)
+        (transactions_df['date'].dt.month == selected_month) & 
+        (transactions_df['date'].dt.year == selected_year)
     ]
     
     total_income = current_month_df[current_month_df['type'] == 'Income']['amount'].sum()
@@ -545,12 +588,14 @@ if not transactions_df.empty:
     net_income = total_income - total_expenses
 
 # Top metrics - always show
+selected_month_name = pd.Period(year=selected_year, month=selected_month, freq='M').strftime('%B %Y')
+
 col1, col2, col3 = st.columns(3)
 
 with col1:
     st.markdown(f"""
     <div class="income-card">
-        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Income This Month</h3>
+        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Income - {selected_month_name}</h3>
         <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_income:,.2f}</h2>
     </div>
     """, unsafe_allow_html=True)
@@ -558,7 +603,7 @@ with col1:
 with col2:
     st.markdown(f"""
     <div class="spending-card">
-        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Spent This Month</h3>
+        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Spent - {selected_month_name}</h3>
         <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_expenses:,.2f}</h2>
     </div>
     """, unsafe_allow_html=True)
@@ -567,7 +612,7 @@ with col3:
     remaining_class = "remaining-card-green" if net_income >= 20 else "remaining-card-red"
     st.markdown(f"""
     <div class="{remaining_class}">
-        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Remaining</h3>
+        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Remaining - {selected_month_name}</h3>
         <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${net_income:,.2f}</h2>
     </div>
     """, unsafe_allow_html=True)
@@ -719,7 +764,7 @@ else:
 st.markdown("---")
 
 # Spending by Category
-st.subheader("Spending by Category")
+st.subheader(f"Spending by Category - {selected_month_name}")
 
 if not current_month_df.empty:
     expense_df = current_month_df[current_month_df['type'] == 'Expense']
@@ -759,7 +804,7 @@ else:
 st.markdown("---")
 
 # Budget Overview Section
-st.subheader("Budget Overview")
+st.subheader(f"Budget Overview - {selected_month_name}")
 
 if not budgets_df.empty and not current_month_df.empty:
     expense_df = current_month_df[current_month_df['type'] == 'Expense']

@@ -574,6 +574,148 @@ with col3:
 
 st.markdown("---")
 
+# Spending Trends Over Time
+st.subheader("Spending Trends")
+
+if not transactions_df.empty:
+    expense_data = transactions_df[transactions_df['type'] == 'Expense'].copy()
+    
+    if not expense_data.empty:
+        # Create tabs for weekly and monthly views
+        tab1, tab2 = st.tabs(["📅 Monthly", "📊 Weekly"])
+        
+        with tab1:
+            # Monthly aggregation
+            expense_data['month'] = expense_data['date'].dt.to_period('M')
+            monthly_spending = expense_data.groupby('month')['amount'].sum().reset_index()
+            monthly_spending['month'] = monthly_spending['month'].dt.to_timestamp()
+            monthly_spending = monthly_spending.sort_values('month')
+            
+            # Only show last 12 months
+            monthly_spending = monthly_spending.tail(12)
+            
+            if len(monthly_spending) > 0:
+                fig = go.Figure()
+                
+                fig.add_trace(go.Scatter(
+                    x=monthly_spending['month'],
+                    y=monthly_spending['amount'],
+                    mode='lines+markers',
+                    name='Monthly Spending',
+                    line=dict(color='#FF6B6B', width=3),
+                    marker=dict(size=8, color='#FF6B6B'),
+                    fill='tozeroy',
+                    fillcolor='rgba(255, 107, 107, 0.1)',
+                    hovertemplate='<b>%{x|%B %Y}</b><br>Spent: $%{y:,.2f}<extra></extra>'
+                ))
+                
+                fig.update_layout(
+                    height=350,
+                    margin=dict(l=20, r=20, t=20, b=20),
+                    xaxis=dict(
+                        title='Month',
+                        gridcolor='rgba(200, 200, 200, 0.2)',
+                        showgrid=True
+                    ),
+                    yaxis=dict(
+                        title='Amount ($)',
+                        gridcolor='rgba(200, 200, 200, 0.2)',
+                        showgrid=True
+                    ),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#1a1a1a', family='Inter'),
+                    hovermode='x unified'
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Show stats
+                col1, col2, col3 = st.columns(3)
+                avg_monthly = monthly_spending['amount'].mean()
+                max_month = monthly_spending.loc[monthly_spending['amount'].idxmax()]
+                min_month = monthly_spending.loc[monthly_spending['amount'].idxmin()]
+                
+                with col1:
+                    st.metric("Average Monthly", f"${avg_monthly:,.2f}")
+                with col2:
+                    st.metric("Highest Month", f"${max_month['amount']:,.2f}", 
+                             delta=max_month['month'].strftime('%b %Y'))
+                with col3:
+                    st.metric("Lowest Month", f"${min_month['amount']:,.2f}",
+                             delta=min_month['month'].strftime('%b %Y'))
+            else:
+                st.info("Not enough data yet to show monthly trends.")
+        
+        with tab2:
+            # Weekly aggregation
+            expense_data['week'] = expense_data['date'].dt.to_period('W')
+            weekly_spending = expense_data.groupby('week')['amount'].sum().reset_index()
+            weekly_spending['week'] = weekly_spending['week'].dt.to_timestamp()
+            weekly_spending = weekly_spending.sort_values('week')
+            
+            # Only show last 12 weeks
+            weekly_spending = weekly_spending.tail(12)
+            
+            if len(weekly_spending) > 0:
+                fig = go.Figure()
+                
+                fig.add_trace(go.Bar(
+                    x=weekly_spending['week'],
+                    y=weekly_spending['amount'],
+                    name='Weekly Spending',
+                    marker=dict(
+                        color=weekly_spending['amount'],
+                        colorscale='RdYlGn_r',
+                        showscale=False
+                    ),
+                    hovertemplate='<b>Week of %{x|%b %d}</b><br>Spent: $%{y:,.2f}<extra></extra>'
+                ))
+                
+                fig.update_layout(
+                    height=350,
+                    margin=dict(l=20, r=20, t=20, b=20),
+                    xaxis=dict(
+                        title='Week',
+                        gridcolor='rgba(200, 200, 200, 0.2)',
+                        showgrid=False
+                    ),
+                    yaxis=dict(
+                        title='Amount ($)',
+                        gridcolor='rgba(200, 200, 200, 0.2)',
+                        showgrid=True
+                    ),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#1a1a1a', family='Inter'),
+                    hovermode='x unified'
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Show stats
+                col1, col2, col3 = st.columns(3)
+                avg_weekly = weekly_spending['amount'].mean()
+                max_week = weekly_spending.loc[weekly_spending['amount'].idxmax()]
+                min_week = weekly_spending.loc[weekly_spending['amount'].idxmin()]
+                
+                with col1:
+                    st.metric("Average Weekly", f"${avg_weekly:,.2f}")
+                with col2:
+                    st.metric("Highest Week", f"${max_week['amount']:,.2f}",
+                             delta=max_week['week'].strftime('%b %d'))
+                with col3:
+                    st.metric("Lowest Week", f"${min_week['amount']:,.2f}",
+                             delta=min_week['week'].strftime('%b %d'))
+            else:
+                st.info("Not enough data yet to show weekly trends.")
+    else:
+        st.info("No expense data available yet.")
+else:
+    st.info("No transactions recorded yet.")
+
+st.markdown("---")
+
 # Spending by Category
 st.subheader("Spending by Category")
 

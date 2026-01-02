@@ -16,129 +16,166 @@ st.set_page_config(
 # Custom CSS for styling
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Lato:wght@300;400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
     
     /* Main styling - Light Mode */
     .main {
-        background: linear-gradient(135deg, #ffffff 0%, #f8f8f8 100%);
+        background: #fafafa;
         color: #1a1a1a;
     }
     
     /* Headers */
-    h1, h2, h3 {
-        font-family: 'Montserrat', sans-serif;
-        color: #FFD700;
+    h1 {
+        font-family: 'Space Grotesk', sans-serif;
+        color: #1a1a1a;
+        font-weight: 700;
+        font-size: 2.5rem;
+        margin-bottom: 1.5rem;
+        letter-spacing: -0.02em;
+    }
+    
+    h2 {
+        font-family: 'Space Grotesk', sans-serif;
+        color: #1a1a1a;
         font-weight: 600;
+        font-size: 1.5rem;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        letter-spacing: -0.01em;
+    }
+    
+    h3 {
+        font-family: 'Inter', sans-serif;
+        color: #1a1a1a;
+        font-weight: 600;
+        font-size: 1.1rem;
     }
     
     p, div, span, label {
-        font-family: 'Lato', sans-serif;
+        font-family: 'Inter', sans-serif;
         color: #1a1a1a;
     }
     
-    /* Cards */
+    /* Section dividers */
+    hr {
+        border: none;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, #e0e0e0, transparent);
+        margin: 3rem 0;
+    }
+    
+    /* Cards with modern shadow */
     .metric-card {
-        background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+        background: white;
         padding: 1.5rem;
-        border-radius: 12px;
-        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.15);
-        border: 2px solid #FFD700;
+        border-radius: 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+        border: 1px solid #f0f0f0;
         margin-bottom: 1rem;
+        transition: all 0.3s ease;
+    }
+    
+    .metric-card:hover {
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.06);
+        transform: translateY(-2px);
     }
     
     .budget-card {
         background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
         color: #FFD700;
-        padding: 1.5rem;
-        border-radius: 12px;
+        padding: 2rem;
+        border-radius: 16px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-        border: 2px solid #FFD700;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        border: 1px solid #3d3d3d;
     }
     
     .spending-card {
         background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
         color: white;
-        padding: 1.5rem;
-        border-radius: 12px;
+        padding: 2rem;
+        border-radius: 16px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 20px rgba(220, 53, 69, 0.3);
-        border: 2px solid #dc3545;
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.25);
+        border: 1px solid #bd2130;
     }
     
     .income-card {
         background: linear-gradient(135deg, #28a745 0%, #218838 100%);
         color: white;
-        padding: 1.5rem;
-        border-radius: 12px;
+        padding: 2rem;
+        border-radius: 16px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 20px rgba(40, 167, 69, 0.3);
-        border: 2px solid #28a745;
+        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.25);
+        border: 1px solid #1e7e34;
     }
     
     .remaining-card-green {
         background: linear-gradient(135deg, #28a745 0%, #218838 100%);
         color: white;
-        padding: 1.5rem;
-        border-radius: 12px;
+        padding: 2rem;
+        border-radius: 16px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 20px rgba(40, 167, 69, 0.3);
-        border: 2px solid #28a745;
+        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.25);
+        border: 1px solid #1e7e34;
     }
     
     .remaining-card-red {
         background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
         color: white;
-        padding: 1.5rem;
-        border-radius: 12px;
+        padding: 2rem;
+        border-radius: 16px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 20px rgba(220, 53, 69, 0.3);
-        border: 2px solid #dc3545;
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.25);
+        border: 1px solid #bd2130;
     }
     
     .poetry-card {
-        background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
-        padding: 2rem;
-        border-radius: 12px;
+        background: white;
+        padding: 2.5rem;
+        border-radius: 16px;
         margin: 2rem 0;
         border-left: 4px solid #FFD700;
-        box-shadow: 0 4px 20px rgba(212, 175, 55, 0.2);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
     }
     
     .poetry-text {
-        font-family: 'Lato', sans-serif;
+        font-family: 'Inter', sans-serif;
         font-size: 1.1rem;
         font-style: italic;
-        color: #1a1a1a;
+        color: #2d2d2d;
         line-height: 1.8;
         text-align: center;
+        font-weight: 400;
     }
     
     .poetry-author {
-        font-family: 'Lato', sans-serif;
+        font-family: 'Inter', sans-serif;
         font-size: 0.9rem;
-        color: #4a4a4a;
+        color: #6b6b6b;
         text-align: right;
-        margin-top: 1rem;
+        margin-top: 1.5rem;
+        font-weight: 500;
     }
     
     /* Sidebar styling */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1a1a1a 0%, #2d2d2d 100%);
+        background: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%);
+        border-right: 1px solid #2d2d2d;
     }
     
     [data-testid="stSidebar"] h1,
     [data-testid="stSidebar"] h2,
     [data-testid="stSidebar"] h3 {
         color: #FFD700 !important;
-        font-family: 'Montserrat', sans-serif !important;
+        font-family: 'Space Grotesk', sans-serif !important;
     }
     
     [data-testid="stSidebar"] label,
     [data-testid="stSidebar"] p,
     [data-testid="stSidebar"] div {
-        color: #f5f5f5 !important;
-        font-family: 'Lato', sans-serif !important;
+        color: #e0e0e0 !important;
+        font-family: 'Inter', sans-serif !important;
     }
     
     /* Force selectbox text to be black */
@@ -152,29 +189,30 @@ st.markdown("""
     }
     
     /* Button styling - FORCE ALL BUTTON TEXT TO BLACK */
+    button {
+        color: #000000 !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+    
+    button * {
+        color: #000000 !important;
+    }
+    
     .stButton>button {
         background: linear-gradient(135deg, #FFD700 0%, #FFC700 100%);
         color: #000000 !important;
         border: none;
-        border-radius: 8px;
-        padding: 0.5rem 2rem;
+        border-radius: 10px;
+        padding: 0.6rem 2rem;
         font-weight: 600;
-        font-family: 'Montserrat', sans-serif;
-        transition: transform 0.2s;
+        font-family: 'Inter', sans-serif;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(255, 215, 0, 0.2);
     }
     
     .stButton>button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(255, 215, 0, 0.4);
-        color: #000000 !important;
-    }
-    
-    /* Force ALL button text to be black - every possible selector */
-    button {
-        color: #000000 !important;
-    }
-    
-    button * {
+        box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
         color: #000000 !important;
     }
     
@@ -198,7 +236,6 @@ st.markdown("""
         color: #000000 !important;
     }
     
-    /* Specifically target form submit buttons */
     button[type="submit"] {
         color: #000000 !important;
     }
@@ -222,11 +259,18 @@ st.markdown("""
     
     /* Input fields */
     input, textarea, select {
-        background: rgba(255, 255, 255, 0.9) !important;
+        background: white !important;
         color: #1a1a1a !important;
-        border: 1px solid rgba(212, 175, 55, 0.5) !important;
-        border-radius: 8px !important;
-        font-family: 'Lato', sans-serif !important;
+        border: 1px solid #e0e0e0 !important;
+        border-radius: 10px !important;
+        font-family: 'Inter', sans-serif !important;
+        padding: 0.6rem 1rem !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    input:focus, textarea:focus, select:focus {
+        border-color: #FFD700 !important;
+        box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.1) !important;
     }
     
     /* Dropdown options */
@@ -237,12 +281,15 @@ st.markdown("""
     
     /* Streamlit selectbox */
     [data-baseweb="select"] {
-        background: rgba(255, 255, 255, 0.9) !important;
+        background: white !important;
+        border-radius: 10px !important;
     }
     
     [data-baseweb="select"] > div {
-        background: rgba(255, 255, 255, 0.9) !important;
+        background: white !important;
         color: #1a1a1a !important;
+        border-color: #e0e0e0 !important;
+        border-radius: 10px !important;
     }
     
     [data-baseweb="select"] span {
@@ -259,29 +306,53 @@ st.markdown("""
     }
     
     [role="option"]:hover {
-        background: #f0f0f0 !important;
+        background: #f5f5f5 !important;
         color: #1a1a1a !important;
     }
     
     /* Dataframe/table styling */
     [data-testid="stDataFrame"] {
-        background: #ffffff;
+        background: white;
         border-radius: 12px;
-        border: 1px solid rgba(212, 175, 55, 0.3);
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
     
     /* Make sure text is readable */
     .stMarkdown, .stText {
         color: #1a1a1a;
-        font-family: 'Lato', sans-serif;
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Info boxes */
+    .stAlert {
+        border-radius: 12px;
+        border-left-width: 4px;
+    }
+    
+    /* Metrics */
+    [data-testid="stMetricValue"] {
+        font-size: 1.5rem;
+        font-weight: 600;
+        font-family: 'Space Grotesk', sans-serif;
     }
     
     /* Ensure Streamlit's default theme doesn't override */
     .stApp {
-        background: #ffffff;
+        background: #fafafa;
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background: white;
+        border-radius: 12px;
+        border: 1px solid #e0e0e0;
+        font-family: 'Inter', sans-serif;
+        font-weight: 600;
     }
 </style>
 """, unsafe_allow_html=True)
+
 
 # File paths
 TRANSACTIONS_FILE = "transactions.csv"

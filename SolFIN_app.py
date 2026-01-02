@@ -939,40 +939,280 @@ if not transactions_df.empty:
             
             st.markdown("---")
 
-# Budget Settings Section
+# Budget Creator Section
 st.markdown("---")
-st.subheader("📝 Budget Settings")
+st.title("💰 Budget Creator")
+st.markdown("Create a realistic monthly budget based on your income and fixed expenses")
 
-with st.expander("Set Monthly Budgets by Category", expanded=False):
-    st.write("Set spending limits for each category to help track your financial goals.")
+with st.expander("📊 Create or Update Your Budget", expanded=False):
+    st.markdown("### Step 1: Enter Your Monthly Income")
     
-    budget_form = st.form("budget_settings")
+    monthly_income = st.number_input(
+        "Total Monthly Income (after taxes)",
+        min_value=0.0,
+        step=100.0,
+        value=0.0,
+        help="Enter your total take-home pay per month",
+        key="budget_income"
+    )
     
-    budget_inputs = {}
-    cols = st.columns(2)
+    st.markdown("---")
+    st.markdown("### Step 2: Enter Your Fixed Monthly Costs")
+    st.markdown("*These are expenses that stay the same every month and must be paid*")
     
-    for idx, category in enumerate(EXPENSE_CATEGORIES):
-        current_budget = 0
-        if not budgets_df.empty:
-            existing = budgets_df[budgets_df['category'] == category]
-            if not existing.empty:
-                current_budget = existing.iloc[0]['budget']
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        rent = st.number_input("Rent/Mortgage", min_value=0.0, step=50.0, value=0.0, key="budget_rent")
+    with col2:
+        parking = st.number_input("Monthly Parking", min_value=0.0, step=10.0, value=0.0, key="budget_parking")
+    
+    total_fixed = rent + parking
+    
+    if total_fixed > 0:
+        st.info(f"💰 **Total Fixed Costs:** ${total_fixed:,.2f}/month")
+    
+    st.markdown("---")
+    
+    # Calculate remaining money
+    remaining_for_budget = monthly_income - total_fixed
+    
+    if monthly_income > 0:
+        st.markdown("### Step 3: Allocate Your Remaining Money")
         
-        with cols[idx % 2]:
-            budget_inputs[category] = st.number_input(
-                f"{category}", 
-                min_value=0.0, 
-                value=float(current_budget),
-                step=10.0,
-                key=f"budget_{category}"
+        if remaining_for_budget > 0:
+            st.success(f"✅ **Money Available for Budget:** ${remaining_for_budget:,.2f}")
+            
+            st.markdown("---")
+            
+            # Budget allocation method
+            method = st.radio(
+                "**Choose Your Budgeting Method:**",
+                ["50/30/20 Rule", "Custom Percentages", "Manual Amounts"],
+                help="50/30/20: 50% needs, 30% wants, 20% savings. Custom: Set your own percentages. Manual: Enter exact amounts.",
+                key="budget_method"
             )
-    
-    if budget_form.form_submit_button("Save Budgets"):
-        new_budgets = []
-        for category, amount in budget_inputs.items():
-            if amount > 0:
-                new_budgets.append({'category': category, 'budget': amount})
+            
+            budget_allocations = {}
+            
+            if method == "50/30/20 Rule":
+                st.info("📊 **50/30/20 Rule**: 50% for needs (groceries, utilities, transportation), 30% for wants (entertainment, dining, shopping), 20% for savings")
+                
+                # Calculate allocations
+                needs_amount = remaining_for_budget * 0.50
+                wants_amount = remaining_for_budget * 0.30
+                savings_amount = remaining_for_budget * 0.20
+                
+                # Distribute needs
+                needs_categories = ["Groceries", "Utilities", "Transportation", "Healthcare"]
+                needs_per_category = needs_amount / len(needs_categories)
+                
+                # Distribute wants
+                wants_categories = ["Entertainment", "Dining Out", "Shopping"]
+                wants_per_category = wants_amount / len(wants_categories)
+                
+                st.markdown("**💼 Needs (50%)**")
+                col1, col2 = st.columns(2)
+                for i, cat in enumerate(needs_categories):
+                    with col1 if i % 2 == 0 else col2:
+                        budget_allocations[cat] = st.number_input(
+                            cat, 
+                            value=float(needs_per_category),
+                            step=10.0,
+                            key=f"rule_needs_{cat}"
+                        )
+                
+                st.markdown("**🎉 Wants (30%)**")
+                col3, col4 = st.columns(2)
+                for i, cat in enumerate(wants_categories):
+                    with col3 if i % 2 == 0 else col4:
+                        budget_allocations[cat] = st.number_input(
+                            cat,
+                            value=float(wants_per_category),
+                            step=10.0,
+                            key=f"rule_wants_{cat}"
+                        )
+                
+                st.markdown("**💎 Savings & Other (20%)**")
+                col5, col6 = st.columns(2)
+                with col5:
+                    budget_allocations["Savings"] = st.number_input(
+                        "Savings",
+                        value=float(savings_amount * 0.8),
+                        step=10.0,
+                        key="rule_savings"
+                    )
+                with col6:
+                    budget_allocations["Other"] = st.number_input(
+                        "Other/Emergency",
+                        value=float(savings_amount * 0.2),
+                        step=10.0,
+                        key="rule_other"
+                    )
+            
+            elif method == "Custom Percentages":
+                st.info("💡 Set custom percentages for each category based on your priorities")
+                
+                percentages = {}
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    for cat in EXPENSE_CATEGORIES[:5]:
+                        percentages[cat] = st.slider(
+                            cat,
+                            min_value=0,
+                            max_value=50,
+                            value=10,
+                            step=1,
+                            key=f"pct_{cat}",
+                            format="%d%%"
+                        )
+                
+                with col2:
+                    for cat in EXPENSE_CATEGORIES[5:]:
+                        percentages[cat] = st.slider(
+                            cat,
+                            min_value=0,
+                            max_value=50,
+                            value=10,
+                            step=1,
+                            key=f"pct_{cat}",
+                            format="%d%%"
+                        )
+                
+                total_percentage = sum(percentages.values())
+                
+                if total_percentage != 100:
+                    st.warning(f"⚠️ Total percentage: {total_percentage}%. Adjust to equal 100%")
+                else:
+                    st.success("✅ Perfect! Your percentages add up to 100%")
+                
+                # Calculate amounts
+                for cat, pct in percentages.items():
+                    budget_allocations[cat] = (remaining_for_budget * pct / 100)
+            
+            else:  # Manual Amounts
+                st.info("✏️ Enter the exact amount you want to budget for each category")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    for cat in EXPENSE_CATEGORIES[:5]:
+                        budget_allocations[cat] = st.number_input(
+                            cat,
+                            min_value=0.0,
+                            step=10.0,
+                            value=0.0,
+                            key=f"manual_{cat}"
+                        )
+                
+                with col2:
+                    for cat in EXPENSE_CATEGORIES[5:]:
+                        budget_allocations[cat] = st.number_input(
+                            cat,
+                            min_value=0.0,
+                            step=10.0,
+                            value=0.0,
+                            key=f"manual_{cat}"
+                        )
+            
+            # Show summary
+            st.markdown("---")
+            st.markdown("### 📋 Budget Summary")
+            
+            total_budgeted = sum(budget_allocations.values())
+            difference = remaining_for_budget - total_budgeted
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Total Budgeted", f"${total_budgeted:,.2f}")
+            with col2:
+                st.metric("Available", f"${remaining_for_budget:,.2f}")
+            with col3:
+                delta_color = "normal" if difference >= 0 else "inverse"
+                st.metric("Difference", f"${difference:,.2f}", delta=f"${difference:,.2f}")
+            
+            # Show all allocations
+            if total_budgeted > 0:
+                budget_display = pd.DataFrame([
+                    {
+                        "Category": cat, 
+                        "Monthly Budget": f"${amount:,.2f}",
+                        "% of Available": f"{(amount/remaining_for_budget*100):.1f}%"
+                    }
+                    for cat, amount in budget_allocations.items()
+                    if amount > 0
+                ])
+                
+                st.dataframe(budget_display, use_container_width=True, hide_index=True)
+            
+            # Save button
+            st.markdown("---")
+            if st.button("💾 Save Budget", type="primary", use_container_width=True, key="save_budget_btn"):
+                # Combine fixed costs and variable budget
+                all_budgets = {}
+                if rent > 0:
+                    all_budgets["Rent/Mortgage"] = rent
+                if parking > 0:
+                    all_budgets["Parking"] = parking
+                
+                # Add variable budgets
+                for cat, amount in budget_allocations.items():
+                    if amount > 0:
+                        all_budgets[cat] = amount
+                
+                # Save to CSV
+                budget_save_df = pd.DataFrame([
+                    {"category": cat, "budget": amount}
+                    for cat, amount in all_budgets.items()
+                ])
+                
+                save_budgets(budget_save_df)
+                st.success("✅ Budget saved successfully! Scroll up to see your budget in action.")
+                st.balloons()
+                st.rerun()
         
-        save_budgets(pd.DataFrame(new_budgets))
-        st.success("Budgets saved successfully!")
-        st.rerun()
+        elif remaining_for_budget == 0:
+            st.warning("⚠️ Your fixed costs equal your income. You have no money left to budget.")
+        else:
+            st.error("❌ Your fixed costs exceed your income! You need to either increase income or reduce fixed costs.")
+    
+    else:
+        st.info("👆 Enter your monthly income above to get started")
+    
+    # Tips section
+    st.markdown("---")
+    st.markdown("### 💡 Budgeting Tips")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        **50/30/20 Rule**
+        - 50% Needs
+        - 30% Wants  
+        - 20% Savings
+        
+        *Great for beginners!*
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Be Realistic**
+        - Review past spending
+        - Start conservative
+        - Adjust monthly
+        
+        *Track & adapt!*
+        """)
+    
+    with col3:
+        st.markdown("""
+        **Priority Order**
+        1. Fixed costs
+        2. Essentials
+        3. Savings
+        4. Everything else
+        """)

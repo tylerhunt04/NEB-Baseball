@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 import os
 
 # Page config
@@ -812,14 +813,29 @@ with tab1:
 
     # Budget Overview Section
     st.subheader(f"Budget Overview - {selected_month_name}")
+    
+    # Filter budgets for the selected month
+    selected_month_key = f"{selected_year}-{selected_month:02d}"
+    month_budgets_df = budgets_df.copy()
+    
+    if not budgets_df.empty and 'month' in budgets_df.columns:
+        month_budgets_df = budgets_df[budgets_df['month'] == selected_month_key]
+        if month_budgets_df.empty:
+            st.info(f"No budget set for {selected_month_name}. Go to the Budget Creator tab to create one!")
+            month_budgets_df = pd.DataFrame()
 
-    if not budgets_df.empty and not current_month_df.empty:
+    if not month_budgets_df.empty and not current_month_df.empty:
         expense_df = current_month_df[current_month_df['type'] == 'Expense']
     
         budget_data = []
-        for _, budget_row in budgets_df.iterrows():
+        for _, budget_row in month_budgets_df.iterrows():
             category = budget_row['category']
             budget_amount = budget_row['budget']
+            
+            # Skip Monthly Income category in the budget overview
+            if category == "Monthly Income":
+                continue
+                
             spent = expense_df[expense_df['category'] == category]['amount'].sum()
         
             budget_data.append({
@@ -892,10 +908,12 @@ with tab1:
             st.metric("Remaining", f"${total_remaining:,.2f}", 
                      delta=f"{(total_remaining/total_budget*100):.1f}%" if total_budget > 0 else "0%")
     
-    elif not budgets_df.empty:
+    elif not month_budgets_df.empty:
         st.info("No expenses this month yet to compare against budgets.")
+    elif not budgets_df.empty:
+        st.info(f"No budget found for {selected_month_name}. Create one in the Budget Creator tab!")
     else:
-        st.info("Set budgets below to track your spending limits.")
+        st.info("No budgets created yet. Go to Budget Creator tab to create your first budget!")
 
     # Recent transactions
     st.markdown("---")
@@ -954,13 +972,55 @@ with tab2:
     st.markdown("Build a realistic budget based on your income and fixed expenses")
     
     st.markdown("---")
+    
+    # Month selector for budget
+    st.markdown("### Select Month for Budget")
+    
+    # Generate month options (current month + next 12 months)
+    current_date = datetime.now()
+    budget_month_options = []
+    budget_month_values = []
+    
+    for i in range(-6, 13):  # 6 months back, current month, 12 months forward
+        month_date = current_date + relativedelta(months=i)
+        month_key = month_date.strftime('%Y-%m')
+        month_label = month_date.strftime('%B %Y')
+        budget_month_options.append(month_label)
+        budget_month_values.append(month_key)
+    
+    # Default to current month
+    default_index = 6  # Current month is at index 6 (6 months back + current)
+    
+    col1, col2, col3 = st.columns([2, 3, 2])
+    with col2:
+        selected_budget_month_label = st.selectbox(
+            "📅 Budget for Month:",
+            options=budget_month_options,
+            index=default_index,
+            key="budget_month_selector"
+        )
+    
+    selected_budget_month = budget_month_values[budget_month_options.index(selected_budget_month_label)]
+    
+    # Load existing budget for selected month if it exists
+    existing_budget_for_month = {}
+    if not budgets_df.empty and 'month' in budgets_df.columns:
+        month_budgets = budgets_df[budgets_df['month'] == selected_budget_month]
+        if not month_budgets.empty:
+            existing_budget_for_month = dict(zip(month_budgets['category'], month_budgets['budget']))
+            st.success(f"✅ Found existing budget for {selected_budget_month_label}")
+    
+    st.markdown("---")
     st.markdown("### Step 1: Enter Your Monthly Income")
+    
+    # Pre-fill with existing budget income if available
+    existing_income = existing_budget_for_month.get('Monthly Income', 0.0)
     
     monthly_income = st.number_input(
         "Total Monthly Income (after taxes)",
         min_value=0.0,
         step=100.0,
-        value=0.0,
+        value=float(existing_income),
         help="Enter your total take-home pay per month",
         key="budget_income"
     )
@@ -971,10 +1031,13 @@ with tab2:
     
     col1, col2 = st.columns(2)
     
+    existing_rent = existing_budget_for_month.get('Rent/Mortgage', 0.0)
+    existing_parking = existing_budget_for_month.get('Parking', 0.0)
+    
     with col1:
-        rent = st.number_input("Rent/Mortgage", min_value=0.0, step=50.0, value=0.0, key="budget_rent")
+        rent = st.number_input("Rent/Mortgage", min_value=0.0, step=50.0, value=float(existing_rent), key="budget_rent")
     with col2:
-        parking = st.number_input("Monthly Parking", min_value=0.0, step=10.0, value=0.0, key="budget_parking")
+        parking = st.number_input("Monthly Parking", min_value=0.0, step=10.0, value=float(existing_parking), key="budget_parking")
     
     total_fixed = rent + parking
     
@@ -1166,6 +1229,11 @@ with tab2:
             if st.button("💾 Save Budget", type="primary", use_container_width=True, key="save_budget_btn"):
                 # Combine fixed costs and variable budget
                 all_budgets = {}
+                
+                # Store monthly income
+                if monthly_income > 0:
+                    all_budgets["Monthly Income"] = monthly_income
+                
                 if rent > 0:
                     all_budgets["Rent/Mortgage"] = rent
                 if parking > 0:
@@ -1176,14 +1244,25 @@ with tab2:
                     if amount > 0:
                         all_budgets[cat] = amount
                 
-                # Save to CSV
-                budget_save_df = pd.DataFrame([
-                    {"category": cat, "budget": amount}
+                # Load existing budgets and filter out old data for this month
+                existing_budgets_df = pd.DataFrame()
+                if os.path.exists(BUDGETS_FILE):
+                    existing_budgets_df = pd.read_csv(BUDGETS_FILE)
+                    if 'month' in existing_budgets_df.columns:
+                        # Keep budgets from other months
+                        existing_budgets_df = existing_budgets_df[existing_budgets_df['month'] != selected_budget_month]
+                
+                # Create new budget entries for this month
+                new_budget_df = pd.DataFrame([
+                    {"month": selected_budget_month, "category": cat, "budget": amount}
                     for cat, amount in all_budgets.items()
                 ])
                 
-                save_budgets(budget_save_df)
-                st.success("✅ Budget saved successfully! Scroll up to see your budget in action.")
+                # Combine and save
+                final_budget_df = pd.concat([existing_budgets_df, new_budget_df], ignore_index=True)
+                final_budget_df.to_csv(BUDGETS_FILE, index=False)
+                
+                st.success(f"✅ Budget for {selected_budget_month_label} saved successfully!")
                 st.balloons()
                 st.rerun()
         

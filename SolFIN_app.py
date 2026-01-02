@@ -388,8 +388,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-""", unsafe_allow_html=True)
-
 
 # File paths - store in a persistent location
 import os

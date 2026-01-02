@@ -14,287 +14,283 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
 # Custom CSS for styling
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap');
     
-    /* Main styling - Light Mode */
+    /* Main styling - Sunshine Theme */
     .main {
-        background: #fafafa;
-        color: #1a1a1a;
+        background: linear-gradient(135deg, #FFF9E6 0%, #FFFBF0 50%, #FFF5E1 100%);
+        color: #2d2d2d;
     }
     
     /* Headers */
     h1 {
-        font-family: 'Space Grotesk', sans-serif;
-        color: #1a1a1a;
-        font-weight: 700;
-        font-size: 2.5rem;
+        font-family: 'Nunito', sans-serif;
+        background: linear-gradient(135deg, #FF9500 0%, #FFB800 50%, #FFCC00 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: 800;
+        font-size: 2.8rem;
         margin-bottom: 1.5rem;
         letter-spacing: -0.02em;
+        text-shadow: 0 2px 10px rgba(255, 149, 0, 0.1);
     }
     
     h2 {
-        font-family: 'Space Grotesk', sans-serif;
-        color: #1a1a1a;
-        font-weight: 600;
-        font-size: 1.5rem;
+        font-family: 'Nunito', sans-serif;
+        color: #FF9500;
+        font-weight: 700;
+        font-size: 1.6rem;
         margin-top: 2rem;
         margin-bottom: 1rem;
         letter-spacing: -0.01em;
     }
     
     h3 {
-        font-family: 'Inter', sans-serif;
-        color: #1a1a1a;
+        font-family: 'Poppins', sans-serif;
+        color: #FF9500;
         font-weight: 600;
         font-size: 1.1rem;
     }
     
     p, div, span, label {
-        font-family: 'Inter', sans-serif;
-        color: #1a1a1a;
+        font-family: 'Poppins', sans-serif;
+        color: #2d2d2d;
     }
     
     /* Section dividers */
     hr {
         border: none;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, #e0e0e0, transparent);
+        height: 2px;
+        background: linear-gradient(90deg, transparent, #FFD93D, #FF9500, #FFD93D, transparent);
         margin: 3rem 0;
+        box-shadow: 0 2px 10px rgba(255, 149, 0, 0.2);
     }
     
-    /* Cards with modern shadow */
+    /* Cards with sunshine glow */
     .metric-card {
         background: white;
         padding: 1.5rem;
-        border-radius: 16px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
-        border: 1px solid #f0f0f0;
+        border-radius: 20px;
+        box-shadow: 0 4px 15px rgba(255, 184, 0, 0.15), 0 1px 3px rgba(255, 149, 0, 0.1);
+        border: 2px solid #FFF4DB;
         margin-bottom: 1rem;
         transition: all 0.3s ease;
     }
     
     .metric-card:hover {
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.06);
-        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(255, 184, 0, 0.25), 0 2px 5px rgba(255, 149, 0, 0.15);
+        transform: translateY(-3px);
+        border-color: #FFD93D;
     }
     
     .budget-card {
-        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-        color: #FFD700;
+        background: linear-gradient(135deg, #FF9500 0%, #FFB800 100%);
+        color: white;
         padding: 2rem;
-        border-radius: 16px;
+        border-radius: 20px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        border: 1px solid #3d3d3d;
+        box-shadow: 0 8px 20px rgba(255, 149, 0, 0.3);
+        border: 2px solid #FFCC00;
     }
     
     .spending-card {
-        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        background: linear-gradient(135deg, #FF6B35 0%, #FF8C42 100%);
         color: white;
         padding: 2rem;
-        border-radius: 16px;
+        border-radius: 20px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.25);
-        border: 1px solid #bd2130;
+        box-shadow: 0 8px 20px rgba(255, 107, 53, 0.3);
+        border: 2px solid #FF9560;
     }
     
     .income-card {
-        background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-        color: white;
+        background: linear-gradient(135deg, #FFB800 0%, #FFD93D 100%);
+        color: #2d2d2d;
         padding: 2rem;
-        border-radius: 16px;
+        border-radius: 20px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.25);
-        border: 1px solid #1e7e34;
+        box-shadow: 0 8px 20px rgba(255, 184, 0, 0.3);
+        border: 2px solid #FFEA00;
     }
     
     .remaining-card-green {
-        background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-        color: white;
+        background: linear-gradient(135deg, #FFD93D 0%, #FFEA00 100%);
+        color: #2d2d2d;
         padding: 2rem;
-        border-radius: 16px;
+        border-radius: 20px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.25);
-        border: 1px solid #1e7e34;
+        box-shadow: 0 8px 20px rgba(255, 217, 61, 0.3);
+        border: 2px solid #FFF176;
     }
     
     .remaining-card-red {
-        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        background: linear-gradient(135deg, #FF6B35 0%, #FF8C42 100%);
         color: white;
         padding: 2rem;
-        border-radius: 16px;
+        border-radius: 20px;
         margin-bottom: 1rem;
-        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.25);
-        border: 1px solid #bd2130;
+        box-shadow: 0 8px 20px rgba(255, 107, 53, 0.3);
+        border: 2px solid #FF9560;
     }
     
     .poetry-card {
-        background: white;
+        background: linear-gradient(135deg, #FFFBF0 0%, #FFF9E6 100%);
         padding: 2.5rem;
-        border-radius: 16px;
+        border-radius: 20px;
         margin: 2rem 0;
-        border-left: 4px solid #FFD700;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+        border-left: 5px solid #FFB800;
+        box-shadow: 0 4px 15px rgba(255, 184, 0, 0.15);
+        border: 2px solid #FFE4B5;
     }
     
     .poetry-text {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Poppins', sans-serif;
         font-size: 1.1rem;
         font-style: italic;
-        color: #2d2d2d;
-        line-height: 1.8;
+        color: #4a4a4a;
+        line-height: 1.9;
         text-align: center;
         font-weight: 400;
     }
     
     .poetry-author {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Poppins', sans-serif;
         font-size: 0.9rem;
-        color: #6b6b6b;
+        color: #FF9500;
         text-align: right;
         margin-top: 1.5rem;
-        font-weight: 500;
+        font-weight: 600;
     }
     
-    /* Sidebar styling */
+    /* Sidebar styling - Warm sunset tones */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%);
-        border-right: 1px solid #2d2d2d;
+        background: linear-gradient(180deg, #FF9500 0%, #FFB800 50%, #FFD93D 100%);
+        border-right: 3px solid #FFEA00;
     }
     
     [data-testid="stSidebar"] h1,
     [data-testid="stSidebar"] h2,
     [data-testid="stSidebar"] h3 {
-        color: #FFD700 !important;
-        font-family: 'Space Grotesk', sans-serif !important;
+        color: white !important;
+        font-family: 'Nunito', sans-serif !important;
+        text-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
     }
     
     [data-testid="stSidebar"] label,
     [data-testid="stSidebar"] p,
     [data-testid="stSidebar"] div {
-        color: #e0e0e0 !important;
-        font-family: 'Inter', sans-serif !important;
+        color: white !important;
+        font-family: 'Poppins', sans-serif !important;
     }
     
-    /* Force selectbox text to be black */
+    /* Sidebar selectbox text */
     [data-testid="stSidebar"] [data-baseweb="select"] span,
     [data-testid="stSidebar"] [data-baseweb="select"] div {
-        color: #1a1a1a !important;
+        color: #2d2d2d !important;
     }
     
     [data-testid="stSidebar"] input {
-        color: #1a1a1a !important;
+        color: #2d2d2d !important;
     }
     
-    /* Button styling - FORCE ALL BUTTON TEXT TO BLACK */
+    /* Button styling - Sunshine buttons */
     button {
-        color: #000000 !important;
-        font-family: 'Inter', sans-serif !important;
+        color: #2d2d2d !important;
+        font-family: 'Poppins', sans-serif !important;
+        font-weight: 600 !important;
     }
     
     button * {
-        color: #000000 !important;
+        color: #2d2d2d !important;
     }
     
     .stButton>button {
-        background: linear-gradient(135deg, #FFD700 0%, #FFC700 100%);
-        color: #000000 !important;
+        background: linear-gradient(135deg, #FFD93D 0%, #FFEA00 100%);
+        color: #2d2d2d !important;
         border: none;
-        border-radius: 10px;
-        padding: 0.6rem 2rem;
+        border-radius: 12px;
+        padding: 0.7rem 2rem;
         font-weight: 600;
-        font-family: 'Inter', sans-serif;
+        font-family: 'Poppins', sans-serif;
         transition: all 0.3s ease;
-        box-shadow: 0 2px 4px rgba(255, 215, 0, 0.2);
+        box-shadow: 0 4px 15px rgba(255, 217, 61, 0.4);
+        border: 2px solid #FFF176;
     }
     
     .stButton>button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
-        color: #000000 !important;
-    }
-    
-    .stButton>button p {
-        color: #000000 !important;
-    }
-    
-    .stButton>button span {
-        color: #000000 !important;
-    }
-    
-    .stButton>button div {
-        color: #000000 !important;
+        box-shadow: 0 6px 20px rgba(255, 217, 61, 0.5);
+        background: linear-gradient(135deg, #FFEA00 0%, #FFF176 100%);
+        color: #2d2d2d !important;
     }
     
     button[kind="primary"] {
-        color: #000000 !important;
+        background: linear-gradient(135deg, #FF9500 0%, #FFB800 100%) !important;
+        color: white !important;
+        border: 2px solid #FFCC00 !important;
+    }
+    
+    button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #FFB800 0%, #FFD93D 100%) !important;
     }
     
     button[kind="primary"] * {
-        color: #000000 !important;
+        color: white !important;
     }
     
-    button[type="submit"] {
-        color: #000000 !important;
-    }
-    
-    button[type="submit"] * {
-        color: #000000 !important;
-    }
-    
-    .stFormSubmitButton button {
-        color: #000000 !important;
-    }
-    
-    .stFormSubmitButton button * {
-        color: #000000 !important;
-    }
-    
-    /* Progress bar */
+    /* Progress bar - Sunshine colors */
     .stProgress > div > div > div {
-        background: linear-gradient(135deg, #FFD700 0%, #FFC700 100%);
+        background: linear-gradient(135deg, #FFD93D 0%, #FF9500 100%);
     }
     
     /* Input fields */
     input, textarea, select {
         background: white !important;
-        color: #1a1a1a !important;
-        border: 1px solid #e0e0e0 !important;
-        border-radius: 10px !important;
-        font-family: 'Inter', sans-serif !important;
-        padding: 0.6rem 1rem !important;
+        color: #2d2d2d !important;
+        border: 2px solid #FFE4B5 !important;
+        border-radius: 12px !important;
+        font-family: 'Poppins', sans-serif !important;
+        padding: 0.7rem 1rem !important;
         transition: all 0.2s ease !important;
     }
     
     input:focus, textarea:focus, select:focus {
-        border-color: #FFD700 !important;
-        box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.1) !important;
+        border-color: #FFB800 !important;
+        box-shadow: 0 0 0 3px rgba(255, 184, 0, 0.2) !important;
+        outline: none !important;
     }
     
     /* Dropdown options */
     option {
         background: #ffffff !important;
-        color: #1a1a1a !important;
+        color: #2d2d2d !important;
     }
     
     /* Streamlit selectbox */
     [data-baseweb="select"] {
         background: white !important;
-        border-radius: 10px !important;
+        border-radius: 12px !important;
     }
     
     [data-baseweb="select"] > div {
         background: white !important;
-        color: #1a1a1a !important;
-        border-color: #e0e0e0 !important;
-        border-radius: 10px !important;
+        color: #2d2d2d !important;
+        border-color: #FFE4B5 !important;
+        border-radius: 12px !important;
+        border-width: 2px !important;
+    }
+    
+    [data-baseweb="select"]:hover > div {
+        border-color: #FFD93D !important;
     }
     
     [data-baseweb="select"] span {
-        color: #1a1a1a !important;
+        color: #2d2d2d !important;
     }
     
     [data-baseweb="popover"] {
@@ -303,55 +299,95 @@ st.markdown("""
     
     [role="option"] {
         background: #ffffff !important;
-        color: #1a1a1a !important;
+        color: #2d2d2d !important;
     }
     
     [role="option"]:hover {
-        background: #f5f5f5 !important;
-        color: #1a1a1a !important;
+        background: #FFF9E6 !important;
+        color: #2d2d2d !important;
+    }
+    
+    /* Tab styling - Sunshine tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background: transparent;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background: linear-gradient(135deg, #FFE4B5 0%, #FFF4DB 100%);
+        border-radius: 12px 12px 0 0;
+        color: #FF9500;
+        font-weight: 600;
+        padding: 12px 24px;
+        border: 2px solid #FFD93D;
+        border-bottom: none;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #FFD93D 0%, #FFEA00 100%);
+        color: #2d2d2d;
+        border-color: #FF9500;
     }
     
     /* Dataframe/table styling */
     [data-testid="stDataFrame"] {
         background: white;
-        border-radius: 12px;
-        border: 1px solid #e0e0e0;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    }
-    
-    /* Make sure text is readable */
-    .stMarkdown, .stText {
-        color: #1a1a1a;
-        font-family: 'Inter', sans-serif;
+        border-radius: 16px;
+        border: 2px solid #FFE4B5;
+        box-shadow: 0 4px 15px rgba(255, 184, 0, 0.1);
     }
     
     /* Info boxes */
     .stAlert {
         border-radius: 12px;
-        border-left-width: 4px;
+        border-left-width: 5px;
+        background: #FFF9E6 !important;
+        border-left-color: #FFB800 !important;
+    }
+    
+    /* Success boxes */
+    .stSuccess {
+        background: linear-gradient(135deg, #FFD93D 0%, #FFEA00 100%) !important;
+        border-left-color: #FF9500 !important;
+        color: #2d2d2d !important;
     }
     
     /* Metrics */
     [data-testid="stMetricValue"] {
-        font-size: 1.5rem;
-        font-weight: 600;
-        font-family: 'Space Grotesk', sans-serif;
+        font-size: 1.6rem;
+        font-weight: 700;
+        font-family: 'Nunito', sans-serif;
+        color: #FF9500;
     }
     
     /* Ensure Streamlit's default theme doesn't override */
     .stApp {
-        background: #fafafa;
+        background: linear-gradient(135deg, #FFF9E6 0%, #FFFBF0 50%, #FFF5E1 100%);
     }
     
     /* Expander styling */
     .streamlit-expanderHeader {
-        background: white;
+        background: linear-gradient(135deg, #FFF4DB 0%, #FFFBF0 100%);
         border-radius: 12px;
-        border: 1px solid #e0e0e0;
-        font-family: 'Inter', sans-serif;
+        border: 2px solid #FFE4B5;
+        font-family: 'Poppins', sans-serif;
         font-weight: 600;
+        color: #FF9500;
+    }
+    
+    .streamlit-expanderHeader:hover {
+        border-color: #FFD93D;
+        background: linear-gradient(135deg, #FFFBF0 0%, #FFF9E6 100%);
+    }
+    
+    /* Make text in cards more readable */
+    .stMarkdown, .stText {
+        color: #2d2d2d;
+        font-family: 'Poppins', sans-serif;
     }
 </style>
+""", unsafe_allow_html=True)
+
 """, unsafe_allow_html=True)
 
 
@@ -581,7 +617,7 @@ transactions_df = load_transactions()
 budgets_df = load_budgets()
 
 # Main content
-st.title("✨ Solana's Finances")
+st.title("☀️ Solana's Finances")
 
 # Create tabs for different sections
 tab1, tab2 = st.tabs(["📊 Finance Dashboard", "💰 Budget Creator"])
@@ -689,8 +725,8 @@ with tab1:
     with col1:
         st.markdown(f"""
         <div class="income-card">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Income - {selected_month_name}</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_income:,.2f}</h2>
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #2d2d2d;">Income - {selected_month_name}</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #2d2d2d; font-weight: 700;">${total_income:,.2f}</h2>
         </div>
         """, unsafe_allow_html=True)
 
@@ -704,10 +740,11 @@ with tab1:
 
     with col3:
         remaining_class = "remaining-card-green" if net_income >= 20 else "remaining-card-red"
+        text_color = "#2d2d2d" if net_income >= 20 else "white"
         st.markdown(f"""
         <div class="{remaining_class}">
-            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Remaining - {selected_month_name}</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${net_income:,.2f}</h2>
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: {text_color};">Remaining - {selected_month_name}</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: {text_color}; font-weight: 700;">${net_income:,.2f}</h2>
         </div>
         """, unsafe_allow_html=True)
 

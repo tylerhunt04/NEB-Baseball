@@ -365,18 +365,36 @@ DATA_DIR.mkdir(exist_ok=True)
 
 TRANSACTIONS_FILE = str(DATA_DIR / "transactions.csv")
 BUDGETS_FILE = str(DATA_DIR / "budgets.csv")
+CATEGORIES_FILE = str(DATA_DIR / "categories.csv")
 
 # Default categories
 INCOME_CATEGORIES = ["Work", "Other"]
 
-EXPENSE_CATEGORIES = [
+DEFAULT_EXPENSE_CATEGORIES = [
     "Groceries", "Rent/Mortgage", "Utilities", "Transportation", 
     "Entertainment", "Dining Out", "Shopping", "Healthcare", 
     "Savings", "Other"
 ]
 
-# Color wheel palette for categories
-CATEGORY_COLORS = {
+# Load custom categories or use defaults
+def load_expense_categories():
+    if os.path.exists(CATEGORIES_FILE):
+        try:
+            categories_df = pd.read_csv(CATEGORIES_FILE)
+            if not categories_df.empty and 'category' in categories_df.columns:
+                return categories_df['category'].tolist()
+        except:
+            pass
+    return DEFAULT_EXPENSE_CATEGORIES.copy()
+
+def save_expense_categories(categories):
+    categories_df = pd.DataFrame({'category': categories})
+    categories_df.to_csv(CATEGORIES_FILE, index=False)
+
+EXPENSE_CATEGORIES = load_expense_categories()
+
+# Color wheel palette for categories - with dynamic assignment for custom categories
+DEFAULT_CATEGORY_COLORS = {
     "Groceries": "#FF6B6B",       # Red
     "Rent/Mortgage": "#4ECDC4",   # Teal
     "Utilities": "#45B7D1",       # Blue
@@ -389,9 +407,24 @@ CATEGORY_COLORS = {
     "Other": "#95A5A6"            # Gray
 }
 
+# Additional colors for custom categories
+EXTRA_COLORS = [
+    "#E74C3C", "#3498DB", "#2ECC71", "#F39C12", "#9B59B6",
+    "#1ABC9C", "#E67E22", "#34495E", "#16A085", "#27AE60",
+    "#2980B9", "#8E44AD", "#D35400", "#C0392B", "#7F8C8D"
+]
+
 def get_category_color(category):
     """Get consistent color for a category"""
-    return CATEGORY_COLORS.get(category, "#95A5A6")
+    if category in DEFAULT_CATEGORY_COLORS:
+        return DEFAULT_CATEGORY_COLORS[category]
+    else:
+        # Assign color based on category index for consistency
+        all_categories = load_expense_categories()
+        if category in all_categories:
+            idx = all_categories.index(category)
+            return EXTRA_COLORS[idx % len(EXTRA_COLORS)]
+        return "#95A5A6"  # Default gray
 
 # Initialize data files
 def initialize_files():
@@ -480,7 +513,9 @@ with st.sidebar:
     with st.form("expense_form", clear_on_submit=True):
         expense_date = st.date_input("Date", value=date.today(), key="expense_date")
         expense_amount = st.number_input("Amount ($)", min_value=0.01, step=5.00, key="expense_amount")
-        expense_category = st.selectbox("Category", EXPENSE_CATEGORIES, key="expense_category")
+        # Reload categories to ensure we have the latest
+        current_expense_categories = load_expense_categories()
+        expense_category = st.selectbox("Category", current_expense_categories, key="expense_category")
         expense_description = st.text_input("Description (optional)", key="expense_description")
         
         expense_submitted = st.form_submit_button("Add Expense")
@@ -488,6 +523,57 @@ with st.sidebar:
         if expense_submitted:
             save_transaction(expense_date, expense_amount, expense_category, "Expense", expense_description)
             st.success("Expense added!")
+            st.rerun()
+
+# Category Management Section in Sidebar
+with st.sidebar:
+    st.markdown("---")
+    st.subheader("⚙️ Manage Categories")
+    
+    with st.expander("Edit Expense Categories", expanded=False):
+        st.markdown("**Current Categories:**")
+        
+        # Reload categories to show current state
+        current_categories = load_expense_categories()
+        
+        # Display current categories
+        for i, cat in enumerate(current_categories):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"• {cat}")
+            with col2:
+                if st.button("🗑️", key=f"delete_cat_{i}", help=f"Delete {cat}"):
+                    if len(current_categories) > 1:  # Keep at least 1 category
+                        current_categories.remove(cat)
+                        save_expense_categories(current_categories)
+                        st.success(f"Deleted '{cat}'")
+                        st.rerun()
+                    else:
+                        st.error("Must have at least one category!")
+        
+        st.markdown("---")
+        st.markdown("**Add New Category:**")
+        
+        new_category = st.text_input("Category Name", key="new_category_input")
+        
+        if st.button("➕ Add Category", key="add_category_btn"):
+            if new_category and new_category.strip():
+                cleaned_name = new_category.strip()
+                if cleaned_name not in current_categories:
+                    current_categories.append(cleaned_name)
+                    save_expense_categories(current_categories)
+                    st.success(f"Added '{cleaned_name}'!")
+                    st.rerun()
+                else:
+                    st.warning("Category already exists!")
+            else:
+                st.warning("Please enter a category name!")
+        
+        st.markdown("---")
+        st.markdown("**Reset to Defaults:**")
+        if st.button("🔄 Reset Categories", key="reset_categories_btn"):
+            save_expense_categories(DEFAULT_EXPENSE_CATEGORIES)
+            st.success("Categories reset to defaults!")
             st.rerun()
 
 # Load current data
@@ -1130,11 +1216,14 @@ with tab2:
                 st.info("💡 Set custom percentages for each category based on your priorities")
                 
                 percentages = {}
+                current_expense_cats = load_expense_categories()
                 
                 col1, col2 = st.columns(2)
                 
+                mid_point = len(current_expense_cats) // 2
+                
                 with col1:
-                    for cat in EXPENSE_CATEGORIES[:5]:
+                    for cat in current_expense_cats[:mid_point]:
                         percentages[cat] = st.slider(
                             cat,
                             min_value=0,
@@ -1146,7 +1235,7 @@ with tab2:
                         )
                 
                 with col2:
-                    for cat in EXPENSE_CATEGORIES[5:]:
+                    for cat in current_expense_cats[mid_point:]:
                         percentages[cat] = st.slider(
                             cat,
                             min_value=0,
@@ -1171,10 +1260,13 @@ with tab2:
             else:  # Manual Amounts
                 st.info("✏️ Enter the exact amount you want to budget for each category")
                 
+                current_expense_cats = load_expense_categories()
+                mid_point = len(current_expense_cats) // 2
+                
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    for cat in EXPENSE_CATEGORIES[:5]:
+                    for cat in current_expense_cats[:mid_point]:
                         budget_allocations[cat] = st.number_input(
                             cat,
                             min_value=0.0,
@@ -1184,7 +1276,7 @@ with tab2:
                         )
                 
                 with col2:
-                    for cat in EXPENSE_CATEGORIES[5:]:
+                    for cat in current_expense_cats[mid_point:]:
                         budget_allocations[cat] = st.number_input(
                             cat,
                             min_value=0.0,

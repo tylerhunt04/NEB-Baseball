@@ -538,415 +538,415 @@ with tab1:
 </div>
 """, unsafe_allow_html=True)
 
-# Month Selector for Budget and Spending Overview
-st.markdown("---")
+    # Month Selector for Budget and Spending Overview
+    st.markdown("---")
 
-# Get available months from transaction data
-if not transactions_df.empty:
-    transactions_df['year_month'] = transactions_df['date'].dt.to_period('M')
-    available_months = sorted(transactions_df['year_month'].unique(), reverse=True)
+    # Get available months from transaction data
+    if not transactions_df.empty:
+        transactions_df['year_month'] = transactions_df['date'].dt.to_period('M')
+        available_months = sorted(transactions_df['year_month'].unique(), reverse=True)
     
-    if len(available_months) > 0:
-        # Create readable month options
-        month_options = {str(month): month.strftime('%B %Y') for month in available_months}
+        if len(available_months) > 0:
+            # Create readable month options
+            month_options = {str(month): month.strftime('%B %Y') for month in available_months}
         
-        # Default to current month if available, otherwise most recent
-        current_period = pd.Period(datetime.now(), freq='M')
-        if current_period in available_months:
-            default_month = str(current_period)
+            # Default to current month if available, otherwise most recent
+            current_period = pd.Period(datetime.now(), freq='M')
+            if current_period in available_months:
+                default_month = str(current_period)
+            else:
+                default_month = str(available_months[0])
+        
+            # Month selector
+            col1, col2, col3 = st.columns([2, 3, 2])
+            with col2:
+                selected_month_str = st.selectbox(
+                    "📅 Select Month to View",
+                    options=list(month_options.keys()),
+                    format_func=lambda x: month_options[x],
+                    index=list(month_options.keys()).index(default_month) if default_month in month_options else 0,
+                    key="month_selector"
+                )
+        
+            selected_period = pd.Period(selected_month_str)
+            selected_month = selected_period.month
+            selected_year = selected_period.year
         else:
-            default_month = str(available_months[0])
-        
-        # Month selector
-        col1, col2, col3 = st.columns([2, 3, 2])
-        with col2:
-            selected_month_str = st.selectbox(
-                "📅 Select Month to View",
-                options=list(month_options.keys()),
-                format_func=lambda x: month_options[x],
-                index=list(month_options.keys()).index(default_month) if default_month in month_options else 0,
-                key="month_selector"
-            )
-        
-        selected_period = pd.Period(selected_month_str)
-        selected_month = selected_period.month
-        selected_year = selected_period.year
+            selected_month = datetime.now().month
+            selected_year = datetime.now().year
     else:
         selected_month = datetime.now().month
         selected_year = datetime.now().year
-else:
-    selected_month = datetime.now().month
-    selected_year = datetime.now().year
 
-# Calculate metrics for selected month
-total_income = 0
-total_expenses = 0
-net_income = 0
-current_month_df = pd.DataFrame()
+    # Calculate metrics for selected month
+    total_income = 0
+    total_expenses = 0
+    net_income = 0
+    current_month_df = pd.DataFrame()
 
-if not transactions_df.empty:
-    current_month_df = transactions_df[
-        (transactions_df['date'].dt.month == selected_month) & 
-        (transactions_df['date'].dt.year == selected_year)
-    ]
+    if not transactions_df.empty:
+        current_month_df = transactions_df[
+            (transactions_df['date'].dt.month == selected_month) & 
+            (transactions_df['date'].dt.year == selected_year)
+        ]
     
-    total_income = current_month_df[current_month_df['type'] == 'Income']['amount'].sum()
-    total_expenses = current_month_df[current_month_df['type'] == 'Expense']['amount'].sum()
-    net_income = total_income - total_expenses
+        total_income = current_month_df[current_month_df['type'] == 'Income']['amount'].sum()
+        total_expenses = current_month_df[current_month_df['type'] == 'Expense']['amount'].sum()
+        net_income = total_income - total_expenses
 
-# Top metrics - always show
-selected_month_name = pd.Period(year=selected_year, month=selected_month, freq='M').strftime('%B %Y')
+    # Top metrics - always show
+    selected_month_name = pd.Period(year=selected_year, month=selected_month, freq='M').strftime('%B %Y')
 
-col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
 
-with col1:
-    st.markdown(f"""
-    <div class="income-card">
-        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Income - {selected_month_name}</h3>
-        <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_income:,.2f}</h2>
-    </div>
-    """, unsafe_allow_html=True)
+    with col1:
+        st.markdown(f"""
+        <div class="income-card">
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Income - {selected_month_name}</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_income:,.2f}</h2>
+        </div>
+        """, unsafe_allow_html=True)
 
-with col2:
-    st.markdown(f"""
-    <div class="spending-card">
-        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Spent - {selected_month_name}</h3>
-        <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_expenses:,.2f}</h2>
-    </div>
-    """, unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""
+        <div class="spending-card">
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Spent - {selected_month_name}</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_expenses:,.2f}</h2>
+        </div>
+        """, unsafe_allow_html=True)
 
-with col3:
-    remaining_class = "remaining-card-green" if net_income >= 20 else "remaining-card-red"
-    st.markdown(f"""
-    <div class="{remaining_class}">
-        <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Remaining - {selected_month_name}</h3>
-        <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${net_income:,.2f}</h2>
-    </div>
-    """, unsafe_allow_html=True)
+    with col3:
+        remaining_class = "remaining-card-green" if net_income >= 20 else "remaining-card-red"
+        st.markdown(f"""
+        <div class="{remaining_class}">
+            <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Remaining - {selected_month_name}</h3>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${net_income:,.2f}</h2>
+        </div>
+        """, unsafe_allow_html=True)
 
-st.markdown("---")
+    st.markdown("---")
 
-# Spending Trends Over Time
-st.subheader("Spending Trends")
+    # Spending Trends Over Time
+    st.subheader("Spending Trends")
 
-if not transactions_df.empty:
-    expense_data = transactions_df[transactions_df['type'] == 'Expense'].copy()
+    if not transactions_df.empty:
+        expense_data = transactions_df[transactions_df['type'] == 'Expense'].copy()
     
-    if not expense_data.empty:
-        # Create tabs for weekly and monthly views
-        tab1, tab2 = st.tabs(["📅 Monthly", "📊 Weekly"])
+        if not expense_data.empty:
+            # Create tabs for weekly and monthly views
+            tab1, tab2 = st.tabs(["📅 Monthly", "📊 Weekly"])
         
-        with tab1:
-            # Monthly aggregation
-            expense_data['month'] = expense_data['date'].dt.to_period('M')
-            monthly_spending = expense_data.groupby('month')['amount'].sum().reset_index()
-            monthly_spending['month'] = monthly_spending['month'].dt.to_timestamp()
-            monthly_spending = monthly_spending.sort_values('month')
+            with tab1:
+                # Monthly aggregation
+                expense_data['month'] = expense_data['date'].dt.to_period('M')
+                monthly_spending = expense_data.groupby('month')['amount'].sum().reset_index()
+                monthly_spending['month'] = monthly_spending['month'].dt.to_timestamp()
+                monthly_spending = monthly_spending.sort_values('month')
             
-            # Only show last 12 months
-            monthly_spending = monthly_spending.tail(12)
+                # Only show last 12 months
+                monthly_spending = monthly_spending.tail(12)
             
-            if len(monthly_spending) > 0:
-                fig = go.Figure()
+                if len(monthly_spending) > 0:
+                    fig = go.Figure()
                 
-                fig.add_trace(go.Scatter(
-                    x=monthly_spending['month'],
-                    y=monthly_spending['amount'],
-                    mode='lines+markers',
-                    name='Monthly Spending',
-                    line=dict(color='#FF6B6B', width=3),
-                    marker=dict(size=8, color='#FF6B6B'),
-                    fill='tozeroy',
-                    fillcolor='rgba(255, 107, 107, 0.1)',
-                    hovertemplate='<b>%{x|%B %Y}</b><br>Spent: $%{y:,.2f}<extra></extra>'
-                ))
+                    fig.add_trace(go.Scatter(
+                        x=monthly_spending['month'],
+                        y=monthly_spending['amount'],
+                        mode='lines+markers',
+                        name='Monthly Spending',
+                        line=dict(color='#FF6B6B', width=3),
+                        marker=dict(size=8, color='#FF6B6B'),
+                        fill='tozeroy',
+                        fillcolor='rgba(255, 107, 107, 0.1)',
+                        hovertemplate='<b>%{x|%B %Y}</b><br>Spent: $%{y:,.2f}<extra></extra>'
+                    ))
                 
-                fig.update_layout(
-                    height=350,
-                    margin=dict(l=20, r=20, t=20, b=20),
-                    xaxis=dict(
-                        title='Month',
-                        gridcolor='rgba(200, 200, 200, 0.2)',
-                        showgrid=True,
-                        tickformat='%b %Y'
-                    ),
-                    yaxis=dict(
-                        title='Amount ($)',
-                        gridcolor='rgba(200, 200, 200, 0.2)',
-                        showgrid=True
-                    ),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#1a1a1a', family='Inter'),
-                    hovermode='x unified'
-                )
+                    fig.update_layout(
+                        height=350,
+                        margin=dict(l=20, r=20, t=20, b=20),
+                        xaxis=dict(
+                            title='Month',
+                            gridcolor='rgba(200, 200, 200, 0.2)',
+                            showgrid=True,
+                            tickformat='%b %Y'
+                        ),
+                        yaxis=dict(
+                            title='Amount ($)',
+                            gridcolor='rgba(200, 200, 200, 0.2)',
+                            showgrid=True
+                        ),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='#1a1a1a', family='Inter'),
+                        hovermode='x unified'
+                    )
                 
-                st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True)
                 
-                # Show stats
-                col1, col2, col3 = st.columns(3)
-                avg_monthly = monthly_spending['amount'].mean()
-                max_month = monthly_spending.loc[monthly_spending['amount'].idxmax()]
-                min_month = monthly_spending.loc[monthly_spending['amount'].idxmin()]
+                    # Show stats
+                    col1, col2, col3 = st.columns(3)
+                    avg_monthly = monthly_spending['amount'].mean()
+                    max_month = monthly_spending.loc[monthly_spending['amount'].idxmax()]
+                    min_month = monthly_spending.loc[monthly_spending['amount'].idxmin()]
                 
-                with col1:
-                    st.metric("Average Monthly", f"${avg_monthly:,.2f}")
-                with col2:
-                    st.metric("Highest Month", f"${max_month['amount']:,.2f}", 
-                             delta=max_month['month'].strftime('%b %Y'))
-                with col3:
-                    st.metric("Lowest Month", f"${min_month['amount']:,.2f}",
-                             delta=min_month['month'].strftime('%b %Y'))
-            else:
-                st.info("Not enough data yet to show monthly trends.")
+                    with col1:
+                        st.metric("Average Monthly", f"${avg_monthly:,.2f}")
+                    with col2:
+                        st.metric("Highest Month", f"${max_month['amount']:,.2f}", 
+                                 delta=max_month['month'].strftime('%b %Y'))
+                    with col3:
+                        st.metric("Lowest Month", f"${min_month['amount']:,.2f}",
+                                 delta=min_month['month'].strftime('%b %Y'))
+                else:
+                    st.info("Not enough data yet to show monthly trends.")
         
-        with tab2:
-            # Weekly aggregation
-            expense_data['week'] = expense_data['date'].dt.to_period('W')
-            weekly_spending = expense_data.groupby('week')['amount'].sum().reset_index()
-            weekly_spending['week'] = weekly_spending['week'].dt.to_timestamp()
-            weekly_spending = weekly_spending.sort_values('week')
+            with tab2:
+                # Weekly aggregation
+                expense_data['week'] = expense_data['date'].dt.to_period('W')
+                weekly_spending = expense_data.groupby('week')['amount'].sum().reset_index()
+                weekly_spending['week'] = weekly_spending['week'].dt.to_timestamp()
+                weekly_spending = weekly_spending.sort_values('week')
             
-            # Only show last 12 weeks
-            weekly_spending = weekly_spending.tail(12)
+                # Only show last 12 weeks
+                weekly_spending = weekly_spending.tail(12)
             
-            if len(weekly_spending) > 0:
-                fig = go.Figure()
+                if len(weekly_spending) > 0:
+                    fig = go.Figure()
                 
-                fig.add_trace(go.Scatter(
-                    x=weekly_spending['week'],
-                    y=weekly_spending['amount'],
-                    mode='lines+markers',
-                    name='Weekly Spending',
-                    line=dict(color='#4ECDC4', width=3),
-                    marker=dict(size=8, color='#4ECDC4'),
-                    fill='tozeroy',
-                    fillcolor='rgba(78, 205, 196, 0.1)',
-                    hovertemplate='<b>Week of %{x|%b %d}</b><br>Spent: $%{y:,.2f}<extra></extra>'
-                ))
+                    fig.add_trace(go.Scatter(
+                        x=weekly_spending['week'],
+                        y=weekly_spending['amount'],
+                        mode='lines+markers',
+                        name='Weekly Spending',
+                        line=dict(color='#4ECDC4', width=3),
+                        marker=dict(size=8, color='#4ECDC4'),
+                        fill='tozeroy',
+                        fillcolor='rgba(78, 205, 196, 0.1)',
+                        hovertemplate='<b>Week of %{x|%b %d}</b><br>Spent: $%{y:,.2f}<extra></extra>'
+                    ))
                 
-                fig.update_layout(
-                    height=350,
-                    margin=dict(l=20, r=20, t=20, b=20),
-                    xaxis=dict(
-                        title='Week',
-                        gridcolor='rgba(200, 200, 200, 0.2)',
-                        showgrid=True,
-                        tickformat='%b %d'
-                    ),
-                    yaxis=dict(
-                        title='Amount ($)',
-                        gridcolor='rgba(200, 200, 200, 0.2)',
-                        showgrid=True
-                    ),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#1a1a1a', family='Inter'),
-                    hovermode='x unified'
-                )
+                    fig.update_layout(
+                        height=350,
+                        margin=dict(l=20, r=20, t=20, b=20),
+                        xaxis=dict(
+                            title='Week',
+                            gridcolor='rgba(200, 200, 200, 0.2)',
+                            showgrid=True,
+                            tickformat='%b %d'
+                        ),
+                        yaxis=dict(
+                            title='Amount ($)',
+                            gridcolor='rgba(200, 200, 200, 0.2)',
+                            showgrid=True
+                        ),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='#1a1a1a', family='Inter'),
+                        hovermode='x unified'
+                    )
                 
-                st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True)
                 
-                # Show stats
-                col1, col2, col3 = st.columns(3)
-                avg_weekly = weekly_spending['amount'].mean()
-                max_week = weekly_spending.loc[weekly_spending['amount'].idxmax()]
-                min_week = weekly_spending.loc[weekly_spending['amount'].idxmin()]
+                    # Show stats
+                    col1, col2, col3 = st.columns(3)
+                    avg_weekly = weekly_spending['amount'].mean()
+                    max_week = weekly_spending.loc[weekly_spending['amount'].idxmax()]
+                    min_week = weekly_spending.loc[weekly_spending['amount'].idxmin()]
                 
-                with col1:
-                    st.metric("Average Weekly", f"${avg_weekly:,.2f}")
-                with col2:
-                    st.metric("Highest Week", f"${max_week['amount']:,.2f}",
-                             delta=max_week['week'].strftime('%b %d'))
-                with col3:
-                    st.metric("Lowest Week", f"${min_week['amount']:,.2f}",
-                             delta=min_week['week'].strftime('%b %d'))
-            else:
-                st.info("Not enough data yet to show weekly trends.")
+                    with col1:
+                        st.metric("Average Weekly", f"${avg_weekly:,.2f}")
+                    with col2:
+                        st.metric("Highest Week", f"${max_week['amount']:,.2f}",
+                                 delta=max_week['week'].strftime('%b %d'))
+                    with col3:
+                        st.metric("Lowest Week", f"${min_week['amount']:,.2f}",
+                                 delta=min_week['week'].strftime('%b %d'))
+                else:
+                    st.info("Not enough data yet to show weekly trends.")
+        else:
+            st.info("No expense data available yet.")
     else:
-        st.info("No expense data available yet.")
-else:
-    st.info("No transactions recorded yet.")
+        st.info("No transactions recorded yet.")
 
-st.markdown("---")
+    st.markdown("---")
 
-# Spending by Category
-st.subheader(f"Spending by Category - {selected_month_name}")
+    # Spending by Category
+    st.subheader(f"Spending by Category - {selected_month_name}")
 
-if not current_month_df.empty:
-    expense_df = current_month_df[current_month_df['type'] == 'Expense']
+    if not current_month_df.empty:
+        expense_df = current_month_df[current_month_df['type'] == 'Expense']
     
-    if not expense_df.empty:
-        category_spending = expense_df.groupby('category')['amount'].sum().reset_index()
-        category_spending = category_spending.sort_values('amount', ascending=False)
+        if not expense_df.empty:
+            category_spending = expense_df.groupby('category')['amount'].sum().reset_index()
+            category_spending = category_spending.sort_values('amount', ascending=False)
         
-        # Get colors for each category in the chart
-        colors = [get_category_color(cat) for cat in category_spending['category']]
+            # Get colors for each category in the chart
+            colors = [get_category_color(cat) for cat in category_spending['category']]
         
-        fig = px.pie(
-            category_spending, 
-            values='amount', 
-            names='category',
-            hole=0.4,
-            color_discrete_sequence=colors
-        )
-        fig.update_traces(
-            textposition='inside', 
-            textinfo='percent+label',
-            textfont=dict(color='white', size=12, family='Lato')
-        )
-        fig.update_layout(
-            showlegend=False,
-            height=400,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='#1a1a1a', family='Lato')
-        )
-        st.plotly_chart(fig, use_container_width=True)
+            fig = px.pie(
+                category_spending, 
+                values='amount', 
+                names='category',
+                hole=0.4,
+                color_discrete_sequence=colors
+            )
+            fig.update_traces(
+                textposition='inside', 
+                textinfo='percent+label',
+                textfont=dict(color='white', size=12, family='Lato')
+            )
+            fig.update_layout(
+                showlegend=False,
+                height=400,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#1a1a1a', family='Lato')
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No expenses recorded this month yet.")
     else:
         st.info("No expenses recorded this month yet.")
-else:
-    st.info("No expenses recorded this month yet.")
 
-st.markdown("---")
+    st.markdown("---")
 
-# Budget Overview Section
-st.subheader(f"Budget Overview - {selected_month_name}")
+    # Budget Overview Section
+    st.subheader(f"Budget Overview - {selected_month_name}")
 
-if not budgets_df.empty and not current_month_df.empty:
-    expense_df = current_month_df[current_month_df['type'] == 'Expense']
+    if not budgets_df.empty and not current_month_df.empty:
+        expense_df = current_month_df[current_month_df['type'] == 'Expense']
     
-    budget_data = []
-    for _, budget_row in budgets_df.iterrows():
-        category = budget_row['category']
-        budget_amount = budget_row['budget']
-        spent = expense_df[expense_df['category'] == category]['amount'].sum()
+        budget_data = []
+        for _, budget_row in budgets_df.iterrows():
+            category = budget_row['category']
+            budget_amount = budget_row['budget']
+            spent = expense_df[expense_df['category'] == category]['amount'].sum()
         
-        budget_data.append({
-            'Category': category,
-            'Budget': budget_amount,
-            'Spent': spent,
-            'Remaining': max(0, budget_amount - spent),
-            'Over': max(0, spent - budget_amount)
-        })
+            budget_data.append({
+                'Category': category,
+                'Budget': budget_amount,
+                'Spent': spent,
+                'Remaining': max(0, budget_amount - spent),
+                'Over': max(0, spent - budget_amount)
+            })
     
-    budget_df_chart = pd.DataFrame(budget_data)
+        budget_df_chart = pd.DataFrame(budget_data)
     
-    # Create horizontal bar chart
-    fig = go.Figure()
+        # Create horizontal bar chart
+        fig = go.Figure()
     
-    # Add budget bars (lighter background)
-    fig.add_trace(go.Bar(
-        y=budget_df_chart['Category'],
-        x=budget_df_chart['Budget'],
-        name='Budget',
-        orientation='h',
-        marker=dict(color='rgba(200, 200, 200, 0.3)'),
-        hovertemplate='<b>%{y}</b><br>Budget: $%{x:.2f}<extra></extra>'
-    ))
+        # Add budget bars (lighter background)
+        fig.add_trace(go.Bar(
+            y=budget_df_chart['Category'],
+            x=budget_df_chart['Budget'],
+            name='Budget',
+            orientation='h',
+            marker=dict(color='rgba(200, 200, 200, 0.3)'),
+            hovertemplate='<b>%{y}</b><br>Budget: $%{x:.2f}<extra></extra>'
+        ))
     
-    # Add spent bars using category colors
-    colors = [get_category_color(cat) for cat in budget_df_chart['Category']]
+        # Add spent bars using category colors
+        colors = [get_category_color(cat) for cat in budget_df_chart['Category']]
     
-    fig.add_trace(go.Bar(
-        y=budget_df_chart['Category'],
-        x=budget_df_chart['Spent'],
-        name='Spent',
-        orientation='h',
-        marker=dict(color=colors),
-        hovertemplate='<b>%{y}</b><br>Spent: $%{x:.2f}<extra></extra>'
-    ))
+        fig.add_trace(go.Bar(
+            y=budget_df_chart['Category'],
+            x=budget_df_chart['Spent'],
+            name='Spent',
+            orientation='h',
+            marker=dict(color=colors),
+            hovertemplate='<b>%{y}</b><br>Spent: $%{x:.2f}<extra></extra>'
+        ))
     
-    fig.update_layout(
-        barmode='overlay',
-        height=max(300, len(budget_df_chart) * 40),
-        margin=dict(l=20, r=20, t=20, b=20),
-        xaxis=dict(title='Amount ($)', gridcolor='rgba(200, 200, 200, 0.2)'),
-        yaxis=dict(title=''),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#1a1a1a', family='Lato'),
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
+        fig.update_layout(
+            barmode='overlay',
+            height=max(300, len(budget_df_chart) * 40),
+            margin=dict(l=20, r=20, t=20, b=20),
+            xaxis=dict(title='Amount ($)', gridcolor='rgba(200, 200, 200, 0.2)'),
+            yaxis=dict(title=''),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='#1a1a1a', family='Lato'),
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
         )
-    )
     
-    st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
     
-    # Summary stats below the chart
-    col1, col2, col3 = st.columns(3)
-    total_budget = budget_df_chart['Budget'].sum()
-    total_spent = budget_df_chart['Spent'].sum()
-    total_remaining = total_budget - total_spent
+        # Summary stats below the chart
+        col1, col2, col3 = st.columns(3)
+        total_budget = budget_df_chart['Budget'].sum()
+        total_spent = budget_df_chart['Spent'].sum()
+        total_remaining = total_budget - total_spent
     
+        with col1:
+            st.metric("Total Budget", f"${total_budget:,.2f}")
+        with col2:
+            st.metric("Total Spent", f"${total_spent:,.2f}")
+        with col3:
+            st.metric("Remaining", f"${total_remaining:,.2f}", 
+                     delta=f"{(total_remaining/total_budget*100):.1f}%" if total_budget > 0 else "0%")
+    
+    elif not budgets_df.empty:
+        st.info("No expenses this month yet to compare against budgets.")
+    else:
+        st.info("Set budgets below to track your spending limits.")
+
+    # Recent transactions
+    st.markdown("---")
+    st.subheader("Recent Transactions")
+
+    # Column headers - always show
+    col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
     with col1:
-        st.metric("Total Budget", f"${total_budget:,.2f}")
+        st.markdown("**Date**")
     with col2:
-        st.metric("Total Spent", f"${total_spent:,.2f}")
+        st.markdown("**Type**")
     with col3:
-        st.metric("Remaining", f"${total_remaining:,.2f}", 
-                 delta=f"{(total_remaining/total_budget*100):.1f}%" if total_budget > 0 else "0%")
+        st.markdown("**Category**")
+    with col4:
+        st.markdown("**Amount**")
+    with col5:
+        st.markdown("**Description**")
+    with col6:
+        st.markdown("**Delete**")
+
+    st.markdown("---")
+
+    if not transactions_df.empty:
+        recent_df = transactions_df.sort_values('date', ascending=False).head(10)
     
-elif not budgets_df.empty:
-    st.info("No expenses this month yet to compare against budgets.")
-else:
-    st.info("Set budgets below to track your spending limits.")
-
-# Recent transactions
-st.markdown("---")
-st.subheader("Recent Transactions")
-
-# Column headers - always show
-col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
-with col1:
-    st.markdown("**Date**")
-with col2:
-    st.markdown("**Type**")
-with col3:
-    st.markdown("**Category**")
-with col4:
-    st.markdown("**Amount**")
-with col5:
-    st.markdown("**Description**")
-with col6:
-    st.markdown("**Delete**")
-
-st.markdown("---")
-
-if not transactions_df.empty:
-    recent_df = transactions_df.sort_values('date', ascending=False).head(10)
-    
-    if not recent_df.empty:
-        # Transaction rows
-        for idx, row in recent_df.iterrows():
-            col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
+        if not recent_df.empty:
+            # Transaction rows
+            for idx, row in recent_df.iterrows():
+                col1, col2, col3, col4, col5, col6 = st.columns([2, 1.5, 2, 2, 3, 1])
             
-            with col1:
-                st.write(row['date'].strftime('%Y-%m-%d'))
-            with col2:
-                st.write(row['type'])
-            with col3:
-                st.write(row['category'])
-            with col4:
-                if row['type'] == 'Income':
-                    st.markdown(f"**:green[+${row['amount']:.2f}]**")
-                else:
-                    st.markdown(f"**:red[-${row['amount']:.2f}]**")
-            with col5:
-                st.write(row['description'] if row['description'] else "-")
-            with col6:
-                if st.button("🗑️", key=f"delete_{idx}", help="Delete transaction"):
-                    delete_transaction(idx)
-                    st.rerun()
+                with col1:
+                    st.write(row['date'].strftime('%Y-%m-%d'))
+                with col2:
+                    st.write(row['type'])
+                with col3:
+                    st.write(row['category'])
+                with col4:
+                    if row['type'] == 'Income':
+                        st.markdown(f"**:green[+${row['amount']:.2f}]**")
+                    else:
+                        st.markdown(f"**:red[-${row['amount']:.2f}]**")
+                with col5:
+                    st.write(row['description'] if row['description'] else "-")
+                with col6:
+                    if st.button("🗑️", key=f"delete_{idx}", help="Delete transaction"):
+                        delete_transaction(idx)
+                        st.rerun()
             
-            st.markdown("---")
+                st.markdown("---")
 
-# ============================================================================
+    # ============================================================================
 # BUDGET CREATOR TAB
 # ============================================================================
 with tab2:
@@ -966,8 +966,8 @@ with tab2:
     )
     
     st.markdown("---")
-    st.markdown("### Step 2: Enter Your Fixed Monthly Costs")
-    st.markdown("*These are expenses that stay the same every month and must be paid*")
+    st.markdown("### Step 2: Enter Your Fixed Essentials")
+    st.markdown("*These are **essential** expenses that stay the same every month and must be paid (part of your 'needs')*")
     
     col1, col2 = st.columns(2)
     
@@ -979,7 +979,7 @@ with tab2:
     total_fixed = rent + parking
     
     if total_fixed > 0:
-        st.info(f"💰 **Total Fixed Costs:** ${total_fixed:,.2f}/month")
+        st.info(f"✅ **Fixed Essentials (Needs):** ${total_fixed:,.2f}/month - These are automatically included as part of your needs budget")
     
     st.markdown("---")
     
@@ -987,7 +987,8 @@ with tab2:
     remaining_for_budget = monthly_income - total_fixed
     
     if monthly_income > 0:
-        st.markdown("### Step 3: Allocate Your Remaining Money")
+        st.markdown("### Step 3: Budget Your Variable Expenses")
+        st.markdown("*Allocate the remaining money after fixed essentials to other categories*")
         
         if remaining_for_budget > 0:
             st.success(f"✅ **Money Available for Budget:** ${remaining_for_budget:,.2f}")
@@ -1005,7 +1006,10 @@ with tab2:
             budget_allocations = {}
             
             if method == "50/30/20 Rule":
-                st.info("📊 **50/30/20 Rule**: 50% for needs (groceries, utilities, transportation), 30% for wants (entertainment, dining, shopping), 20% for savings")
+                st.info("📊 **50/30/20 Rule**: 50% for needs (rent, parking, groceries, utilities, transportation), 30% for wants (entertainment, dining, shopping), 20% for savings")
+                
+                st.markdown(f"💡 *Your fixed essentials (${total_fixed:,.2f}) are already part of your 50% needs. The remaining needs budget is split among variable categories.*")
+                st.markdown("---")
                 
                 # Calculate allocations
                 needs_amount = remaining_for_budget * 0.50
@@ -1220,8 +1224,8 @@ with tab2:
     with col3:
         st.markdown("""
         **Priority Order**
-        1. Fixed costs
-        2. Essentials
-        3. Savings
-        4. Everything else
+        1. Essentials (rent, food, etc.)
+        2. Savings
+        3. Wants
+        4. Extra savings/goals
         """)

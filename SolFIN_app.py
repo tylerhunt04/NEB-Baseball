@@ -367,7 +367,7 @@ TRANSACTIONS_FILE = str(DATA_DIR / "transactions.csv")
 BUDGETS_FILE = str(DATA_DIR / "budgets.csv")
 
 # Default categories
-INCOME_CATEGORIES = ["Work"]
+INCOME_CATEGORIES = ["Work", "Other"]
 
 EXPENSE_CATEGORIES = [
     "Groceries", "Rent/Mortgage", "Utilities", "Transportation", 

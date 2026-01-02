@@ -723,28 +723,31 @@ with tab1:
     col1, col2, col3 = st.columns(3)
 
     with col1:
+        income_display = f"${total_income:,.2f}"
         st.markdown(f"""
         <div class="income-card">
             <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: #2d2d2d;">Income - {selected_month_name}</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #2d2d2d; font-weight: 700;">${total_income:,.2f}</h2>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: #2d2d2d; font-weight: 700;">{income_display}</h2>
         </div>
         """, unsafe_allow_html=True)
 
     with col2:
+        expenses_display = f"${total_expenses:,.2f}"
         st.markdown(f"""
         <div class="spending-card">
             <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: white;">Spent - {selected_month_name}</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">${total_expenses:,.2f}</h2>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: white;">{expenses_display}</h2>
         </div>
         """, unsafe_allow_html=True)
 
     with col3:
         remaining_class = "remaining-card-green" if net_income >= 20 else "remaining-card-red"
         text_color = "#2d2d2d" if net_income >= 20 else "white"
+        remaining_display = f"${net_income:,.2f}"
         st.markdown(f"""
         <div class="{remaining_class}">
             <h3 style="margin:0; font-size: 1rem; opacity: 0.9; color: {text_color};">Remaining - {selected_month_name}</h3>
-            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: {text_color}; font-weight: 700;">${net_income:,.2f}</h2>
+            <h2 style="margin:0.5rem 0 0 0; font-size: 2rem; color: {text_color}; font-weight: 700;">{remaining_display}</h2>
         </div>
         """, unsafe_allow_html=True)
 

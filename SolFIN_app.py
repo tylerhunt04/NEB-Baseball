@@ -615,7 +615,8 @@ if not transactions_df.empty:
                     xaxis=dict(
                         title='Month',
                         gridcolor='rgba(200, 200, 200, 0.2)',
-                        showgrid=True
+                        showgrid=True,
+                        tickformat='%b %Y'
                     ),
                     yaxis=dict(
                         title='Amount ($)',
@@ -660,15 +661,15 @@ if not transactions_df.empty:
             if len(weekly_spending) > 0:
                 fig = go.Figure()
                 
-                fig.add_trace(go.Bar(
+                fig.add_trace(go.Scatter(
                     x=weekly_spending['week'],
                     y=weekly_spending['amount'],
+                    mode='lines+markers',
                     name='Weekly Spending',
-                    marker=dict(
-                        color=weekly_spending['amount'],
-                        colorscale='RdYlGn_r',
-                        showscale=False
-                    ),
+                    line=dict(color='#4ECDC4', width=3),
+                    marker=dict(size=8, color='#4ECDC4'),
+                    fill='tozeroy',
+                    fillcolor='rgba(78, 205, 196, 0.1)',
                     hovertemplate='<b>Week of %{x|%b %d}</b><br>Spent: $%{y:,.2f}<extra></extra>'
                 ))
                 
@@ -678,7 +679,8 @@ if not transactions_df.empty:
                     xaxis=dict(
                         title='Week',
                         gridcolor='rgba(200, 200, 200, 0.2)',
-                        showgrid=False
+                        showgrid=True,
+                        tickformat='%b %d'
                     ),
                     yaxis=dict(
                         title='Amount ($)',

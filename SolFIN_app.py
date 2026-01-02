@@ -496,35 +496,42 @@ budgets_df = load_budgets()
 # Main content
 st.title("✨ Solana's Finances")
 
-# Poetry rotation
-import random
+# Create tabs for different sections
+tab1, tab2 = st.tabs(["📊 Finance Dashboard", "💰 Budget Creator"])
 
-poems = [
-    {
-        "text": "A penny saved is not a penny earned,\nBut wisdom gained and lessons learned.\nFor wealth is more than coins in hand—\nIt's knowing how to wisely plan.",
-        "author": "— On Financial Wisdom"
-    },
-    {
-        "text": "Count your blessings, count your change,\nBoth require care to arrange.\nThe former fills the soul with light,\nThe latter keeps your future bright.",
-        "author": "— On Gratitude & Growth"
-    },
-    {
-        "text": "Small streams make mighty rivers flow,\nSmall savings help your wealth to grow.\nPatience is the golden key,\nTo financial serenity.",
-        "author": "— On Patience & Prosperity"
-    },
-    {
-        "text": "Not all that glitters must be bought,\nSome treasures can't be sold or sought.\nTrue wealth lies in mindful choice,\nNot silencing your inner voice.",
-        "author": "— On Mindful Spending"
-    },
-    {
-        "text": "Track the moments, track the spending,\nEvery journey has a beginning.\nWith each choice you write your story,\nOf financial health and glory.",
-        "author": "— On Your Journey"
-    }
-]
-
-selected_poem = random.choice(poems)
-
-st.markdown(f"""
+# ============================================================================
+# FINANCE DASHBOARD TAB
+# ============================================================================
+with tab1:
+    # Poetry rotation
+    import random
+    
+    poems = [
+        {
+            "text": "A penny saved is not a penny earned,\nBut wisdom gained and lessons learned.\nFor wealth is more than coins in hand—\nIt's knowing how to wisely plan.",
+            "author": "— On Financial Wisdom"
+        },
+        {
+            "text": "Count your blessings, count your change,\nBoth require care to arrange.\nThe former fills the soul with light,\nThe latter keeps your future bright.",
+            "author": "— On Gratitude & Growth"
+        },
+        {
+            "text": "Small streams make mighty rivers flow,\nSmall savings help your wealth to grow.\nPatience is the golden key,\nTo financial serenity.",
+            "author": "— On Patience & Prosperity"
+        },
+        {
+            "text": "Not all that glitters must be bought,\nSome treasures can't be sold or sought.\nTrue wealth lies in mindful choice,\nNot silencing your inner voice.",
+            "author": "— On Mindful Spending"
+        },
+        {
+            "text": "Track the moments, track the spending,\nEvery journey has a beginning.\nWith each choice you write your story,\nOf financial health and glory.",
+            "author": "— On Your Journey"
+        }
+    ]
+    
+    selected_poem = random.choice(poems)
+    
+    st.markdown(f"""
 <div class="poetry-card">
     <div class="poetry-text">{selected_poem['text']}</div>
     <div class="poetry-author">{selected_poem['author']}</div>
@@ -939,12 +946,14 @@ if not transactions_df.empty:
             
             st.markdown("---")
 
-# Budget Creator Section
-st.markdown("---")
-st.title("💰 Budget Creator")
-st.markdown("Create a realistic monthly budget based on your income and fixed expenses")
-
-with st.expander("📊 Create or Update Your Budget", expanded=False):
+# ============================================================================
+# BUDGET CREATOR TAB
+# ============================================================================
+with tab2:
+    st.markdown("### 💰 Create Your Monthly Budget")
+    st.markdown("Build a realistic budget based on your income and fixed expenses")
+    
+    st.markdown("---")
     st.markdown("### Step 1: Enter Your Monthly Income")
     
     monthly_income = st.number_input(

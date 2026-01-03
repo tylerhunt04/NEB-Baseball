@@ -5,14 +5,75 @@ import plotly.graph_objects as go
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 import os
+import hashlib
 
 # Page config
 st.set_page_config(
-    page_title="",
-    page_icon="✨",
+    page_title="Solana's Finances",
+    page_icon="☀️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Password Protection
+# Initialize session state for authentication
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+# Hash function for password
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# Set your password here (change this to your desired password)
+# Currently set to "sunshine" - CHANGE THIS!
+CORRECT_PASSWORD_HASH = hash_password("sunshine")
+
+# Login screen
+if not st.session_state.authenticated:
+    st.markdown("""
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 2rem;
+            background: linear-gradient(135deg, #FFD93D 0%, #FFEA00 100%);
+            border-radius: 20px;
+            box-shadow: 0 8px 25px rgba(255, 184, 0, 0.3);
+            text-align: center;
+        }
+        .login-title {
+            font-size: 2.5rem;
+            color: #2d2d2d;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        .login-subtitle {
+            color: #4a4a4a;
+            margin-bottom: 2rem;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="login-container">
+        <div class="login-title">☀️ Solana's Finances</div>
+        <div class="login-subtitle">Enter password to access</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Password input
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        password_input = st.text_input("Password", type="password", key="password_input")
+        
+        if st.button("Login", use_container_width=True):
+            if hash_password(password_input) == CORRECT_PASSWORD_HASH:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ Incorrect password. Please try again.")
+    
+    st.stop()  # Stop execution if not authenticated
 
 
 # Custom CSS for styling
@@ -520,6 +581,13 @@ initialize_files()
 
 # Sidebar - Add Transaction
 with st.sidebar:
+    # Logout button at the top
+    if st.button("🔒 Logout", use_container_width=True, key="logout_button"):
+        st.session_state.authenticated = False
+        st.rerun()
+    
+    st.markdown("---")
+    
     st.subheader("Income and Expenses")
     st.markdown('<div style="height: 2px; background: linear-gradient(90deg, #FFD700 0%, #FFC700 100%); margin: 0.5rem 0 1rem 0; border-radius: 2px;"></div>', unsafe_allow_html=True)
     

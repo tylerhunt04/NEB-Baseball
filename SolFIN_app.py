@@ -26,7 +26,7 @@ def hash_password(password):
 
 # Set your password here (change this to your desired password)
 # Currently set to "sunshine" - CHANGE THIS!
-CORRECT_PASSWORD_HASH = hash_password("sunshine")
+CORRECT_PASSWORD_HASH = hash_password("sunshine1125")
 
 # Login screen
 if not st.session_state.authenticated:

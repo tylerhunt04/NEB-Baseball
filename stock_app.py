@@ -38,80 +38,17 @@ st.markdown("""
         background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1419 100%);
     }
     
-    /* Stock Info Card - Premium Header */
-    .stock-card {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        border-radius: 24px;
-        padding: 2.5rem;
-        margin-bottom: 2rem;
-        border: 1px solid rgba(148, 163, 184, 0.1);
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 100px rgba(99, 102, 241, 0.1);
-        position: relative;
-        overflow: hidden;
+    /* Remove extra padding from columns */
+    [data-testid="column"] {
+        padding: 0 0.5rem;
     }
     
-    .stock-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+    [data-testid="column"]:first-child {
+        padding-left: 0;
     }
     
-    .stock-header-container {
-        display: flex;
-        align-items: center;
-        gap: 1.5rem;
-        margin-bottom: 0;
-        flex: 1;
-    }
-    
-    .company-logo {
-        width: 80px;
-        height: 80px;
-        min-width: 80px;
-        min-height: 80px;
-        border-radius: 16px;
-        background: white;
-        padding: 12px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-        object-fit: contain;
-        border: 2px solid rgba(99, 102, 241, 0.2);
-        flex-shrink: 0;
-    }
-    
-    .stock-info {
-        flex: 1;
-        min-width: 0;
-    }
-    
-    .stock-symbol {
-        font-size: 3rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin: 0;
-        line-height: 1;
-        letter-spacing: -0.02em;
-    }
-    
-    .stock-company {
-        font-size: 1.5rem;
-        color: rgba(255, 255, 255, 0.95);
-        margin-top: 0.5rem;
-        font-weight: 600;
-        letter-spacing: -0.01em;
-    }
-    
-    .stock-meta {
-        color: rgba(148, 163, 184, 0.8);
-        font-size: 0.875rem;
-        margin-top: 0.5rem;
-        font-weight: 500;
+    [data-testid="column"]:last-child {
+        padding-right: 0;
     }
     
     /* Metric Cards - Premium Design */
@@ -628,20 +565,26 @@ if analyze_button or ticker:
                 company_name = info.get('longName', ticker)
                 sector = info.get('sector', 'N/A')
                 market_cap = info.get('marketCap', None)
-                logo_url = info.get('logo_url', None)
                 
-                # Fallback: try to construct logo URL from website domain
-                if not logo_url:
-                    website = info.get('website', '')
-                    if website:
-                        # Extract domain from website URL
-                        domain_match = re.search(r'https?://(?:www\.)?([^/]+)', website)
-                        if domain_match:
-                            domain = domain_match.group(1)
-                            # Use Clearbit logo API as fallback
-                            logo_url = f"https://logo.clearbit.com/{domain}"
+                # Build logo URL using company website + Clearbit (reliable free service)
+                website = info.get('website', '')
+                if website:
+                    # Extract domain from website URL  
+                    domain_match = re.search(r'https?://(?:www\.)?([^/]+)', website)
+                    if domain_match:
+                        domain = domain_match.group(1)
+                        # Clearbit Logo API - works for most major companies
+                        logo_url = f"https://logo.clearbit.com/{domain}"
+                
+                # Fallback: Try getting favicon from company website
+                if not logo_url and website:
+                    domain_match = re.search(r'https?://([^/]+)', website)
+                    if domain_match:
+                        base_domain = domain_match.group(1)
+                        logo_url = f"https://{base_domain}/favicon.ico"
+                    
             except Exception as e:
-                # If logo fetch fails, continue without logo
+                # Continue without logo if fetch fails
                 pass
             
             # Professional Stock Card
@@ -681,30 +624,130 @@ if analyze_button or ticker:
                 else:
                     mc_display = f"${market_cap/1e6:.2f}M"
             
-            # Build logo HTML separately with error handling
-            logo_html = ""
+            # Debug: Show what logo URL we're trying
             if logo_url:
-                logo_html = f'<img src="{logo_url}" class="company-logo" alt="{ticker} logo" onerror="this.style.display=\'none\'">'
+                st.caption(f"🔍 Debug - Logo URL: {logo_url}")
             
-            stock_card_html = f"""
-            <div class="stock-card">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                    <div class="stock-header-container">
-                        {logo_html}
-                        <div class="stock-info">
-                            <h1 class="stock-symbol">{ticker}</h1>
-                            <h2 class="stock-company">{company_name}</h2>
-                            <p class="stock-meta">{sector} • Market Cap: {mc_display}</p>
+            # Create professional header using Streamlit columns instead of HTML
+            st.markdown("""
+            <div style="
+                background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                border-radius: 24px;
+                padding: 2.5rem;
+                margin-bottom: 2rem;
+                border: 1px solid rgba(148, 163, 184, 0.1);
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+                position: relative;
+            ">
+            <div style="
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 4px;
+                background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+            "></div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Use columns for layout
+            col_logo, col_info, col_badge = st.columns([1, 6, 2])
+            
+            with col_logo:
+                if logo_url:
+                    try:
+                        # Wrap image in a styled container
+                        st.markdown(f"""
+                        <div style="
+                            width: 80px;
+                            height: 80px;
+                            background: white;
+                            border-radius: 16px;
+                            padding: 8px;
+                            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+                            border: 2px solid rgba(99, 102, 241, 0.2);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        ">
+                            <img src="{logo_url}" style="max-width: 100%; max-height: 100%; object-fit: contain;" alt="{ticker}">
                         </div>
-                    </div>
+                        """, unsafe_allow_html=True)
+                    except:
+                        # Fallback: Show ticker initials
+                        st.markdown(f"""
+                        <div style="
+                            width: 80px;
+                            height: 80px;
+                            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                            border-radius: 16px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 1.75rem;
+                            font-weight: 800;
+                            color: white;
+                            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+                            font-family: 'JetBrains Mono', monospace;
+                        ">{ticker[:2]}</div>
+                        """, unsafe_allow_html=True)
+                else:
+                    # Show ticker initials as logo
+                    st.markdown(f"""
+                    <div style="
+                        width: 80px;
+                        height: 80px;
+                        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                        border-radius: 16px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 1.75rem;
+                        font-weight: 800;
+                        color: white;
+                        box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+                        font-family: 'JetBrains Mono', monospace;
+                    ">{ticker[:2]}</div>
+                    """, unsafe_allow_html=True)
+            
+            with col_info:
+                st.markdown(f"""
+                <div style="padding-top: 0.5rem;">
+                    <h1 style="
+                        font-size: 3rem;
+                        font-weight: 800;
+                        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                        -webkit-background-clip: text;
+                        -webkit-text-fill-color: transparent;
+                        background-clip: text;
+                        margin: 0;
+                        line-height: 1;
+                        letter-spacing: -0.02em;
+                    ">{ticker}</h1>
+                    <h2 style="
+                        font-size: 1.5rem;
+                        color: rgba(255, 255, 255, 0.95);
+                        margin-top: 0.5rem;
+                        font-weight: 600;
+                        letter-spacing: -0.01em;
+                    ">{company_name}</h2>
+                    <p style="
+                        color: rgba(148, 163, 184, 0.8);
+                        font-size: 0.875rem;
+                        margin-top: 0.5rem;
+                        font-weight: 500;
+                    ">{sector} • Market Cap: {mc_display}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col_badge:
+                st.markdown(f"""
+                <div style="padding-top: 1rem;">
                     <div class="signal-badge {signal_class}">
                         {signal_text}
                     </div>
                 </div>
-            </div>
-            """
-            
-            st.markdown(stock_card_html, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
             
             # Key metrics with professional cards
             col1, col2, col3, col4 = st.columns(4)

@@ -7,17 +7,20 @@ import time
 
 # Page config
 st.set_page_config(
-    page_title="Long-Term Stock Analyzer",
+    page_title="Professional Stock Analyzer • Long-Term Investing",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'About': "Professional Stock Analysis Tool for Long-Term Investors"
+    }
 )
 
-# Professional custom CSS
+# Professional custom CSS - Premium Design
 st.markdown("""
 <style>
-    /* Import Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    /* Import Professional Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
     
     /* Global Styles */
     * {
@@ -27,283 +30,466 @@ st.markdown("""
     /* Hide Streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header {visibility: hidden;}
     
-    /* Main container */
+    /* Main container - Professional Dark Theme */
     .main {
-        background: linear-gradient(to bottom, #0f0f23 0%, #1a1a2e 100%);
+        background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1419 100%);
     }
     
-    /* Stock Info Card */
+    /* Stock Info Card - Premium Header */
     .stock-card {
-        background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
-        border-radius: 20px;
-        padding: 2rem;
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border-radius: 24px;
+        padding: 2.5rem;
         margin-bottom: 2rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(148, 163, 184, 0.1);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 100px rgba(99, 102, 241, 0.1);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .stock-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+    }
+    
+    .stock-header-container {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .company-logo {
+        width: 80px;
+        height: 80px;
+        border-radius: 16px;
+        background: white;
+        padding: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        object-fit: contain;
+        border: 2px solid rgba(99, 102, 241, 0.2);
+    }
+    
+    .stock-info {
+        flex: 1;
     }
     
     .stock-symbol {
         font-size: 3rem;
-        font-weight: 700;
-        color: #667eea;
+        font-weight: 800;
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
         margin: 0;
         line-height: 1;
+        letter-spacing: -0.02em;
     }
     
     .stock-company {
         font-size: 1.5rem;
-        color: rgba(255, 255, 255, 0.9);
+        color: rgba(255, 255, 255, 0.95);
         margin-top: 0.5rem;
         font-weight: 600;
+        letter-spacing: -0.01em;
     }
     
     .stock-meta {
-        color: rgba(255, 255, 255, 0.6);
-        font-size: 0.9rem;
+        color: rgba(148, 163, 184, 0.8);
+        font-size: 0.875rem;
         margin-top: 0.5rem;
+        font-weight: 500;
     }
     
-    /* Metric Cards */
+    /* Metric Cards - Premium Design */
     .metric-container {
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 15px;
-        padding: 1.5rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        transition: all 0.3s ease;
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.6) 100%);
+        border-radius: 16px;
+        padding: 1.75rem;
+        border: 1px solid rgba(148, 163, 184, 0.1);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         height: 100%;
+        backdrop-filter: blur(10px);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .metric-container::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.5), transparent);
+        opacity: 0;
+        transition: opacity 0.3s ease;
     }
     
     .metric-container:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
-        border-color: rgba(102, 126, 234, 0.5);
+        transform: translateY(-4px);
+        box-shadow: 0 20px 40px rgba(99, 102, 241, 0.2);
+        border-color: rgba(99, 102, 241, 0.4);
+    }
+    
+    .metric-container:hover::before {
+        opacity: 1;
     }
     
     .metric-label {
-        color: rgba(255, 255, 255, 0.6);
-        font-size: 0.85rem;
+        color: rgba(148, 163, 184, 0.8);
+        font-size: 0.75rem;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 0.5rem;
-        font-weight: 600;
+        letter-spacing: 0.1em;
+        margin-bottom: 0.75rem;
+        font-weight: 700;
     }
     
     .metric-value {
-        font-size: 2rem;
-        font-weight: 700;
+        font-size: 2.25rem;
+        font-weight: 800;
         margin: 0.5rem 0;
+        letter-spacing: -0.02em;
+        font-family: 'JetBrains Mono', monospace;
     }
     
     .metric-value.positive {
-        color: #48bb78;
+        color: #10b981;
+        text-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
     }
     
     .metric-value.negative {
-        color: #f56565;
+        color: #ef4444;
+        text-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
     }
     
     .metric-value.neutral {
-        color: #cbd5e0;
+        color: #e2e8f0;
+        text-shadow: 0 0 20px rgba(226, 232, 240, 0.2);
     }
     
     .metric-change {
-        font-size: 0.9rem;
-        font-weight: 600;
+        font-size: 0.875rem;
+        font-weight: 700;
         display: inline-flex;
         align-items: center;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
+        padding: 0.375rem 0.875rem;
+        border-radius: 12px;
+        font-family: 'JetBrains Mono', monospace;
     }
     
     .metric-change.positive {
-        background: rgba(72, 187, 120, 0.2);
-        color: #48bb78;
+        background: rgba(16, 185, 129, 0.15);
+        color: #10b981;
+        border: 1px solid rgba(16, 185, 129, 0.3);
     }
     
     .metric-change.negative {
-        background: rgba(245, 101, 101, 0.2);
-        color: #f56565;
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.3);
     }
     
-    /* Signal Badges */
+    /* Signal Badges - Premium Design */
     .signal-badge {
         display: inline-flex;
         align-items: center;
         gap: 0.5rem;
-        padding: 0.75rem 1.5rem;
-        border-radius: 30px;
-        font-weight: 700;
-        font-size: 1rem;
+        padding: 0.875rem 1.75rem;
+        border-radius: 12px;
+        font-weight: 800;
+        font-size: 0.875rem;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        letter-spacing: 0.1em;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
     
     .signal-strong-buy {
-        background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
         color: white;
+        box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
     }
     
     .signal-buy {
-        background: linear-gradient(135deg, #68d391 0%, #48bb78 100%);
+        background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
         color: white;
+        box-shadow: 0 8px 24px rgba(52, 211, 153, 0.4);
     }
     
     .signal-hold {
-        background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
         color: white;
+        box-shadow: 0 8px 24px rgba(245, 158, 11, 0.4);
     }
     
     .signal-sell {
-        background: linear-gradient(135deg, #fc8181 0%, #f56565 100%);
+        background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
         color: white;
+        box-shadow: 0 8px 24px rgba(248, 113, 113, 0.4);
     }
     
     .signal-strong-sell {
-        background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
         color: white;
+        box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
     }
     
-    /* Info Cards */
+    /* Info Cards - Premium Design */
     .info-card {
-        background: rgba(255, 255, 255, 0.05);
-        border-left: 4px solid;
+        background: rgba(30, 41, 59, 0.4);
+        border-left: 3px solid;
         padding: 1.5rem;
-        border-radius: 10px;
+        border-radius: 12px;
         margin: 1rem 0;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
     }
     
     .info-card.success {
-        border-left-color: #48bb78;
-        background: rgba(72, 187, 120, 0.1);
+        border-left-color: #10b981;
+        background: rgba(16, 185, 129, 0.08);
+        box-shadow: 0 4px 16px rgba(16, 185, 129, 0.2);
     }
     
     .info-card.warning {
-        border-left-color: #ed8936;
-        background: rgba(237, 137, 54, 0.1);
+        border-left-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.08);
+        box-shadow: 0 4px 16px rgba(245, 158, 11, 0.2);
     }
     
     .info-card.error {
-        border-left-color: #f56565;
-        background: rgba(245, 101, 101, 0.1);
+        border-left-color: #ef4444;
+        background: rgba(239, 68, 68, 0.08);
+        box-shadow: 0 4px 16px rgba(239, 68, 68, 0.2);
     }
     
     .info-card.info {
-        border-left-color: #667eea;
-        background: rgba(102, 126, 234, 0.1);
+        border-left-color: #6366f1;
+        background: rgba(99, 102, 241, 0.08);
+        box-shadow: 0 4px 16px rgba(99, 102, 241, 0.2);
     }
     
     /* Sidebar Styling */
     .css-1d391kg {
-        background: linear-gradient(to bottom, #1a1a2e 0%, #16213e 100%);
+        background: linear-gradient(to bottom, #0f172a 0%, #1e293b 100%);
     }
     
     /* Section Headers */
     .section-header {
-        color: #667eea;
+        color: #6366f1;
         font-size: 1.5rem;
-        font-weight: 700;
+        font-weight: 800;
         margin: 2rem 0 1rem 0;
-        padding-bottom: 0.5rem;
-        border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+        padding-bottom: 0.75rem;
+        border-bottom: 2px solid rgba(99, 102, 241, 0.3);
+        letter-spacing: -0.01em;
     }
     
-    /* Divider */
+    /* Divider - Professional */
     .custom-divider {
-        height: 2px;
-        background: linear-gradient(to right, transparent, #667eea, transparent);
+        height: 1px;
+        background: linear-gradient(to right, transparent, rgba(99, 102, 241, 0.5), transparent);
         margin: 2rem 0;
+        box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
     }
     
     /* Chart Container */
     .chart-container {
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 15px;
+        background: rgba(30, 41, 59, 0.3);
+        border-radius: 16px;
         padding: 1.5rem;
         margin: 1rem 0;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(148, 163, 184, 0.1);
+        backdrop-filter: blur(10px);
     }
     
     /* Table Styling */
     .dataframe {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border-radius: 10px;
+        background: rgba(30, 41, 59, 0.4) !important;
+        border-radius: 12px;
     }
     
-    /* Tabs Styling */
+    /* Tabs Styling - Premium */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        background: rgba(255, 255, 255, 0.05);
+        gap: 8px;
+        background: rgba(30, 41, 59, 0.4);
         padding: 0.5rem;
-        border-radius: 15px;
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.1);
     }
     
     .stTabs [data-baseweb="tab"] {
         background: transparent;
-        border-radius: 10px;
-        color: rgba(255, 255, 255, 0.6);
-        font-weight: 600;
-        padding: 0.75rem 1.5rem;
-        transition: all 0.3s ease;
+        border-radius: 12px;
+        color: rgba(148, 163, 184, 0.8);
+        font-weight: 700;
+        padding: 0.875rem 1.5rem;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        font-size: 0.875rem;
+        letter-spacing: 0.02em;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background: rgba(99, 102, 241, 0.1);
+        color: #a5b4fc;
     }
     
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
         color: white;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
     }
     
-    /* Button Styling */
+    /* Button Styling - Premium */
     .stButton>button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
         color: white;
         border: none;
-        border-radius: 10px;
-        padding: 0.75rem 2rem;
-        font-weight: 600;
-        transition: all 0.3s ease;
+        border-radius: 12px;
+        padding: 0.875rem 2rem;
+        font-weight: 700;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-size: 0.875rem;
     }
     
     .stButton>button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        box-shadow: 0 8px 24px rgba(99, 102, 241, 0.5);
+        background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+    }
+    
+    .stButton>button:active {
+        transform: translateY(0px);
     }
     
     /* Expander Styling */
     .streamlit-expanderHeader {
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 10px;
-        font-weight: 600;
-        color: #667eea;
+        background: rgba(30, 41, 59, 0.4);
+        border-radius: 12px;
+        font-weight: 700;
+        color: #a5b4fc;
+        border: 1px solid rgba(148, 163, 184, 0.1);
+        transition: all 0.3s ease;
+    }
+    
+    .streamlit-expanderHeader:hover {
+        background: rgba(99, 102, 241, 0.1);
+        border-color: rgba(99, 102, 241, 0.3);
     }
     
     /* Loading Animation */
     .stSpinner > div {
-        border-top-color: #667eea !important;
+        border-top-color: #6366f1 !important;
+    }
+    
+    /* Success/Warning/Error Messages - Premium */
+    .stAlert {
+        border-radius: 12px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+    
+    /* Metric component styling */
+    [data-testid="stMetricValue"] {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 700;
+    }
+    
+    /* Input fields */
+    .stTextInput input {
+        background: rgba(30, 41, 59, 0.5);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 12px;
+        color: white;
+        padding: 0.75rem 1rem;
+        font-weight: 500;
+    }
+    
+    .stTextInput input:focus {
+        border-color: #6366f1;
+        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+    
+    /* Radio buttons */
+    .stRadio > label {
+        background: rgba(30, 41, 59, 0.3);
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+    
+    .stRadio > label:hover {
+        background: rgba(99, 102, 241, 0.1);
     }
 </style>
 """, unsafe_allow_html=True)
 
 # Sidebar inputs
-st.sidebar.markdown("### 📊 Long-Term Stock Analysis")
-st.sidebar.markdown("<div style='height: 2px; background: linear-gradient(to right, transparent, #667eea, transparent); margin: 1rem 0;'></div>", unsafe_allow_html=True)
+st.sidebar.markdown("""
+<div style="text-align: center; padding: 1rem 0 1.5rem 0;">
+    <h1 style="
+        font-size: 1.75rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin: 0;
+        letter-spacing: -0.02em;
+    ">📊 Long-Term Analyzer</h1>
+    <p style="color: rgba(148, 163, 184, 0.8); font-size: 0.875rem; margin-top: 0.5rem; font-weight: 500;">
+        Professional Stock Analysis
+    </p>
+</div>
+""", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='height: 1px; background: linear-gradient(to right, transparent, rgba(99, 102, 241, 0.5), transparent); margin: 0 0 1.5rem 0;'></div>", unsafe_allow_html=True)
 
 # Stock input
-st.sidebar.markdown("#### Stock Selection")
+st.sidebar.markdown("""
+<div style="
+    color: #a5b4fc;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.5rem;
+">Stock Selection</div>
+""", unsafe_allow_html=True)
 ticker = st.sidebar.text_input(
     "",
     value="AAPL",
     placeholder="Enter ticker (e.g., AAPL, GOOGL, MSFT)",
-    help="Enter a valid stock ticker symbol"
+    help="Enter a valid stock ticker symbol",
+    label_visibility="collapsed"
 ).upper()
 
 # Analyze button
-analyze_button = st.sidebar.button("Analyze Stock", type="primary", use_container_width=True)
+analyze_button = st.sidebar.button("🔍 Analyze Stock", type="primary", use_container_width=True)
 
-st.sidebar.markdown("<div style='height: 2px; background: linear-gradient(to right, transparent, #667eea, transparent); margin: 1rem 0;'></div>", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='height: 1px; background: linear-gradient(to right, transparent, rgba(99, 102, 241, 0.3), transparent); margin: 1.5rem 0;'></div>", unsafe_allow_html=True)
 
 # Period selection
-st.sidebar.markdown("#### Time Period")
+st.sidebar.markdown("""
+<div style="
+    color: #a5b4fc;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.75rem;
+">Time Period</div>
+""", unsafe_allow_html=True)
 period = st.sidebar.radio(
     "",
     ["1Y", "2Y", "3Y", "5Y", "MAX"],
@@ -320,23 +506,29 @@ period_map = {
     "MAX": "max"
 }
 
-st.sidebar.markdown("<div style='height: 2px; background: linear-gradient(to right, transparent, #667eea, transparent); margin: 1rem 0;'></div>", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='height: 1px; background: linear-gradient(to right, transparent, rgba(99, 102, 241, 0.3), transparent); margin: 1.5rem 0;'></div>", unsafe_allow_html=True)
 
 # Investment Philosophy
-with st.sidebar.expander("💡 Investment Philosophy"):
+with st.sidebar.expander("💡 Investment Philosophy", expanded=False):
     st.markdown("""
-    **This tool focuses on:**
-    - Buying quality at reasonable prices
-    - Long-term value creation (3-5+ years)
-    - Fundamental analysis over speculation
-    - Patience over timing the market
-    
-    **Best for:**
-    - Buy-and-hold investors
-    - Building wealth over time
-    - Retirement accounts
-    - Patient capital
-    """)
+    <div style="font-size: 0.875rem; line-height: 1.6;">
+        <strong style="color: #a5b4fc;">This tool focuses on:</strong>
+        <ul style="margin: 0.5rem 0; padding-left: 1.25rem;">
+            <li style="margin: 0.25rem 0;">Buying quality at reasonable prices</li>
+            <li style="margin: 0.25rem 0;">Long-term value creation (3-5+ years)</li>
+            <li style="margin: 0.25rem 0;">Fundamental analysis over speculation</li>
+            <li style="margin: 0.25rem 0;">Patience over timing the market</li>
+        </ul>
+        
+        <strong style="color: #a5b4fc; display: block; margin-top: 1rem;">Best for:</strong>
+        <ul style="margin: 0.5rem 0; padding-left: 1.25rem;">
+            <li style="margin: 0.25rem 0;">Buy-and-hold investors</li>
+            <li style="margin: 0.25rem 0;">Building wealth over time</li>
+            <li style="margin: 0.25rem 0;">Retirement accounts</li>
+            <li style="margin: 0.25rem 0;">Patient capital</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Cache the download function
 @st.cache_data(ttl=600)
@@ -419,16 +611,18 @@ if analyze_button or ticker:
         else:
             st.success(f"Successfully loaded {len(df)} days of data for {ticker} ({period})")
             
-            # Get company info
+            # Get company info and logo
             company_name = ticker
             sector = "N/A"
             market_cap = None
+            logo_url = None
             try:
                 stock = yf.Ticker(ticker)
                 info = stock.info if hasattr(stock, 'info') else {}
                 company_name = info.get('longName', ticker)
                 sector = info.get('sector', 'N/A')
                 market_cap = info.get('marketCap', None)
+                logo_url = info.get('logo_url', None)
             except:
                 pass
             
@@ -471,11 +665,14 @@ if analyze_button or ticker:
             
             st.markdown(f"""
             <div class="stock-card">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
-                    <div>
-                        <h1 class="stock-symbol">{ticker}</h1>
-                        <h2 class="stock-company">{company_name}</h2>
-                        <p class="stock-meta">{sector} • Market Cap: {mc_display}</p>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div class="stock-header-container">
+                        {f'<img src="{logo_url}" class="company-logo" alt="{ticker} logo">' if logo_url else ''}
+                        <div class="stock-info">
+                            <h1 class="stock-symbol">{ticker}</h1>
+                            <h2 class="stock-company">{company_name}</h2>
+                            <p class="stock-meta">{sector} • Market Cap: {mc_display}</p>
+                        </div>
                     </div>
                     <div class="signal-badge {signal_class}">
                         {signal_text}
@@ -1837,7 +2034,26 @@ if analyze_button or ticker:
 
 else:
     # Welcome message
-    st.markdown("## 👋 Welcome to Long-Term Stock Analyzer")
+    st.markdown("""
+    <div style="text-align: center; padding: 3rem 2rem;">
+        <h1 style="
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+            letter-spacing: -0.02em;
+        ">👋 Welcome to Long-Term Stock Analyzer</h1>
+        <p style="
+            font-size: 1.25rem;
+            color: rgba(148, 163, 184, 0.9);
+            margin-bottom: 2rem;
+            font-weight: 500;
+        ">Professional analysis tool for buy-and-hold investors</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     st.info("This tool is designed specifically for buy-and-hold investors who focus on fundamentals and long-term value creation.")
     
@@ -1910,4 +2126,9 @@ else:
     st.success("👆 Enter a ticker in the sidebar to get started!")
 
 st.divider()
-st.caption("Data from Yahoo Finance | For educational purposes only | Not financial advice")
+st.markdown("""
+<div style="text-align: center; padding: 1rem; color: rgba(148, 163, 184, 0.6); font-size: 0.875rem;">
+    <p style="margin: 0;">Data from Yahoo Finance • Cached for 10 minutes</p>
+    <p style="margin: 0.5rem 0 0 0;">For educational purposes only • Not financial advice</p>
+</div>
+""", unsafe_allow_html=True)

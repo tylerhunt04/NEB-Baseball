@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
+import re
 
 # Page config
 st.set_page_config(
@@ -63,22 +64,27 @@ st.markdown("""
         display: flex;
         align-items: center;
         gap: 1.5rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: 0;
+        flex: 1;
     }
     
     .company-logo {
         width: 80px;
         height: 80px;
+        min-width: 80px;
+        min-height: 80px;
         border-radius: 16px;
         background: white;
         padding: 12px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         object-fit: contain;
         border: 2px solid rgba(99, 102, 241, 0.2);
+        flex-shrink: 0;
     }
     
     .stock-info {
         flex: 1;
+        min-width: 0;
     }
     
     .stock-symbol {
@@ -623,7 +629,19 @@ if analyze_button or ticker:
                 sector = info.get('sector', 'N/A')
                 market_cap = info.get('marketCap', None)
                 logo_url = info.get('logo_url', None)
-            except:
+                
+                # Fallback: try to construct logo URL from website domain
+                if not logo_url:
+                    website = info.get('website', '')
+                    if website:
+                        # Extract domain from website URL
+                        domain_match = re.search(r'https?://(?:www\.)?([^/]+)', website)
+                        if domain_match:
+                            domain = domain_match.group(1)
+                            # Use Clearbit logo API as fallback
+                            logo_url = f"https://logo.clearbit.com/{domain}"
+            except Exception as e:
+                # If logo fetch fails, continue without logo
                 pass
             
             # Professional Stock Card
@@ -663,11 +681,16 @@ if analyze_button or ticker:
                 else:
                     mc_display = f"${market_cap/1e6:.2f}M"
             
-            st.markdown(f"""
+            # Build logo HTML separately with error handling
+            logo_html = ""
+            if logo_url:
+                logo_html = f'<img src="{logo_url}" class="company-logo" alt="{ticker} logo" onerror="this.style.display=\'none\'">'
+            
+            stock_card_html = f"""
             <div class="stock-card">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div class="stock-header-container">
-                        {f'<img src="{logo_url}" class="company-logo" alt="{ticker} logo">' if logo_url else ''}
+                        {logo_html}
                         <div class="stock-info">
                             <h1 class="stock-symbol">{ticker}</h1>
                             <h2 class="stock-company">{company_name}</h2>
@@ -679,7 +702,9 @@ if analyze_button or ticker:
                     </div>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """
+            
+            st.markdown(stock_card_html, unsafe_allow_html=True)
             
             # Key metrics with professional cards
             col1, col2, col3, col4 = st.columns(4)

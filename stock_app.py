@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
-import re
 
 # Page config
 st.set_page_config(
@@ -554,37 +553,17 @@ if analyze_button or ticker:
         else:
             st.success(f"Successfully loaded {len(df)} days of data for {ticker} ({period})")
             
-            # Get company info and logo
+            # Get company info
             company_name = ticker
             sector = "N/A"
             market_cap = None
-            logo_url = None
             try:
                 stock = yf.Ticker(ticker)
                 info = stock.info if hasattr(stock, 'info') else {}
                 company_name = info.get('longName', ticker)
                 sector = info.get('sector', 'N/A')
                 market_cap = info.get('marketCap', None)
-                
-                # Build logo URL using company website + Clearbit (reliable free service)
-                website = info.get('website', '')
-                if website:
-                    # Extract domain from website URL  
-                    domain_match = re.search(r'https?://(?:www\.)?([^/]+)', website)
-                    if domain_match:
-                        domain = domain_match.group(1)
-                        # Clearbit Logo API - works for most major companies
-                        logo_url = f"https://logo.clearbit.com/{domain}"
-                
-                # Fallback: Try getting favicon from company website
-                if not logo_url and website:
-                    domain_match = re.search(r'https?://([^/]+)', website)
-                    if domain_match:
-                        base_domain = domain_match.group(1)
-                        logo_url = f"https://{base_domain}/favicon.ico"
-                    
-            except Exception as e:
-                # Continue without logo if fetch fails
+            except:
                 pass
             
             # Professional Stock Card
@@ -624,11 +603,7 @@ if analyze_button or ticker:
                 else:
                     mc_display = f"${market_cap/1e6:.2f}M"
             
-            # Debug: Show what logo URL we're trying
-            if logo_url:
-                st.caption(f"🔍 Debug - Logo URL: {logo_url}")
-            
-            # Create professional header using Streamlit columns instead of HTML
+            # Create professional header without logo
             st.markdown("""
             <div style="
                 background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
@@ -650,69 +625,12 @@ if analyze_button or ticker:
             </div>
             """, unsafe_allow_html=True)
             
-            # Use columns for layout
-            col_logo, col_info, col_badge = st.columns([1, 6, 2])
-            
-            with col_logo:
-                if logo_url:
-                    try:
-                        # Wrap image in a styled container
-                        st.markdown(f"""
-                        <div style="
-                            width: 80px;
-                            height: 80px;
-                            background: white;
-                            border-radius: 16px;
-                            padding: 8px;
-                            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-                            border: 2px solid rgba(99, 102, 241, 0.2);
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                        ">
-                            <img src="{logo_url}" style="max-width: 100%; max-height: 100%; object-fit: contain;" alt="{ticker}">
-                        </div>
-                        """, unsafe_allow_html=True)
-                    except:
-                        # Fallback: Show ticker initials
-                        st.markdown(f"""
-                        <div style="
-                            width: 80px;
-                            height: 80px;
-                            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-                            border-radius: 16px;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            font-size: 1.75rem;
-                            font-weight: 800;
-                            color: white;
-                            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
-                            font-family: 'JetBrains Mono', monospace;
-                        ">{ticker[:2]}</div>
-                        """, unsafe_allow_html=True)
-                else:
-                    # Show ticker initials as logo
-                    st.markdown(f"""
-                    <div style="
-                        width: 80px;
-                        height: 80px;
-                        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-                        border-radius: 16px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-size: 1.75rem;
-                        font-weight: 800;
-                        color: white;
-                        box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
-                        font-family: 'JetBrains Mono', monospace;
-                    ">{ticker[:2]}</div>
-                    """, unsafe_allow_html=True)
+            # Use columns for layout (info and badge only)
+            col_info, col_badge = st.columns([8, 2])
             
             with col_info:
                 st.markdown(f"""
-                <div style="padding-top: 0.5rem;">
+                <div style="padding-top: 0;">
                     <h1 style="
                         font-size: 3rem;
                         font-weight: 800;
@@ -742,7 +660,7 @@ if analyze_button or ticker:
             
             with col_badge:
                 st.markdown(f"""
-                <div style="padding-top: 1rem;">
+                <div style="padding-top: 0.5rem;">
                     <div class="signal-badge {signal_class}">
                         {signal_text}
                     </div>

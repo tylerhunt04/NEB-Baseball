@@ -625,7 +625,6 @@ def create_category_breakdown():
 
 def render_next_48_hours():
     """Render quick dashboard for next 48 hours"""
-    st.markdown("## Next 48 Hours")
     
     now = datetime.now()
     end_time = now + timedelta(hours=48)
@@ -691,7 +690,6 @@ def render_next_48_hours():
 
 def render_day_view():
     """Render single day view"""
-    st.markdown("## Day View")
     
     col1, col2, col3 = st.columns([1, 2, 1])
     
@@ -713,8 +711,6 @@ def render_day_view():
             st.session_state.view_date += timedelta(days=1)
             st.rerun()
     
-    st.markdown(f"### {st.session_state.view_date.strftime('%A, %B %d, %Y')}")
-    
     events = get_events_for_date(st.session_state.view_date)
     
     if not events:
@@ -733,7 +729,6 @@ def render_day_view():
 
 def render_week_view():
     """Render week view"""
-    st.markdown("## Week View")
     
     # Week navigation
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -746,7 +741,7 @@ def render_week_view():
     with col2:
         week_start = st.session_state.view_date - timedelta(days=st.session_state.view_date.weekday())
         week_end = week_start + timedelta(days=6)
-        st.markdown(f"### {week_start.strftime('%b %d')} - {week_end.strftime('%b %d, %Y')}")
+        st.markdown(f"<p style='text-align: center; color: {WOOD_MED}; font-size: 0.9em;'>{week_start.strftime('%b %d')} - {week_end.strftime('%b %d, %Y')}</p>", unsafe_allow_html=True)
     
     with col3:
         if st.button("Next Week ▶"):
@@ -804,7 +799,6 @@ def render_week_view():
 
 def render_month_view():
     """Render month view"""
-    st.markdown("## Month View")
     
     # Month navigation
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -819,7 +813,7 @@ def render_month_view():
             st.rerun()
     
     with col2:
-        st.markdown(f"### {st.session_state.view_date.strftime('%B %Y')}")
+        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)  # Spacer for alignment
     
     with col3:
         if st.button("Next Month ▶"):
@@ -1071,13 +1065,12 @@ def render_analytics_dashboard():
 
 def render_add_event_form():
     """Form to add new events with recurring option"""
-    st.markdown("## Add New Event")
     
     # Recurring checkbox OUTSIDE the form so it updates immediately
     is_recurring = st.checkbox("Recurring Event (e.g., classes, practices)")
     
     if is_recurring:
-        st.info("💡 Select the days of the week, date range, and time for your recurring event")
+        st.info("Select the days of the week, date range, and time for your recurring event")
     
     st.markdown("---")
     
@@ -1272,6 +1265,25 @@ def render_add_event_form():
 
 # Main App
 def main():
+    # Initialize view date if not set
+    if 'view_date' not in st.session_state:
+        st.session_state.view_date = datetime.now()
+    
+    # Determine what date to display based on current view
+    current_view = st.session_state.get('selected_view', 'Dashboard')
+    
+    if current_view == "Dashboard":
+        date_display = "Next 48 Hours"
+    elif current_view == "Day":
+        date_display = st.session_state.view_date.strftime("%A, %B %d, %Y")
+    elif current_view == "Add Event":
+        date_display = "Add New Event"
+    else:  # Week, Month
+        date_display = st.session_state.view_date.strftime("%B %Y")
+    
+    # Display date prominently at top
+    st.markdown(f"<h2 style='color: {WOOD_DARK}; font-weight: 600; margin-bottom: 20px;'>{date_display}</h2>", unsafe_allow_html=True)
+    
     # Simple, clean navigation - VIEW TYPES ONLY
     nav_options = [
         "Dashboard",

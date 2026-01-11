@@ -99,6 +99,9 @@ st.markdown(f"""
         font-size: 0.95em;
         transition: all 0.2s ease;
         letter-spacing: 0.3px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }}
     
     .stButton>button:hover {{
@@ -1122,10 +1125,10 @@ def main():
     if 'selected_view' not in st.session_state:
         st.session_state.selected_view = "Dashboard"
     
-    # Create clean navigation bar
-    cols = st.columns(len(nav_options))
+    # Create clean navigation bar with proper spacing
+    nav_cols = st.columns([1.2, 0.7, 0.8, 0.8, 1, 1, 1, 1.1])
     for idx, view_name in enumerate(nav_options):
-        with cols[idx]:
+        with nav_cols[idx]:
             is_active = st.session_state.selected_view == view_name
             if st.button(
                 view_name,

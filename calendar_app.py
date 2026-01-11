@@ -15,58 +15,75 @@ st.set_page_config(
     layout="wide"
 )
 
-# Nebraska colors
-NEBRASKA_RED = "#E41C38"
-NEBRASKA_CREAM = "#F7F7F7"
-DARK_BG = "#1a1a1a"
+# Tyler's Custom Color Scheme
+NEBRASKA_RED = "#E41C38"  # Keep for baseball
+DARK_BG = "#0a0a0a"
+WOOD_DARK = "#3E2723"
+WOOD_MED = "#5D4037"
+WOOD_LIGHT = "#8D6E63"
 
-# Category colors
+# Earth tone palette
+TAN = "#D2B48C"
+BEIGE = "#C9A87C"
+SAND = "#C19A6B"
+BROWN = "#6F4E37"
+WARM_BROWN = "#8B7355"
+DARK_BROWN = "#4A3728"
+
+# Category colors - Nebraska red for baseball, earth tones for everything else
 CATEGORY_COLORS = {
-    "Classes": "#4A90E2",
-    "Baseball - Practice": "#E41C38",
+    "Classes": TAN,
+    "Baseball - Practice": NEBRASKA_RED,
     "Baseball - Game": "#DC143C",
     "Baseball - Travel": "#8B0000",
-    "Analytics Work": "#50C878",
-    "Study Session": "#9B59B6",
-    "Personal": "#F39C12",
-    "Exam": "#E74C3C",
-    "Assignment": "#3498DB"
+    "Analytics Work": SAND,
+    "Study Session": BROWN,
+    "Personal": BEIGE,
+    "Exam": WARM_BROWN,
+    "Assignment": WOOD_LIGHT
 }
 
 # File for data persistence
 DATA_FILE = "/home/claude/calendar_data.json"
 
-# Custom CSS
+# Custom CSS - Wood & Earth Tone Theme
 st.markdown(f"""
 <style>
     .main {{
-        background-color: #0F0F0F;
+        background-color: #0a0a0a;
     }}
     .stButton>button {{
-        background-color: {NEBRASKA_RED};
-        color: white;
-        border: none;
-        border-radius: 5px;
+        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
+        color: {TAN};
+        border: 2px solid {WOOD_LIGHT};
+        border-radius: 8px;
         padding: 0.5rem 1rem;
         font-weight: bold;
+        transition: all 0.3s ease;
     }}
     .stButton>button:hover {{
-        background-color: #C41230;
+        background: linear-gradient(135deg, {WOOD_MED} 0%, {WOOD_LIGHT} 100%);
+        border-color: {TAN};
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(141, 110, 99, 0.4);
     }}
     .metric-card {{
-        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+        background: linear-gradient(135deg, {WOOD_DARK} 0%, #1a1410 100%);
         padding: 20px;
         border-radius: 10px;
-        border-left: 4px solid {NEBRASKA_RED};
+        border-left: 4px solid {SAND};
         margin: 10px 0;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
     }}
     .event-card {{
-        background: #1a1a1a;
+        background: linear-gradient(135deg, #1a1410 0%, {WOOD_DARK} 100%);
         padding: 15px;
         border-radius: 8px;
         border-left: 4px solid;
         margin: 10px 0;
-        color: white;
+        color: {TAN};
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
     }}
     .category-badge {{
         display: inline-block;
@@ -75,9 +92,32 @@ st.markdown(f"""
         font-size: 0.85em;
         font-weight: bold;
         margin-right: 8px;
+        color: #0a0a0a;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     }}
-    h1, h2, h3 {{
-        color: {NEBRASKA_RED};
+    h1 {{
+        color: {SAND};
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    }}
+    h2, h3 {{
+        color: {TAN};
+        text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+    }}
+    .stSelectbox, .stTextInput, .stTextArea {{
+        background-color: {WOOD_DARK} !important;
+        color: {TAN} !important;
+    }}
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {{
+        background: linear-gradient(180deg, {WOOD_DARK} 0%, #0a0a0a 100%);
+    }}
+    /* Radio buttons */
+    .stRadio > label {{
+        color: {TAN} !important;
+    }}
+    /* Form labels */
+    label {{
+        color: {BEIGE} !important;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -227,17 +267,17 @@ def render_event_card(event):
     <div class="event-card" style="border-left-color: {color};">
         <div style="display: flex; justify-content: space-between; align-items: start;">
             <div>
-                <h3 style="margin: 0; color: white;">{priority_emoji} {event['title']} {travel_badge}</h3>
-                <p style="margin: 5px 0; color: #aaa;">
+                <h3 style="margin: 0; color: {TAN};">{priority_emoji} {event['title']} {travel_badge}</h3>
+                <p style="margin: 5px 0; color: {BEIGE};">
                     <span class="category-badge" style="background-color: {color};">{event['category']}</span>
                 </p>
-                <p style="margin: 5px 0; color: #ccc;">
+                <p style="margin: 5px 0; color: {SAND};">
                     📅 {event['start'].strftime('%b %d, %Y')} | 
                     🕐 {event['start'].strftime('%I:%M %p')} - {event['end'].strftime('%I:%M %p')} 
                     ({duration_str})
                 </p>
-                {f"<p style='margin: 5px 0; color: #ccc;'>📍 {event['location']}</p>" if event.get('location') else ""}
-                {f"<p style='margin: 5px 0; color: #ddd;'>📝 {event['notes']}</p>" if event.get('notes') else ""}
+                {f"<p style='margin: 5px 0; color: {SAND};'>📍 {event['location']}</p>" if event.get('location') else ""}
+                {f"<p style='margin: 5px 0; color: {TAN};'>📝 {event['notes']}</p>" if event.get('notes') else ""}
             </div>
         </div>
     </div>
@@ -287,7 +327,7 @@ def create_workload_heatmap():
         z=matrix,
         x=hour_labels,
         y=day_labels,
-        colorscale=[[0, '#1a1a1a'], [0.5, '#E41C38'], [1, '#8B0000']],
+        colorscale=[[0, '#0a0a0a'], [0.3, WOOD_DARK], [0.6, WOOD_MED], [1, SAND]],
         showscale=True,
         hovertemplate='%{y}<br>%{x}<br>Events: %{z}<extra></extra>'
     ))
@@ -297,10 +337,10 @@ def create_workload_heatmap():
         xaxis_title="Hour of Day",
         yaxis_title="Date",
         height=400,
-        paper_bgcolor='#0F0F0F',
-        plot_bgcolor='#0F0F0F',
-        font=dict(color='white'),
-        title_font=dict(color=NEBRASKA_RED)
+        paper_bgcolor='#0a0a0a',
+        plot_bgcolor='#0a0a0a',
+        font=dict(color=TAN),
+        title_font=dict(color=SAND, size=18)
     )
     
     return fig
@@ -328,12 +368,12 @@ def create_category_breakdown():
     fig.update_layout(
         title="Time Allocation by Category",
         height=400,
-        paper_bgcolor='#0F0F0F',
-        plot_bgcolor='#0F0F0F',
-        font=dict(color='white'),
-        title_font=dict(color=NEBRASKA_RED),
+        paper_bgcolor='#0a0a0a',
+        plot_bgcolor='#0a0a0a',
+        font=dict(color=TAN),
+        title_font=dict(color=SAND, size=18),
         showlegend=True,
-        legend=dict(font=dict(color='white'))
+        legend=dict(font=dict(color=TAN))
     )
     
     return fig
@@ -356,8 +396,8 @@ def render_next_48_hours():
     with col1:
         st.markdown(f"""
         <div class="metric-card">
-            <h3 style="margin: 0; color: white;">{len(events)}</h3>
-            <p style="margin: 5px 0; color: #aaa;">Total Events</p>
+            <h3 style="margin: 0; color: {TAN};">{len(events)}</h3>
+            <p style="margin: 5px 0; color: {BEIGE};">Total Events</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -365,8 +405,8 @@ def render_next_48_hours():
         travel_events = sum(1 for e in events if e.get('is_travel'))
         st.markdown(f"""
         <div class="metric-card">
-            <h3 style="margin: 0; color: white;">{travel_events}</h3>
-            <p style="margin: 5px 0; color: #aaa;">Travel Required</p>
+            <h3 style="margin: 0; color: {TAN};">{travel_events}</h3>
+            <p style="margin: 5px 0; color: {BEIGE};">Travel Required</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -374,8 +414,8 @@ def render_next_48_hours():
         high_priority = sum(1 for e in events if e.get('priority') == 'High')
         st.markdown(f"""
         <div class="metric-card">
-            <h3 style="margin: 0; color: white;">{high_priority}</h3>
-            <p style="margin: 5px 0; color: #aaa;">High Priority</p>
+            <h3 style="margin: 0; color: {TAN};">{high_priority}</h3>
+            <p style="margin: 5px 0; color: {BEIGE};">High Priority</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -400,7 +440,7 @@ def render_next_48_hours():
         with col2:
             st.markdown(f"""
             <div class="metric-card" style="text-align: center;">
-                <h4 style="margin: 0; color: white;">{time_str}</h4>
+                <h4 style="margin: 0; color: {TAN};">{time_str}</h4>
             </div>
             """, unsafe_allow_html=True)
 
@@ -479,7 +519,7 @@ def render_week_view():
         
         with cols[i]:
             is_today = day.date() == datetime.now().date()
-            day_style = f"background-color: {NEBRASKA_RED};" if is_today else ""
+            day_style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {TAN};" if is_today else f"background-color: {WOOD_DARK}; color: {BEIGE};"
             
             st.markdown(f"""
             <div style="text-align: center; padding: 10px; {day_style} border-radius: 5px;">
@@ -552,13 +592,13 @@ def render_month_view():
                 events = get_events_for_date(date)
                 
                 is_today = date.date() == datetime.now().date()
-                style = f"background-color: {NEBRASKA_RED}; color: white;" if is_today else "background-color: #1a1a1a;"
+                style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {TAN};" if is_today else f"background-color: {WOOD_DARK}; color: {BEIGE};"
                 
                 with cols[i]:
                     st.markdown(f"""
                     <div style="{style} padding: 10px; border-radius: 5px; min-height: 100px;">
                         <div style="text-align: center; font-weight: bold;">{day}</div>
-                        <div style="font-size: 0.75em; margin-top: 5px;">
+                        <div style="font-size: 0.75em; margin-top: 5px; color: {SAND};">
                             {f"{len(events)} event{'s' if len(events) != 1 else ''}" if events else ""}
                         </div>
                     </div>
@@ -578,26 +618,26 @@ def render_baseball_season_tracker():
     
     with col1:
         st.markdown(f"""
-        <div class="metric-card">
-            <h2 style="margin: 0; color: white;">{len(games)}</h2>
-            <p style="margin: 5px 0; color: #aaa;">Games Scheduled</p>
+        <div class="metric-card" style="border-left-color: {NEBRASKA_RED};">
+            <h2 style="margin: 0; color: {TAN};">{len(games)}</h2>
+            <p style="margin: 5px 0; color: {BEIGE};">Games Scheduled</p>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
         st.markdown(f"""
-        <div class="metric-card">
-            <h2 style="margin: 0; color: white;">{len(practices)}</h2>
-            <p style="margin: 5px 0; color: #aaa;">Practices Scheduled</p>
+        <div class="metric-card" style="border-left-color: {NEBRASKA_RED};">
+            <h2 style="margin: 0; color: {TAN};">{len(practices)}</h2>
+            <p style="margin: 5px 0; color: {BEIGE};">Practices Scheduled</p>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
         away_games = sum(1 for g in games if g.get('is_travel'))
         st.markdown(f"""
-        <div class="metric-card">
-            <h2 style="margin: 0; color: white;">{away_games}</h2>
-            <p style="margin: 5px 0; color: #aaa;">Away Games</p>
+        <div class="metric-card" style="border-left-color: {NEBRASKA_RED};">
+            <h2 style="margin: 0; color: {TAN};">{away_games}</h2>
+            <p style="margin: 5px 0; color: {BEIGE};">Away Games</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -608,16 +648,16 @@ def render_baseball_season_tracker():
         if next_game:
             days_until = (next_game['start'].date() - datetime.now().date()).days
             st.markdown(f"""
-            <div class="metric-card">
-                <h2 style="margin: 0; color: white;">{days_until}</h2>
-                <p style="margin: 5px 0; color: #aaa;">Days to Next Game</p>
+            <div class="metric-card" style="border-left-color: {NEBRASKA_RED};">
+                <h2 style="margin: 0; color: {TAN};">{days_until}</h2>
+                <p style="margin: 5px 0; color: {BEIGE};">Days to Next Game</p>
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown(f"""
-            <div class="metric-card">
-                <h2 style="margin: 0; color: white;">-</h2>
-                <p style="margin: 5px 0; color: #aaa;">No Games Scheduled</p>
+            <div class="metric-card" style="border-left-color: {NEBRASKA_RED};">
+                <h2 style="margin: 0; color: {TAN};">-</h2>
+                <p style="margin: 5px 0; color: {BEIGE};">No Games Scheduled</p>
             </div>
             """, unsafe_allow_html=True)
     
@@ -642,8 +682,8 @@ def render_academic_tracker():
         upcoming_exams = [e for e in exams if e['start'] > datetime.now()]
         st.markdown(f"""
         <div class="metric-card">
-            <h2 style="margin: 0; color: white;">{len(upcoming_exams)}</h2>
-            <p style="margin: 5px 0; color: #aaa;">Upcoming Exams</p>
+            <h2 style="margin: 0; color: {TAN};">{len(upcoming_exams)}</h2>
+            <p style="margin: 5px 0; color: {BEIGE};">Upcoming Exams</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -651,8 +691,8 @@ def render_academic_tracker():
         upcoming_assignments = [e for e in assignments if e['start'] > datetime.now()]
         st.markdown(f"""
         <div class="metric-card">
-            <h2 style="margin: 0; color: white;">{len(upcoming_assignments)}</h2>
-            <p style="margin: 5px 0; color: #aaa;">Pending Assignments</p>
+            <h2 style="margin: 0; color: {TAN};">{len(upcoming_assignments)}</h2>
+            <p style="margin: 5px 0; color: {BEIGE};">Pending Assignments</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -662,15 +702,15 @@ def render_academic_tracker():
             days_until = (next_exam['start'].date() - datetime.now().date()).days
             st.markdown(f"""
             <div class="metric-card">
-                <h2 style="margin: 0; color: white;">{days_until}</h2>
-                <p style="margin: 5px 0; color: #aaa;">Days to Next Exam</p>
+                <h2 style="margin: 0; color: {TAN};">{days_until}</h2>
+                <p style="margin: 5px 0; color: {BEIGE};">Days to Next Exam</p>
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown(f"""
             <div class="metric-card">
-                <h2 style="margin: 0; color: white;">-</h2>
-                <p style="margin: 5px 0; color: #aaa;">No Exams Scheduled</p>
+                <h2 style="margin: 0; color: {TAN};">-</h2>
+                <p style="margin: 5px 0; color: {BEIGE};">No Exams Scheduled</p>
             </div>
             """, unsafe_allow_html=True)
     
@@ -733,10 +773,10 @@ def render_analytics_dashboard():
             for block in free_blocks[:5]:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <p style="margin: 0; color: white;">
+                    <p style="margin: 0; color: {TAN};">
                         <strong>{block['start'].strftime('%a %m/%d')}</strong><br>
                         {block['start'].strftime('%I:%M %p')} - {block['end'].strftime('%I:%M %p')}<br>
-                        <span style="color: {NEBRASKA_RED};">{block['duration']:.1f} hours free</span>
+                        <span style="color: {SAND};">{block['duration']:.1f} hours free</span>
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -808,7 +848,7 @@ def render_add_event_form():
 # Main App
 def main():
     st.title("📅 Tyler's Life Coordinator")
-    st.markdown(f"*Manage your final semester like a champion*")
+    st.markdown(f"<p style='color: {BEIGE}; font-style: italic;'>Manage your final semester like a champion</p>", unsafe_allow_html=True)
     
     # Sidebar navigation
     st.sidebar.title("Navigation")
@@ -832,7 +872,7 @@ def main():
     
     st.sidebar.markdown(f"""
     <div class="metric-card">
-        <p style="margin: 0; color: white;">
+        <p style="margin: 0; color: {TAN};">
             <strong>{total_events}</strong> Total Events<br>
             <strong>{upcoming_events}</strong> Upcoming
         </p>

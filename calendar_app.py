@@ -1126,7 +1126,7 @@ def main():
         st.session_state.selected_view = "Dashboard"
     
     # Create clean navigation bar with proper spacing
-    nav_cols = st.columns([1.2, 0.7, 0.8, 0.8, 1, 1, 1, 1.1])
+    nav_cols = st.columns([1.2, 0.7, 0.8, 0.8, 1, 1.1, 1, 1.1])
     for idx, view_name in enumerate(nav_options):
         with nav_cols[idx]:
             is_active = st.session_state.selected_view == view_name

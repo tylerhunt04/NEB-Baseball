@@ -350,13 +350,17 @@ def render_event_card(event):
     duration_str = f"{duration.seconds // 3600}h {(duration.seconds % 3600) // 60}m"
     
     priority_emoji = {"High": "🔴", "Medium": "🟡", "Low": "🟢"}.get(event['priority'], "⚪")
-    travel_badge = "✈️ TRAVEL" if event.get('is_travel') else ""
+    travel_badge = " ✈️ TRAVEL" if event.get('is_travel') else ""
+    
+    # Build the HTML for location and notes
+    location_html = f"<p style='margin: 5px 0; color: {WOOD_DARK};'>📍 {event['location']}</p>" if event.get('location') else ""
+    notes_html = f"<p style='margin: 5px 0; color: {WOOD_MED};'>📝 {event['notes']}</p>" if event.get('notes') else ""
     
     st.markdown(f"""
     <div class="event-card" style="border-left-color: {color};">
         <div style="display: flex; justify-content: space-between; align-items: start;">
-            <div>
-                <h3 style="margin: 0; color: {DARK_BROWN};">{priority_emoji} {event['title']} {travel_badge}</h3>
+            <div style="width: 100%;">
+                <h3 style="margin: 0; color: {DARK_BROWN};">{priority_emoji} {event['title']}{travel_badge}</h3>
                 <p style="margin: 5px 0; color: {WOOD_MED};">
                     <span class="category-badge" style="background-color: {color};">{event['category']}</span>
                 </p>
@@ -365,8 +369,8 @@ def render_event_card(event):
                     🕐 {event['start'].strftime('%I:%M %p')} - {event['end'].strftime('%I:%M %p')} 
                     ({duration_str})
                 </p>
-                {f"<p style='margin: 5px 0; color: {WOOD_DARK};'>📍 {event['location']}</p>" if event.get('location') else ""}
-                {f"<p style='margin: 5px 0; color: {WOOD_MED};'>📝 {event['notes']}</p>" if event.get('notes') else ""}
+                {location_html}
+                {notes_html}
             </div>
         </div>
     </div>

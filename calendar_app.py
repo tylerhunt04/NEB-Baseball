@@ -626,7 +626,7 @@ def render_week_view():
                 for event in events:
                     color = CATEGORY_COLORS.get(event['category'], "#888888")
                     st.markdown(f"""
-                    <div style="background-color: {color}; padding: 5px; margin: 5px 0; border-radius: 3px; font-size: 0.8em;">
+                    <div style="background-color: {color}; padding: 5px; margin: 5px 0; border-radius: 3px; font-size: 0.8em; color: white;">
                         {event['start'].strftime('%I:%M %p')}<br>
                         <strong>{event['title']}</strong>
                     </div>
@@ -687,12 +687,20 @@ def render_month_view():
                 is_today = date.date() == datetime.now().date()
                 style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {CREAM};" if is_today else f"background-color: {LIGHT_BEIGE}; color: {DARK_BROWN}; border: 1px solid {WOOD_LIGHT};"
                 
+                # Build event count text
+                event_text = ""
+                if events:
+                    event_count = len(events)
+                    event_word = "event" if event_count == 1 else "events"
+                    event_color = WOOD_MED if not is_today else CREAM
+                    event_text = f"{event_count} {event_word}"
+                
                 with cols[i]:
                     st.markdown(f"""
                     <div style="{style} padding: 10px; border-radius: 5px; min-height: 100px;">
                         <div style="text-align: center; font-weight: bold;">{day}</div>
                         <div style="font-size: 0.75em; margin-top: 5px; color: {WOOD_MED if not is_today else CREAM};">
-                            {f"{len(events)} event{'s' if len(events) != 1 else ''}" if events else ""}
+                            {event_text}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)

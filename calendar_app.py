@@ -172,6 +172,24 @@ st.markdown(f"""
         background: linear-gradient(180deg, {LIGHT_TAN} 0%, {CREAM} 100%);
     }}
     
+    /* Mini calendar navigation buttons */
+    [data-testid="stSidebar"] .stButton>button {{
+        background-color: transparent;
+        color: {WOOD_DARK};
+        border: none;
+        border-radius: 50%;
+        padding: 4px 8px;
+        font-size: 1em;
+        min-height: 32px;
+        width: 32px;
+        transition: background-color 0.2s ease;
+    }}
+    
+    [data-testid="stSidebar"] .stButton>button:hover {{
+        background-color: {LIGHT_BEIGE};
+        color: {WOOD_DARK};
+    }}
+    
     /* Radio buttons and labels in sidebar */
     .stRadio > label {{
         color: {DARK_BROWN} !important;
@@ -308,6 +326,89 @@ def get_events_for_range(start_date, end_date):
         if start_date.date() <= event['start'].date() <= end_date.date():
             events.append(event)
     return sorted(events, key=lambda x: x['start'])
+
+def render_mini_calendar_sidebar():
+    """Render Google Calendar style mini calendar in sidebar"""
+    
+    # Initialize mini calendar date in session state
+    if 'mini_cal_date' not in st.session_state:
+        st.session_state.mini_cal_date = datetime.now()
+    
+    # Month navigation
+    col1, col2, col3 = st.sidebar.columns([1, 3, 1])
+    
+    with col1:
+        if st.button("◀", key="mini_prev", help="Previous month"):
+            if st.session_state.mini_cal_date.month == 1:
+                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
+                    year=st.session_state.mini_cal_date.year - 1, month=12, day=1
+                )
+            else:
+                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
+                    month=st.session_state.mini_cal_date.month - 1, day=1
+                )
+            st.rerun()
+    
+    with col2:
+        st.markdown(f"<div style='text-align: center; font-weight: 600; font-size: 1em; color: {WOOD_DARK}; padding: 8px 0;'>{st.session_state.mini_cal_date.strftime('%B %Y')}</div>", unsafe_allow_html=True)
+    
+    with col3:
+        if st.button("▶", key="mini_next", help="Next month"):
+            if st.session_state.mini_cal_date.month == 12:
+                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
+                    year=st.session_state.mini_cal_date.year + 1, month=1, day=1
+                )
+            else:
+                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
+                    month=st.session_state.mini_cal_date.month + 1, day=1
+                )
+            st.rerun()
+    
+    # Get calendar for the month
+    year = st.session_state.mini_cal_date.year
+    month = st.session_state.mini_cal_date.month
+    month_cal = cal.monthcalendar(year, month)
+    
+    # Day headers - Google Calendar style with single letters
+    days = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+    header_parts = []
+    header_parts.append('<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; font-weight: 600; color: ' + WOOD_MED + '; margin: 10px 0; font-size: 0.8em;">')
+    for day in days:
+        header_parts.append(f'<div style="padding: 4px;">{day}</div>')
+    header_parts.append('</div>')
+    st.sidebar.markdown(''.join(header_parts), unsafe_allow_html=True)
+    
+    # Calendar grid - Google Calendar style
+    for week in month_cal:
+        week_html = []
+        week_html.append('<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px;">')
+        
+        for day in week:
+            if day == 0:
+                week_html.append('<div style="height: 32px;"></div>')
+            else:
+                date = datetime(year, month, day)
+                events = get_events_for_date(date)
+                
+                is_today = date.date() == datetime.now().date()
+                has_events = len(events) > 0
+                
+                # Google Calendar style: blue circle for today, dot for events
+                if is_today:
+                    # Blue circle for today
+                    bg_style = f"background-color: #1a73e8; color: white; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-weight: 600; margin: 0 auto; cursor: pointer;"
+                elif has_events:
+                    # Subtle background for days with events
+                    bg_style = f"background-color: {LIGHT_BEIGE}; color: {WOOD_DARK}; border-radius: 4px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-weight: 500;"
+                else:
+                    # Normal day
+                    bg_style = f"color: {WOOD_MED}; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer;"
+                
+                # Add day number
+                week_html.append(f'<div style="{bg_style}" title="{date.strftime("%b %d, %Y")} - {len(events)} event(s)">{day}</div>')
+        
+        week_html.append('</div>')
+        st.sidebar.markdown(''.join(week_html), unsafe_allow_html=True)
 
 def create_quick_event_templates():
     """Deprecated - not used"""
@@ -1143,7 +1244,12 @@ def main():
     
     st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
     
-    # Sidebar for stats and backup only
+    # Sidebar with mini calendar
+    render_mini_calendar_sidebar()
+    
+    st.sidebar.markdown("---")
+    
+    # Stats
     st.sidebar.markdown("### Quick Stats")
     total_events = len(st.session_state.events)
     upcoming_events = len([e for e in st.session_state.events if e['start'] > datetime.now()])

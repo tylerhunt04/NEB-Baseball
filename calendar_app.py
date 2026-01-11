@@ -291,56 +291,21 @@ def get_events_for_range(start_date, end_date):
 
 def create_quick_event_templates():
     """Create quick-add templates for common events"""
-    st.sidebar.markdown("### ⚡ Quick Add Templates")
+    st.sidebar.markdown("### ⚡ Quick Add")
+    st.sidebar.markdown("<p style='font-size: 0.85em; color: #6F4E37;'>For recurring events (classes, practices), use 'Add Event' with the recurring option!</p>", unsafe_allow_html=True)
     
-    template = st.sidebar.selectbox(
-        "Select Template",
-        ["Custom", "Practice", "Home Game", "Away Game", "Class", "Study Session", "Exam"]
-    )
-    
-    if template == "Practice":
-        if st.sidebar.button("Add Practice"):
-            today = datetime.now().replace(hour=14, minute=0, second=0, microsecond=0)
-            add_event(
-                "Baseball Practice",
-                "Baseball - Practice",
-                today,
-                today + timedelta(hours=3),
-                location="Haymarket Park",
-                notes="Regular practice session"
-            )
-            st.sidebar.success("Practice added!")
-            st.rerun()
-    
-    elif template == "Home Game":
-        if st.sidebar.button("Add Home Game"):
-            today = datetime.now().replace(hour=14, minute=0, second=0, microsecond=0)
-            add_event(
-                "Home Game",
-                "Baseball - Game",
-                today,
-                today + timedelta(hours=3),
-                location="Haymarket Park",
-                priority="High"
-            )
-            st.sidebar.success("Home game added!")
-            st.rerun()
-    
-    elif template == "Away Game":
-        if st.sidebar.button("Add Away Game"):
-            today = datetime.now().replace(hour=14, minute=0, second=0, microsecond=0)
-            checklist = ["Pack analytics equipment", "Pack clothes", "Charge laptop", "Download data"]
-            add_event(
-                "Away Game",
-                "Baseball - Game",
-                today,
-                today + timedelta(hours=3),
-                priority="High",
-                is_travel=True,
-                checklist_items=checklist
-            )
-            st.sidebar.success("Away game added!")
-            st.rerun()
+    if st.sidebar.button("Add Practice (Today)"):
+        today = datetime.now().replace(hour=14, minute=0, second=0, microsecond=0)
+        add_event(
+            "Baseball Practice",
+            "Baseball - Practice",
+            today,
+            today + timedelta(hours=3),
+            location="Haymarket Park",
+            notes="Regular practice session"
+        )
+        st.sidebar.success("Practice added!")
+        st.rerun()
 
 def render_event_card(event):
     """Render a styled event card"""
@@ -612,25 +577,33 @@ def render_week_view():
         
         with cols[i]:
             is_today = day.date() == datetime.now().date()
-            day_style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {CREAM};" if is_today else f"background-color: {LIGHT_TAN}; color: {DARK_BROWN};"
             
-            st.markdown(f"""
+            # Day header
+            if is_today:
+                day_style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {CREAM};"
+            else:
+                day_style = f"background-color: {LIGHT_TAN}; color: {DARK_BROWN};"
+            
+            header_html = f"""
             <div style="text-align: center; padding: 10px; {day_style} border-radius: 5px; border: 1px solid {WOOD_LIGHT};">
                 <strong>{day.strftime('%a')}</strong><br>
                 {day.strftime('%m/%d')}
             </div>
-            """, unsafe_allow_html=True)
+            """
+            st.markdown(header_html, unsafe_allow_html=True)
             
+            # Events
             if events:
                 st.markdown(f"**{len(events)} events**")
                 for event in events:
                     color = CATEGORY_COLORS.get(event['category'], "#888888")
-                    st.markdown(f"""
+                    event_html = f"""
                     <div style="background-color: {color}; padding: 5px; margin: 5px 0; border-radius: 3px; font-size: 0.8em; color: white;">
                         {event['start'].strftime('%I:%M %p')}<br>
                         <strong>{event['title']}</strong>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """
+                    st.markdown(event_html, unsafe_allow_html=True)
             else:
                 st.markdown("_No events_")
 
@@ -668,42 +641,53 @@ def render_month_view():
     
     month_cal = cal.monthcalendar(year, month)
     
-    # Display calendar
+    # Display calendar header
     cols = st.columns(7)
     days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     
     for i, day in enumerate(days):
         cols[i].markdown(f"**{day}**")
     
+    # Display calendar days
     for week in month_cal:
         cols = st.columns(7)
         for i, day in enumerate(week):
-            if day == 0:
-                cols[i].markdown("")
-            else:
-                date = datetime(year, month, day)
-                events = get_events_for_date(date)
-                
-                is_today = date.date() == datetime.now().date()
-                style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {CREAM};" if is_today else f"background-color: {LIGHT_BEIGE}; color: {DARK_BROWN}; border: 1px solid {WOOD_LIGHT};"
-                
-                # Build event count text
-                event_text = ""
-                if events:
-                    event_count = len(events)
-                    event_word = "event" if event_count == 1 else "events"
-                    event_color = WOOD_MED if not is_today else CREAM
-                    event_text = f"{event_count} {event_word}"
-                
-                with cols[i]:
-                    st.markdown(f"""
-                    <div style="{style} padding: 10px; border-radius: 5px; min-height: 100px;">
+            with cols[i]:
+                if day == 0:
+                    st.markdown("")
+                else:
+                    date = datetime(year, month, day)
+                    events = get_events_for_date(date)
+                    
+                    is_today = date.date() == datetime.now().date()
+                    
+                    # Build the cell content
+                    if is_today:
+                        bg_style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {CREAM};"
+                        text_color = CREAM
+                    else:
+                        bg_style = f"background-color: {LIGHT_BEIGE}; color: {DARK_BROWN}; border: 1px solid {WOOD_LIGHT};"
+                        text_color = WOOD_MED
+                    
+                    # Event count text
+                    if events:
+                        event_count = len(events)
+                        if event_count == 1:
+                            event_display = "1 event"
+                        else:
+                            event_display = f"{event_count} events"
+                    else:
+                        event_display = ""
+                    
+                    html = f"""
+                    <div style="{bg_style} padding: 10px; border-radius: 5px; min-height: 100px;">
                         <div style="text-align: center; font-weight: bold;">{day}</div>
-                        <div style="font-size: 0.75em; margin-top: 5px; color: {WOOD_MED if not is_today else CREAM};">
-                            {event_text}
+                        <div style="font-size: 0.75em; margin-top: 5px; color: {text_color}; text-align: center;">
+                            {event_display}
                         </div>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """
+                    st.markdown(html, unsafe_allow_html=True)
 
 def render_baseball_season_tracker():
     """Track baseball season progress"""
@@ -885,7 +869,7 @@ def render_analytics_dashboard():
             st.info("No significant free time blocks found. Consider optimizing your schedule!")
 
 def render_add_event_form():
-    """Form to add new events"""
+    """Form to add new events with recurring option"""
     st.markdown("## ➕ Add New Event")
     
     with st.form("add_event_form"):
@@ -897,33 +881,84 @@ def render_add_event_form():
         with col2:
             priority = st.selectbox("Priority", ["Low", "Medium", "High"])
         
-        col1, col2 = st.columns(2)
-        with col1:
-            start_date = st.date_input("Start Date*")
-            
-            # 12-hour format time selection
-            st.markdown("**Start Time***")
-            scol1, scol2, scol3 = st.columns([2, 2, 1])
-            with scol1:
-                start_hour = st.selectbox("Hour", range(1, 13), key="start_hour")
-            with scol2:
-                start_minute = st.selectbox("Minute", [0, 15, 30, 45], key="start_min", format_func=lambda x: f"{x:02d}")
-            with scol3:
-                start_period = st.selectbox("", ["AM", "PM"], key="start_period")
+        # Recurring event option
+        st.markdown("---")
+        is_recurring = st.checkbox("🔁 Recurring Event (e.g., classes, practices)")
         
-        with col2:
-            end_date = st.date_input("End Date*")
+        if is_recurring:
+            st.markdown("### Recurring Event Settings")
             
-            # 12-hour format time selection
-            st.markdown("**End Time***")
-            ecol1, ecol2, ecol3 = st.columns([2, 2, 1])
-            with ecol1:
-                end_hour = st.selectbox("Hour", range(1, 13), key="end_hour")
-            with ecol2:
-                end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="end_min", format_func=lambda x: f"{x:02d}")
-            with ecol3:
-                end_period = st.selectbox("", ["AM", "PM"], key="end_period")
+            # Days of week selection
+            st.markdown("**Select Days of Week***")
+            day_cols = st.columns(7)
+            days_selected = {}
+            day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            day_abbrev = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            
+            for i, (name, abbr) in enumerate(zip(day_names, day_abbrev)):
+                with day_cols[i]:
+                    days_selected[name] = st.checkbox(abbr, key=f"day_{i}")
+            
+            # Date range
+            col1, col2 = st.columns(2)
+            with col1:
+                recur_start_date = st.date_input("Start Date*", key="recur_start")
+            with col2:
+                recur_end_date = st.date_input("End Date*", key="recur_end")
+            
+            # Time (same for all occurrences)
+            st.markdown("**Event Time***")
+            tcol1, tcol2 = st.columns(2)
+            with tcol1:
+                st.markdown("Start Time")
+                scol1, scol2, scol3 = st.columns([2, 2, 1])
+                with scol1:
+                    start_hour = st.selectbox("Hour", range(1, 13), key="recur_start_hour")
+                with scol2:
+                    start_minute = st.selectbox("Minute", [0, 15, 30, 45], key="recur_start_min", format_func=lambda x: f"{x:02d}")
+                with scol3:
+                    start_period = st.selectbox("", ["AM", "PM"], key="recur_start_period")
+            
+            with tcol2:
+                st.markdown("End Time")
+                ecol1, ecol2, ecol3 = st.columns([2, 2, 1])
+                with ecol1:
+                    end_hour = st.selectbox("Hour", range(1, 13), key="recur_end_hour")
+                with ecol2:
+                    end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="recur_end_min", format_func=lambda x: f"{x:02d}")
+                with ecol3:
+                    end_period = st.selectbox("", ["AM", "PM"], key="recur_end_period")
+            
+        else:
+            # Single event
+            col1, col2 = st.columns(2)
+            with col1:
+                start_date = st.date_input("Start Date*")
+                
+                # 12-hour format time selection
+                st.markdown("**Start Time***")
+                scol1, scol2, scol3 = st.columns([2, 2, 1])
+                with scol1:
+                    start_hour = st.selectbox("Hour", range(1, 13), key="start_hour")
+                with scol2:
+                    start_minute = st.selectbox("Minute", [0, 15, 30, 45], key="start_min", format_func=lambda x: f"{x:02d}")
+                with scol3:
+                    start_period = st.selectbox("", ["AM", "PM"], key="start_period")
+            
+            with col2:
+                end_date = st.date_input("End Date*")
+                
+                # 12-hour format time selection
+                st.markdown("**End Time***")
+                ecol1, ecol2, ecol3 = st.columns([2, 2, 1])
+                with ecol1:
+                    end_hour = st.selectbox("Hour", range(1, 13), key="end_hour")
+                with ecol2:
+                    end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="end_min", format_func=lambda x: f"{x:02d}")
+                with ecol3:
+                    end_period = st.selectbox("", ["AM", "PM"], key="end_period")
         
+        st.markdown("---")
         location = st.text_input("Location")
         notes = st.text_area("Notes")
         
@@ -936,12 +971,61 @@ def render_add_event_form():
                 value="Pack analytics equipment\nPack clothes\nCharge laptop\nDownload data"
             )
         
-        submitted = st.form_submit_button("Add Event", type="primary")
+        submitted = st.form_submit_button("Add Event(s)", type="primary")
         
         if submitted:
             if not title:
                 st.error("Please provide an event title")
+            elif is_recurring:
+                # Validate recurring event
+                selected_days = [day for day, selected in days_selected.items() if selected]
+                if not selected_days:
+                    st.error("Please select at least one day of the week")
+                elif recur_end_date < recur_start_date:
+                    st.error("End date must be after start date")
+                else:
+                    # Convert times
+                    start_hour_24 = start_hour if start_period == "AM" and start_hour != 12 else \
+                                   0 if start_period == "AM" and start_hour == 12 else \
+                                   start_hour if start_period == "PM" and start_hour == 12 else \
+                                   start_hour + 12
+                    
+                    end_hour_24 = end_hour if end_period == "AM" and end_hour != 12 else \
+                                 0 if end_period == "AM" and end_hour == 12 else \
+                                 end_hour if end_period == "PM" and end_hour == 12 else \
+                                 end_hour + 12
+                    
+                    # Create recurring events
+                    events_created = 0
+                    current_date = recur_start_date
+                    checklist = [item.strip() for item in checklist_input.split('\n') if item.strip()] if is_travel else None
+                    
+                    while current_date <= recur_end_date:
+                        # Check if this day is in selected days
+                        weekday_name = day_names[current_date.weekday()]
+                        if weekday_name in selected_days:
+                            start_datetime = datetime.combine(current_date, datetime.min.time()).replace(hour=start_hour_24, minute=start_minute)
+                            end_datetime = datetime.combine(current_date, datetime.min.time()).replace(hour=end_hour_24, minute=end_minute)
+                            
+                            add_event(
+                                title=title,
+                                category=category,
+                                start=start_datetime,
+                                end=end_datetime,
+                                location=location,
+                                notes=notes,
+                                priority=priority,
+                                is_travel=is_travel,
+                                checklist_items=checklist
+                            )
+                            events_created += 1
+                        
+                        current_date += timedelta(days=1)
+                    
+                    st.success(f"✅ Created {events_created} recurring events!")
+                    st.rerun()
             else:
+                # Single event
                 # Convert 12-hour format to 24-hour format
                 start_hour_24 = start_hour if start_period == "AM" and start_hour != 12 else \
                                0 if start_period == "AM" and start_hour == 12 else \

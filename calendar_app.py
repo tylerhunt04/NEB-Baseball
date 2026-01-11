@@ -179,47 +179,17 @@ st.markdown(f"""
         color: {WOOD_DARK};
         border: none;
         border-radius: 50%;
-        padding: 1px 4px;
-        font-size: 0.8em;
-        min-height: 20px;
-        max-height: 20px;
-        width: 20px;
+        padding: 2px 6px;
+        font-size: 0.9em;
+        min-height: 24px;
+        width: 24px;
         transition: background-color 0.2s ease;
     }}
     
-    /* Mini calendar day buttons */
-    [data-testid="stSidebar"] button[key^="mini_day"] {{
-        background-color: transparent;
-        color: {WOOD_DARK};
-        border: none;
-        border-radius: 50%;
-        padding: 0px;
-        font-size: 0.65em;
-        min-height: 20px;
-        max-height: 20px;
-        width: 20px;
-        transition: all 0.2s ease;
-        font-weight: 400;
-        line-height: 20px;
-    }}
-    
-    [data-testid="stSidebar"] button[key^="mini_day"]:hover {{
+    [data-testid="stSidebar"] button[key^="mini_prev"]:hover,
+    [data-testid="stSidebar"] button[key^="mini_next"]:hover {{
         background-color: {LIGHT_BEIGE};
         color: {WOOD_DARK};
-        font-weight: 500;
-    }}
-    
-    /* Today button in mini calendar - blue circle */
-    [data-testid="stSidebar"] button[key^="mini_day"][kind="primary"] {{
-        background-color: #1a73e8;
-        color: white;
-        border-radius: 50%;
-        font-weight: 600;
-    }}
-    
-    [data-testid="stSidebar"] button[key^="mini_day"][kind="primary"]:hover {{
-        background-color: #1557b0;
-        color: white;
     }}
     
     /* Filter buttons in sidebar - different styling */
@@ -425,8 +395,8 @@ def render_mini_calendar_sidebar():
     if 'mini_cal_date' not in st.session_state:
         st.session_state.mini_cal_date = datetime.now()
     
-    # Month navigation - very compact
-    col1, col2, col3 = st.sidebar.columns([0.6, 3.2, 0.6])
+    # Month navigation - compact
+    col1, col2, col3 = st.sidebar.columns([0.8, 3, 0.8])
     
     with col1:
         if st.button("◀", key="mini_prev", help="Previous month"):
@@ -441,7 +411,7 @@ def render_mini_calendar_sidebar():
             st.rerun()
     
     with col2:
-        st.markdown(f"<div style='text-align: center; font-weight: 600; font-size: 0.85em; color: {WOOD_DARK}; padding: 2px 0;'>{st.session_state.mini_cal_date.strftime('%B %Y')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; font-weight: 600; font-size: 0.9em; color: {WOOD_DARK}; padding: 4px 0;'>{st.session_state.mini_cal_date.strftime('%B %Y')}</div>", unsafe_allow_html=True)
     
     with col3:
         if st.button("▶", key="mini_next", help="Next month"):
@@ -460,56 +430,49 @@ def render_mini_calendar_sidebar():
     month = st.session_state.mini_cal_date.month
     month_cal = cal.monthcalendar(year, month)
     
-    # Day headers - very compact
+    # Day headers
     days = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
     header_parts = []
-    header_parts.append('<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; text-align: center; font-weight: 600; color: ' + WOOD_MED + '; margin: 6px 0 2px 0; font-size: 0.65em;">')
+    header_parts.append('<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-weight: 600; color: ' + WOOD_MED + '; margin: 8px 0 4px 0; font-size: 0.7em;">')
     for day in days:
-        header_parts.append(f'<div style="padding: 1px;">{day}</div>')
+        header_parts.append(f'<div style="padding: 2px;">{day}</div>')
     header_parts.append('</div>')
     st.sidebar.markdown(''.join(header_parts), unsafe_allow_html=True)
     
-    # Calendar grid - clickable days using Streamlit columns
-    for week_idx, week in enumerate(month_cal):
-        cols = st.sidebar.columns(7)
-        for day_idx, day in enumerate(week):
-            with cols[day_idx]:
-                if day == 0:
-                    st.markdown('<div style="height: 20px;"></div>', unsafe_allow_html=True)
+    # Calendar grid - HTML only, not clickable
+    for week in month_cal:
+        week_html = []
+        week_html.append('<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 2px;">')
+        
+        for day in week:
+            if day == 0:
+                week_html.append('<div style="height: 24px;"></div>')
+            else:
+                date = datetime(year, month, day)
+                events = get_events_for_date(date)
+                
+                is_today = date.date() == datetime.now().date()
+                has_events = len(events) > 0
+                
+                # Styling
+                if is_today:
+                    # Blue circle for today
+                    bg_style = f"background-color: #1a73e8; color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-weight: 600; margin: 0 auto; font-size: 0.75em;"
+                elif has_events:
+                    # Subtle background for days with events
+                    bg_style = f"background-color: {LIGHT_BEIGE}; color: {WOOD_DARK}; border-radius: 3px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 0.75em;"
                 else:
-                    date = datetime(year, month, day)
-                    events = get_events_for_date(date)
-                    
-                    is_today = date.date() == datetime.now().date()
-                    has_events = len(events) > 0
-                    
-                    # Create clickable button for each day
-                    button_label = str(day)
-                    if has_events:
-                        button_label = f"{day}•"  # Add dot for events
-                    
-                    # Determine button type based on day status
-                    if is_today:
-                        button_type = "primary"
-                    else:
-                        button_type = "secondary"
-                    
-                    # Make day clickable - switches to Day view
-                    if st.button(
-                        button_label,
-                        key=f"mini_day_{year}_{month}_{day}",
-                        help=f"{date.strftime('%b %d, %Y')} - {len(events)} event(s)",
-                        use_container_width=True,
-                        type=button_type
-                    ):
-                        # Set the view date to the clicked day
-                        st.session_state.view_date = date
-                        # Switch to Day view
-                        st.session_state.selected_view = "Day"
-                        st.rerun()
+                    # Normal day
+                    bg_style = f"color: {WOOD_MED}; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 0.75em;"
+                
+                # Add day number
+                week_html.append(f'<div style="{bg_style}" title="{date.strftime("%b %d, %Y")} - {len(events)} event(s)">{day}</div>')
+        
+        week_html.append('</div>')
+        st.sidebar.markdown(''.join(week_html), unsafe_allow_html=True)
     
-    # Add small spacing after calendar
-    st.sidebar.markdown("<div style='margin-bottom: 6px;'></div>", unsafe_allow_html=True)
+    # Add spacing after calendar
+    st.sidebar.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
 
 def create_quick_event_templates():
     """Deprecated - not used"""

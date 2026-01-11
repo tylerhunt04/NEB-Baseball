@@ -84,42 +84,41 @@ st.markdown(f"""
     /* Main app background */
     .main {{
         background-color: {CREAM};
+        padding-top: 20px;
     }}
     
-    /* Navigation buttons at top - professional styling */
+    /* Clean, minimalist navigation buttons */
     .stButton>button {{
-        background: linear-gradient(135deg, {LIGHT_BEIGE} 0%, {SAND_LIGHT} 100%);
-        color: {WOOD_DARK};
-        border: 2px solid {WOOD_LIGHT};
-        border-radius: 12px;
-        padding: 12px 20px;
-        font-weight: 600;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        background: transparent;
+        color: {WOOD_MED};
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        padding: 10px 16px;
+        font-weight: 500;
         font-size: 0.95em;
+        transition: all 0.2s ease;
+        letter-spacing: 0.3px;
     }}
     
     .stButton>button:hover {{
-        background: linear-gradient(135deg, {WOOD_MED} 0%, {WOOD_LIGHT} 100%);
-        color: {CREAM};
-        border-color: {WOOD_DARK};
-        transform: translateY(-3px);
-        box-shadow: 0 6px 16px rgba(93, 64, 55, 0.3);
+        background: transparent;
+        color: {WOOD_DARK};
+        border-bottom-color: {WOOD_LIGHT};
     }}
     
-    /* Primary buttons (selected navigation) */
+    /* Active/selected navigation button */
     .stButton>button[kind="primary"] {{
-        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
-        color: {CREAM};
-        border-color: {WOOD_DARK};
-        font-weight: bold;
-        box-shadow: 0 4px 8px rgba(93, 64, 55, 0.4);
+        background: transparent;
+        color: {WOOD_DARK};
+        border-bottom: 3px solid {WOOD_DARK};
+        font-weight: 600;
     }}
     
     .stButton>button[kind="primary"]:hover {{
-        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(93, 64, 55, 0.5);
+        background: transparent;
+        color: {WOOD_DARK};
+        border-bottom-color: {WOOD_DARK};
     }}
     
     /* Metric cards - Light backgrounds with dark text */
@@ -460,7 +459,7 @@ def create_category_breakdown():
 
 def render_next_48_hours():
     """Render quick dashboard for next 48 hours"""
-    st.markdown("## ⚡ Next 48 Hours")
+    st.markdown("## Next 48 Hours")
     
     now = datetime.now()
     end_time = now + timedelta(hours=48)
@@ -526,7 +525,7 @@ def render_next_48_hours():
 
 def render_day_view():
     """Render single day view"""
-    st.markdown("## 📅 Day View")
+    st.markdown("## Day View")
     
     col1, col2, col3 = st.columns([1, 2, 1])
     
@@ -568,7 +567,7 @@ def render_day_view():
 
 def render_week_view():
     """Render week view"""
-    st.markdown("## 📅 Week View")
+    st.markdown("## Week View")
     
     # Week navigation
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -639,7 +638,7 @@ def render_week_view():
 
 def render_month_view():
     """Render month view"""
-    st.markdown("## 📅 Month View")
+    st.markdown("## Month View")
     
     # Month navigation
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -727,7 +726,7 @@ def render_month_view():
 
 def render_baseball_season_tracker():
     """Track baseball season progress"""
-    st.markdown("## ⚾ Baseball Season Tracker")
+    st.markdown("## Baseball Season Tracker")
     
     # Get baseball events
     baseball_events = [e for e in st.session_state.events if 'Baseball' in e['category']]
@@ -790,7 +789,7 @@ def render_baseball_season_tracker():
 
 def render_academic_tracker():
     """Track academic deadlines and exams"""
-    st.markdown("## 🎓 Academic Tracker")
+    st.markdown("## Academic Tracker")
     
     # Get academic events
     exams = [e for e in st.session_state.events if e['category'] == 'Exam']
@@ -851,7 +850,7 @@ def render_academic_tracker():
 
 def render_analytics_dashboard():
     """Render time management analytics"""
-    st.markdown("## 📊 Time Management Analytics")
+    st.markdown("## Time Management Analytics")
     
     # Workload heatmap
     heatmap = create_workload_heatmap()
@@ -867,7 +866,7 @@ def render_analytics_dashboard():
     
     with col2:
         # Free time finder
-        st.markdown("### 🆓 Free Time Windows - Next 7 Days")
+        st.markdown("### Free Time Windows - Next 7 Days")
         
         now = datetime.now()
         end_of_week = now + timedelta(days=7)
@@ -906,10 +905,10 @@ def render_analytics_dashboard():
 
 def render_add_event_form():
     """Form to add new events with recurring option"""
-    st.markdown("## ➕ Add New Event")
+    st.markdown("## Add New Event")
     
     # Recurring checkbox OUTSIDE the form so it updates immediately
-    is_recurring = st.checkbox("🔁 Recurring Event (e.g., classes, practices)")
+    is_recurring = st.checkbox("Recurring Event (e.g., classes, practices)")
     
     if is_recurring:
         st.info("💡 Select the days of the week, date range, and time for your recurring event")
@@ -926,7 +925,7 @@ def render_add_event_form():
             priority = st.selectbox("Priority", ["Low", "Medium", "High"])
         
         if is_recurring:
-            st.markdown("### 🔁 Recurring Event Settings")
+            st.markdown("### Recurring Event Settings")
             
             # Days of week selection
             st.markdown("**Select Days of Week***")
@@ -972,7 +971,7 @@ def render_add_event_form():
                     end_period = st.selectbox("AM/PM", ["AM", "PM"], key="recur_end_period", index=1)
             
         else:
-            st.markdown("### 📅 Single Event")
+            st.markdown("### Single Event")
             
             # Single event
             col1, col2 = st.columns(2)
@@ -1107,89 +1106,42 @@ def render_add_event_form():
 
 # Main App
 def main():
-    st.title("📅 Tyler's Life Coordinator")
-    st.markdown(f"<p style='color: {WOOD_MED}; font-style: italic; margin-bottom: 30px;'>Manage your final semester like a champion</p>", unsafe_allow_html=True)
-    
-    # Professional styled navigation
-    nav_options = {
-        "Dashboard (48hrs)": "⚡",
-        "Day View": "📅",
-        "Week View": "📆",
-        "Month View": "🗓️",
-        "Baseball Season": "⚾",
-        "Academic Tracker": "🎓",
-        "Analytics": "📊",
-        "Add Event": "➕"
-    }
-    
-    # Create custom navigation bar
-    nav_html = f"""
-    <style>
-    .nav-container {{
-        display: flex;
-        gap: 10px;
-        margin-bottom: 30px;
-        flex-wrap: wrap;
-    }}
-    .nav-button {{
-        background: linear-gradient(135deg, {LIGHT_BEIGE} 0%, {SAND_LIGHT} 100%);
-        border: 2px solid {WOOD_LIGHT};
-        border-radius: 12px;
-        padding: 12px 20px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-weight: 500;
-        color: {WOOD_DARK};
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }}
-    .nav-button:hover {{
-        background: linear-gradient(135deg, {WOOD_MED} 0%, {WOOD_LIGHT} 100%);
-        color: {CREAM};
-        border-color: {WOOD_DARK};
-        transform: translateY(-3px);
-        box-shadow: 0 6px 12px rgba(93, 64, 55, 0.3);
-    }}
-    .nav-button.active {{
-        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
-        color: {CREAM};
-        border-color: {WOOD_DARK};
-        font-weight: bold;
-        box-shadow: 0 4px 8px rgba(93, 64, 55, 0.4);
-    }}
-    .nav-icon {{
-        font-size: 1.3em;
-    }}
-    </style>
-    """
-    st.markdown(nav_html, unsafe_allow_html=True)
+    # Simple, clean navigation
+    nav_options = [
+        "Dashboard",
+        "Day",
+        "Week", 
+        "Month",
+        "Baseball",
+        "Academic",
+        "Analytics",
+        "Add Event"
+    ]
     
     # Initialize selected view in session state
     if 'selected_view' not in st.session_state:
-        st.session_state.selected_view = "Dashboard (48hrs)"
+        st.session_state.selected_view = "Dashboard"
     
-    # Create navigation buttons
+    # Create clean navigation bar
     cols = st.columns(len(nav_options))
-    for idx, (view_name, icon) in enumerate(nav_options.items()):
+    for idx, view_name in enumerate(nav_options):
         with cols[idx]:
+            is_active = st.session_state.selected_view == view_name
             if st.button(
-                f"{icon} {view_name}",
+                view_name,
                 key=f"nav_{view_name}",
                 use_container_width=True,
-                type="primary" if st.session_state.selected_view == view_name else "secondary"
+                type="primary" if is_active else "secondary"
             ):
                 st.session_state.selected_view = view_name
                 st.rerun()
     
     view = st.session_state.selected_view
     
-    st.markdown("---")
+    st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
     
     # Sidebar for stats and backup only
-    # Stats
-    st.sidebar.markdown("### 📊 Quick Stats")
+    st.sidebar.markdown("### Quick Stats")
     total_events = len(st.session_state.events)
     upcoming_events = len([e for e in st.session_state.events if e['start'] > datetime.now()])
     
@@ -1205,10 +1157,10 @@ def main():
     st.sidebar.markdown("---")
     
     # Data backup section
-    st.sidebar.markdown("### 💾 Data Backup")
+    st.sidebar.markdown("### Data Backup")
     st.sidebar.markdown("""
     <p style='font-size: 0.85em; color: #6F4E37;'>
-    Your data is saved automatically to<br><code>calendar_data.json</code>
+    Auto-saved to <code>calendar_data.json</code>
     </p>
     """, unsafe_allow_html=True)
     
@@ -1216,7 +1168,7 @@ def main():
         with open(DATA_FILE, 'r') as f:
             data_json = f.read()
         st.sidebar.download_button(
-            label="📥 Download Backup",
+            label="Download Backup",
             data=data_json,
             file_name=f"calendar_backup_{datetime.now().strftime('%Y%m%d')}.json",
             mime="application/json",
@@ -1224,7 +1176,7 @@ def main():
         )
     
     uploaded_file = st.sidebar.file_uploader(
-        "📤 Restore Backup",
+        "Restore Backup",
         type=['json'],
         help="Upload a previously saved backup file"
     )
@@ -1238,23 +1190,23 @@ def main():
                 event['end'] = datetime.fromisoformat(event['end'])
             st.session_state.events = data
             save_events()
-            st.sidebar.success("✅ Backup restored!")
+            st.sidebar.success("Backup restored!")
             st.rerun()
         except Exception as e:
             st.sidebar.error(f"Error restoring backup: {str(e)}")
     
     # Render selected view
-    if view == "Dashboard (48hrs)":
+    if view == "Dashboard":
         render_next_48_hours()
-    elif view == "Day View":
+    elif view == "Day":
         render_day_view()
-    elif view == "Week View":
+    elif view == "Week":
         render_week_view()
-    elif view == "Month View":
+    elif view == "Month":
         render_month_view()
-    elif view == "Baseball Season":
+    elif view == "Baseball":
         render_baseball_season_tracker()
-    elif view == "Academic Tracker":
+    elif view == "Academic":
         render_academic_tracker()
     elif view == "Analytics":
         render_analytics_dashboard()

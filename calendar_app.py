@@ -61,8 +61,8 @@ CATEGORY_COLORS = {
     "Assignment": WOOD_LIGHT
 }
 
-# File for data persistence
-DATA_FILE = "/home/claude/calendar_data.json"
+# File for data persistence - use current directory
+DATA_FILE = os.path.join(os.getcwd(), "calendar_data.json")
 
 # Custom CSS - Light Mode Wood & Earth Tone Theme
 st.markdown(f"""
@@ -200,28 +200,35 @@ if 'view_date' not in st.session_state:
 # Data persistence functions
 def load_events():
     """Load events from JSON file"""
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r') as f:
-            data = json.load(f)
-            # Convert string dates back to datetime
-            for event in data:
-                event['start'] = datetime.fromisoformat(event['start'])
-                event['end'] = datetime.fromisoformat(event['end'])
-            return data
+    try:
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, 'r') as f:
+                data = json.load(f)
+                # Convert string dates back to datetime
+                for event in data:
+                    event['start'] = datetime.fromisoformat(event['start'])
+                    event['end'] = datetime.fromisoformat(event['end'])
+                return data
+    except Exception as e:
+        st.warning(f"Could not load saved events: {str(e)}")
     return []
 
 def save_events():
     """Save events to JSON file"""
-    # Convert datetime to string for JSON serialization
-    events_to_save = []
-    for event in st.session_state.events:
-        event_copy = event.copy()
-        event_copy['start'] = event['start'].isoformat()
-        event_copy['end'] = event['end'].isoformat()
-        events_to_save.append(event_copy)
-    
-    with open(DATA_FILE, 'w') as f:
-        json.dump(events_to_save, f, indent=2)
+    try:
+        # Convert datetime to string for JSON serialization
+        events_to_save = []
+        for event in st.session_state.events:
+            event_copy = event.copy()
+            event_copy['start'] = event['start'].isoformat()
+            event_copy['end'] = event['end'].isoformat()
+            events_to_save.append(event_copy)
+        
+        with open(DATA_FILE, 'w') as f:
+            json.dump(events_to_save, f, indent=2)
+    except Exception as e:
+        st.error(f"Error saving events: {str(e)}")
+        # Still continue - events are in session state
 
 # Load events on startup
 if not st.session_state.events:

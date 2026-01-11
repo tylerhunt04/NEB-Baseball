@@ -317,29 +317,45 @@ def render_event_card(event):
     priority_emoji = {"High": "🔴", "Medium": "🟡", "Low": "🟢"}.get(event['priority'], "⚪")
     travel_badge = " ✈️ TRAVEL" if event.get('is_travel') else ""
     
-    # Build the HTML for location and notes
-    location_html = f"<p style='margin: 5px 0; color: {WOOD_DARK};'>📍 {event['location']}</p>" if event.get('location') else ""
-    notes_html = f"<p style='margin: 5px 0; color: {WOOD_MED};'>📝 {event['notes']}</p>" if event.get('notes') else ""
+    # Build HTML parts separately
+    html_parts = []
     
-    st.markdown(f"""
-    <div class="event-card" style="border-left-color: {color};">
-        <div style="display: flex; justify-content: space-between; align-items: start;">
-            <div style="width: 100%;">
-                <h3 style="margin: 0; color: {DARK_BROWN};">{priority_emoji} {event['title']}{travel_badge}</h3>
-                <p style="margin: 5px 0; color: {WOOD_MED};">
-                    <span class="category-badge" style="background-color: {color};">{event['category']}</span>
-                </p>
-                <p style="margin: 5px 0; color: {WOOD_DARK};">
-                    📅 {event['start'].strftime('%b %d, %Y')} | 
-                    🕐 {event['start'].strftime('%I:%M %p')} - {event['end'].strftime('%I:%M %p')} 
-                    ({duration_str})
-                </p>
-                {location_html}
-                {notes_html}
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Start card
+    html_parts.append(f'<div class="event-card" style="border-left-color: {color};">')
+    html_parts.append('<div style="display: flex; justify-content: space-between; align-items: start;">')
+    html_parts.append('<div style="width: 100%;">')
+    
+    # Title
+    html_parts.append(f'<h3 style="margin: 0; color: {DARK_BROWN};">{priority_emoji} {event["title"]}{travel_badge}</h3>')
+    
+    # Category badge
+    html_parts.append(f'<p style="margin: 5px 0; color: {WOOD_MED};">')
+    html_parts.append(f'<span class="category-badge" style="background-color: {color};">{event["category"]}</span>')
+    html_parts.append('</p>')
+    
+    # Date and time
+    html_parts.append(f'<p style="margin: 5px 0; color: {WOOD_DARK};">')
+    html_parts.append(f'📅 {event["start"].strftime("%b %d, %Y")} | ')
+    html_parts.append(f'🕐 {event["start"].strftime("%I:%M %p")} - {event["end"].strftime("%I:%M %p")} ')
+    html_parts.append(f'({duration_str})')
+    html_parts.append('</p>')
+    
+    # Location (if exists)
+    if event.get('location'):
+        html_parts.append(f'<p style="margin: 5px 0; color: {WOOD_DARK};">📍 {event["location"]}</p>')
+    
+    # Notes (if exists)
+    if event.get('notes'):
+        html_parts.append(f'<p style="margin: 5px 0; color: {WOOD_MED};">📝 {event["notes"]}</p>')
+    
+    # Close divs
+    html_parts.append('</div>')
+    html_parts.append('</div>')
+    html_parts.append('</div>')
+    
+    # Join and render
+    full_html = ''.join(html_parts)
+    st.markdown(full_html, unsafe_allow_html=True)
     
     # Show checklist if exists
     if event.get('checklist'):
@@ -578,32 +594,40 @@ def render_week_view():
         with cols[i]:
             is_today = day.date() == datetime.now().date()
             
-            # Day header
+            # Build day header HTML
+            header_parts = []
+            
+            # Determine styling
             if is_today:
                 day_style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {CREAM};"
             else:
                 day_style = f"background-color: {LIGHT_TAN}; color: {DARK_BROWN};"
             
-            header_html = f"""
-            <div style="text-align: center; padding: 10px; {day_style} border-radius: 5px; border: 1px solid {WOOD_LIGHT};">
-                <strong>{day.strftime('%a')}</strong><br>
-                {day.strftime('%m/%d')}
-            </div>
-            """
-            st.markdown(header_html, unsafe_allow_html=True)
+            # Build header
+            header_parts.append(f'<div style="text-align: center; padding: 10px; {day_style} border-radius: 5px; border: 1px solid {WOOD_LIGHT};">')
+            header_parts.append(f'<strong>{day.strftime("%a")}</strong><br>')
+            header_parts.append(day.strftime("%m/%d"))
+            header_parts.append('</div>')
+            
+            # Render header
+            st.markdown(''.join(header_parts), unsafe_allow_html=True)
             
             # Events
             if events:
                 st.markdown(f"**{len(events)} events**")
                 for event in events:
                     color = CATEGORY_COLORS.get(event['category'], "#888888")
-                    event_html = f"""
-                    <div style="background-color: {color}; padding: 5px; margin: 5px 0; border-radius: 3px; font-size: 0.8em; color: white;">
-                        {event['start'].strftime('%I:%M %p')}<br>
-                        <strong>{event['title']}</strong>
-                    </div>
-                    """
-                    st.markdown(event_html, unsafe_allow_html=True)
+                    
+                    # Build event HTML
+                    event_parts = []
+                    event_parts.append(f'<div style="background-color: {color}; padding: 5px; margin: 5px 0; border-radius: 3px; font-size: 0.8em; color: white;">')
+                    event_parts.append(event['start'].strftime('%I:%M %p'))
+                    event_parts.append('<br>')
+                    event_parts.append(f'<strong>{event["title"]}</strong>')
+                    event_parts.append('</div>')
+                    
+                    # Render event
+                    st.markdown(''.join(event_parts), unsafe_allow_html=True)
             else:
                 st.markdown("_No events_")
 
@@ -661,7 +685,10 @@ def render_month_view():
                     
                     is_today = date.date() == datetime.now().date()
                     
-                    # Build the cell content
+                    # Build HTML parts
+                    html_parts = []
+                    
+                    # Determine styling
                     if is_today:
                         bg_style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {CREAM};"
                         text_color = CREAM
@@ -669,25 +696,28 @@ def render_month_view():
                         bg_style = f"background-color: {LIGHT_BEIGE}; color: {DARK_BROWN}; border: 1px solid {WOOD_LIGHT};"
                         text_color = WOOD_MED
                     
-                    # Event count text
+                    # Start div
+                    html_parts.append(f'<div style="{bg_style} padding: 10px; border-radius: 5px; min-height: 100px;">')
+                    
+                    # Day number
+                    html_parts.append(f'<div style="text-align: center; font-weight: bold;">{day}</div>')
+                    
+                    # Event count
+                    html_parts.append(f'<div style="font-size: 0.75em; margin-top: 5px; color: {text_color}; text-align: center;">')
                     if events:
                         event_count = len(events)
                         if event_count == 1:
-                            event_display = "1 event"
+                            html_parts.append("1 event")
                         else:
-                            event_display = f"{event_count} events"
-                    else:
-                        event_display = ""
+                            html_parts.append(f"{event_count} events")
+                    html_parts.append('</div>')
                     
-                    html = f"""
-                    <div style="{bg_style} padding: 10px; border-radius: 5px; min-height: 100px;">
-                        <div style="text-align: center; font-weight: bold;">{day}</div>
-                        <div style="font-size: 0.75em; margin-top: 5px; color: {text_color}; text-align: center;">
-                            {event_display}
-                        </div>
-                    </div>
-                    """
-                    st.markdown(html, unsafe_allow_html=True)
+                    # Close div
+                    html_parts.append('</div>')
+                    
+                    # Render
+                    full_html = ''.join(html_parts)
+                    st.markdown(full_html, unsafe_allow_html=True)
 
 def render_baseball_season_tracker():
     """Track baseball season progress"""

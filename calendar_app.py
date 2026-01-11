@@ -86,57 +86,40 @@ st.markdown(f"""
         background-color: {CREAM};
     }}
     
-    /* Top navigation radio buttons styled as tabs */
-    div[data-testid="stHorizontalBlock"] div[role="radiogroup"] {{
-        gap: 5px;
-        background-color: {LIGHT_TAN};
-        padding: 10px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-    }}
-    
-    div[data-testid="stHorizontalBlock"] div[role="radiogroup"] label {{
+    /* Navigation buttons at top - professional styling */
+    .stButton>button {{
         background: linear-gradient(135deg, {LIGHT_BEIGE} 0%, {SAND_LIGHT} 100%);
-        padding: 10px 20px;
-        border-radius: 6px;
-        border: 2px solid {WOOD_LIGHT};
         color: {WOOD_DARK};
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.3s ease;
+        border: 2px solid {WOOD_LIGHT};
+        border-radius: 12px;
+        padding: 12px 20px;
+        font-weight: 600;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        font-size: 0.95em;
     }}
     
-    div[data-testid="stHorizontalBlock"] div[role="radiogroup"] label:hover {{
-        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
+    .stButton>button:hover {{
+        background: linear-gradient(135deg, {WOOD_MED} 0%, {WOOD_LIGHT} 100%);
         color: {CREAM};
-        border-color: {WOOD_MED};
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(93, 64, 55, 0.3);
+        border-color: {WOOD_DARK};
+        transform: translateY(-3px);
+        box-shadow: 0 6px 16px rgba(93, 64, 55, 0.3);
     }}
     
-    div[data-testid="stHorizontalBlock"] div[role="radiogroup"] label[data-checked="true"] {{
+    /* Primary buttons (selected navigation) */
+    .stButton>button[kind="primary"] {{
         background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
         color: {CREAM};
         border-color: {WOOD_DARK};
         font-weight: bold;
+        box-shadow: 0 4px 8px rgba(93, 64, 55, 0.4);
     }}
     
-    /* Buttons - Wood style with good contrast */
-    .stButton>button {{
+    .stButton>button[kind="primary"]:hover {{
         background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
-        color: {CREAM};
-        border: 2px solid {WOOD_LIGHT};
-        border-radius: 8px;
-        padding: 0.5rem 1rem;
-        font-weight: bold;
-        transition: all 0.3s ease;
-    }}
-    .stButton>button:hover {{
-        background: linear-gradient(135deg, {WOOD_MED} 0%, {WOOD_LIGHT} 100%);
-        border-color: {TAN_DARK};
-        color: white;
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(93, 64, 55, 0.4);
+        box-shadow: 0 6px 12px rgba(93, 64, 55, 0.5);
     }}
     
     /* Metric cards - Light backgrounds with dark text */
@@ -185,25 +168,6 @@ st.markdown(f"""
     /* Sidebar styling */
     [data-testid="stSidebar"] {{
         background: linear-gradient(180deg, {LIGHT_TAN} 0%, {CREAM} 100%);
-    }}
-    
-    /* Mini calendar buttons in sidebar */
-    [data-testid="stSidebar"] .stButton>button {{
-        background-color: {LIGHT_BEIGE};
-        color: {DARK_BROWN};
-        border: 1px solid {WOOD_LIGHT};
-        border-radius: 4px;
-        padding: 5px;
-        font-size: 0.85em;
-        min-height: 30px;
-        transition: all 0.2s ease;
-    }}
-    
-    [data-testid="stSidebar"] .stButton>button:hover {{
-        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
-        color: {CREAM};
-        border-color: {WOOD_DARK};
-        transform: scale(1.05);
     }}
     
     /* Radio buttons and labels in sidebar */
@@ -343,91 +307,10 @@ def get_events_for_range(start_date, end_date):
             events.append(event)
     return sorted(events, key=lambda x: x['start'])
 
-def render_mini_calendar_sidebar():
-    """Render a mini calendar in sidebar for navigation"""
-    
-    # Initialize mini calendar date in session state
-    if 'mini_cal_date' not in st.session_state:
-        st.session_state.mini_cal_date = datetime.now()
-    
-    st.sidebar.markdown("### 📅 Calendar")
-    
-    # Month navigation
-    col1, col2, col3 = st.sidebar.columns([1, 2, 1])
-    
-    with col1:
-        if st.button("◀", key="mini_prev"):
-            if st.session_state.mini_cal_date.month == 1:
-                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
-                    year=st.session_state.mini_cal_date.year - 1, month=12, day=1
-                )
-            else:
-                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
-                    month=st.session_state.mini_cal_date.month - 1, day=1
-                )
-            st.rerun()
-    
-    with col2:
-        st.markdown(f"<p style='text-align: center; font-weight: bold; color: {WOOD_DARK}; margin: 0;'>{st.session_state.mini_cal_date.strftime('%B %Y')}</p>", unsafe_allow_html=True)
-    
-    with col3:
-        if st.button("▶", key="mini_next"):
-            if st.session_state.mini_cal_date.month == 12:
-                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
-                    year=st.session_state.mini_cal_date.year + 1, month=1, day=1
-                )
-            else:
-                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
-                    month=st.session_state.mini_cal_date.month + 1, day=1
-                )
-            st.rerun()
-    
-    # Get calendar for the month
-    year = st.session_state.mini_cal_date.year
-    month = st.session_state.mini_cal_date.month
-    month_cal = cal.monthcalendar(year, month)
-    
-    # Day headers
-    days = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-    header_parts = []
-    header_parts.append('<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-weight: bold; color: ' + WOOD_MED + '; margin: 10px 0 5px 0; font-size: 0.85em;">')
-    for day in days:
-        header_parts.append(f'<div>{day}</div>')
-    header_parts.append('</div>')
-    st.sidebar.markdown(''.join(header_parts), unsafe_allow_html=True)
-    
-    # Calendar grid
-    for week in month_cal:
-        cols = st.sidebar.columns(7)
-        for i, day in enumerate(week):
-            with cols[i]:
-                if day == 0:
-                    st.markdown('<div style="height: 30px;"></div>', unsafe_allow_html=True)
-                else:
-                    date = datetime(year, month, day)
-                    events = get_events_for_date(date)
-                    
-                    is_today = date.date() == datetime.now().date()
-                    has_events = len(events) > 0
-                    
-                    # Create clickable day button with custom styling
-                    button_label = str(day)
-                    if has_events:
-                        button_label = f"{day} •"  # Add dot for events
-                    
-                    if st.button(
-                        button_label,
-                        key=f"mini_day_{year}_{month}_{day}",
-                        help=f"{len(events)} event(s)" if has_events else "No events",
-                        use_container_width=True
-                    ):
-                        # Set view date and switch to day view
-                        st.session_state.view_date = date
-                        st.rerun()
-
 def create_quick_event_templates():
-    """Deprecated - Quick Add section removed"""
+    """Deprecated - not used"""
     pass
+
 
 
 def render_event_card(event):
@@ -1225,27 +1108,86 @@ def render_add_event_form():
 # Main App
 def main():
     st.title("📅 Tyler's Life Coordinator")
-    st.markdown(f"<p style='color: {WOOD_MED}; font-style: italic;'>Manage your final semester like a champion</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color: {WOOD_MED}; font-style: italic; margin-bottom: 30px;'>Manage your final semester like a champion</p>", unsafe_allow_html=True)
     
-    # View selection at the top using tabs
-    view = st.radio(
-        "Select View",
-        ["Dashboard (48hrs)", "Day View", "Week View", "Month View", 
-         "Baseball Season", "Academic Tracker", "Analytics", "Add Event"],
-        horizontal=True,
-        label_visibility="collapsed"
-    )
+    # Professional styled navigation
+    nav_options = {
+        "Dashboard (48hrs)": "⚡",
+        "Day View": "📅",
+        "Week View": "📆",
+        "Month View": "🗓️",
+        "Baseball Season": "⚾",
+        "Academic Tracker": "🎓",
+        "Analytics": "📊",
+        "Add Event": "➕"
+    }
+    
+    # Create custom navigation bar
+    nav_html = f"""
+    <style>
+    .nav-container {{
+        display: flex;
+        gap: 10px;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+    }}
+    .nav-button {{
+        background: linear-gradient(135deg, {LIGHT_BEIGE} 0%, {SAND_LIGHT} 100%);
+        border: 2px solid {WOOD_LIGHT};
+        border-radius: 12px;
+        padding: 12px 20px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+        color: {WOOD_DARK};
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }}
+    .nav-button:hover {{
+        background: linear-gradient(135deg, {WOOD_MED} 0%, {WOOD_LIGHT} 100%);
+        color: {CREAM};
+        border-color: {WOOD_DARK};
+        transform: translateY(-3px);
+        box-shadow: 0 6px 12px rgba(93, 64, 55, 0.3);
+    }}
+    .nav-button.active {{
+        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
+        color: {CREAM};
+        border-color: {WOOD_DARK};
+        font-weight: bold;
+        box-shadow: 0 4px 8px rgba(93, 64, 55, 0.4);
+    }}
+    .nav-icon {{
+        font-size: 1.3em;
+    }}
+    </style>
+    """
+    st.markdown(nav_html, unsafe_allow_html=True)
+    
+    # Initialize selected view in session state
+    if 'selected_view' not in st.session_state:
+        st.session_state.selected_view = "Dashboard (48hrs)"
+    
+    # Create navigation buttons
+    cols = st.columns(len(nav_options))
+    for idx, (view_name, icon) in enumerate(nav_options.items()):
+        with cols[idx]:
+            if st.button(
+                f"{icon} {view_name}",
+                key=f"nav_{view_name}",
+                use_container_width=True,
+                type="primary" if st.session_state.selected_view == view_name else "secondary"
+            ):
+                st.session_state.selected_view = view_name
+                st.rerun()
+    
+    view = st.session_state.selected_view
     
     st.markdown("---")
     
-    # Sidebar for mini calendar and stats
-    st.sidebar.title("Navigation")
-    
-    # Mini calendar for date navigation
-    render_mini_calendar_sidebar()
-    
-    st.sidebar.markdown("---")
-    
+    # Sidebar for stats and backup only
     # Stats
     st.sidebar.markdown("### 📊 Quick Stats")
     total_events = len(st.session_state.events)

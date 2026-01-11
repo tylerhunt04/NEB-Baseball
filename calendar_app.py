@@ -672,21 +672,39 @@ def render_next_48_hours():
         hours_until = time_until.total_seconds() / 3600
         
         if hours_until < 0:
-            time_str = "🔴 IN PROGRESS"
+            time_str = "In Progress"
+            time_color = "#DC143C"  # Red
         elif hours_until < 2:
-            time_str = f"🔴 in {int(hours_until * 60)} minutes"
+            time_str = f"{int(hours_until * 60)}m"
+            time_color = "#DC143C"  # Red
         elif hours_until < 6:
-            time_str = f"🟡 in {hours_until:.1f} hours"
+            time_str = f"{hours_until:.1f}h"
+            time_color = "#F0AD4E"  # Orange/Yellow
         else:
-            time_str = f"🟢 in {hours_until:.1f} hours"
+            time_str = f"{hours_until:.1f}h"
+            time_color = "#5CB85C"  # Green
         
         col1, col2 = st.columns([3, 1])
         with col1:
             render_event_card(event)
         with col2:
             st.markdown(f"""
-            <div class="metric-card" style="text-align: center;">
-                <h4 style="margin: 0; color: {DARK_BROWN};">{time_str}</h4>
+            <div style="
+                background-color: {LIGHT_BEIGE}; 
+                border-left: 3px solid {time_color}; 
+                border-radius: 6px; 
+                padding: 12px 8px;
+                text-align: center;
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            ">
+                <span style="
+                    font-size: 0.95em; 
+                    font-weight: 500; 
+                    color: {WOOD_DARK};
+                ">{time_str}</span>
             </div>
             """, unsafe_allow_html=True)
 

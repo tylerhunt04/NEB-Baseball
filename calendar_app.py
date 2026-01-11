@@ -872,6 +872,14 @@ def render_add_event_form():
     """Form to add new events with recurring option"""
     st.markdown("## ➕ Add New Event")
     
+    # Recurring checkbox OUTSIDE the form so it updates immediately
+    is_recurring = st.checkbox("🔁 Recurring Event (e.g., classes, practices)")
+    
+    if is_recurring:
+        st.info("💡 Select the days of the week, date range, and time for your recurring event")
+    
+    st.markdown("---")
+    
     with st.form("add_event_form"):
         title = st.text_input("Event Title*")
         
@@ -881,12 +889,8 @@ def render_add_event_form():
         with col2:
             priority = st.selectbox("Priority", ["Low", "Medium", "High"])
         
-        # Recurring event option
-        st.markdown("---")
-        is_recurring = st.checkbox("🔁 Recurring Event (e.g., classes, practices)")
-        
         if is_recurring:
-            st.markdown("### Recurring Event Settings")
+            st.markdown("### 🔁 Recurring Event Settings")
             
             # Days of week selection
             st.markdown("**Select Days of Week***")
@@ -899,6 +903,8 @@ def render_add_event_form():
                 with day_cols[i]:
                     days_selected[name] = st.checkbox(abbr, key=f"day_{i}")
             
+            st.markdown("---")
+            
             # Date range
             col1, col2 = st.columns(2)
             with col1:
@@ -907,29 +913,31 @@ def render_add_event_form():
                 recur_end_date = st.date_input("End Date*", key="recur_end")
             
             # Time (same for all occurrences)
-            st.markdown("**Event Time***")
+            st.markdown("**Event Time (applies to all days)***")
             tcol1, tcol2 = st.columns(2)
             with tcol1:
-                st.markdown("Start Time")
+                st.markdown("**Start Time**")
                 scol1, scol2, scol3 = st.columns([2, 2, 1])
                 with scol1:
-                    start_hour = st.selectbox("Hour", range(1, 13), key="recur_start_hour")
+                    start_hour = st.selectbox("Hour", range(1, 13), key="recur_start_hour", index=1)
                 with scol2:
                     start_minute = st.selectbox("Minute", [0, 15, 30, 45], key="recur_start_min", format_func=lambda x: f"{x:02d}")
                 with scol3:
-                    start_period = st.selectbox("", ["AM", "PM"], key="recur_start_period")
+                    start_period = st.selectbox("AM/PM", ["AM", "PM"], key="recur_start_period", index=1)
             
             with tcol2:
-                st.markdown("End Time")
+                st.markdown("**End Time**")
                 ecol1, ecol2, ecol3 = st.columns([2, 2, 1])
                 with ecol1:
-                    end_hour = st.selectbox("Hour", range(1, 13), key="recur_end_hour")
+                    end_hour = st.selectbox("Hour", range(1, 13), key="recur_end_hour", index=2)
                 with ecol2:
-                    end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="recur_end_min", format_func=lambda x: f"{x:02d}")
+                    end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="recur_end_min", index=1, format_func=lambda x: f"{x:02d}")
                 with ecol3:
-                    end_period = st.selectbox("", ["AM", "PM"], key="recur_end_period")
+                    end_period = st.selectbox("AM/PM", ["AM", "PM"], key="recur_end_period", index=1)
             
         else:
+            st.markdown("### 📅 Single Event")
+            
             # Single event
             col1, col2 = st.columns(2)
             with col1:
@@ -939,11 +947,11 @@ def render_add_event_form():
                 st.markdown("**Start Time***")
                 scol1, scol2, scol3 = st.columns([2, 2, 1])
                 with scol1:
-                    start_hour = st.selectbox("Hour", range(1, 13), key="start_hour")
+                    start_hour = st.selectbox("Hour", range(1, 13), key="start_hour", index=1)
                 with scol2:
                     start_minute = st.selectbox("Minute", [0, 15, 30, 45], key="start_min", format_func=lambda x: f"{x:02d}")
                 with scol3:
-                    start_period = st.selectbox("", ["AM", "PM"], key="start_period")
+                    start_period = st.selectbox("AM/PM", ["AM", "PM"], key="start_period", index=1)
             
             with col2:
                 end_date = st.date_input("End Date*")
@@ -952,11 +960,11 @@ def render_add_event_form():
                 st.markdown("**End Time***")
                 ecol1, ecol2, ecol3 = st.columns([2, 2, 1])
                 with ecol1:
-                    end_hour = st.selectbox("Hour", range(1, 13), key="end_hour")
+                    end_hour = st.selectbox("Hour", range(1, 13), key="end_hour", index=2)
                 with ecol2:
-                    end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="end_min", format_func=lambda x: f"{x:02d}")
+                    end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="end_min", index=1, format_func=lambda x: f"{x:02d}")
                 with ecol3:
-                    end_period = st.selectbox("", ["AM", "PM"], key="end_period")
+                    end_period = st.selectbox("AM/PM", ["AM", "PM"], key="end_period", index=1)
         
         st.markdown("---")
         location = st.text_input("Location")
@@ -980,9 +988,9 @@ def render_add_event_form():
                 # Validate recurring event
                 selected_days = [day for day, selected in days_selected.items() if selected]
                 if not selected_days:
-                    st.error("Please select at least one day of the week")
+                    st.error("⚠️ Please select at least one day of the week")
                 elif recur_end_date < recur_start_date:
-                    st.error("End date must be after start date")
+                    st.error("⚠️ End date must be after start date")
                 else:
                     # Convert times
                     start_hour_24 = start_hour if start_period == "AM" and start_hour != 12 else \
@@ -1022,7 +1030,8 @@ def render_add_event_form():
                         
                         current_date += timedelta(days=1)
                     
-                    st.success(f"✅ Created {events_created} recurring events!")
+                    st.success(f"✅ Created {events_created} recurring events for: {', '.join(selected_days)}")
+                    st.balloons()
                     st.rerun()
             else:
                 # Single event
@@ -1041,7 +1050,7 @@ def render_add_event_form():
                 end_datetime = datetime.combine(end_date, datetime.min.time()).replace(hour=end_hour_24, minute=end_minute)
                 
                 if end_datetime <= start_datetime:
-                    st.error("End time must be after start time")
+                    st.error("⚠️ End time must be after start time")
                 else:
                     checklist = [item.strip() for item in checklist_input.split('\n') if item.strip()] if is_travel else None
                     

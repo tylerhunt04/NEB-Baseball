@@ -86,6 +86,41 @@ st.markdown(f"""
         background-color: {CREAM};
     }}
     
+    /* Top navigation radio buttons styled as tabs */
+    div[data-testid="stHorizontalBlock"] div[role="radiogroup"] {{
+        gap: 5px;
+        background-color: {LIGHT_TAN};
+        padding: 10px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }}
+    
+    div[data-testid="stHorizontalBlock"] div[role="radiogroup"] label {{
+        background: linear-gradient(135deg, {LIGHT_BEIGE} 0%, {SAND_LIGHT} 100%);
+        padding: 10px 20px;
+        border-radius: 6px;
+        border: 2px solid {WOOD_LIGHT};
+        color: {WOOD_DARK};
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }}
+    
+    div[data-testid="stHorizontalBlock"] div[role="radiogroup"] label:hover {{
+        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
+        color: {CREAM};
+        border-color: {WOOD_MED};
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(93, 64, 55, 0.3);
+    }}
+    
+    div[data-testid="stHorizontalBlock"] div[role="radiogroup"] label[data-checked="true"] {{
+        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
+        color: {CREAM};
+        border-color: {WOOD_DARK};
+        font-weight: bold;
+    }}
+    
     /* Buttons - Wood style with good contrast */
     .stButton>button {{
         background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
@@ -152,7 +187,7 @@ st.markdown(f"""
         background: linear-gradient(180deg, {LIGHT_TAN} 0%, {CREAM} 100%);
     }}
     
-    /* Radio buttons and labels */
+    /* Radio buttons and labels in sidebar */
     .stRadio > label {{
         color: {DARK_BROWN} !important;
         font-weight: 500;
@@ -1104,15 +1139,19 @@ def main():
     st.title("📅 Tyler's Life Coordinator")
     st.markdown(f"<p style='color: {WOOD_MED}; font-style: italic;'>Manage your final semester like a champion</p>", unsafe_allow_html=True)
     
-    # Sidebar navigation
-    st.sidebar.title("Navigation")
-    view = st.sidebar.radio(
+    # View selection at the top using tabs
+    view = st.radio(
         "Select View",
         ["Dashboard (48hrs)", "Day View", "Week View", "Month View", 
-         "Baseball Season", "Academic Tracker", "Analytics", "Add Event"]
+         "Baseball Season", "Academic Tracker", "Analytics", "Add Event"],
+        horizontal=True,
+        label_visibility="collapsed"
     )
     
-    st.sidebar.markdown("---")
+    st.markdown("---")
+    
+    # Sidebar for quick add and stats only
+    st.sidebar.title("Quick Actions")
     
     # Quick add templates
     create_quick_event_templates()

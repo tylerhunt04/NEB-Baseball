@@ -172,8 +172,9 @@ st.markdown(f"""
         background: linear-gradient(180deg, {LIGHT_TAN} 0%, {CREAM} 100%);
     }}
     
-    /* Mini calendar navigation buttons */
-    [data-testid="stSidebar"] .stButton>button {{
+    /* Mini calendar navigation buttons (arrows) */
+    [data-testid="stSidebar"] button[key^="mini_prev"],
+    [data-testid="stSidebar"] button[key^="mini_next"] {{
         background-color: transparent;
         color: {WOOD_DARK};
         border: none;
@@ -185,9 +186,38 @@ st.markdown(f"""
         transition: background-color 0.2s ease;
     }}
     
-    [data-testid="stSidebar"] .stButton>button:hover {{
+    /* Mini calendar day buttons */
+    [data-testid="stSidebar"] button[key^="mini_day"] {{
+        background-color: transparent;
+        color: {WOOD_DARK};
+        border: none;
+        border-radius: 50%;
+        padding: 2px;
+        font-size: 0.7em;
+        min-height: 24px;
+        max-height: 24px;
+        width: 24px;
+        transition: all 0.2s ease;
+        font-weight: 400;
+    }}
+    
+    [data-testid="stSidebar"] button[key^="mini_day"]:hover {{
         background-color: {LIGHT_BEIGE};
         color: {WOOD_DARK};
+        font-weight: 500;
+    }}
+    
+    /* Today button in mini calendar - blue circle */
+    [data-testid="stSidebar"] button[key^="mini_day"][kind="primary"] {{
+        background-color: #1a73e8;
+        color: white;
+        border-radius: 50%;
+        font-weight: 600;
+    }}
+    
+    [data-testid="stSidebar"] button[key^="mini_day"][kind="primary"]:hover {{
+        background-color: #1557b0;
+        color: white;
     }}
     
     /* Filter buttons in sidebar - different styling */
@@ -437,37 +467,44 @@ def render_mini_calendar_sidebar():
     header_parts.append('</div>')
     st.sidebar.markdown(''.join(header_parts), unsafe_allow_html=True)
     
-    # Calendar grid - more compact
-    for week in month_cal:
-        week_html = []
-        week_html.append('<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 2px;">')
-        
-        for day in week:
-            if day == 0:
-                week_html.append('<div style="height: 24px;"></div>')
-            else:
-                date = datetime(year, month, day)
-                events = get_events_for_date(date)
-                
-                is_today = date.date() == datetime.now().date()
-                has_events = len(events) > 0
-                
-                # More compact styling
-                if is_today:
-                    # Blue circle for today - smaller
-                    bg_style = f"background-color: #1a73e8; color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-weight: 600; margin: 0 auto; cursor: pointer; font-size: 0.75em;"
-                elif has_events:
-                    # Subtle background for days with events - smaller
-                    bg_style = f"background-color: {LIGHT_BEIGE}; color: {WOOD_DARK}; border-radius: 3px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-weight: 500; font-size: 0.75em;"
+    # Calendar grid - clickable days using Streamlit columns
+    for week_idx, week in enumerate(month_cal):
+        cols = st.sidebar.columns(7)
+        for day_idx, day in enumerate(week):
+            with cols[day_idx]:
+                if day == 0:
+                    st.markdown('<div style="height: 24px;"></div>', unsafe_allow_html=True)
                 else:
-                    # Normal day - smaller
-                    bg_style = f"color: {WOOD_MED}; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 0.75em;"
-                
-                # Add day number
-                week_html.append(f'<div style="{bg_style}" title="{date.strftime("%b %d, %Y")} - {len(events)} event(s)">{day}</div>')
-        
-        week_html.append('</div>')
-        st.sidebar.markdown(''.join(week_html), unsafe_allow_html=True)
+                    date = datetime(year, month, day)
+                    events = get_events_for_date(date)
+                    
+                    is_today = date.date() == datetime.now().date()
+                    has_events = len(events) > 0
+                    
+                    # Create clickable button for each day
+                    button_label = str(day)
+                    if has_events:
+                        button_label = f"{day}•"  # Add dot for events
+                    
+                    # Determine button type based on day status
+                    if is_today:
+                        button_type = "primary"
+                    else:
+                        button_type = "secondary"
+                    
+                    # Make day clickable - switches to Day view
+                    if st.button(
+                        button_label,
+                        key=f"mini_day_{year}_{month}_{day}",
+                        help=f"{date.strftime('%b %d, %Y')} - {len(events)} event(s)",
+                        use_container_width=True,
+                        type=button_type
+                    ):
+                        # Set the view date to the clicked day
+                        st.session_state.view_date = date
+                        # Switch to Day view
+                        st.session_state.selected_view = "Day"
+                        st.rerun()
     
     # Add small spacing after calendar
     st.sidebar.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)

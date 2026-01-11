@@ -190,6 +190,41 @@ st.markdown(f"""
         color: {WOOD_DARK};
     }}
     
+    /* Filter buttons in sidebar - different styling */
+    [data-testid="stSidebar"] button[kind="secondary"] {{
+        background: linear-gradient(135deg, {LIGHT_BEIGE} 0%, {SAND_LIGHT} 100%);
+        color: {WOOD_DARK};
+        border: 1px solid {WOOD_LIGHT};
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-weight: 500;
+        width: 100%;
+        min-height: 40px;
+        transition: all 0.2s ease;
+    }}
+    
+    [data-testid="stSidebar"] button[kind="secondary"]:hover {{
+        background: linear-gradient(135deg, {WOOD_LIGHT} 0%, {TAN_DARK} 100%);
+        color: {CREAM};
+        border-color: {WOOD_MED};
+    }}
+    
+    [data-testid="stSidebar"] button[kind="primary"] {{
+        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
+        color: {CREAM};
+        border: 1px solid {WOOD_DARK};
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-weight: 600;
+        width: 100%;
+        min-height: 40px;
+    }}
+    
+    [data-testid="stSidebar"] button[kind="primary"]:hover {{
+        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
+        color: {CREAM};
+    }}
+    
     /* Radio buttons and labels in sidebar */
     .stRadio > label {{
         color: {DARK_BROWN} !important;
@@ -312,19 +347,43 @@ def delete_event(event_id):
     save_events()
 
 def get_events_for_date(date):
-    """Get all events for a specific date"""
+    """Get all events for a specific date, respecting active filter"""
+    event_filter = st.session_state.get('event_filter', 'All')
+    
     events = []
     for event in st.session_state.events:
         if event['start'].date() == date.date():
             events.append(event)
+    
+    # Apply filter
+    if event_filter != "All":
+        if event_filter == "Baseball":
+            events = [e for e in events if "Baseball" in e['category']]
+        elif event_filter == "Academic":
+            events = [e for e in events if e['category'] in ["Exam", "Assignment", "Study Session", "Classes"]]
+        elif event_filter == "Analytics":
+            events = [e for e in events if e['category'] == "Analytics Work"]
+    
     return sorted(events, key=lambda x: x['start'])
 
 def get_events_for_range(start_date, end_date):
-    """Get all events within a date range"""
+    """Get all events within a date range, respecting active filter"""
+    event_filter = st.session_state.get('event_filter', 'All')
+    
     events = []
     for event in st.session_state.events:
         if start_date.date() <= event['start'].date() <= end_date.date():
             events.append(event)
+    
+    # Apply filter
+    if event_filter != "All":
+        if event_filter == "Baseball":
+            events = [e for e in events if "Baseball" in e['category']]
+        elif event_filter == "Academic":
+            events = [e for e in events if e['category'] in ["Exam", "Assignment", "Study Session", "Classes"]]
+        elif event_filter == "Analytics":
+            events = [e for e in events if e['category'] == "Analytics Work"]
+    
     return sorted(events, key=lambda x: x['start'])
 
 def render_mini_calendar_sidebar():
@@ -1213,15 +1272,12 @@ def render_add_event_form():
 
 # Main App
 def main():
-    # Simple, clean navigation
+    # Simple, clean navigation - VIEW TYPES ONLY
     nav_options = [
         "Dashboard",
         "Day",
         "Week", 
         "Month",
-        "Baseball",
-        "Academic",
-        "Analytics",
         "Add Event"
     ]
     
@@ -1229,8 +1285,12 @@ def main():
     if 'selected_view' not in st.session_state:
         st.session_state.selected_view = "Dashboard"
     
+    # Initialize event filter in session state
+    if 'event_filter' not in st.session_state:
+        st.session_state.event_filter = "All"
+    
     # Create clean navigation bar with proper spacing
-    nav_cols = st.columns([1.2, 0.7, 0.8, 0.8, 1, 1.1, 1, 1.1])
+    nav_cols = st.columns([1.2, 0.7, 0.8, 0.8, 1.1])
     for idx, view_name in enumerate(nav_options):
         with nav_cols[idx]:
             is_active = st.session_state.selected_view == view_name
@@ -1247,8 +1307,31 @@ def main():
     
     st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
     
-    # Sidebar with mini calendar
+    # Sidebar with mini calendar and filters
     render_mini_calendar_sidebar()
+    
+    st.sidebar.markdown("---")
+    
+    # EVENT FILTERS
+    st.sidebar.markdown("### Filters")
+    
+    # Show active filter
+    current_filter = st.session_state.event_filter
+    if current_filter != "All":
+        st.sidebar.markdown(f"<p style='font-size: 0.85em; color: {WOOD_MED}; margin-bottom: 10px;'>Showing: <strong>{current_filter}</strong> events</p>", unsafe_allow_html=True)
+    
+    filter_options = ["All", "Baseball", "Academic", "Analytics"]
+    
+    for filter_name in filter_options:
+        is_active = st.session_state.event_filter == filter_name
+        if st.sidebar.button(
+            filter_name,
+            key=f"filter_{filter_name}",
+            use_container_width=True,
+            type="primary" if is_active else "secondary"
+        ):
+            st.session_state.event_filter = filter_name
+            st.rerun()
     
     st.sidebar.markdown("---")
     
@@ -1307,7 +1390,7 @@ def main():
         except Exception as e:
             st.sidebar.error(f"Error restoring backup: {str(e)}")
     
-    # Render selected view
+    # Render selected view with applied filter
     if view == "Dashboard":
         render_next_48_hours()
     elif view == "Day":
@@ -1316,12 +1399,6 @@ def main():
         render_week_view()
     elif view == "Month":
         render_month_view()
-    elif view == "Baseball":
-        render_baseball_season_tracker()
-    elif view == "Academic":
-        render_academic_tracker()
-    elif view == "Analytics":
-        render_analytics_dashboard()
     elif view == "Add Event":
         render_add_event_form()
 

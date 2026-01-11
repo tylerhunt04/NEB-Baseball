@@ -179,10 +179,11 @@ st.markdown(f"""
         color: {WOOD_DARK};
         border: none;
         border-radius: 50%;
-        padding: 2px 6px;
-        font-size: 0.9em;
-        min-height: 24px;
-        width: 24px;
+        padding: 1px 4px;
+        font-size: 0.8em;
+        min-height: 20px;
+        max-height: 20px;
+        width: 20px;
         transition: background-color 0.2s ease;
     }}
     
@@ -192,13 +193,14 @@ st.markdown(f"""
         color: {WOOD_DARK};
         border: none;
         border-radius: 50%;
-        padding: 2px;
-        font-size: 0.7em;
-        min-height: 24px;
-        max-height: 24px;
-        width: 24px;
+        padding: 0px;
+        font-size: 0.65em;
+        min-height: 20px;
+        max-height: 20px;
+        width: 20px;
         transition: all 0.2s ease;
         font-weight: 400;
+        line-height: 20px;
     }}
     
     [data-testid="stSidebar"] button[key^="mini_day"]:hover {{
@@ -423,8 +425,8 @@ def render_mini_calendar_sidebar():
     if 'mini_cal_date' not in st.session_state:
         st.session_state.mini_cal_date = datetime.now()
     
-    # Month navigation - more compact
-    col1, col2, col3 = st.sidebar.columns([0.8, 3, 0.8])
+    # Month navigation - very compact
+    col1, col2, col3 = st.sidebar.columns([0.6, 3.2, 0.6])
     
     with col1:
         if st.button("◀", key="mini_prev", help="Previous month"):
@@ -439,7 +441,7 @@ def render_mini_calendar_sidebar():
             st.rerun()
     
     with col2:
-        st.markdown(f"<div style='text-align: center; font-weight: 600; font-size: 0.9em; color: {WOOD_DARK}; padding: 4px 0;'>{st.session_state.mini_cal_date.strftime('%B %Y')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; font-weight: 600; font-size: 0.85em; color: {WOOD_DARK}; padding: 2px 0;'>{st.session_state.mini_cal_date.strftime('%B %Y')}</div>", unsafe_allow_html=True)
     
     with col3:
         if st.button("▶", key="mini_next", help="Next month"):
@@ -458,12 +460,12 @@ def render_mini_calendar_sidebar():
     month = st.session_state.mini_cal_date.month
     month_cal = cal.monthcalendar(year, month)
     
-    # Day headers - more compact
+    # Day headers - very compact
     days = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
     header_parts = []
-    header_parts.append('<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-weight: 600; color: ' + WOOD_MED + '; margin: 8px 0 4px 0; font-size: 0.7em;">')
+    header_parts.append('<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; text-align: center; font-weight: 600; color: ' + WOOD_MED + '; margin: 6px 0 2px 0; font-size: 0.65em;">')
     for day in days:
-        header_parts.append(f'<div style="padding: 2px;">{day}</div>')
+        header_parts.append(f'<div style="padding: 1px;">{day}</div>')
     header_parts.append('</div>')
     st.sidebar.markdown(''.join(header_parts), unsafe_allow_html=True)
     
@@ -473,7 +475,7 @@ def render_mini_calendar_sidebar():
         for day_idx, day in enumerate(week):
             with cols[day_idx]:
                 if day == 0:
-                    st.markdown('<div style="height: 24px;"></div>', unsafe_allow_html=True)
+                    st.markdown('<div style="height: 20px;"></div>', unsafe_allow_html=True)
                 else:
                     date = datetime(year, month, day)
                     events = get_events_for_date(date)
@@ -507,7 +509,7 @@ def render_mini_calendar_sidebar():
                         st.rerun()
     
     # Add small spacing after calendar
-    st.sidebar.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div style='margin-bottom: 6px;'></div>", unsafe_allow_html=True)
 
 def create_quick_event_templates():
     """Deprecated - not used"""

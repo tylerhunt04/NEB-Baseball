@@ -1285,6 +1285,55 @@ def render_add_event_form():
 
 # Main App
 def main():
+    # Stoic quotes
+    stoic_quotes = [
+        ("You have power over your mind - not outside events. Realize this, and you will find strength.", "Marcus Aurelius"),
+        ("He who is brave is free.", "Seneca"),
+        ("It's not what happens to you, but how you react to it that matters.", "Epictetus"),
+        ("The best revenge is to be unlike him who performed the injury.", "Marcus Aurelius"),
+        ("Waste no more time arguing what a good man should be. Be one.", "Marcus Aurelius"),
+        ("We suffer more often in imagination than in reality.", "Seneca"),
+        ("If it is not right, do not do it; if it is not true, do not say it.", "Marcus Aurelius"),
+        ("The impediment to action advances action. What stands in the way becomes the way.", "Marcus Aurelius"),
+        ("He who fears death will never do anything worth of a man who is alive.", "Seneca"),
+        ("First say to yourself what you would be; and then do what you have to do.", "Epictetus"),
+        ("Don't explain your philosophy. Embody it.", "Epictetus"),
+        ("The happiness of your life depends upon the quality of your thoughts.", "Marcus Aurelius"),
+        ("Luck is what happens when preparation meets opportunity.", "Seneca"),
+        ("Difficulties strengthen the mind, as labor does the body.", "Seneca"),
+        ("No person has the power to have everything they want, but it is in their power not to want what they don't have.", "Seneca")
+    ]
+    
+    # Select quote based on day of year (same quote all day)
+    day_of_year = datetime.now().timetuple().tm_yday
+    quote, author = stoic_quotes[day_of_year % len(stoic_quotes)]
+    
+    # Display stoic quote at the very top
+    st.markdown(f"""
+    <div style='
+        background: linear-gradient(135deg, {LIGHT_BEIGE} 0%, {SAND_LIGHT} 100%); 
+        border-left: 3px solid {WOOD_DARK};
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 20px;
+    '>
+        <p style='
+            margin: 0;
+            font-style: italic;
+            color: {WOOD_MED};
+            font-size: 0.95em;
+            line-height: 1.4;
+        '>"{quote}"</p>
+        <p style='
+            margin: 8px 0 0 0;
+            text-align: right;
+            color: {WOOD_DARK};
+            font-size: 0.85em;
+            font-weight: 500;
+        '>— {author}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
     # Initialize view date if not set
     if 'view_date' not in st.session_state:
         st.session_state.view_date = datetime.now()

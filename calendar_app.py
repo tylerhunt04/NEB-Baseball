@@ -1,3 +1,17 @@
+"""
+Tyler's Life Coordinator - Personal Calendar App
+
+DATA PERSISTENCE NOTE:
+----------------------
+Your calendar data is saved in 'calendar_data.json' in the same directory as this app.
+When you update this Python file, your data will NOT be lost as long as:
+1. The 'calendar_data.json' file stays in the same directory
+2. You don't delete or rename the data file
+
+To backup your data: Just copy the 'calendar_data.json' file to a safe location
+To restore data: Place the 'calendar_data.json' file back in the app directory
+"""
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -874,10 +888,29 @@ def render_add_event_form():
         col1, col2 = st.columns(2)
         with col1:
             start_date = st.date_input("Start Date*")
-            start_time = st.time_input("Start Time*")
+            
+            # 12-hour format time selection
+            st.markdown("**Start Time***")
+            scol1, scol2, scol3 = st.columns([2, 2, 1])
+            with scol1:
+                start_hour = st.selectbox("Hour", range(1, 13), key="start_hour")
+            with scol2:
+                start_minute = st.selectbox("Minute", [0, 15, 30, 45], key="start_min", format_func=lambda x: f"{x:02d}")
+            with scol3:
+                start_period = st.selectbox("", ["AM", "PM"], key="start_period")
+        
         with col2:
             end_date = st.date_input("End Date*")
-            end_time = st.time_input("End Time*")
+            
+            # 12-hour format time selection
+            st.markdown("**End Time***")
+            ecol1, ecol2, ecol3 = st.columns([2, 2, 1])
+            with ecol1:
+                end_hour = st.selectbox("Hour", range(1, 13), key="end_hour")
+            with ecol2:
+                end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="end_min", format_func=lambda x: f"{x:02d}")
+            with ecol3:
+                end_period = st.selectbox("", ["AM", "PM"], key="end_period")
         
         location = st.text_input("Location")
         notes = st.text_area("Notes")
@@ -897,8 +930,19 @@ def render_add_event_form():
             if not title:
                 st.error("Please provide an event title")
             else:
-                start_datetime = datetime.combine(start_date, start_time)
-                end_datetime = datetime.combine(end_date, end_time)
+                # Convert 12-hour format to 24-hour format
+                start_hour_24 = start_hour if start_period == "AM" and start_hour != 12 else \
+                               0 if start_period == "AM" and start_hour == 12 else \
+                               start_hour if start_period == "PM" and start_hour == 12 else \
+                               start_hour + 12
+                
+                end_hour_24 = end_hour if end_period == "AM" and end_hour != 12 else \
+                             0 if end_period == "AM" and end_hour == 12 else \
+                             end_hour if end_period == "PM" and end_hour == 12 else \
+                             end_hour + 12
+                
+                start_datetime = datetime.combine(start_date, datetime.min.time()).replace(hour=start_hour_24, minute=start_minute)
+                end_datetime = datetime.combine(end_date, datetime.min.time()).replace(hour=end_hour_24, minute=end_minute)
                 
                 if end_datetime <= start_datetime:
                     st.error("End time must be after start time")
@@ -953,6 +997,47 @@ def main():
         </p>
     </div>
     """, unsafe_allow_html=True)
+    
+    st.sidebar.markdown("---")
+    
+    # Data backup section
+    st.sidebar.markdown("### 💾 Data Backup")
+    st.sidebar.markdown("""
+    <p style='font-size: 0.85em; color: #6F4E37;'>
+    Your data is saved automatically to<br><code>calendar_data.json</code>
+    </p>
+    """, unsafe_allow_html=True)
+    
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, 'r') as f:
+            data_json = f.read()
+        st.sidebar.download_button(
+            label="📥 Download Backup",
+            data=data_json,
+            file_name=f"calendar_backup_{datetime.now().strftime('%Y%m%d')}.json",
+            mime="application/json",
+            help="Download a backup of your calendar data"
+        )
+    
+    uploaded_file = st.sidebar.file_uploader(
+        "📤 Restore Backup",
+        type=['json'],
+        help="Upload a previously saved backup file"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            data = json.load(uploaded_file)
+            # Convert string dates back to datetime
+            for event in data:
+                event['start'] = datetime.fromisoformat(event['start'])
+                event['end'] = datetime.fromisoformat(event['end'])
+            st.session_state.events = data
+            save_events()
+            st.sidebar.success("✅ Backup restored!")
+            st.rerun()
+        except Exception as e:
+            st.sidebar.error(f"Error restoring backup: {str(e)}")
     
     # Render selected view
     if view == "Dashboard (48hrs)":

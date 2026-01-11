@@ -187,6 +187,25 @@ st.markdown(f"""
         background: linear-gradient(180deg, {LIGHT_TAN} 0%, {CREAM} 100%);
     }}
     
+    /* Mini calendar buttons in sidebar */
+    [data-testid="stSidebar"] .stButton>button {{
+        background-color: {LIGHT_BEIGE};
+        color: {DARK_BROWN};
+        border: 1px solid {WOOD_LIGHT};
+        border-radius: 4px;
+        padding: 5px;
+        font-size: 0.85em;
+        min-height: 30px;
+        transition: all 0.2s ease;
+    }}
+    
+    [data-testid="stSidebar"] .stButton>button:hover {{
+        background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%);
+        color: {CREAM};
+        border-color: {WOOD_DARK};
+        transform: scale(1.05);
+    }}
+    
     /* Radio buttons and labels in sidebar */
     .stRadio > label {{
         color: {DARK_BROWN} !important;
@@ -324,23 +343,92 @@ def get_events_for_range(start_date, end_date):
             events.append(event)
     return sorted(events, key=lambda x: x['start'])
 
-def create_quick_event_templates():
-    """Create quick-add templates for common events"""
-    st.sidebar.markdown("### ⚡ Quick Add")
-    st.sidebar.markdown("<p style='font-size: 0.85em; color: #6F4E37;'>For recurring events (classes, practices), use 'Add Event' with the recurring option!</p>", unsafe_allow_html=True)
+def render_mini_calendar_sidebar():
+    """Render a mini calendar in sidebar for navigation"""
     
-    if st.sidebar.button("Add Practice (Today)"):
-        today = datetime.now().replace(hour=14, minute=0, second=0, microsecond=0)
-        add_event(
-            "Baseball Practice",
-            "Baseball - Practice",
-            today,
-            today + timedelta(hours=3),
-            location="Haymarket Park",
-            notes="Regular practice session"
-        )
-        st.sidebar.success("Practice added!")
-        st.rerun()
+    # Initialize mini calendar date in session state
+    if 'mini_cal_date' not in st.session_state:
+        st.session_state.mini_cal_date = datetime.now()
+    
+    st.sidebar.markdown("### 📅 Calendar")
+    
+    # Month navigation
+    col1, col2, col3 = st.sidebar.columns([1, 2, 1])
+    
+    with col1:
+        if st.button("◀", key="mini_prev"):
+            if st.session_state.mini_cal_date.month == 1:
+                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
+                    year=st.session_state.mini_cal_date.year - 1, month=12, day=1
+                )
+            else:
+                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
+                    month=st.session_state.mini_cal_date.month - 1, day=1
+                )
+            st.rerun()
+    
+    with col2:
+        st.markdown(f"<p style='text-align: center; font-weight: bold; color: {WOOD_DARK}; margin: 0;'>{st.session_state.mini_cal_date.strftime('%B %Y')}</p>", unsafe_allow_html=True)
+    
+    with col3:
+        if st.button("▶", key="mini_next"):
+            if st.session_state.mini_cal_date.month == 12:
+                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
+                    year=st.session_state.mini_cal_date.year + 1, month=1, day=1
+                )
+            else:
+                st.session_state.mini_cal_date = st.session_state.mini_cal_date.replace(
+                    month=st.session_state.mini_cal_date.month + 1, day=1
+                )
+            st.rerun()
+    
+    # Get calendar for the month
+    year = st.session_state.mini_cal_date.year
+    month = st.session_state.mini_cal_date.month
+    month_cal = cal.monthcalendar(year, month)
+    
+    # Day headers
+    days = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+    header_parts = []
+    header_parts.append('<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-weight: bold; color: ' + WOOD_MED + '; margin: 10px 0 5px 0; font-size: 0.85em;">')
+    for day in days:
+        header_parts.append(f'<div>{day}</div>')
+    header_parts.append('</div>')
+    st.sidebar.markdown(''.join(header_parts), unsafe_allow_html=True)
+    
+    # Calendar grid
+    for week in month_cal:
+        cols = st.sidebar.columns(7)
+        for i, day in enumerate(week):
+            with cols[i]:
+                if day == 0:
+                    st.markdown('<div style="height: 30px;"></div>', unsafe_allow_html=True)
+                else:
+                    date = datetime(year, month, day)
+                    events = get_events_for_date(date)
+                    
+                    is_today = date.date() == datetime.now().date()
+                    has_events = len(events) > 0
+                    
+                    # Create clickable day button with custom styling
+                    button_label = str(day)
+                    if has_events:
+                        button_label = f"{day} •"  # Add dot for events
+                    
+                    if st.button(
+                        button_label,
+                        key=f"mini_day_{year}_{month}_{day}",
+                        help=f"{len(events)} event(s)" if has_events else "No events",
+                        use_container_width=True
+                    ):
+                        # Set view date and switch to day view
+                        st.session_state.view_date = date
+                        st.rerun()
+
+def create_quick_event_templates():
+    """Deprecated - Quick Add section removed"""
+    pass
+
 
 def render_event_card(event):
     """Render a styled event card"""
@@ -1150,11 +1238,11 @@ def main():
     
     st.markdown("---")
     
-    # Sidebar for quick add and stats only
-    st.sidebar.title("Quick Actions")
+    # Sidebar for mini calendar and stats
+    st.sidebar.title("Navigation")
     
-    # Quick add templates
-    create_quick_event_templates()
+    # Mini calendar for date navigation
+    render_mini_calendar_sidebar()
     
     st.sidebar.markdown("---")
     

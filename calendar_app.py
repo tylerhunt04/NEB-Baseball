@@ -324,7 +324,7 @@ if not st.session_state.events:
     st.session_state.events = load_events()
 
 def add_event(title, category, start, end, location="", notes="", priority="Medium", 
-              is_travel=False, checklist_items=None):
+              is_travel=False, checklist_items=None, time_tba=False):
     """Add a new event"""
     event = {
         'id': len(st.session_state.events),
@@ -337,7 +337,8 @@ def add_event(title, category, start, end, location="", notes="", priority="Medi
         'priority': priority,
         'is_travel': is_travel,
         'checklist': checklist_items or [],
-        'completed_checklist': []
+        'completed_checklist': [],
+        'time_tba': time_tba
     }
     st.session_state.events.append(event)
     save_events()
@@ -509,8 +510,14 @@ def render_event_card(event):
     # Date and time
     html_parts.append(f'<p style="margin: 5px 0; color: {WOOD_DARK};">')
     html_parts.append(f'📅 {event["start"].strftime("%b %d, %Y")} | ')
-    html_parts.append(f'🕐 {event["start"].strftime("%I:%M %p")} - {event["end"].strftime("%I:%M %p")} ')
-    html_parts.append(f'({duration_str})')
+    
+    # Check if time is TBA
+    if event.get('time_tba', False):
+        html_parts.append('🕐 <strong style="color: #F0AD4E;">Time TBA</strong>')
+    else:
+        html_parts.append(f'🕐 {event["start"].strftime("%I:%M %p")} - {event["end"].strftime("%I:%M %p")} ')
+        html_parts.append(f'({duration_str})')
+    
     html_parts.append('</p>')
     
     # Location (if exists)
@@ -1089,8 +1096,14 @@ def render_add_event_form():
     # Recurring checkbox OUTSIDE the form so it updates immediately
     is_recurring = st.checkbox("Recurring Event (e.g., classes, practices)")
     
+    # Time TBA checkbox OUTSIDE the form
+    time_tba = st.checkbox("Time TBA (game time not announced yet)")
+    
     if is_recurring:
         st.info("Select the days of the week, date range, and time for your recurring event")
+    
+    if time_tba:
+        st.info("Event will be created with time marked as TBA. You can edit it later once the time is announced.")
     
     st.markdown("---")
     
@@ -1153,32 +1166,46 @@ def render_add_event_form():
             st.markdown("### Single Event")
             
             # Single event
-            col1, col2 = st.columns(2)
-            with col1:
-                start_date = st.date_input("Start Date*")
+            if time_tba:
+                # Just show date fields when time is TBA
+                col1, col2 = st.columns(2)
+                with col1:
+                    start_date = st.date_input("Event Date*")
+                with col2:
+                    st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)  # Spacer
                 
-                # 12-hour format time selection
-                st.markdown("**Start Time***")
-                scol1, scol2, scol3 = st.columns([2, 2, 1])
-                with scol1:
-                    start_hour = st.selectbox("Hour", range(1, 13), key="start_hour", index=1)
-                with scol2:
-                    start_minute = st.selectbox("Minute", [0, 15, 30, 45], key="start_min", format_func=lambda x: f"{x:02d}")
-                with scol3:
-                    start_period = st.selectbox("AM/PM", ["AM", "PM"], key="start_period", index=1)
-            
-            with col2:
-                end_date = st.date_input("End Date*")
+                # Set dummy values for time (will be ignored)
+                start_hour, start_minute, start_period = 12, 0, "AM"
+                end_hour, end_minute, end_period = 11, 59, "PM"
+                end_date = start_date
+            else:
+                # Normal time selection
+                col1, col2 = st.columns(2)
+                with col1:
+                    start_date = st.date_input("Start Date*")
+                    
+                    # 12-hour format time selection
+                    st.markdown("**Start Time***")
+                    scol1, scol2, scol3 = st.columns([2, 2, 1])
+                    with scol1:
+                        start_hour = st.selectbox("Hour", range(1, 13), key="start_hour", index=1)
+                    with scol2:
+                        start_minute = st.selectbox("Minute", [0, 15, 30, 45], key="start_min", format_func=lambda x: f"{x:02d}")
+                    with scol3:
+                        start_period = st.selectbox("AM/PM", ["AM", "PM"], key="start_period", index=1)
                 
-                # 12-hour format time selection
-                st.markdown("**End Time***")
-                ecol1, ecol2, ecol3 = st.columns([2, 2, 1])
-                with ecol1:
-                    end_hour = st.selectbox("Hour", range(1, 13), key="end_hour", index=2)
-                with ecol2:
-                    end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="end_min", index=1, format_func=lambda x: f"{x:02d}")
-                with ecol3:
-                    end_period = st.selectbox("AM/PM", ["AM", "PM"], key="end_period", index=1)
+                with col2:
+                    end_date = st.date_input("End Date*")
+                    
+                    # 12-hour format time selection
+                    st.markdown("**End Time***")
+                    ecol1, ecol2, ecol3 = st.columns([2, 2, 1])
+                    with ecol1:
+                        end_hour = st.selectbox("Hour", range(1, 13), key="end_hour", index=2)
+                    with ecol2:
+                        end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="end_min", index=1, format_func=lambda x: f"{x:02d}")
+                    with ecol3:
+                        end_period = st.selectbox("AM/PM", ["AM", "PM"], key="end_period", index=1)
         
         st.markdown("---")
         location = st.text_input("Location")
@@ -1263,7 +1290,7 @@ def render_add_event_form():
                 start_datetime = datetime.combine(start_date, datetime.min.time()).replace(hour=start_hour_24, minute=start_minute)
                 end_datetime = datetime.combine(end_date, datetime.min.time()).replace(hour=end_hour_24, minute=end_minute)
                 
-                if end_datetime <= start_datetime:
+                if end_datetime <= start_datetime and not time_tba:
                     st.error("⚠️ End time must be after start time")
                 else:
                     checklist = [item.strip() for item in checklist_input.split('\n') if item.strip()] if is_travel else None
@@ -1277,10 +1304,14 @@ def render_add_event_form():
                         notes=notes,
                         priority=priority,
                         is_travel=is_travel,
-                        checklist_items=checklist
+                        checklist_items=checklist,
+                        time_tba=time_tba
                     )
                     
-                    st.success(f"✅ Event '{title}' added successfully!")
+                    if time_tba:
+                        st.success(f"✅ Event '{title}' added with time TBA!")
+                    else:
+                        st.success(f"✅ Event '{title}' added successfully!")
                     st.rerun()
 
 # Main App

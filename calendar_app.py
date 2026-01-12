@@ -983,14 +983,22 @@ def render_month_view():
                     # Day number
                     html_parts.append(f'<div style="text-align: center; font-weight: bold;">{day}</div>')
                     
-                    # Event count
-                    html_parts.append(f'<div style="font-size: 0.75em; margin-top: 5px; color: {text_color}; text-align: center;">')
+                    # Event list (sorted by time)
+                    html_parts.append(f'<div style="font-size: 0.7em; margin-top: 5px;">')
                     if events:
-                        event_count = len(events)
-                        if event_count == 1:
-                            html_parts.append("1 event")
-                        else:
-                            html_parts.append(f"{event_count} events")
+                        # Sort events by start time
+                        sorted_events = sorted(events, key=lambda x: x['start'])
+                        for event in sorted_events[:3]:  # Show up to 3 events
+                            color = CATEGORY_COLORS.get(event['category'], "#888888")
+                            # Show time and title
+                            time_str = event['start'].strftime('%I:%M %p') if not event.get('all_day') else 'All day'
+                            html_parts.append(f'<div style="background-color: {color}; color: white; padding: 2px 4px; margin: 2px 0; border-radius: 3px; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">')
+                            html_parts.append(f'{time_str[:5]} {event["title"][:12]}')
+                            html_parts.append('</div>')
+                        
+                        # If more than 3 events, show "+X more"
+                        if len(events) > 3:
+                            html_parts.append(f'<div style="color: {text_color}; text-align: center; margin-top: 2px; font-style: italic;">+{len(events) - 3} more</div>')
                     html_parts.append('</div>')
                     
                     # Close div
@@ -1539,6 +1547,8 @@ def main():
         date_display = st.session_state.view_date.strftime("%A, %B %d, %Y")
     elif current_view == "Add Event":
         date_display = "Add New Event"
+    elif current_view == "Analytics":
+        date_display = "Time Management Analytics"
     else:  # Week, Month
         date_display = st.session_state.view_date.strftime("%B %Y")
     
@@ -1550,8 +1560,7 @@ def main():
         "Dashboard",
         "Day",
         "Week", 
-        "Month",
-        "Add Event"
+        "Month"
     ]
     
     # Initialize selected view in session state
@@ -1563,7 +1572,7 @@ def main():
         st.session_state.event_filter = "All"
     
     # Create clean navigation bar with proper spacing
-    nav_cols = st.columns([1.2, 0.7, 0.8, 0.8, 1.1])
+    nav_cols = st.columns([1.2, 0.7, 0.8, 0.8])
     for idx, view_name in enumerate(nav_options):
         with nav_cols[idx]:
             is_active = st.session_state.selected_view == view_name
@@ -1582,6 +1591,27 @@ def main():
     
     # Sidebar with mini calendar and filters
     render_mini_calendar_sidebar()
+    
+    st.sidebar.markdown("---")
+    
+    # ANALYTICS AND ADD EVENT BUTTONS
+    if st.sidebar.button(
+        "📊 Analytics",
+        key="sidebar_analytics",
+        use_container_width=True,
+        type="primary" if st.session_state.selected_view == "Analytics" else "secondary"
+    ):
+        st.session_state.selected_view = "Analytics"
+        st.rerun()
+    
+    if st.sidebar.button(
+        "➕ Add Event",
+        key="sidebar_add_event",
+        use_container_width=True,
+        type="primary" if st.session_state.selected_view == "Add Event" else "secondary"
+    ):
+        st.session_state.selected_view = "Add Event"
+        st.rerun()
     
     st.sidebar.markdown("---")
     
@@ -1672,6 +1702,8 @@ def main():
         render_week_view()
     elif view == "Month":
         render_month_view()
+    elif view == "Analytics":
+        render_analytics_dashboard()
     elif view == "Add Event":
         render_add_event_form()
 

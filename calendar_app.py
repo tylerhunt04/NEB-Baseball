@@ -786,16 +786,8 @@ def render_week_view():
     html_parts = []
     
     # Start calendar container
-    html_parts.append(f'''
-    <div style="
-        width: 100%;
-        overflow-x: auto;
-        border: 1px solid {WOOD_LIGHT};
-        border-radius: 8px;
-        background-color: white;
-    ">
-        <div style="display: grid; grid-template-columns: 60px repeat(7, 1fr); min-width: 800px;">
-    ''')
+    html_parts.append('<div style="width: 100%; overflow-x: auto; border: 1px solid ' + WOOD_LIGHT + '; border-radius: 8px; background-color: white;">')
+    html_parts.append('<div style="display: grid; grid-template-columns: 60px repeat(7, 1fr); min-width: 800px;">')
     
     # Header row with day names
     html_parts.append('<div style="position: sticky; top: 0; background-color: white; z-index: 10;"></div>')  # Empty corner
@@ -805,26 +797,14 @@ def render_week_view():
         is_today = day.date() == datetime.now().date()
         
         if is_today:
-            header_style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {CREAM};"
+            header_style = "background: linear-gradient(135deg, " + WOOD_DARK + " 0%, " + WOOD_MED + " 100%); color: " + CREAM + ";"
         else:
-            header_style = f"background-color: {LIGHT_BEIGE}; color: {WOOD_DARK};"
+            header_style = "background-color: " + LIGHT_BEIGE + "; color: " + WOOD_DARK + ";"
         
-        html_parts.append(f'''
-        <div style="
-            {header_style}
-            padding: 12px 8px;
-            text-align: center;
-            font-weight: 600;
-            font-size: 0.9em;
-            border-bottom: 2px solid {WOOD_LIGHT};
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        ">
-            <div>{day.strftime("%a")}</div>
-            <div style="font-size: 1.1em; margin-top: 2px;">{day.strftime("%d")}</div>
-        </div>
-        ''')
+        html_parts.append('<div style="' + header_style + ' padding: 12px 8px; text-align: center; font-weight: 600; font-size: 0.9em; border-bottom: 2px solid ' + WOOD_LIGHT + '; position: sticky; top: 0; z-index: 10;">')
+        html_parts.append('<div>' + day.strftime("%a") + '</div>')
+        html_parts.append('<div style="font-size: 1.1em; margin-top: 2px;">' + day.strftime("%d") + '</div>')
+        html_parts.append('</div>')
     
     # Time rows (6 AM to 11 PM = 18 hours)
     start_hour = 6  # 6 AM
@@ -844,29 +824,13 @@ def render_week_view():
             display_hour = 12
         period = "AM" if hour < 12 else "PM"
         
-        html_parts.append(f'''
-        <div style="
-            padding: 8px 4px;
-            text-align: right;
-            font-size: 0.75em;
-            color: {WOOD_MED};
-            border-top: 1px solid {LIGHT_BEIGE};
-            border-right: 1px solid {WOOD_LIGHT};
-            font-weight: 500;
-        ">{display_hour}{period}</div>
-        ''')
+        html_parts.append('<div style="padding: 8px 4px; text-align: right; font-size: 0.75em; color: ' + WOOD_MED + '; border-top: 1px solid ' + LIGHT_BEIGE + '; border-right: 1px solid ' + WOOD_LIGHT + '; font-weight: 500;">')
+        html_parts.append(str(display_hour) + period)
+        html_parts.append('</div>')
         
         # Day columns for this hour
         for day_idx in range(7):
-            html_parts.append(f'''
-            <div style="
-                min-height: 60px;
-                border-top: 1px solid {LIGHT_BEIGE};
-                border-left: 1px solid #e8e8e8;
-                position: relative;
-                padding: 2px;
-            ">
-            ''')
+            html_parts.append('<div style="min-height: 60px; border-top: 1px solid ' + LIGHT_BEIGE + '; border-left: 1px solid #e8e8e8; position: relative; padding: 2px;">')
             
             # Find events that occur during this hour
             events = week_events[day_idx]
@@ -876,10 +840,6 @@ def render_week_view():
                 
                 # Check if event overlaps with this hour slot
                 if event_start_hour < hour + 1 and event_end_hour > hour:
-                    # Calculate position and height within this slot
-                    slot_start = max(hour, event_start_hour)
-                    slot_end = min(hour + 1, event_end_hour)
-                    
                     # Only show event in the slot where it starts
                     if hour <= event_start_hour < hour + 1:
                         # Calculate full height across multiple slots
@@ -893,46 +853,31 @@ def render_week_view():
                         color = CATEGORY_COLORS.get(event['category'], "#888888")
                         
                         # Build event HTML
-                        event_html = f'''
-                        <div style="
-                            position: absolute;
-                            top: {top_offset}px;
-                            left: 4px;
-                            right: 4px;
-                            height: {height_px}px;
-                            background-color: {color};
-                            color: white;
-                            padding: 4px 6px;
-                            border-radius: 4px;
-                            font-size: 0.75em;
-                            overflow: hidden;
-                            cursor: pointer;
-                            border-left: 3px solid {color};
-                            filter: brightness(0.95);
-                            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                        ">
-                            <div style="font-weight: 600; margin-bottom: 2px;">{event['title'][:20]}</div>
-                        '''
+                        html_parts.append('<div style="position: absolute; top: ' + str(top_offset) + 'px; left: 4px; right: 4px; height: ' + str(height_px) + 'px; background-color: ' + color + '; color: white; padding: 4px 6px; border-radius: 4px; font-size: 0.75em; overflow: hidden; cursor: pointer; border-left: 3px solid ' + color + '; filter: brightness(0.95); box-shadow: 0 1px 3px rgba(0,0,0,0.1);">')
+                        html_parts.append('<div style="font-weight: 600; margin-bottom: 2px;">' + event['title'][:20] + '</div>')
                         
                         # Show time if event is tall enough
                         if height_px > 30:
                             if event.get('time_tba'):
-                                event_html += '<div style="font-size: 0.9em;">TBA</div>'
+                                html_parts.append('<div style="font-size: 0.9em;">TBA</div>')
                             elif event.get('single_time'):
-                                event_html += f'<div style="font-size: 0.9em;">{event["start"].strftime("%I:%M %p")}</div>'
+                                html_parts.append('<div style="font-size: 0.9em;">' + event["start"].strftime("%I:%M %p") + '</div>')
                             else:
-                                event_html += f'<div style="font-size: 0.9em;">{event["start"].strftime("%I:%M %p")}</div>'
+                                html_parts.append('<div style="font-size: 0.9em;">' + event["start"].strftime("%I:%M %p") + '</div>')
                         
-                        event_html += '</div>'
-                        html_parts.append(event_html)
+                        html_parts.append('</div>')
             
             html_parts.append('</div>')
     
     # Close grid container
-    html_parts.append('</div></div>')
+    html_parts.append('</div>')
+    html_parts.append('</div>')
+    
+    # Join all HTML and render
+    full_html = ''.join(html_parts)
     
     # Render the calendar
-    st.markdown(''.join(html_parts), unsafe_allow_html=True)
+    st.markdown(full_html, unsafe_allow_html=True)
     
     # Show legend
     st.markdown("---")

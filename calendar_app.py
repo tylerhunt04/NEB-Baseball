@@ -62,17 +62,17 @@ BEIGE_DARK = "#9A7B4F"
 SAND_DARK = "#8B6F47"
 BROWN = "#6F4E37"
 
-# Category colors - Nebraska red for baseball, earth tones for everything else
+# Category colors - Vibrant, distinct colors for easy differentiation
 CATEGORY_COLORS = {
-    "Classes": TAN_DARK,
-    "Baseball - Practice": NEBRASKA_RED,
-    "Baseball - Game": "#DC143C",
-    "Baseball - Travel": "#8B0000",
-    "Analytics Work": SAND_DARK,
-    "Study Session": BROWN,
-    "Personal": BEIGE_DARK,
-    "Exam": WOOD_DARK,
-    "Assignment": WOOD_LIGHT
+    "Classes": "#3B82F6",           # Bright Blue
+    "Baseball - Practice": NEBRASKA_RED,  # Keep Nebraska Red
+    "Baseball - Game": "#DC143C",   # Crimson Red (keep)
+    "Baseball - Travel": "#8B0000", # Dark Red (keep)
+    "Analytics Work": "#10B981",    # Emerald Green
+    "Meetings": "#8B5CF6",          # Purple
+    "Personal": "#14B8A6",          # Teal
+    "Exam": "#EF4444",              # Red
+    "Assignment": "#F59E0B"         # Amber/Orange
 }
 
 # File for data persistence - use current directory
@@ -365,7 +365,7 @@ def get_events_for_date(date):
         if event_filter == "Baseball":
             events = [e for e in events if "Baseball" in e['category']]
         elif event_filter == "Academic":
-            events = [e for e in events if e['category'] in ["Exam", "Assignment", "Study Session", "Classes"]]
+            events = [e for e in events if e['category'] in ["Exam", "Assignment", "Meetings", "Classes"]]
         elif event_filter == "Analytics":
             events = [e for e in events if e['category'] == "Analytics Work"]
     
@@ -385,7 +385,7 @@ def get_events_for_range(start_date, end_date):
         if event_filter == "Baseball":
             events = [e for e in events if "Baseball" in e['category']]
         elif event_filter == "Academic":
-            events = [e for e in events if e['category'] in ["Exam", "Assignment", "Study Session", "Classes"]]
+            events = [e for e in events if e['category'] in ["Exam", "Assignment", "Meetings", "Classes"]]
         elif event_filter == "Analytics":
             events = [e for e in events if e['category'] == "Analytics Work"]
     

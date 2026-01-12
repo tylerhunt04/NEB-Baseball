@@ -1473,8 +1473,6 @@ def render_add_event_form():
                         st.success(f"✅ All-day event '{title}' added!")
                     else:
                         st.success(f"✅ Event '{title}' added successfully!")
-                    else:
-                        st.success(f"✅ Event '{title}' added successfully!")
                     st.rerun()
 
 # Main App

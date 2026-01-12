@@ -785,12 +785,12 @@ def render_week_view():
     # Build HTML for calendar grid
     html_parts = []
     
-    # Start calendar container
-    html_parts.append('<div style="width: 100%; overflow-x: auto; border: 1px solid ' + WOOD_LIGHT + '; border-radius: 8px; background-color: white;">')
+    # Start scrollable container
+    html_parts.append('<div style="width: 100%; height: 700px; overflow-y: auto; overflow-x: auto; border: 1px solid ' + WOOD_LIGHT + '; border-radius: 8px; background-color: white;">')
     html_parts.append('<div style="display: grid; grid-template-columns: 60px repeat(7, 1fr); min-width: 800px;">')
     
-    # Header row with day names
-    html_parts.append('<div style="position: sticky; top: 0; background-color: white; z-index: 10;"></div>')  # Empty corner
+    # Header row with day names - sticky within scrollable container
+    html_parts.append('<div style="position: sticky; top: 0; left: 0; background-color: white; z-index: 25; border-bottom: 2px solid ' + WOOD_LIGHT + ';"></div>')  # Empty corner - highest z-index
     
     for i in range(7):
         day = week_start + timedelta(days=i)
@@ -801,7 +801,7 @@ def render_week_view():
         else:
             header_style = "background-color: " + LIGHT_BEIGE + "; color: " + WOOD_DARK + ";"
         
-        html_parts.append('<div style="' + header_style + ' padding: 12px 8px; text-align: center; font-weight: 600; font-size: 0.9em; border-bottom: 2px solid ' + WOOD_LIGHT + '; position: sticky; top: 0; z-index: 10;">')
+        html_parts.append('<div style="' + header_style + ' padding: 12px 8px; text-align: center; font-weight: 600; font-size: 0.9em; border-bottom: 2px solid ' + WOOD_LIGHT + '; position: sticky; top: 0; z-index: 20; background-color: inherit;">')
         html_parts.append('<div>' + day.strftime("%a") + '</div>')
         html_parts.append('<div style="font-size: 1.1em; margin-top: 2px;">' + day.strftime("%d") + '</div>')
         html_parts.append('</div>')
@@ -824,7 +824,7 @@ def render_week_view():
             display_hour = 12
         period = "AM" if hour < 12 else "PM"
         
-        html_parts.append('<div style="padding: 8px 4px; text-align: right; font-size: 0.75em; color: ' + WOOD_MED + '; border-top: 1px solid ' + LIGHT_BEIGE + '; border-right: 1px solid ' + WOOD_LIGHT + '; font-weight: 500;">')
+        html_parts.append('<div style="padding: 8px 4px; text-align: right; font-size: 0.75em; color: ' + WOOD_MED + '; border-top: 1px solid ' + LIGHT_BEIGE + '; border-right: 1px solid ' + WOOD_LIGHT + '; font-weight: 500; position: sticky; left: 0; background-color: white; z-index: 15;">')
         html_parts.append(str(display_hour) + period)
         html_parts.append('</div>')
         
@@ -852,8 +852,8 @@ def render_week_view():
                         
                         color = CATEGORY_COLORS.get(event['category'], "#888888")
                         
-                        # Build event HTML
-                        html_parts.append('<div style="position: absolute; top: ' + str(top_offset) + 'px; left: 4px; right: 4px; height: ' + str(height_px) + 'px; background-color: ' + color + '; color: white; padding: 4px 6px; border-radius: 4px; font-size: 0.75em; overflow: hidden; cursor: pointer; border-left: 3px solid ' + color + '; filter: brightness(0.95); box-shadow: 0 1px 3px rgba(0,0,0,0.1);">')
+                        # Build event HTML with z-index to appear above grid lines
+                        html_parts.append('<div style="position: absolute; top: ' + str(top_offset) + 'px; left: 4px; right: 4px; height: ' + str(height_px) + 'px; background-color: ' + color + '; color: white; padding: 4px 6px; border-radius: 4px; font-size: 0.75em; overflow: hidden; cursor: pointer; border-left: 3px solid ' + color + '; filter: brightness(0.95); box-shadow: 0 1px 3px rgba(0,0,0,0.1); z-index: 5;">')
                         html_parts.append('<div style="font-weight: 600; margin-bottom: 2px;">' + event['title'][:20] + '</div>')
                         
                         # Show time if event is tall enough

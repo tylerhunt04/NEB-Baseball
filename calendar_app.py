@@ -324,7 +324,7 @@ if not st.session_state.events:
     st.session_state.events = load_events()
 
 def add_event(title, category, start, end, location="", notes="", priority="Medium", 
-              is_travel=False, checklist_items=None, time_tba=False, single_time=False):
+              is_travel=False, checklist_items=None, time_tba=False, single_time=False, all_day=False):
     """Add a new event"""
     event = {
         'id': len(st.session_state.events),
@@ -339,7 +339,8 @@ def add_event(title, category, start, end, location="", notes="", priority="Medi
         'checklist': checklist_items or [],
         'completed_checklist': [],
         'time_tba': time_tba,
-        'single_time': single_time
+        'single_time': single_time,
+        'all_day': all_day
     }
     st.session_state.events.append(event)
     save_events()
@@ -512,8 +513,11 @@ def render_event_card(event):
     html_parts.append(f'<p style="margin: 5px 0; color: {WOOD_DARK};">')
     html_parts.append(f'📅 {event["start"].strftime("%b %d, %Y")} | ')
     
-    # Check if time is TBA
-    if event.get('time_tba', False):
+    # Check event type
+    if event.get('all_day', False):
+        # All-day event
+        html_parts.append('🕐 <strong style="color: #5CB85C;">All day</strong>')
+    elif event.get('time_tba', False):
         html_parts.append('🕐 <strong style="color: #F0AD4E;">Time TBA</strong>')
     elif event.get('single_time', False) or event['start'] == event['end']:
         # Single time event (deadline/assignment)
@@ -812,9 +816,31 @@ def render_week_view():
     
     # Get all events for the week
     week_events = {}
+    all_day_events = {}
     for i in range(7):
         day = week_start + timedelta(days=i)
-        week_events[i] = get_events_for_date(day)
+        all_events = get_events_for_date(day)
+        # Separate all-day events from timed events
+        all_day_events[i] = [e for e in all_events if e.get('all_day', False)]
+        week_events[i] = [e for e in all_events if not e.get('all_day', False)]
+    
+    # All-day events row (if any exist)
+    has_all_day = any(len(events) > 0 for events in all_day_events.values())
+    if has_all_day:
+        # Time label column
+        html_parts.append('<div style="padding: 8px 4px; text-align: right; font-size: 0.75em; color: ' + WOOD_MED + '; border-bottom: 1px solid ' + WOOD_LIGHT + '; font-weight: 500; position: sticky; left: 0; background-color: white; z-index: 15;"></div>')
+        
+        # All-day event columns
+        for day_idx in range(7):
+            html_parts.append('<div style="min-height: 30px; border-bottom: 1px solid ' + WOOD_LIGHT + '; padding: 4px; background-color: ' + LIGHT_BEIGE + ';">')
+            
+            for event in all_day_events[day_idx]:
+                color = CATEGORY_COLORS.get(event['category'], "#888888")
+                html_parts.append('<div style="background-color: ' + color + '; color: white; padding: 4px 6px; border-radius: 4px; font-size: 0.75em; margin: 2px 0; font-weight: 600; text-align: center;">')
+                html_parts.append(event['title'][:15])
+                html_parts.append('</div>')
+            
+            html_parts.append('</div>')
     
     # Create time slots
     for hour in range(start_hour, end_hour + 1):
@@ -1165,6 +1191,9 @@ def render_add_event_form():
     # Single time checkbox for deadlines/assignments
     single_time = st.checkbox("Single time (assignment/deadline due at specific time)", key="single_time_checkbox")
     
+    # All-day event checkbox
+    all_day = st.checkbox("All-day event (birthday, holiday, etc.)", key="all_day_checkbox")
+    
     if is_recurring:
         st.info("Select the days of the week, date range, and time for your recurring event")
     
@@ -1173,6 +1202,9 @@ def render_add_event_form():
     
     if single_time:
         st.info("✓ Event will be created with a single due time (e.g., assignment due at 11:59 PM)")
+    
+    if all_day:
+        st.info("✓ Event will be created as an all-day event (no specific time)")
     
     st.markdown("---")
     
@@ -1235,7 +1267,30 @@ def render_add_event_form():
             st.markdown("### Single Event")
             
             # Single event
-            if time_tba:
+            if all_day:
+                # All-day event - just show date field
+                st.markdown("**Event Date***")
+                start_date = st.date_input("Select the date", label_visibility="collapsed")
+                
+                st.markdown(f"""
+                <div style='
+                    background-color: {LIGHT_BEIGE}; 
+                    border-left: 3px solid #5CB85C;
+                    border-radius: 6px;
+                    padding: 12px;
+                    margin: 10px 0;
+                '>
+                    <p style='margin: 0; color: {WOOD_DARK}; font-size: 0.9em;'>
+                        📅 <strong>All-day event</strong> (no specific time)
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Set dummy values for time (all-day = midnight to 11:59 PM)
+                start_hour, start_minute, start_period = 12, 0, "AM"
+                end_hour, end_minute, end_period = 11, 59, "PM"
+                end_date = start_date
+            elif time_tba:
                 # Just show date field when time is TBA
                 st.markdown("**Event Date***")
                 start_date = st.date_input("Select the date", label_visibility="collapsed")
@@ -1390,7 +1445,7 @@ def render_add_event_form():
                 start_datetime = datetime.combine(start_date, datetime.min.time()).replace(hour=start_hour_24, minute=start_minute)
                 end_datetime = datetime.combine(end_date, datetime.min.time()).replace(hour=end_hour_24, minute=end_minute)
                 
-                if end_datetime <= start_datetime and not time_tba and not single_time:
+                if end_datetime <= start_datetime and not time_tba and not single_time and not all_day:
                     st.error("⚠️ End time must be after start time")
                 else:
                     checklist = [item.strip() for item in checklist_input.split('\n') if item.strip()] if is_travel else None
@@ -1406,13 +1461,18 @@ def render_add_event_form():
                         is_travel=is_travel,
                         checklist_items=checklist,
                         time_tba=time_tba,
-                        single_time=single_time
+                        single_time=single_time,
+                        all_day=all_day
                     )
                     
                     if time_tba:
                         st.success(f"✅ Event '{title}' added with time TBA!")
                     elif single_time:
                         st.success(f"✅ Deadline '{title}' added for {start_datetime.strftime('%I:%M %p')}!")
+                    elif all_day:
+                        st.success(f"✅ All-day event '{title}' added!")
+                    else:
+                        st.success(f"✅ Event '{title}' added successfully!")
                     else:
                         st.success(f"✅ Event '{title}' added successfully!")
                     st.rerun()

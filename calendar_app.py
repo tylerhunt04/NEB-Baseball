@@ -324,7 +324,7 @@ if not st.session_state.events:
     st.session_state.events = load_events()
 
 def add_event(title, category, start, end, location="", notes="", priority="Medium", 
-              is_travel=False, checklist_items=None, time_tba=False):
+              is_travel=False, checklist_items=None, time_tba=False, single_time=False):
     """Add a new event"""
     event = {
         'id': len(st.session_state.events),
@@ -338,7 +338,8 @@ def add_event(title, category, start, end, location="", notes="", priority="Medi
         'is_travel': is_travel,
         'checklist': checklist_items or [],
         'completed_checklist': [],
-        'time_tba': time_tba
+        'time_tba': time_tba,
+        'single_time': single_time
     }
     st.session_state.events.append(event)
     save_events()
@@ -514,6 +515,9 @@ def render_event_card(event):
     # Check if time is TBA
     if event.get('time_tba', False):
         html_parts.append('🕐 <strong style="color: #F0AD4E;">Time TBA</strong>')
+    elif event.get('single_time', False) or event['start'] == event['end']:
+        # Single time event (deadline/assignment)
+        html_parts.append(f'🕐 Due at {event["start"].strftime("%I:%M %p")}')
     else:
         html_parts.append(f'🕐 {event["start"].strftime("%I:%M %p")} - {event["end"].strftime("%I:%M %p")} ')
         html_parts.append(f'({duration_str})')
@@ -755,7 +759,7 @@ def render_day_view():
                     st.rerun()
 
 def render_week_view():
-    """Render week view"""
+    """Render Google Calendar-style week view with time grid"""
     
     # Week navigation
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -775,54 +779,168 @@ def render_week_view():
             st.session_state.view_date += timedelta(days=7)
             st.rerun()
     
-    # Display week
+    # Calculate week start
     week_start = st.session_state.view_date - timedelta(days=st.session_state.view_date.weekday())
     
-    cols = st.columns(7)
+    # Build HTML for calendar grid
+    html_parts = []
+    
+    # Start calendar container
+    html_parts.append(f'''
+    <div style="
+        width: 100%;
+        overflow-x: auto;
+        border: 1px solid {WOOD_LIGHT};
+        border-radius: 8px;
+        background-color: white;
+    ">
+        <div style="display: grid; grid-template-columns: 60px repeat(7, 1fr); min-width: 800px;">
+    ''')
+    
+    # Header row with day names
+    html_parts.append('<div style="position: sticky; top: 0; background-color: white; z-index: 10;"></div>')  # Empty corner
     
     for i in range(7):
         day = week_start + timedelta(days=i)
-        events = get_events_for_date(day)
+        is_today = day.date() == datetime.now().date()
         
-        with cols[i]:
-            is_today = day.date() == datetime.now().date()
+        if is_today:
+            header_style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {CREAM};"
+        else:
+            header_style = f"background-color: {LIGHT_BEIGE}; color: {WOOD_DARK};"
+        
+        html_parts.append(f'''
+        <div style="
+            {header_style}
+            padding: 12px 8px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.9em;
+            border-bottom: 2px solid {WOOD_LIGHT};
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        ">
+            <div>{day.strftime("%a")}</div>
+            <div style="font-size: 1.1em; margin-top: 2px;">{day.strftime("%d")}</div>
+        </div>
+        ''')
+    
+    # Time rows (6 AM to 11 PM = 18 hours)
+    start_hour = 6  # 6 AM
+    end_hour = 23   # 11 PM
+    
+    # Get all events for the week
+    week_events = {}
+    for i in range(7):
+        day = week_start + timedelta(days=i)
+        week_events[i] = get_events_for_date(day)
+    
+    # Create time slots
+    for hour in range(start_hour, end_hour + 1):
+        # Time label
+        display_hour = hour % 12
+        if display_hour == 0:
+            display_hour = 12
+        period = "AM" if hour < 12 else "PM"
+        
+        html_parts.append(f'''
+        <div style="
+            padding: 8px 4px;
+            text-align: right;
+            font-size: 0.75em;
+            color: {WOOD_MED};
+            border-top: 1px solid {LIGHT_BEIGE};
+            border-right: 1px solid {WOOD_LIGHT};
+            font-weight: 500;
+        ">{display_hour}{period}</div>
+        ''')
+        
+        # Day columns for this hour
+        for day_idx in range(7):
+            html_parts.append(f'''
+            <div style="
+                min-height: 60px;
+                border-top: 1px solid {LIGHT_BEIGE};
+                border-left: 1px solid #e8e8e8;
+                position: relative;
+                padding: 2px;
+            ">
+            ''')
             
-            # Build day header HTML
-            header_parts = []
-            
-            # Determine styling
-            if is_today:
-                day_style = f"background: linear-gradient(135deg, {WOOD_DARK} 0%, {WOOD_MED} 100%); color: {CREAM};"
-            else:
-                day_style = f"background-color: {LIGHT_TAN}; color: {DARK_BROWN};"
-            
-            # Build header
-            header_parts.append(f'<div style="text-align: center; padding: 10px; {day_style} border-radius: 5px; border: 1px solid {WOOD_LIGHT};">')
-            header_parts.append(f'<strong>{day.strftime("%a")}</strong><br>')
-            header_parts.append(day.strftime("%m/%d"))
-            header_parts.append('</div>')
-            
-            # Render header
-            st.markdown(''.join(header_parts), unsafe_allow_html=True)
-            
-            # Events
-            if events:
-                st.markdown(f"**{len(events)} events**")
-                for event in events:
-                    color = CATEGORY_COLORS.get(event['category'], "#888888")
+            # Find events that occur during this hour
+            events = week_events[day_idx]
+            for event in events:
+                event_start_hour = event['start'].hour + event['start'].minute / 60.0
+                event_end_hour = event['end'].hour + event['end'].minute / 60.0
+                
+                # Check if event overlaps with this hour slot
+                if event_start_hour < hour + 1 and event_end_hour > hour:
+                    # Calculate position and height within this slot
+                    slot_start = max(hour, event_start_hour)
+                    slot_end = min(hour + 1, event_end_hour)
                     
-                    # Build event HTML
-                    event_parts = []
-                    event_parts.append(f'<div style="background-color: {color}; padding: 5px; margin: 5px 0; border-radius: 3px; font-size: 0.8em; color: white;">')
-                    event_parts.append(event['start'].strftime('%I:%M %p'))
-                    event_parts.append('<br>')
-                    event_parts.append(f'<strong>{event["title"]}</strong>')
-                    event_parts.append('</div>')
-                    
-                    # Render event
-                    st.markdown(''.join(event_parts), unsafe_allow_html=True)
-            else:
-                st.markdown("_No events_")
+                    # Only show event in the slot where it starts
+                    if hour <= event_start_hour < hour + 1:
+                        # Calculate full height across multiple slots
+                        total_duration = event_end_hour - event_start_hour
+                        height_px = int(total_duration * 60)  # 60px per hour
+                        
+                        # Offset from top of slot
+                        offset_minutes = (event_start_hour - hour) * 60
+                        top_offset = int(offset_minutes)
+                        
+                        color = CATEGORY_COLORS.get(event['category'], "#888888")
+                        
+                        # Build event HTML
+                        event_html = f'''
+                        <div style="
+                            position: absolute;
+                            top: {top_offset}px;
+                            left: 4px;
+                            right: 4px;
+                            height: {height_px}px;
+                            background-color: {color};
+                            color: white;
+                            padding: 4px 6px;
+                            border-radius: 4px;
+                            font-size: 0.75em;
+                            overflow: hidden;
+                            cursor: pointer;
+                            border-left: 3px solid {color};
+                            filter: brightness(0.95);
+                            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                        ">
+                            <div style="font-weight: 600; margin-bottom: 2px;">{event['title'][:20]}</div>
+                        '''
+                        
+                        # Show time if event is tall enough
+                        if height_px > 30:
+                            if event.get('time_tba'):
+                                event_html += '<div style="font-size: 0.9em;">TBA</div>'
+                            elif event.get('single_time'):
+                                event_html += f'<div style="font-size: 0.9em;">{event["start"].strftime("%I:%M %p")}</div>'
+                            else:
+                                event_html += f'<div style="font-size: 0.9em;">{event["start"].strftime("%I:%M %p")}</div>'
+                        
+                        event_html += '</div>'
+                        html_parts.append(event_html)
+            
+            html_parts.append('</div>')
+    
+    # Close grid container
+    html_parts.append('</div></div>')
+    
+    # Render the calendar
+    st.markdown(''.join(html_parts), unsafe_allow_html=True)
+    
+    # Show legend
+    st.markdown("---")
+    st.markdown("**Legend:**")
+    legend_cols = st.columns(len(CATEGORY_COLORS))
+    for idx, (category, color) in enumerate(CATEGORY_COLORS.items()):
+        with legend_cols[idx]:
+            st.markdown(f'<div style="background-color: {color}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; text-align: center;">{category}</div>', unsafe_allow_html=True)
 
 def render_month_view():
     """Render month view"""
@@ -1094,16 +1212,22 @@ def render_add_event_form():
     """Form to add new events with recurring option"""
     
     # Recurring checkbox OUTSIDE the form so it updates immediately
-    is_recurring = st.checkbox("Recurring Event (e.g., classes, practices)")
+    is_recurring = st.checkbox("Recurring Event (e.g., classes, practices)", key="is_recurring_checkbox")
     
-    # Time TBA checkbox OUTSIDE the form
-    time_tba = st.checkbox("Time TBA (game time not announced yet)")
+    # Time TBA checkbox OUTSIDE the form with explicit key
+    time_tba = st.checkbox("Time TBA (game time not announced yet)", key="time_tba_checkbox")
+    
+    # Single time checkbox for deadlines/assignments
+    single_time = st.checkbox("Single time (assignment/deadline due at specific time)", key="single_time_checkbox")
     
     if is_recurring:
         st.info("Select the days of the week, date range, and time for your recurring event")
     
     if time_tba:
-        st.info("Event will be created with time marked as TBA. You can edit it later once the time is announced.")
+        st.info("✓ Event will be created with time marked as TBA. You can edit it later once the time is announced.")
+    
+    if single_time:
+        st.info("✓ Event will be created with a single due time (e.g., assignment due at 11:59 PM)")
     
     st.markdown("---")
     
@@ -1148,7 +1272,7 @@ def render_add_event_form():
                 with scol1:
                     start_hour = st.selectbox("Hour", range(1, 13), key="recur_start_hour", index=1)
                 with scol2:
-                    start_minute = st.selectbox("Minute", [0, 15, 30, 45], key="recur_start_min", format_func=lambda x: f"{x:02d}")
+                    start_minute = st.number_input("Minute", min_value=0, max_value=59, value=0, key="recur_start_min")
                 with scol3:
                     start_period = st.selectbox("AM/PM", ["AM", "PM"], key="recur_start_period", index=1)
             
@@ -1158,7 +1282,7 @@ def render_add_event_form():
                 with ecol1:
                     end_hour = st.selectbox("Hour", range(1, 13), key="recur_end_hour", index=2)
                 with ecol2:
-                    end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="recur_end_min", index=1, format_func=lambda x: f"{x:02d}")
+                    end_minute = st.number_input("Minute", min_value=0, max_value=59, value=15, key="recur_end_min")
                 with ecol3:
                     end_period = st.selectbox("AM/PM", ["AM", "PM"], key="recur_end_period", index=1)
             
@@ -1167,43 +1291,74 @@ def render_add_event_form():
             
             # Single event
             if time_tba:
-                # Just show date fields when time is TBA
-                col1, col2 = st.columns(2)
-                with col1:
-                    start_date = st.date_input("Event Date*")
-                with col2:
-                    st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)  # Spacer
+                # Just show date field when time is TBA
+                st.markdown("**Event Date***")
+                start_date = st.date_input("Select the date", label_visibility="collapsed")
                 
-                # Set dummy values for time (will be ignored)
+                st.markdown(f"""
+                <div style='
+                    background-color: {LIGHT_BEIGE}; 
+                    border-left: 3px solid #F0AD4E;
+                    border-radius: 6px;
+                    padding: 12px;
+                    margin: 10px 0;
+                '>
+                    <p style='margin: 0; color: {WOOD_DARK}; font-size: 0.9em;'>
+                        ⏰ <strong>Time:</strong> TBA (to be announced)
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Set dummy values for time (all-day placeholder)
                 start_hour, start_minute, start_period = 12, 0, "AM"
                 end_hour, end_minute, end_period = 11, 59, "PM"
                 end_date = start_date
+            elif single_time:
+                # Single time selection for deadlines
+                col1, col2 = st.columns(2)
+                with col1:
+                    start_date = st.date_input("Due Date*")
+                with col2:
+                    st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)  # Spacer
+                
+                st.markdown("**Due Time***")
+                tcol1, tcol2, tcol3 = st.columns([2, 2, 1])
+                with tcol1:
+                    start_hour = st.selectbox("Hour", range(1, 13), key="single_hour", index=10)  # Default 11
+                with tcol2:
+                    start_minute = st.number_input("Minute", min_value=0, max_value=59, value=59, key="single_min")
+                with tcol3:
+                    start_period = st.selectbox("AM/PM", ["AM", "PM"], key="single_period", index=1)  # Default PM
+                
+                # End time is same as start for single time events
+                end_hour, end_minute, end_period = start_hour, start_minute, start_period
+                end_date = start_date
             else:
-                # Normal time selection
+                # Normal time selection with time span
                 col1, col2 = st.columns(2)
                 with col1:
                     start_date = st.date_input("Start Date*")
                     
-                    # 12-hour format time selection
+                    # 12-hour format time selection with any minute
                     st.markdown("**Start Time***")
                     scol1, scol2, scol3 = st.columns([2, 2, 1])
                     with scol1:
                         start_hour = st.selectbox("Hour", range(1, 13), key="start_hour", index=1)
                     with scol2:
-                        start_minute = st.selectbox("Minute", [0, 15, 30, 45], key="start_min", format_func=lambda x: f"{x:02d}")
+                        start_minute = st.number_input("Minute", min_value=0, max_value=59, value=0, key="start_min")
                     with scol3:
                         start_period = st.selectbox("AM/PM", ["AM", "PM"], key="start_period", index=1)
                 
                 with col2:
                     end_date = st.date_input("End Date*")
                     
-                    # 12-hour format time selection
+                    # 12-hour format time selection with any minute
                     st.markdown("**End Time***")
                     ecol1, ecol2, ecol3 = st.columns([2, 2, 1])
                     with ecol1:
                         end_hour = st.selectbox("Hour", range(1, 13), key="end_hour", index=2)
                     with ecol2:
-                        end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="end_min", index=1, format_func=lambda x: f"{x:02d}")
+                        end_minute = st.number_input("Minute", min_value=0, max_value=59, value=0, key="end_min")
                     with ecol3:
                         end_period = st.selectbox("AM/PM", ["AM", "PM"], key="end_period", index=1)
         
@@ -1290,7 +1445,7 @@ def render_add_event_form():
                 start_datetime = datetime.combine(start_date, datetime.min.time()).replace(hour=start_hour_24, minute=start_minute)
                 end_datetime = datetime.combine(end_date, datetime.min.time()).replace(hour=end_hour_24, minute=end_minute)
                 
-                if end_datetime <= start_datetime and not time_tba:
+                if end_datetime <= start_datetime and not time_tba and not single_time:
                     st.error("⚠️ End time must be after start time")
                 else:
                     checklist = [item.strip() for item in checklist_input.split('\n') if item.strip()] if is_travel else None
@@ -1305,11 +1460,14 @@ def render_add_event_form():
                         priority=priority,
                         is_travel=is_travel,
                         checklist_items=checklist,
-                        time_tba=time_tba
+                        time_tba=time_tba,
+                        single_time=single_time
                     )
                     
                     if time_tba:
                         st.success(f"✅ Event '{title}' added with time TBA!")
+                    elif single_time:
+                        st.success(f"✅ Deadline '{title}' added for {start_datetime.strftime('%I:%M %p')}!")
                     else:
                         st.success(f"✅ Event '{title}' added successfully!")
                     st.rerun()

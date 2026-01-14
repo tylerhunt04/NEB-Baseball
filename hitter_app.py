@@ -18,13 +18,124 @@ from scipy.stats import gaussian_kde
 from matplotlib import colors
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CONFIG
+# CONFIG & THEME
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Nebraska Hitter Reports",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Professional Color Palette
+HUSKER_RED = "#E60026"
+DARK_GRAY = "#2C3E50"
+LIGHT_GRAY = "#ECF0F1"
+ACCENT_BLUE = "#3498DB"
+SUCCESS_GREEN = "#27AE60"
+WARNING_ORANGE = "#E67E22"
+
+# Custom CSS for professional styling
+st.markdown("""
+    <style>
+    /* Main content styling */
+    .main {
+        background-color: #FFFFFF;
+    }
+    
+    /* Headers */
+    h1, h2, h3, h4 {
+        color: #2C3E50;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #F8F9FA;
+    }
+    
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+        color: #2C3E50;
+    }
+    
+    /* Section containers */
+    .section-container {
+        background-color: #FFFFFF;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    /* Metric cards */
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-radius: 8px;
+        color: white;
+        text-align: center;
+        margin: 10px 0;
+    }
+    
+    /* Professional dividers */
+    hr {
+        margin: 30px 0;
+        border: none;
+        border-top: 2px solid #ECF0F1;
+    }
+    
+    /* Button styling */
+    .stButton>button {
+        background-color: #E60026;
+        color: white;
+        border-radius: 6px;
+        border: none;
+        padding: 10px 24px;
+        font-weight: 500;
+        transition: all 0.3s;
+    }
+    
+    .stButton>button:hover {
+        background-color: #C4001E;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    
+    /* Radio button styling */
+    .stRadio > label {
+        font-weight: 500;
+        color: #2C3E50;
+    }
+    
+    /* Selectbox styling */
+    .stSelectbox > label {
+        font-weight: 500;
+        color: #2C3E50;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        padding: 12px 24px;
+        background-color: #F8F9FA;
+        border-radius: 6px 6px 0 0;
+        font-weight: 500;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #E60026;
+        color: white;
+    }
+    
+    /* Info/Warning boxes */
+    .stAlert {
+        border-radius: 6px;
+        border-left: 4px solid #E60026;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # Default data paths per period
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
@@ -37,8 +148,6 @@ BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
     "/mnt/data/NebraskaChampions.jpg",
 ]
-
-HUSKER_RED = "#E60026"
 
 # Big Ten / opponents pretty names
 TEAM_NAME_MAP = {
@@ -447,11 +556,11 @@ def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Basebal
     if b64:
         st.markdown(
             f"""
-            <div style="position: relative; width: 100%; height: {height_px}px; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-              <img src="data:image/jpeg;base64,{b64}" style="width:100%; height:100%; object-fit:cover; filter: brightness(0.7);" />
-              <div style="position:absolute; inset:0; background: linear-gradient(to right, rgba(0,0,0,0.6), rgba(0,0,0,0.3));"></div>
-              <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:flex-start; padding-left: 40px;">
-                <div style="font-size:36px; font-weight:700; color:white; text-shadow: 0 2px 8px rgba(0,0,0,.8); letter-spacing: 1px;">
+            <div style="position: relative; width: 100%; height: {height_px}px; border-radius: 10px; overflow: hidden; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+              <img src="data:image/jpeg;base64,{b64}" style="width:100%; height:100%; object-fit:cover; filter: brightness(0.65);" />
+              <div style="position:absolute; inset:0; background: linear-gradient(to right, rgba(230,0,38,0.7), rgba(0,0,0,0.3));"></div>
+              <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:flex-start; padding-left: 50px;">
+                <div style="font-size:42px; font-weight:700; color:white; text-shadow: 0 3px 10px rgba(0,0,0,.9); letter-spacing: 1.5px;">
                   {title}
                 </div>
               </div>
@@ -462,8 +571,8 @@ def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Basebal
     else:
         st.markdown(
             f"""
-            <div style="background: linear-gradient(135deg, {HUSKER_RED} 0%, #c40020 100%); padding: 30px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <h1 style="color: white; margin: 0; text-align: center; font-weight: 700; letter-spacing: 1px;">{title}</h1>
+            <div style="background: linear-gradient(135deg, {HUSKER_RED} 0%, #c40020 100%); padding: 40px; border-radius: 10px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                <h1 style="color: white; margin: 0; text-align: center; font-weight: 700; letter-spacing: 1.5px; font-size: 42px;">{title}</h1>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1121,7 +1230,7 @@ def build_profile_tables(df_profiles: pd.DataFrame):
     }
     row_total_rates  = {
         "Split": "Total",
-        **{k: core_total[k] for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
+        **{k: core_total[k] for k in ["Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
     }
 
     t1_rows = [row_total_counts]
@@ -1140,7 +1249,7 @@ def build_profile_tables(df_profiles: pd.DataFrame):
             })
             t2_rows.append({
                 "Split": g,
-                **{k: np.nan for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
+                **{k: np.nan for k in ["Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
             })
             continue
 
@@ -1153,7 +1262,7 @@ def build_profile_tables(df_profiles: pd.DataFrame):
         })
         t2_rows.append({
             "Split": g,
-            **{k: core[k] for k in ["Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
+            **{k: core[k] for k in ["Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]}
         })
 
     t1 = pd.DataFrame(
@@ -1162,17 +1271,14 @@ def build_profile_tables(df_profiles: pd.DataFrame):
     )
     t2 = pd.DataFrame(
         t2_rows,
-        columns=["Split","Avg EV","Max EV","Avg LA","HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]
+        columns=["Split","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]
     )
 
     for c in ["AVG","OBP","SLG","OPS","wOBA","xwOBA"]:
         if c in t1.columns:
             t1[c] = t1[c].apply(lambda v: "—" if pd.isna(v) else (f"{float(v):.3f}"[1:] if float(v) < 1.0 else f"{float(v):.3f}"))
 
-    for c in ["Avg EV","Max EV","Avg LA"]:
-        if c in t2.columns:
-            t2[c] = t2[c].apply(lambda v: "—" if pd.isna(v) else f"{float(v):.2f}")
-    for c in ["HardHit%","Barrel%","Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]:
+    for c in ["Swing%","Whiff%","Chase%","ZSwing%","ZContact%","ZWhiff%"]:
         if c in t2.columns:
             t2[c] = t2[c].apply(lambda v: "—" if pd.isna(v) else f"{round(float(v),1)}%")
 
@@ -1829,8 +1935,13 @@ def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_202
 render_nb_banner(title="Nebraska Baseball Hitter Reports")
 
 # SIDEBAR CONFIGURATION
-st.sidebar.title("Filters & Settings")
-st.sidebar.markdown("---")
+st.sidebar.markdown("""
+    <div style="text-align: center; padding: 20px 0; border-bottom: 2px solid #E60026;">
+        <h2 style="color: #2C3E50; margin: 0; font-weight: 700;">Configuration</h2>
+    </div>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 # Time Period Selection
 period = st.sidebar.selectbox(
@@ -1888,12 +1999,14 @@ display_name_by_key = (
 # ══════════════════════════════════════════════════════════════════════════════
 # VIEW MODE SELECTOR IN MAIN AREA
 # ══════════════════════════════════════════════════════════════════════════════
+st.markdown('<div class="section-container">', unsafe_allow_html=True)
 view_mode = st.radio(
     "Select Report Type",
     ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary"],
     horizontal=True,
     key="view_mode"
 )
+st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -1901,11 +2014,13 @@ st.markdown("---")
 # STANDARD HITTER REPORT
 # ══════════════════════════════════════════════════════════════════════════════
 if view_mode == "Standard Hitter Report":
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("## Standard Hitter Report")
+    st.markdown('</div>', unsafe_allow_html=True)
     
     # Player selection in sidebar
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Player Selection")
+    st.sidebar.markdown("### Player Selection")
     batter_key_std = st.sidebar.selectbox(
         "Select Player",
         options=batters_keys,
@@ -1957,22 +2072,26 @@ if view_mode == "Standard Hitter Report":
             st.pyplot(fig_std)
         
         st.markdown("---")
+        st.markdown('<div class="section-container">', unsafe_allow_html=True)
         st.markdown("### Spray Chart")
         fig_spray = create_spray_chart(df_date, batter_display)
         if fig_spray:
             st.pyplot(fig_spray)
         else:
             st.info("No balls in play with valid location data for this game.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PROFILES & HEATMAPS
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Profiles & Heatmaps":
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("## Profiles & Heatmaps")
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # Player selection in sidebar
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Player Selection")
+    st.sidebar.markdown("### Player Selection")
     batter_key = st.sidebar.selectbox(
         "Select Player",
         options=batters_keys,
@@ -1983,7 +2102,7 @@ elif view_mode == "Profiles & Heatmaps":
 
     # Filters in sidebar
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Filters")
+    st.sidebar.markdown("### Filters")
 
     if batter_key:
         df_b_all = df_neb_bat[df_neb_bat["BatterKey"] == batter_key].copy()
@@ -2045,46 +2164,67 @@ elif view_mode == "Profiles & Heatmaps":
             "2026 season": "2026",
         }.get(period, "—")
         
-        st.markdown(f"### {display_name_by_key.get(batter_key,batter_key)} ({season_label})")
+        # Professional section header
+        st.markdown(f"""
+            <div style="background: linear-gradient(135deg, {DARK_GRAY} 0%, {HUSKER_RED} 100%); 
+                        padding: 25px; border-radius: 10px; margin-bottom: 25px; 
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                <h2 style="color: white; margin: 0; font-weight: 700; letter-spacing: 1px;">
+                    {display_name_by_key.get(batter_key,batter_key)} ({season_label})
+                </h2>
+            </div>
+        """, unsafe_allow_html=True)
 
         t1_counts, t2_rates, t3_batted = build_profile_tables(df_profiles)
 
-        st.markdown("#### Summary Statistics")
+        st.markdown('<div class="section-container">', unsafe_allow_html=True)
+        st.markdown("### Summary Statistics")
         st.table(themed_styler(t1_counts, nowrap=True))
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown("#### Plate Discipline")
+        st.markdown('<div class="section-container">', unsafe_allow_html=True)
+        st.markdown("### Plate Discipline")
         st.table(themed_styler(t2_rates, nowrap=True))
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown("#### Batted Ball Distribution")
+        st.markdown('<div class="section-container">', unsafe_allow_html=True)
+        st.markdown("### Batted Ball Distribution")
         st.table(themed_styler(t3_batted, nowrap=True))
+        st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown("---")
         
         tab1, tab2 = st.tabs(["Spray Chart", "Heatmaps"])
         
         with tab1:
+            st.markdown('<div class="section-container">', unsafe_allow_html=True)
             fig_spray = create_profile_spray_chart(df_profiles, display_name_by_key.get(batter_key, batter_key))
             if fig_spray:
                 st.pyplot(fig_spray)
             else:
                 st.info("No balls in play with valid location data for the selected filters.")
+            st.markdown('</div>', unsafe_allow_html=True)
 
         with tab2:
+            st.markdown('<div class="section-container">', unsafe_allow_html=True)
             fig_hm = hitter_heatmaps(df_profiles, batter_key)
             if fig_hm:
                 st.pyplot(fig_hm)
             else:
                 st.info("Not enough data for heatmaps.")
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RANKINGS
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Rankings":
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("## Team Rankings")
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # Filters in sidebar
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Filters")
+    st.sidebar.markdown("### Filters")
 
     df_scope = df_neb_bat.copy()
 
@@ -2139,12 +2279,14 @@ elif view_mode == "Rankings":
 
     styled = style_rankings(rankings_df)
 
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.dataframe(
         styled,
         use_container_width=True,
         hide_index=True,
         height=600
     )
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FALL SUMMARY
@@ -2154,12 +2296,15 @@ else:
         st.info("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")
         st.stop()
     
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("# Fall 2025 Performance Summary")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
     st.markdown("---")
     
     # Player selection in sidebar
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Player Selection")
+    st.sidebar.markdown("### Player Selection")
     batter_key = st.sidebar.selectbox(
         "Select Player",
         options=batters_keys,
@@ -2180,21 +2325,33 @@ else:
     
     player_display = display_name_by_key.get(batter_key, batter_key)
     
-    st.markdown(f"## {player_display}")
+    # Professional player header
+    st.markdown(f"""
+        <div style="background: linear-gradient(135deg, {DARK_GRAY} 0%, {HUSKER_RED} 100%); 
+                    padding: 30px; border-radius: 10px; margin-bottom: 25px; 
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+            <h1 style="color: white; margin: 0; font-weight: 700; letter-spacing: 1px; text-align: center;">
+                {player_display}
+            </h1>
+        </div>
+    """, unsafe_allow_html=True)
+    
     st.markdown("---")
     
     player_stats = _compute_split_core(df_player_fall)
     
     # Color key
     st.markdown("""
-    <div style='background-color: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #E60026;'>
-        <p style='margin: 0 0 5px 0; font-size: 14px; color: #666;'>
-            <strong>Color Guide:</strong> 
-            <span style='background-color: #28a745; color: white; padding: 2px 8px; border-radius: 3px; margin: 0 4px;'>Green</span> 
+    <div style='background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #E60026;'>
+        <p style='margin: 0 0 8px 0; font-size: 15px; color: #2C3E50; font-weight: 600;'>
+            <strong>Color Guide:</strong>
+        </p>
+        <p style='margin: 0 0 8px 0; font-size: 14px; color: #666;'>
+            <span style='background-color: #28a745; color: white; padding: 3px 10px; border-radius: 4px; margin: 0 6px;'>Green</span> 
             Above D1 Average | 
-            <span style='background-color: #ffffff; color: black; padding: 2px 8px; border-radius: 3px; border: 1px solid #ddd; margin: 0 4px;'>White</span> 
+            <span style='background-color: #ffffff; color: black; padding: 3px 10px; border-radius: 4px; border: 1px solid #ddd; margin: 0 6px;'>White</span> 
             Near D1 Average | 
-            <span style='background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 3px; margin: 0 4px;'>Red</span> 
+            <span style='background-color: #dc3545; color: white; padding: 3px 10px; border-radius: 4px; margin: 0 6px;'>Red</span> 
             Below D1 Average
         </p>
         <p style='margin: 5px 0 0 0; font-size: 12px; color: #888; font-style: italic;'>
@@ -2204,6 +2361,7 @@ else:
     """, unsafe_allow_html=True)
     
     # SECTION 1: OVERALL PERFORMANCE
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Overall Performance")
     
     perf_data_1 = pd.DataFrame({
@@ -2268,10 +2426,12 @@ else:
         use_container_width=True,
         height=200
     )
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 2: BATTED BALL QUALITY
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Batted Ball Quality")
     
     bb_data = pd.DataFrame({
@@ -2290,10 +2450,12 @@ else:
         use_container_width=True,
         height=230
     )
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 3: PLATE DISCIPLINE
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Plate Discipline")
     
     pd_data = pd.DataFrame({
@@ -2313,10 +2475,12 @@ else:
         use_container_width=True,
         height=260
     )
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 4: GAME-BY-GAME PERFORMANCE
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Game-by-Game Performance")
     
     game_table = create_game_by_game_table(df_player_fall)
@@ -2328,10 +2492,12 @@ else:
         )
     else:
         st.info("No game-by-game data available.")
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 5: PERFORMANCE SPLITS
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Performance Splits")
     
     split_type = st.selectbox(
@@ -2355,10 +2521,12 @@ else:
         )
     else:
         st.info("No split data available.")
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 6: VISUALIZATIONS
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Visualizations")
     
     tab1, tab2 = st.tabs(["Spray Chart", "Heatmaps"])
@@ -2376,10 +2544,12 @@ else:
             st.pyplot(fig_hm)
         else:
             st.info("Not enough data for heatmaps.")
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 7: PROGRESS TRACKER
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Progress Tracker")
     
     metric_choice = st.selectbox(
@@ -2393,3 +2563,4 @@ else:
         st.pyplot(fig_progress)
     else:
         st.info("Not enough games to show progression chart.")
+    st.markdown('</div>', unsafe_allow_html=True)

@@ -21,118 +21,235 @@ from matplotlib import colors
 # CONFIG & THEME
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Nebraska Hitter Reports",
+    page_title="Nebraska Hitter Analytics Platform",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Professional Color Palette
-HUSKER_RED = "#E60026"
-DARK_GRAY = "#2C3E50"
-LIGHT_GRAY = "#ECF0F1"
-ACCENT_BLUE = "#3498DB"
-SUCCESS_GREEN = "#27AE60"
-WARNING_ORANGE = "#E67E22"
+# Professional Color Palette - Nebraska Brand Colors
+HUSKER_RED = "#E41C38"
+CREAM = "#FEFDFA"
+DARK_GRAY = "#1C1C1C"
+LIGHT_GRAY = "#F5F5F5"
+ACCENT_GRAY = "#58595B"
+WHITE = "#FFFFFF"
 
-# Custom CSS for professional styling
+# Enhanced Custom CSS for premium styling
 st.markdown("""
     <style>
+    /* Import Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap');
+    
     /* Main content styling */
     .main {
-        background-color: #FFFFFF;
+        background-color: #FEFDFA;
+        font-family: 'Roboto', sans-serif;
     }
     
     /* Headers */
-    h1, h2, h3, h4 {
-        color: #2C3E50;
-        font-weight: 600;
+    h1, h2, h3, h4, h5, h6 {
+        color: #1C1C1C;
+        font-family: 'Roboto', sans-serif;
+        font-weight: 700;
         letter-spacing: 0.5px;
+    }
+    
+    h1 {
+        font-size: 2.5rem;
+        font-weight: 900;
+    }
+    
+    h2 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-top: 2rem;
+    }
+    
+    h3 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #E41C38;
+        border-bottom: 2px solid #E41C38;
+        padding-bottom: 8px;
+        margin-bottom: 1.5rem;
     }
     
     /* Sidebar styling */
     [data-testid="stSidebar"] {
-        background-color: #F8F9FA;
+        background: linear-gradient(180deg, #1C1C1C 0%, #2C2C2C 100%);
     }
     
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
-        color: #2C3E50;
+        color: #FEFDFA;
+    }
+    
+    [data-testid="stSidebar"] label {
+        color: #FEFDFA !important;
+        font-weight: 500;
+    }
+    
+    [data-testid="stSidebar"] .stSelectbox label,
+    [data-testid="stSidebar"] .stRadio label {
+        color: #FEFDFA !important;
     }
     
     /* Section containers */
     .section-container {
         background-color: #FFFFFF;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        margin-bottom: 30px;
+        border-left: 4px solid #E41C38;
     }
     
     /* Metric cards */
     .metric-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 20px;
-        border-radius: 8px;
+        background: linear-gradient(135deg, #E41C38 0%, #B71C1C 100%);
+        padding: 25px;
+        border-radius: 12px;
         color: white;
         text-align: center;
         margin: 10px 0;
+        box-shadow: 0 4px 12px rgba(228, 28, 56, 0.3);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 20px rgba(228, 28, 56, 0.4);
     }
     
     /* Professional dividers */
     hr {
-        margin: 30px 0;
+        margin: 40px 0;
         border: none;
-        border-top: 2px solid #ECF0F1;
+        border-top: 2px solid #E41C38;
+        opacity: 0.3;
     }
     
     /* Button styling */
     .stButton>button {
-        background-color: #E60026;
+        background: linear-gradient(135deg, #E41C38 0%, #B71C1C 100%);
         color: white;
-        border-radius: 6px;
+        border-radius: 8px;
         border: none;
-        padding: 10px 24px;
-        font-weight: 500;
-        transition: all 0.3s;
+        padding: 12px 32px;
+        font-weight: 600;
+        font-size: 1rem;
+        letter-spacing: 0.5px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(228, 28, 56, 0.3);
     }
     
     .stButton>button:hover {
-        background-color: #C4001E;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        background: linear-gradient(135deg, #C41830 0%, #9C1818 100%);
+        box-shadow: 0 6px 20px rgba(228, 28, 56, 0.4);
+        transform: translateY(-2px);
     }
     
     /* Radio button styling */
     .stRadio > label {
-        font-weight: 500;
-        color: #2C3E50;
+        font-weight: 600;
+        color: #1C1C1C;
+        font-size: 1.1rem;
     }
     
     /* Selectbox styling */
     .stSelectbox > label {
-        font-weight: 500;
-        color: #2C3E50;
+        font-weight: 600;
+        color: #1C1C1C;
+        font-size: 1.1rem;
     }
     
     /* Tab styling */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
+        gap: 12px;
+        background-color: transparent;
     }
     
     .stTabs [data-baseweb="tab"] {
-        padding: 12px 24px;
-        background-color: #F8F9FA;
-        border-radius: 6px 6px 0 0;
-        font-weight: 500;
+        padding: 14px 28px;
+        background-color: #F5F5F5;
+        border-radius: 8px 8px 0 0;
+        font-weight: 600;
+        color: #58595B;
+        border: none;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #E8E8E8;
     }
     
     .stTabs [aria-selected="true"] {
-        background-color: #E60026;
+        background: linear-gradient(135deg, #E41C38 0%, #B71C1C 100%);
         color: white;
+        box-shadow: 0 4px 12px rgba(228, 28, 56, 0.3);
     }
     
     /* Info/Warning boxes */
     .stAlert {
-        border-radius: 6px;
-        border-left: 4px solid #E60026;
+        border-radius: 8px;
+        border-left: 4px solid #E41C38;
+        background-color: #FFF5F5;
+        padding: 1rem;
+    }
+    
+    /* Dataframe styling */
+    .dataframe {
+        border: none !important;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    /* Color guide box */
+    .color-guide {
+        background: linear-gradient(135deg, #F5F5F5 0%, #FFFFFF 100%);
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 25px;
+        border-left: 5px solid #E41C38;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    
+    /* Player header card */
+    .player-header {
+        background: linear-gradient(135deg, #1C1C1C 0%, #E41C38 100%);
+        padding: 40px;
+        border-radius: 12px;
+        margin-bottom: 30px;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+        text-align: center;
+    }
+    
+    .player-header h1 {
+        color: white;
+        font-weight: 900;
+        font-size: 3rem;
+        letter-spacing: 2px;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    /* Metric title styling */
+    .metric-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #1C1C1C;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #E41C38;
+    }
+    
+    /* Card hover effects */
+    .hover-card {
+        transition: all 0.3s ease;
+    }
+    
+    .hover-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.15);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -147,6 +264,7 @@ PROB_LOOKUP_PATH = "EV_LA_probabilities.csv"
 BANNER_CANDIDATES = [
     "NebraskaChampions.jpg",
     "/mnt/data/NebraskaChampions.jpg",
+    "/mnt/user-data/uploads/1768490581164_image.png"
 ]
 
 # Big Ten / opponents pretty names
@@ -546,7 +664,8 @@ def _img_to_b64(path: str):
     except Exception:
         return None
 
-def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Baseball", height_px=120):
+def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Baseball", subtitle="Hitter Analytics Platform", height_px=200):
+    """Render premium championship banner with Nebraska Baseball branding."""
     b64 = None
     for p in image_candidates:
         b64 = _img_to_b64(p)
@@ -556,23 +675,41 @@ def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Basebal
     if b64:
         st.markdown(
             f"""
-            <div style="position: relative; width: 100%; height: {height_px}px; border-radius: 10px; overflow: hidden; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-              <img src="data:image/jpeg;base64,{b64}" style="width:100%; height:100%; object-fit:cover; filter: brightness(0.65);" />
-              <div style="position:absolute; inset:0; background: linear-gradient(to right, rgba(230,0,38,0.7), rgba(0,0,0,0.3));"></div>
-              <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:flex-start; padding-left: 50px;">
-                <div style="font-size:42px; font-weight:700; color:white; text-shadow: 0 3px 10px rgba(0,0,0,.9); letter-spacing: 1.5px;">
-                  {title}
+            <div style="position: relative; width: 100%; margin: -1rem -1rem 2rem -1rem;">
+                <img src="data:image/png;base64,{b64}" 
+                     style="width: 100%; height: auto; display: block; border-radius: 0;">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                            text-align: center; width: 100%;">
+                    <h1 style="color: white; font-size: 4rem; font-weight: 900; 
+                               text-shadow: 3px 3px 8px rgba(0,0,0,0.8); 
+                               letter-spacing: 3px; margin: 0; line-height: 1.2;">
+                        {title}
+                    </h1>
+                    <p style="color: white; font-size: 1.8rem; font-weight: 400; 
+                              text-shadow: 2px 2px 6px rgba(0,0,0,0.8); 
+                              margin: 10px 0 0 0; letter-spacing: 1px;">
+                        {subtitle}
+                    </p>
                 </div>
-              </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
     else:
+        # Fallback banner if image can't be loaded
         st.markdown(
             f"""
-            <div style="background: linear-gradient(135deg, {HUSKER_RED} 0%, #c40020 100%); padding: 40px; border-radius: 10px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                <h1 style="color: white; margin: 0; text-align: center; font-weight: 700; letter-spacing: 1.5px; font-size: 42px;">{title}</h1>
+            <div style="background: linear-gradient(135deg, #1C1C1C 0%, #E41C38 100%); 
+                        padding: 60px 30px; text-align: center; margin: -1rem -1rem 2rem -1rem; 
+                        box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                <h1 style="color: white; font-size: 4rem; font-weight: 900; 
+                           letter-spacing: 3px; margin: 0; line-height: 1.2;">
+                    {title}
+                </h1>
+                <p style="color: white; font-size: 1.8rem; font-weight: 400; 
+                          margin: 10px 0 0 0; letter-spacing: 1px;">
+                    {subtitle}
+                </p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1932,7 +2069,7 @@ def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_202
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN APP
 # ══════════════════════════════════════════════════════════════════════════════
-render_nb_banner(title="Nebraska Baseball Hitter Reports")
+render_nb_banner()
 
 # SIDEBAR CONFIGURATION
 st.sidebar.markdown("""

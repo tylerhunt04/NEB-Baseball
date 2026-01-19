@@ -3078,9 +3078,9 @@ with tabs[3]:
         info_message("Spray chart not available. Requires batted ball location data (Bearing/Distance).")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 4: RANKINGS
+# TAB 5: RANKINGS
 # ═══════════════════════════════════════════════════════════════════════════════
-with tabs[3]:
+with tabs[4]:
     section_header("Team Rankings")
     st.caption("Fall 2025/26 Scrimmages")
     

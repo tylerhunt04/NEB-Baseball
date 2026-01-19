@@ -460,7 +460,7 @@ def make_outing_overall_summary(df_in: pd.DataFrame) -> pd.DataFrame:
             "IP": "0.0", "Pitches": 0, "Hits": 0, "Walks": 0, "SO": 0, "HBP": 0,
             "Strike%": np.nan, "Whiffs": 0, "Whiff%": np.nan,
             "Zone Whiffs": 0, "Zone Whiff%": np.nan,
-            "HardHits": 0, "HardHit% (BIP)": np.nan
+            "HardHits": 0, "HardHit%": np.nan
         }])
 
     pitches = int(len(df_in))
@@ -507,7 +507,7 @@ def make_outing_overall_summary(df_in: pd.DataFrame) -> pd.DataFrame:
         "Strike%": round(float(strike_pct), 1) if pd.notna(strike_pct) else np.nan,
         "Whiffs": whiff_cnt, "Whiff%": round(float(whiff_pct), 1) if pd.notna(whiff_pct) else np.nan,
         "Zone Whiffs": zwhiff_cnt, "Zone Whiff%": round(float(zwhiff_pct), 1) if pd.notna(zwhiff_pct) else np.nan,
-        "HardHits": hard_cnt, "HardHit% (BIP)": round(float(hard_pct_bip), 1) if pd.notna(hard_pct_bip) else np.nan,
+        "HardHits": hard_cnt, "HardHit%": round(float(hard_pct_bip), 1) if pd.notna(hard_pct_bip) else np.nan,
     }])
 
 def make_pitcher_outcome_summary_table(df_in: pd.DataFrame) -> pd.DataFrame:
@@ -2320,22 +2320,36 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
         return g.index[-1]
 
     def _pa_label(row) -> str:
+        # First check PlayResult
         pr = row.get(col_play_result, "")
-        if isinstance(pr, str) and pr.strip(): return pr.strip()
+        if isinstance(pr, str) and pr.strip() and pr.strip().lower() != "undefined":
+            return pr.strip()
+        
+        # Then check KorBB column
         kb = row.get(col_korbb, "")
-        if isinstance(kb, str):
+        if isinstance(kb, str) and kb.strip():
             low = kb.strip().lower()
-            if low in {"k","so","strikeout"}: return "Strikeout"
-            if "walk" in low or low in {"bb","ibb"}: return "Walk"
+            if low in {"k", "so", "strikeout", "strike out"}:
+                return "Strikeout"
+            if low in {"bb", "walk", "ibb", "intentional walk"}:
+                return "Walk"
+            # If KorBB has a value but not K or BB, return it
+            if low != "undefined":
+                return kb.strip()
+        
         return "—"
 
     idx_by_ab = work.groupby("AB #", sort=True, dropna=False).apply(_terminal_row_idx)
     pa_row = work.loc[idx_by_ab.values].copy()
     pa_row["PA Result"] = pa_row.apply(_pa_label, axis=1)
     work = work.merge(pa_row[["AB #","PA Result"]], on="AB #", how="left")
+    
+    # Only show PA Result on the last pitch of each AB
+    terminal_indices = set(idx_by_ab.values)
+    work.loc[~work.index.isin(terminal_indices), "PA Result"] = ""
 
     ordered = ["Inning #","AB #","Pitch # in AB", batter_col, "PA Result", 
-               type_col, result_col, velo_col, spin_col, ivb_col, hb_col, x_col, y_col]
+               type_col, result_col, velo_col, spin_col, ivb_col, hb_col]
     present = [c for c in ordered if c and c in work.columns]
     tbl = work[present].copy()
 
@@ -2607,20 +2621,11 @@ with tabs[0]:
             if df_game.empty:
                 st.warning("No data found for selected game.")
             else:
-                # Game summary stats
-                col1, col2, col3, col4 = st.columns(4)
-                
+                # Comprehensive game summary stats
                 game_summary = make_outing_overall_summary(df_game)
                 
-                with col1:
-                    st.metric("Innings Pitched", game_summary.iloc[0]["IP"])
-                with col2:
-                    st.metric("Total Pitches", game_summary.iloc[0]["Pitches"])
-                with col3:
-                    st.metric("Strikeouts", game_summary.iloc[0]["SO"])
-                with col4:
-                    strike_pct = game_summary.iloc[0]["Strike%"]
-                    st.metric("Strike%", f"{strike_pct:.1f}%" if pd.notna(strike_pct) else "—")
+                # Display all stats in a table format
+                st.dataframe(themed_table(game_summary), use_container_width=True, hide_index=True)
                 
                 professional_divider()
                 

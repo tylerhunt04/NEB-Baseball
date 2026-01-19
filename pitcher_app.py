@@ -2532,7 +2532,7 @@ if df_pitcher_all.empty:
 # MAIN TABS SETUP
 # ═══════════════════════════════════════════════════════════════════════════════
 
-tabs = st.tabs(["Overview", "Pitch Arsenal", "Performance", "Rankings"])
+tabs = st.tabs(["Post-Game", "Overview", "Pitch Arsenal", "Performance", "Rankings"])
 
 # Part 6 of 6: Main Tabs Implementation
 

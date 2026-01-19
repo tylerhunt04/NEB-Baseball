@@ -2299,6 +2299,8 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     hb_col     = pick_col(work, "HorzBreak","HB")
     x_col      = pick_col(work, "PlateLocSide","Plate Loc Side","PlateSide","px")
     y_col      = pick_col(work, "PlateLocHeight","Plate Loc Height","PlateHeight","pz")
+    exit_velo_col = pick_col(work, "ExitSpeed","Exit Velo","ExitVelocity","EV","LaunchSpeed")
+    batted_ball_type_col = pick_col(work, "AutoHitType","HitType","Batted Ball Type","BattedBallType")
 
     batter_col = "Batter_AB" if "Batter_AB" in work.columns else find_batter_name_col(work)
 
@@ -2322,22 +2324,60 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     def _pa_label(row) -> str:
         # First check PlayResult
         pr = row.get(col_play_result, "")
+        base_result = ""
+        
         if isinstance(pr, str) and pr.strip() and pr.strip().lower() != "undefined":
-            return pr.strip()
+            base_result = pr.strip()
+        else:
+            # Then check KorBB column
+            kb = row.get(col_korbb, "")
+            if isinstance(kb, str) and kb.strip():
+                low = kb.strip().lower()
+                if low in {"k", "so", "strikeout", "strike out"}:
+                    return "Strikeout"
+                if low in {"bb", "walk", "ibb", "intentional walk"}:
+                    return "Walk"
+                # If KorBB has a value but not K or BB, return it
+                if low != "undefined":
+                    base_result = kb.strip()
         
-        # Then check KorBB column
-        kb = row.get(col_korbb, "")
-        if isinstance(kb, str) and kb.strip():
-            low = kb.strip().lower()
-            if low in {"k", "so", "strikeout", "strike out"}:
-                return "Strikeout"
-            if low in {"bb", "walk", "ibb", "intentional walk"}:
-                return "Walk"
-            # If KorBB has a value but not K or BB, return it
-            if low != "undefined":
-                return kb.strip()
+        # If no result found, return dash
+        if not base_result:
+            return "—"
         
-        return "—"
+        # For outs, add batted ball type and exit velocity
+        if base_result.lower() == "out":
+            details = []
+            
+            # Add batted ball type
+            if batted_ball_type_col:
+                bb_type = row.get(batted_ball_type_col, "")
+                if isinstance(bb_type, str) and bb_type.strip():
+                    bb_type_clean = bb_type.strip()
+                    # Map common variations
+                    bb_lower = bb_type_clean.lower()
+                    if "ground" in bb_lower or bb_lower == "gb":
+                        details.append("Groundball")
+                    elif "fly" in bb_lower or bb_lower == "fb":
+                        details.append("Flyball")
+                    elif "line" in bb_lower or bb_lower == "ld":
+                        details.append("Line Drive")
+                    elif "popup" in bb_lower or "pop" in bb_lower or bb_lower == "pu":
+                        details.append("Popup")
+                    else:
+                        details.append(bb_type_clean)
+            
+            # Add exit velocity
+            if exit_velo_col:
+                ev = row.get(exit_velo_col, "")
+                ev_num = pd.to_numeric(ev, errors="coerce")
+                if pd.notna(ev_num):
+                    details.append(f"{ev_num:.1f} mph")
+            
+            if details:
+                return f"Out ({', '.join(details)})"
+        
+        return base_result
 
     idx_by_ab = work.groupby("AB #", sort=True, dropna=False).apply(_terminal_row_idx)
     pa_row = work.loc[idx_by_ab.values].copy()

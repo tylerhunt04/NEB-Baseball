@@ -2203,6 +2203,7 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
     for shp in _zone_shapes_for_subplot():
         fig.add_shape(shp, row=1, col=1)
 
+    # Build custom data array
     cd = np.column_stack([
         pa_df.get(type_col, pd.Series(dtype=object)).astype(str).values if type_col else np.array([""]*len(pa_df)),
         pd.to_numeric(pa_df.get(speed_col, pd.Series(dtype=float)), errors="coerce").values if speed_col else np.full(len(pa_df), np.nan),
@@ -2213,17 +2214,26 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
         pd.to_numeric(pa_df.get(pno_col,   pd.Series(dtype=float)), errors="coerce").values if pno_col   else np.full(len(pa_df), np.nan),
     ])
 
+    # Get colors for each pitch
     if type_col and type_col in pa_df.columns:
         colors_pts = [get_pitch_color(t) for t in pa_df[type_col].astype(str).tolist()]
     else:
         colors_pts = [HUSKER_RED] * len(pa_df)
 
+    # Add scatter trace with pitch numbers
     fig.add_trace(
-        go.Scattergl(
-            x=xs, y=ys, mode="markers+text",
+        go.Scatter(
+            x=xs, 
+            y=ys, 
+            mode="markers+text",
             text=[str(int(n)) if pd.notna(n) else "" for n in cd[:,6]],
             textposition="top center",
-            marker=dict(size=12, line=dict(width=1, color="white"), color=colors_pts),
+            textfont=dict(size=10, color="black", family="Arial Black"),
+            marker=dict(
+                size=14, 
+                color=colors_pts,
+                line=dict(width=2, color="white")
+            ),
             customdata=cd,
             hovertemplate=(
                 "<b>Pitch %{customdata[6]:.0f}</b><br>"
@@ -2235,7 +2245,8 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
                 "Exit Velo: %{customdata[5]:.1f} mph<br>"
                 "<extra></extra>"
             ),
-            showlegend=False, name=""
+            showlegend=False, 
+            name=""
         ),
         row=1, col=1
     )
@@ -2243,11 +2254,11 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
     fig.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
     fig.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
     fig.update_layout(
-        height=400, 
+        height=500,
         title_text=(title or "Plate Appearance Strike Zone"), 
         title_x=0.5,
-        title_font=dict(size=16, color=DARK_GRAY, family="Arial Black"),
-        margin=dict(l=10, r=10, t=60, b=10),
+        title_font=dict(size=14, color=DARK_GRAY, family="Arial Black"),
+        margin=dict(l=20, r=20, t=60, b=20),
         plot_bgcolor='white',
         paper_bgcolor='white'
     )

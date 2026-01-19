@@ -2678,6 +2678,7 @@ with tabs[0]:
                     info_message("No pitch-by-pitch data available for this game.")
     else:
         st.warning("No date information available in the data.")
+        
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1: OVERVIEW
 # ═══════════════════════════════════════════════════════════════════════════════

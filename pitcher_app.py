@@ -2343,12 +2343,9 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     pa_row = work.loc[idx_by_ab.values].copy()
     pa_row["PA Result"] = pa_row.apply(_pa_label, axis=1)
     work = work.merge(pa_row[["AB #","PA Result"]], on="AB #", how="left")
-    
-    # Only show PA Result on the last pitch of each AB
-    terminal_indices = set(idx_by_ab.values)
-    work.loc[~work.index.isin(terminal_indices), "PA Result"] = ""
 
-    ordered = ["Inning #","AB #","Pitch # in AB", batter_col, "PA Result", 
+    # Build table with all columns including PA Result (it will be hidden during display)
+    ordered = ["Inning #","AB #","Pitch # in AB", batter_col, "PA Result",
                type_col, result_col, velo_col, spin_col, ivb_col, hb_col]
     present = [c for c in ordered if c and c in work.columns]
     tbl = work[present].copy()
@@ -2667,8 +2664,9 @@ with tabs[0]:
                             pitch_count = len(inning_data)
                             
                             with st.expander(f"Inning {inning} ({pitch_count} pitches)", expanded=(inning == innings[0])):
-                                # Show inning table
-                                st.dataframe(themed_table(inning_data), use_container_width=True)
+                                # Show inning table (exclude PA Result since it's shown above each AB)
+                                display_cols = [c for c in inning_data.columns if c != "PA Result"]
+                                st.dataframe(themed_table(inning_data[display_cols]), use_container_width=True)
                                 
                                 # Interactive strike zone for each AB in this inning
                                 if "AB #" in inning_data.columns:
@@ -2700,8 +2698,9 @@ with tabs[0]:
                         
                         st.markdown('</div>', unsafe_allow_html=True)
                     else:
-                        # No inning data, just show full table
-                        st.dataframe(themed_table(pbp_table), use_container_width=True)
+                        # No inning data, just show full table (exclude PA Result column)
+                        display_cols = [c for c in pbp_table.columns if c != "PA Result"]
+                        st.dataframe(themed_table(pbp_table[display_cols]), use_container_width=True)
                 else:
                     info_message("No pitch-by-pitch data available for this game.")
     else:

@@ -2301,6 +2301,7 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     y_col      = pick_col(work, "PlateLocHeight","Plate Loc Height","PlateHeight","pz")
     exit_velo_col = pick_col(work, "ExitSpeed","Exit Velo","ExitVelocity","EV","LaunchSpeed")
     batted_ball_type_col = pick_col(work, "AutoHitType","HitType","Batted Ball Type","BattedBallType")
+    distance_col = pick_col(work, "Distance","Dist","HitDistance")
 
     batter_col = "Batter_AB" if "Batter_AB" in work.columns else find_batter_name_col(work)
 
@@ -2345,8 +2346,12 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
         if not base_result:
             return "—"
         
-        # For outs, add batted ball type and exit velocity
-        if base_result.lower() == "out":
+        # Check if this is a hit or out that needs details
+        result_lower = base_result.lower()
+        is_hit = any(h in result_lower for h in ["single", "double", "triple", "home run", "homerun"])
+        is_out = result_lower == "out"
+        
+        if is_hit or is_out:
             details = []
             
             # Add batted ball type
@@ -2374,8 +2379,15 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
                 if pd.notna(ev_num):
                     details.append(f"{ev_num:.1f} mph")
             
+            # Add distance for hits
+            if is_hit and distance_col:
+                dist = row.get(distance_col, "")
+                dist_num = pd.to_numeric(dist, errors="coerce")
+                if pd.notna(dist_num):
+                    details.append(f"{dist_num:.0f} ft")
+            
             if details:
-                return f"Out ({', '.join(details)})"
+                return f"{base_result} ({', '.join(details)})"
         
         return base_result
 

@@ -2251,10 +2251,33 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
         row=1, col=1
     )
 
-    fig.update_xaxes(range=[x_min, x_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
-    fig.update_yaxes(range=[y_min, y_max], showgrid=False, zeroline=False, showticklabels=False, row=1, col=1)
+    fig.update_xaxes(
+        range=[x_min, x_max], 
+        showgrid=False, 
+        zeroline=False, 
+        showticklabels=False,
+        scaleanchor="y",
+        scaleratio=1,
+        row=1, col=1
+    )
+    fig.update_yaxes(
+        range=[y_min, y_max], 
+        showgrid=False, 
+        zeroline=False, 
+        showticklabels=False,
+        row=1, col=1
+    )
+    
+    # Calculate proper width to maintain aspect ratio
+    x_range = x_max - x_min
+    y_range = y_max - y_min
+    aspect_ratio = x_range / y_range
+    plot_height = 500
+    plot_width = int(plot_height * aspect_ratio)
+    
     fig.update_layout(
-        height=500,
+        height=plot_height,
+        width=plot_width,
         title_text=(title or "Plate Appearance Strike Zone"), 
         title_x=0.5,
         title_font=dict(size=14, color=DARK_GRAY, family="Arial Black"),
@@ -2680,9 +2703,9 @@ with tabs[0]:
         st.warning("No date information available in the data.")
         
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 1: OVERVIEW
+# TAB 2: OVERVIEW
 # ═══════════════════════════════════════════════════════════════════════════════
-with tabs[0]:
+with tabs[1]:
     section_header("Pitcher Overview")
     st.caption(f"**{season_label_display}** • Batter: {batter_side_choice}")
     
@@ -2725,9 +2748,9 @@ with tabs[0]:
         info_message("Performance metrics not available.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 2: PITCH ARSENAL
+# TAB 3: PITCH ARSENAL
 # ═══════════════════════════════════════════════════════════════════════════════
-with tabs[1]:
+with tabs[2]:
     section_header("Pitch Arsenal")
     st.caption(f"Movement profile and usage patterns")
     
@@ -2812,9 +2835,9 @@ with tabs[1]:
         info_message("Miss location heatmaps not available. Requires location and pitch call data.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 3: PERFORMANCE
+# TAB 4: PERFORMANCE
 # ═══════════════════════════════════════════════════════════════════════════════
-with tabs[2]:
+with tabs[3]:
     section_header("Performance Analysis")
     st.caption(f"Effectiveness metrics and situational performance")
     

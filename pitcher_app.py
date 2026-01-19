@@ -2535,7 +2535,138 @@ if df_pitcher_all.empty:
 tabs = st.tabs(["Post-Game", "Overview", "Pitch Arsenal", "Performance", "Rankings"])
 
 # Part 6 of 6: Main Tabs Implementation
-
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 1: POST-GAME REPORT  
+# ═══════════════════════════════════════════════════════════════════════════════
+with tabs[0]:
+    section_header("Post-Game Report")
+    st.caption("Select a specific game to view detailed pitch-by-pitch analysis")
+    
+    # Get available games for this pitcher
+    df_pitcher_games = subset_by_pitcher_if_possible(df_all.copy(), pitcher_choice)
+    
+    if "Date" in df_pitcher_games.columns:
+        game_dates = pd.to_datetime(df_pitcher_games["Date"], errors="coerce").dropna()
+        unique_game_dates = sorted(game_dates.dt.date.unique(), reverse=True)
+        
+        if len(unique_game_dates) == 0:
+            st.warning("No games found for this pitcher.")
+        else:
+            # Game selector
+            game_date_formatted = [format_date_long(d) for d in unique_game_dates]
+            selected_game_str = st.selectbox(
+                "Select Game",
+                options=game_date_formatted,
+                index=0,
+                key="postgame_game_selector"
+            )
+            
+            # Find the actual date
+            date_lookup = {format_date_long(d): d for d in unique_game_dates}
+            selected_date = date_lookup[selected_game_str]
+            
+            # Filter to selected game
+            df_game = df_pitcher_games[
+                pd.to_datetime(df_pitcher_games["Date"], errors="coerce").dt.date == selected_date
+            ].copy()
+            
+            if df_game.empty:
+                st.warning("No data found for selected game.")
+            else:
+                # Game summary stats
+                col1, col2, col3, col4 = st.columns(4)
+                
+                game_summary = make_outing_overall_summary(df_game)
+                
+                with col1:
+                    st.metric("Innings Pitched", game_summary.iloc[0]["IP"])
+                with col2:
+                    st.metric("Total Pitches", game_summary.iloc[0]["Pitches"])
+                with col3:
+                    st.metric("Strikeouts", game_summary.iloc[0]["SO"])
+                with col4:
+                    strike_pct = game_summary.iloc[0]["Strike%"]
+                    st.metric("Strike%", f"{strike_pct:.1f}%" if pd.notna(strike_pct) else "—")
+                
+                professional_divider()
+                
+                # Movement profile for this game
+                st.markdown("### Game Movement Profile")
+                logo_img = load_logo_img()
+                fig_game_movement, summary_game_movement = combined_pitcher_report(
+                    df_game, pitcher_choice, logo_img, season_label=selected_game_str
+                )
+                
+                if fig_game_movement:
+                    show_and_close(fig_game_movement, use_container_width=True)
+                else:
+                    info_message("Movement profile not available for this game.")
+                
+                professional_divider()
+                
+                # Pitch-by-pitch table
+                st.markdown("### Pitch-by-Pitch Breakdown")
+                st.caption("Detailed pitch data organized by inning and at-bat")
+                
+                pbp_table = build_pitch_by_inning_pa_table(df_game)
+                
+                if not pbp_table.empty:
+                    # Group by inning
+                    if "Inning #" in pbp_table.columns:
+                        innings = pbp_table["Inning #"].dropna().unique()
+                        innings = sorted([int(i) for i in innings if pd.notna(i)])
+                        
+                        # Style for expanders
+                        style_pbp_expanders()
+                        
+                        st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
+                        
+                        for inning in innings:
+                            inning_data = pbp_table[pbp_table["Inning #"] == inning]
+                            
+                            # Count pitches in this inning
+                            pitch_count = len(inning_data)
+                            
+                            with st.expander(f"Inning {inning} ({pitch_count} pitches)", expanded=(inning == innings[0])):
+                                # Show inning table
+                                st.dataframe(themed_table(inning_data), use_container_width=True)
+                                
+                                # Interactive strike zone for each AB in this inning
+                                if "AB #" in inning_data.columns:
+                                    abs_in_inning = sorted(inning_data["AB #"].unique())
+                                    
+                                    for ab_num in abs_in_inning:
+                                        ab_data = inning_data[inning_data["AB #"] == ab_num]
+                                        
+                                        # Get batter name if available
+                                        batter_name = "Unknown Batter"
+                                        if "Batter" in ab_data.columns:
+                                            batter_name = ab_data["Batter"].iloc[0]
+                                        
+                                        # Get PA result
+                                        pa_result = "—"
+                                        if "PA Result" in ab_data.columns:
+                                            pa_result = ab_data["PA Result"].iloc[-1]
+                                        
+                                        st.markdown(f"**AB #{ab_num}: {batter_name}** — Result: {pa_result}")
+                                        
+                                        # Create interactive strike zone
+                                        fig_sz = pa_interactive_strikezone(
+                                            ab_data,
+                                            title=f"Inning {inning}, AB #{ab_num}: {batter_name}"
+                                        )
+                                        
+                                        if fig_sz:
+                                            st.plotly_chart(fig_sz, use_container_width=True)
+                        
+                        st.markdown('</div>', unsafe_allow_html=True)
+                    else:
+                        # No inning data, just show full table
+                        st.dataframe(themed_table(pbp_table), use_container_width=True)
+                else:
+                    info_message("No pitch-by-pitch data available for this game.")
+    else:
+        st.warning("No date information available in the data.")
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1: OVERVIEW
 # ═══════════════════════════════════════════════════════════════════════════════

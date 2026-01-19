@@ -2344,9 +2344,9 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     pa_row["PA Result"] = pa_row.apply(_pa_label, axis=1)
     work = work.merge(pa_row[["AB #","PA Result"]], on="AB #", how="left")
 
-    # Build table with all columns including PA Result (it will be hidden during display)
+    # Build table with all columns (including PA Result and location data for strikezones)
     ordered = ["Inning #","AB #","Pitch # in AB", batter_col, "PA Result",
-               type_col, result_col, velo_col, spin_col, ivb_col, hb_col]
+               type_col, result_col, velo_col, spin_col, ivb_col, hb_col, x_col, y_col]
     present = [c for c in ordered if c and c in work.columns]
     tbl = work[present].copy()
 
@@ -2354,6 +2354,11 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
         batter_col: "Batter", type_col: "Pitch Type", result_col: "Result",
         velo_col: "Velo", spin_col: "Spin Rate", ivb_col: "IVB", hb_col: "HB"
     }
+    # Add location columns to rename map only if they exist and need renaming
+    if x_col and x_col != "PlateLocSide":
+        rename_map[x_col] = "PlateLocSide"
+    if y_col and y_col != "PlateLocHeight":
+        rename_map[y_col] = "PlateLocHeight"
     for k, v in list(rename_map.items()):
         if k and k in tbl.columns: tbl = tbl.rename(columns={k: v})
 
@@ -2664,8 +2669,9 @@ with tabs[0]:
                             pitch_count = len(inning_data)
                             
                             with st.expander(f"Inning {inning} ({pitch_count} pitches)", expanded=(inning == innings[0])):
-                                # Show inning table (exclude PA Result since it's shown above each AB)
-                                display_cols = [c for c in inning_data.columns if c != "PA Result"]
+                                # Show inning table (exclude PA Result and location columns)
+                                display_cols = [c for c in inning_data.columns 
+                                               if c not in ["PA Result", "PlateLocSide", "PlateLocHeight"]]
                                 st.dataframe(themed_table(inning_data[display_cols]), use_container_width=True)
                                 
                                 # Interactive strike zone for each AB in this inning
@@ -2698,8 +2704,9 @@ with tabs[0]:
                         
                         st.markdown('</div>', unsafe_allow_html=True)
                     else:
-                        # No inning data, just show full table (exclude PA Result column)
-                        display_cols = [c for c in pbp_table.columns if c != "PA Result"]
+                        # No inning data, just show full table (exclude PA Result and location columns)
+                        display_cols = [c for c in pbp_table.columns 
+                                       if c not in ["PA Result", "PlateLocSide", "PlateLocHeight"]]
                         st.dataframe(themed_table(pbp_table[display_cols]), use_container_width=True)
                 else:
                     info_message("No pitch-by-pitch data available for this game.")

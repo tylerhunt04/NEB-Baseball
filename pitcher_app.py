@@ -2521,7 +2521,16 @@ scrimmage_pitchers = set()
 if not df_scrim.empty:
     scrimmage_pitchers = set(df_scrim[df_scrim.get('PitcherTeam','') == 'NEB']['PitcherDisplay'].dropna().unique())
 
-df_all = df_scrim.copy()
+data_source = st.session_state.get("data_source_choice", "2025/26 Scrimmages")
+
+if data_source == "2025/26 Scrimmages":
+    df_all = df_scrim.copy()
+elif data_source == "2026 Season":
+    df_all = df_season.copy() if not df_season.empty else df_scrim.copy()
+else:  # Both Combined
+    frames = [f for f in [df_scrim, df_season] if not f.empty]
+    df_all = pd.concat(frames, ignore_index=True) if frames else df_scrim.copy()
+
 df_all = ensure_date_column(df_all)
 
 neb_pitchers = sorted(df_all[df_all.get('PitcherTeam','') == 'NEB']['PitcherDisplay'].dropna().unique())

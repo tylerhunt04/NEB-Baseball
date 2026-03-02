@@ -2332,7 +2332,7 @@ df_scrim  = load_scrimmage_csv()
 df_season = load_season_csv()
 
 if df_scrim.empty and df_season.empty:
-    st.error("No data files found. Please ensure Scrimmage(28).csv or S26.csv is present.")
+    st.error("No data files found. Please ensure Scrimmage(28).csv or Neb2026.csv is present.")
     st.stop()
 
 # ═══════════════════════════════════════════════════════════════════════════════

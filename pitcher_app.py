@@ -2540,8 +2540,12 @@ with st.sidebar:
     
     st.markdown("### Data Filters")
     
-    # Note: Only scrimmage data is loaded
-    st.caption("Data: 2025/26 Fall Scrimmages")
+data_source = st.selectbox(
+        "Data Source",
+        options=["2025/26 Scrimmages", "2026 Season", "Both Combined"],
+        index=0,
+        key="data_source_choice"
+    )
     
     pitcher_choice = st.selectbox(
         "Select Pitcher",

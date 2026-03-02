@@ -2484,7 +2484,34 @@ def load_scrimmage_csv(_correction_version=3):  # Increment this to force cache 
     return df
 
 df_scrim = load_scrimmage_csv()
+    
+@st.cache_data
+def load_season_csv(_correction_version=1):
+    if not os.path.exists(DATA_PATH_SEASON):
+        return pd.DataFrame()
+    df = pd.read_csv(DATA_PATH_SEASON, low_memory=False)
+    df = ensure_date_column(df)
+    pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name")
+    if pitcher_col:
+        df["PitcherDisplay"] = df[pitcher_col].map(canonicalize_person_name)
+    else:
+        df["PitcherDisplay"] = "Unknown"
 
+    type_col = type_col_in_df(df)
+    if type_col and "PitcherDisplay" in df.columns:
+        pankonin_mask = df["PitcherDisplay"] == "Auden Pankonin"
+        fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
+        if (pankonin_mask & fastball_mask).any():
+            df.loc[pankonin_mask & fastball_mask, type_col] = "Sinker"
+
+        mannel_mask = df["PitcherDisplay"] == "Kevin Mannel"
+        mannel_fb_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
+        if (mannel_mask & mannel_fb_mask).any():
+            df.loc[mannel_mask & mannel_fb_mask, type_col] = "Sinker"
+
+    return df
+
+df_season = load_season_csv()
 if df_scrim.empty:
     st.error("No data file found. Please ensure Scrimmage(28).csv is present.")
     st.stop()

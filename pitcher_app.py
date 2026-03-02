@@ -32,7 +32,7 @@ st.set_page_config(
 )
 st.set_option("client.showErrorDetails", True)
 
-DATA_PATH_SCRIM = "Scrimmage(28).csv"
+DATA_PATH_SCRIM  = "Scrimmage(28).csv"
 DATA_PATH_SEASON = "S26.csv"
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
@@ -233,13 +233,11 @@ def filter_by_segment(df: pd.DataFrame, segment_name: str, scrimmage_pitchers: s
     if spec is None or df.empty: return df
     out = df.copy()
     
-    # Apply date filter
     if "Date" in out.columns:
         d = pd.to_datetime(out["Date"], errors="coerce")
         start = pd.to_datetime(spec["start"]); end = pd.to_datetime(spec["end"])
         out = out[(d >= start) & (d < end)]
     
-    # If this is a scrimmage segment and we have scrimmage pitchers, filter to only those
     if segment_name == "2025/26 Scrimmages" and scrimmage_pitchers is not None:
         if "PitcherDisplay" in out.columns:
             out = out[out["PitcherDisplay"].isin(scrimmage_pitchers)]
@@ -247,7 +245,6 @@ def filter_by_segment(df: pd.DataFrame, segment_name: str, scrimmage_pitchers: s
     return out
 
 def type_col_in_df(df: pd.DataFrame) -> str:
-    # Always use TaggedPitchType since we only have scrimmage data
     return (pick_col(df, "TaggedPitchType","Tagged Pitch Type","PitchType") or "TaggedPitchType")
 
 # ─── Strike zone & pitch color helpers ────────────────────────────────────────
@@ -886,7 +883,6 @@ def create_overall_performance_table(df: pd.DataFrame):
         
         row = {'Pitches': n}
         
-        # Calculate usage %
         usage_pct = (n / total_pitches) * 100
         row['Usage%'] = round(usage_pct, 1)
         
@@ -980,14 +976,12 @@ def create_count_situation_comparison(df: pd.DataFrame, pitch_type_filter: str =
     if not balls_col or not strikes_col:
         return pd.DataFrame()
     
-    # Keep original data for usage calculation
     original_df = df.copy()
     orig_balls = pd.to_numeric(original_df[balls_col], errors="coerce")
     orig_strikes = pd.to_numeric(original_df[strikes_col], errors="coerce")
     original_df["Balls"] = orig_balls
     original_df["Strikes"] = orig_strikes
     
-    # Filter by pitch type if specified
     work = df.copy()
     is_filtered = False
     if pitch_type_filter and pitch_type_filter != "Overall" and type_col and type_col in work.columns:
@@ -1019,9 +1013,7 @@ def create_count_situation_comparison(df: pd.DataFrame, pitch_type_filter: str =
         
         row = {'Situation': sit_name, 'Pitches': n}
         
-        # Calculate usage % if pitch type is selected (always show if filtered)
         if is_filtered:
-            # Get total pitches in this situation from original data
             orig_mask_balls = orig_balls.notna() & orig_strikes.notna()
             if sit_name == 'First Pitch (0-0)':
                 orig_mask = (orig_balls == 0) & (orig_strikes == 0) & orig_mask_balls
@@ -1087,10 +1079,8 @@ def create_count_situation_comparison(df: pd.DataFrame, pitch_type_filter: str =
     
     result = pd.DataFrame(rows).sort_values('Pitches', ascending=False)
     
-    # Reorder columns to put Usage% after Pitches if it exists
     if 'Usage%' in result.columns:
         cols = result.columns.tolist()
-        # Remove Usage% and reinsert after Pitches
         cols.remove('Usage%')
         pitches_idx = cols.index('Pitches')
         cols.insert(pitches_idx + 1, 'Usage%')
@@ -1127,7 +1117,6 @@ def create_outcome_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_type_filt
     if not call_col or not x_col or not y_col:
         return None
     
-    # Filter by pitch type if specified
     work = df.copy()
     if pitch_type_filter and pitch_type_filter != "Overall" and type_col and type_col in work.columns:
         work = work[work[type_col].astype(str) == pitch_type_filter].copy()
@@ -1135,28 +1124,22 @@ def create_outcome_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_type_filt
     xs = pd.to_numeric(work[x_col], errors="coerce")
     ys = pd.to_numeric(work[y_col], errors="coerce")
     
-    # Define masks
     is_whiff = work[call_col].eq('StrikeSwinging')
     is_contact = work[call_col].isin(['FoulBallNotFieldable', 'FoulBallFieldable', 'InPlay'])
     
-    # Hard hits (requires exit velo)
     if ev_col:
         ev = pd.to_numeric(work[ev_col], errors="coerce")
         is_hardhit = (ev >= 95.0) & work[call_col].eq('InPlay')
     else:
         is_hardhit = pd.Series(False, index=work.index)
     
-    # Create figure with 3 panels
     fig = plt.figure(figsize=(18, 6))
     gs = GridSpec(1, 3, figure=fig, wspace=0.25)
     
     def _panel(ax, title, mask):
-        """Draw a single heatmap panel"""
-        # Draw strike zone
         l, b, w, h = get_zone_bounds()
         ax.add_patch(Rectangle((l, b), w, h, fill=False, linewidth=2, color='black'))
         
-        # Draw thirds
         dx, dy = w/3, h/3
         for i in (1, 2):
             ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', color='gray', linewidth=1))
@@ -1170,10 +1153,8 @@ def create_outcome_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_type_filt
         subset_y = subset_y[valid_mask]
         
         if len(subset_x) < 5:
-            # Plot individual points if too few
             ax.plot(subset_x, subset_y, 'o', color='red', alpha=0.8, markersize=8)
         else:
-            # Create density heatmap
             xi = np.linspace(-3, 3, 200)
             yi = np.linspace(0, 5, 200)
             xi_m, yi_m = np.meshgrid(xi, yi)
@@ -1182,7 +1163,6 @@ def create_outcome_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_type_filt
             ax.imshow(zi, origin='lower', extent=[-3, 3, 0, 5], 
                      aspect='equal', cmap=custom_cmap, alpha=0.8)
             
-            # Redraw strike zone on top
             ax.add_patch(Rectangle((l, b), w, h, fill=False, linewidth=2, color='black'))
             for i in (1, 2):
                 ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', color='gray', linewidth=1))
@@ -1195,25 +1175,20 @@ def create_outcome_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_type_filt
         ax.set_xticks([])
         ax.set_yticks([])
         
-        # Add count
         n_pitches = mask.sum()
         ax.text(0.5, 0.02, f"n = {n_pitches}", transform=ax.transAxes,
                ha='center', va='bottom', fontsize=11, style='italic',
                bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8))
     
-    # Panel 1: Whiffs
     ax1 = fig.add_subplot(gs[0, 0])
     _panel(ax1, "Whiff Locations", is_whiff & xs.notna() & ys.notna())
     
-    # Panel 2: Contact
     ax2 = fig.add_subplot(gs[0, 1])
     _panel(ax2, "Contact Locations", is_contact & xs.notna() & ys.notna())
     
-    # Panel 3: Hard Hits
     ax3 = fig.add_subplot(gs[0, 2])
     _panel(ax3, "Hard Hit Locations (95+ mph)", is_hardhit & xs.notna() & ys.notna())
     
-    # Title with pitch filter indication
     title_text = f"{canonicalize_person_name(pitcher_name)} - Outcome Heatmaps"
     if pitch_type_filter and pitch_type_filter != "Overall":
         title_text += f" ({pitch_type_filter})"
@@ -1225,11 +1200,6 @@ def create_outcome_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_type_filt
 
 # ─── NEW: Count Leveraging Heatmaps (3-panel matching hitter app) ────────────
 def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_type_filter: str = None):
-    """
-    Creates 3-panel heatmaps showing pitcher performance in different count situations.
-    Matches the visual style of the hitter app heatmaps.
-    Can be filtered by pitch type.
-    """
     if df is None or df.empty:
         return None
     
@@ -1243,7 +1213,6 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_ty
     if not balls_col or not strikes_col or not x_col or not y_col:
         return None
     
-    # Filter by pitch type if specified
     work = df.copy()
     if pitch_type_filter and pitch_type_filter != "Overall" and type_col and type_col in work.columns:
         work = work[work[type_col].astype(str) == pitch_type_filter].copy()
@@ -1254,26 +1223,20 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_ty
     work["Balls"] = balls
     work["Strikes"] = strikes
     
-    # Define count situations
-    ahead_mask = strikes > balls  # Pitcher ahead
-    behind_mask = balls > strikes  # Hitter ahead
+    ahead_mask = strikes > balls
+    behind_mask = balls > strikes
     two_strike_mask = strikes == 2
     
-    # Get location data
     xs = pd.to_numeric(work[x_col], errors="coerce")
     ys = pd.to_numeric(work[y_col], errors="coerce")
     
-    # Create figure with 3 panels (matching hitter app layout)
     fig = plt.figure(figsize=(18, 6))
     gs = GridSpec(1, 3, figure=fig, wspace=0.25)
     
     def _panel(ax, title, mask):
-        """Draw a single heatmap panel"""
-        # Draw strike zone
         l, b, w, h = get_zone_bounds()
         ax.add_patch(Rectangle((l, b), w, h, fill=False, linewidth=2, color='black'))
         
-        # Draw thirds
         dx, dy = w/3, h/3
         for i in (1, 2):
             ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', color='gray', linewidth=1))
@@ -1287,10 +1250,8 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_ty
         subset_y = subset_y[valid_mask]
         
         if len(subset_x) < 10:
-            # Plot individual pitches if too few
             ax.plot(subset_x, subset_y, 'o', color='deepskyblue', alpha=0.8, markersize=6)
         else:
-            # Create density heatmap
             xi = np.linspace(-3, 3, 200)
             yi = np.linspace(0, 5, 200)
             xi_m, yi_m = np.meshgrid(xi, yi)
@@ -1299,7 +1260,6 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_ty
             ax.imshow(zi, origin='lower', extent=[-3, 3, 0, 5], 
                      aspect='equal', cmap=custom_cmap, alpha=0.8)
             
-            # Redraw strike zone on top
             ax.add_patch(Rectangle((l, b), w, h, fill=False, linewidth=2, color='black'))
             for i in (1, 2):
                 ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', color='gray', linewidth=1))
@@ -1312,25 +1272,20 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_ty
         ax.set_xticks([])
         ax.set_yticks([])
         
-        # Add pitch count to title
         n_pitches = mask.sum()
         ax.text(0.5, 0.02, f"n = {n_pitches}", transform=ax.transAxes,
                ha='center', va='bottom', fontsize=10, style='italic',
                bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8))
     
-    # Panel 1: Pitcher Ahead
     ax1 = fig.add_subplot(gs[0, 0])
     _panel(ax1, "Pitcher Ahead in Count", ahead_mask & balls.notna() & strikes.notna())
     
-    # Panel 2: Hitter Ahead  
     ax2 = fig.add_subplot(gs[0, 1])
     _panel(ax2, "Hitter Ahead in Count", behind_mask & balls.notna() & strikes.notna())
     
-    # Panel 3: Two Strikes
     ax3 = fig.add_subplot(gs[0, 2])
     _panel(ax3, "Two Strike Counts", two_strike_mask & balls.notna() & strikes.notna())
     
-    # Title with pitch filter indication
     title_text = f"{canonicalize_person_name(pitcher_name)} - Count Leveraging"
     if pitch_type_filter and pitch_type_filter != "Overall":
         title_text += f" ({pitch_type_filter})"
@@ -1341,16 +1296,6 @@ def create_count_leverage_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_ty
     return fig
 
 def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_types_to_show: list = None, show_top_n: int = 3):
-    """
-    Creates heatmaps showing location patterns for each pitch type in the pitcher's arsenal.
-    Shows all pitch types side-by-side to see location tendencies for each pitch.
-    
-    Args:
-        df: DataFrame with pitch data
-        pitcher_name: Name of pitcher
-        pitch_types_to_show: List of specific pitch types to show (None = use top N)
-        show_top_n: If pitch_types_to_show is None, show top N most-used pitches
-    """
     if df is None or df.empty:
         return None
     
@@ -1363,9 +1308,7 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
     
     work = subset_by_pitcher_if_possible(df, pitcher_name)
     
-    # Get pitch types - either specified or top N by usage
     if pitch_types_to_show is None:
-        # Get top N most-used pitch types
         pitch_counts = work[type_col].value_counts()
         pitch_types = pitch_counts.head(show_top_n).index.tolist()
     else:
@@ -1374,31 +1317,24 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
     if len(pitch_types) == 0:
         return None
     
-    # Get location data - use raw data as-is (should already be pitcher's perspective)
     xs = pd.to_numeric(work[x_col], errors="coerce")
     ys = pd.to_numeric(work[y_col], errors="coerce")
     
-    # Determine grid layout (max 3 per row)
     n_pitches = len(pitch_types)
     n_cols = min(3, n_pitches)
     n_rows = (n_pitches + n_cols - 1) // n_cols
     
-    # Create figure with more height for stats
     fig = plt.figure(figsize=(7 * n_cols, 8 * n_rows), facecolor='white')
     gs = GridSpec(n_rows, n_cols, figure=fig, wspace=0.3, hspace=0.4)
     
     def _panel(ax, pitch_type):
-        """Draw a single pitch type heatmap with stats"""
-        # Add subtle background
         ax.set_facecolor('#f8f9fa')
         
-        # Draw strike zone
         l, b, w, h = get_zone_bounds()
         zone_rect = Rectangle((l, b), w, h, fill=False, linewidth=3, 
                               edgecolor='#2c3e50', zorder=10)
         ax.add_patch(zone_rect)
         
-        # Draw thirds with better styling
         dx, dy = w/3, h/3
         for i in (1, 2):
             ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', 
@@ -1406,10 +1342,8 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
             ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', 
                               color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
         
-        # Filter by pitch type
         mask = work[type_col].astype(str) == pitch_type
         
-        # Use raw data as-is
         subset_x = xs[mask].to_numpy()
         subset_y = ys[mask].to_numpy()
         
@@ -1419,23 +1353,19 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
         
         n_pitches_type = len(subset_x)
         
-        # Calculate zone percentage
         l, b, w, h = get_zone_bounds()
         in_zone = ((subset_x >= l) & (subset_x <= l+w) & 
                    (subset_y >= b) & (subset_y <= b+h))
         zone_pct = (in_zone.sum() / n_pitches_type * 100) if n_pitches_type > 0 else 0
         
-        # Calculate average location
         avg_x = np.mean(subset_x) if n_pitches_type > 0 else 0
         avg_y = np.mean(subset_y) if n_pitches_type > 0 else 0
         
         if n_pitches_type < 10:
-            # Plot individual pitches if too few
             pitch_color = get_pitch_color(pitch_type)
             ax.plot(subset_x, subset_y, 'o', color=pitch_color, alpha=0.8, 
                    markersize=12, markeredgecolor='white', markeredgewidth=2, zorder=5)
         else:
-            # Create density heatmap
             xi = np.linspace(-3, 3, 200)
             yi = np.linspace(0, 5, 200)
             xi_m, yi_m = np.meshgrid(xi, yi)
@@ -1444,7 +1374,6 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
             ax.imshow(zi, origin='lower', extent=[-3, 3, 0, 5], 
                      aspect='equal', cmap=custom_cmap, alpha=0.9, zorder=1)
             
-            # Redraw strike zone on top
             zone_rect = Rectangle((l, b), w, h, fill=False, linewidth=3, 
                                   edgecolor='#2c3e50', zorder=10)
             ax.add_patch(zone_rect)
@@ -1454,39 +1383,33 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
                 ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', 
                                   color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
             
-            # Plot average location marker
             ax.plot(avg_x, avg_y, 'X', color='#2c3e50', markersize=15, 
                    markeredgecolor='white', markeredgewidth=2, zorder=15, 
                    label='Average')
         
-        # Add stats box below with pitch type name
         stats_text = f"{pitch_type}\n{n_pitches_type} pitches  |  Zone: {zone_pct:.1f}%"
         ax.text(0.5, -0.12, stats_text, transform=ax.transAxes,
                fontsize=14, color='#2c3e50', ha='center', va='top', fontweight='bold',
                bbox=dict(boxstyle='round,pad=0.8', facecolor='white', 
                         edgecolor='#bbb', linewidth=2, alpha=0.95))
         
-        # Set view bounds
         xmin, xmax, ymin, ymax = get_view_bounds()
         ax.set_xlim(xmin, xmax)
         ax.set_ylim(ymin, ymax)
         ax.set_aspect('equal', adjustable='box')
         ax.axis('off')
         
-        # Add subtle border around entire panel
         for spine in ax.spines.values():
             spine.set_visible(True)
             spine.set_edgecolor('#e0e0e0')
             spine.set_linewidth(2)
     
-    # Create panels for each pitch type
     for idx, pitch_type in enumerate(pitch_types):
         row = idx // n_cols
         col = idx % n_cols
         ax = fig.add_subplot(gs[row, col])
         _panel(ax, pitch_type)
     
-    # Main title with better styling and proper spacing
     title_suffix = " (Top 3 Pitches)" if pitch_types_to_show is None else ""
     fig.text(0.5, 0.985, f"{canonicalize_person_name(pitcher_name)} - Pitch Location Analysis{title_suffix}",
             fontsize=20, fontweight='bold', color='#2c3e50', ha='center', va='top')
@@ -1497,16 +1420,6 @@ def create_pitch_type_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pit
     return fig
 
 def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_types_to_show: list = None, show_top_n: int = 3):
-    """
-    Creates heatmaps showing where pitches MISS (called balls) for each pitch type.
-    Helps identify command issues and miss tendencies.
-    
-    Args:
-        df: DataFrame with pitch data
-        pitcher_name: Name of pitcher
-        pitch_types_to_show: List of specific pitch types to show (None = use top N)
-        show_top_n: If pitch_types_to_show is None, show top N most-used pitches
-    """
     if df is None or df.empty:
         return None
     
@@ -1520,15 +1433,12 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
     
     work = subset_by_pitcher_if_possible(df, pitcher_name)
     
-    # Filter to only BALLS (called balls, not swings)
     work = work[work[call_col].astype(str).str.lower().isin(['ball', 'ballcalled'])].copy()
     
     if work.empty:
         return None
     
-    # Get pitch types - either specified or top N by usage
     if pitch_types_to_show is None:
-        # Get top N most-used pitch types
         pitch_counts = work[type_col].value_counts()
         pitch_types = pitch_counts.head(show_top_n).index.tolist()
     else:
@@ -1537,31 +1447,24 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
     if len(pitch_types) == 0:
         return None
     
-    # Get location data - use raw data as-is (should already be pitcher's perspective)
     xs = pd.to_numeric(work[x_col], errors="coerce")
     ys = pd.to_numeric(work[y_col], errors="coerce")
     
-    # Determine grid layout (max 3 per row)
     n_pitches = len(pitch_types)
     n_cols = min(3, n_pitches)
     n_rows = (n_pitches + n_cols - 1) // n_cols
     
-    # Create figure with more height for stats
     fig = plt.figure(figsize=(7 * n_cols, 8 * n_rows), facecolor='white')
     gs = GridSpec(n_rows, n_cols, figure=fig, wspace=0.3, hspace=0.4)
     
     def _panel(ax, pitch_type):
-        """Draw a single pitch type miss heatmap"""
-        # Add subtle background
         ax.set_facecolor('#f8f9fa')
         
-        # Draw strike zone
         l, b, w, h = get_zone_bounds()
         zone_rect = Rectangle((l, b), w, h, fill=False, linewidth=3, 
                               edgecolor='#2c3e50', zorder=10)
         ax.add_patch(zone_rect)
         
-        # Draw thirds with better styling
         dx, dy = w/3, h/3
         for i in (1, 2):
             ax.add_line(Line2D([l+i*dx]*2, [b, b+h], linestyle='--', 
@@ -1569,10 +1472,8 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
             ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', 
                               color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
         
-        # Filter by pitch type
         mask = work[type_col].astype(str) == pitch_type
         
-        # Use raw data as-is
         subset_x = xs[mask].to_numpy()
         subset_y = ys[mask].to_numpy()
         
@@ -1582,22 +1483,14 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
         
         n_misses = len(subset_x)
         
-        # Calculate miss percentages by direction
-        l, b, w, h = get_zone_bounds()
-        out_of_zone = ~((subset_x >= l) & (subset_x <= l+w) & 
-                        (subset_y >= b) & (subset_y <= b+h))
-        
-        # Calculate average miss location
         avg_x = np.mean(subset_x) if n_misses > 0 else 0
         avg_y = np.mean(subset_y) if n_misses > 0 else 0
         
         if n_misses < 5:
-            # Plot individual misses if too few
             pitch_color = get_pitch_color(pitch_type)
             ax.plot(subset_x, subset_y, 'o', color='#e74c3c', alpha=0.8, 
                    markersize=12, markeredgecolor='white', markeredgewidth=2, zorder=5)
         else:
-            # Create density heatmap
             xi = np.linspace(-3, 3, 200)
             yi = np.linspace(0, 5, 200)
             xi_m, yi_m = np.meshgrid(xi, yi)
@@ -1606,7 +1499,6 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
             ax.imshow(zi, origin='lower', extent=[-3, 3, 0, 5], 
                      aspect='equal', cmap=custom_cmap, alpha=0.9, zorder=1)
             
-            # Redraw strike zone on top
             zone_rect = Rectangle((l, b), w, h, fill=False, linewidth=3, 
                                   edgecolor='#2c3e50', zorder=10)
             ax.add_patch(zone_rect)
@@ -1616,38 +1508,32 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
                 ax.add_line(Line2D([l, l+w], [b+i*dy]*2, linestyle='--', 
                                   color='#34495e', linewidth=1.5, alpha=0.5, zorder=10))
             
-            # Plot average miss location marker
             ax.plot(avg_x, avg_y, 'X', color='#c0392b', markersize=15, 
                    markeredgecolor='white', markeredgewidth=2, zorder=15)
         
-        # Add stats box below with pitch type name
         stats_text = f"{pitch_type}\n{n_misses} misses (called balls)"
         ax.text(0.5, -0.12, stats_text, transform=ax.transAxes,
                fontsize=14, color='#c0392b', ha='center', va='top', fontweight='bold',
                bbox=dict(boxstyle='round,pad=0.8', facecolor='white', 
                         edgecolor='#e74c3c', linewidth=2, alpha=0.95))
         
-        # Set view bounds
         xmin, xmax, ymin, ymax = get_view_bounds()
         ax.set_xlim(xmin, xmax)
         ax.set_ylim(ymin, ymax)
         ax.set_aspect('equal', adjustable='box')
         ax.axis('off')
         
-        # Add subtle border around entire panel
         for spine in ax.spines.values():
             spine.set_visible(True)
             spine.set_edgecolor('#e0e0e0')
             spine.set_linewidth(2)
     
-    # Create panels for each pitch type
     for idx, pitch_type in enumerate(pitch_types):
         row = idx // n_cols
         col = idx % n_cols
         ax = fig.add_subplot(gs[row, col])
         _panel(ax, pitch_type)
     
-    # Main title with better styling and proper spacing
     title_suffix = " (Top 3 Pitches)" if pitch_types_to_show is None else ""
     fig.text(0.5, 0.985, f"{canonicalize_person_name(pitcher_name)} - Miss Locations{title_suffix}",
             fontsize=20, fontweight='bold', color='#c0392b', ha='center', va='top')
@@ -1657,8 +1543,7 @@ def create_miss_location_heatmaps(df: pd.DataFrame, pitcher_name: str, pitch_typ
     plt.tight_layout(rect=[0, 0, 1, 0.93])
     return fig
 
-# Part 4 continues with spray charts and pitch sequencing...
-# (Continuing from previous parts - spray charts and sequencing remain the same but without emojis)
+# Part 4: Spray charts and pitch sequencing
 
 # ─── SPRAY CHART HELPER FUNCTIONS ─────────────────────────────────────────────
 def draw_dirt_diamond(
@@ -1669,7 +1554,6 @@ def draw_dirt_diamond(
     grass_scale: float = 0.4,
     custom_wall_distances: list = None
 ):
-    """Draw a baseball diamond matching the hitter app style"""
     home = np.array(origin)
 
     if custom_wall_distances is not None:
@@ -1693,11 +1577,9 @@ def draw_dirt_diamond(
         ax.add_patch(Wedge(home, outfield_radius, 45, 135, facecolor='#228B22', 
                           edgecolor='black', linewidth=2))
     
-    # Dirt infield
     ax.add_patch(Wedge(home, size, 45, 135, facecolor='#ED8B00', 
                       edgecolor='black', linewidth=2))
     
-    # Grass cutout
     gsize = size * grass_scale
     gfirst = home + np.array((gsize, gsize))
     gsecond = home + np.array((0.0, 2 * gsize))
@@ -1715,13 +1597,11 @@ def draw_dirt_diamond(
     grass_polygon = [gfirst.tolist()] + arc_points + [gthird.tolist(), home.tolist()]
     ax.add_patch(Polygon(grass_polygon, closed=True, facecolor='#228B22', edgecolor='none'))
     
-    # Bases
     for pos in [gfirst, gsecond, gthird]:
         ax.add_patch(Rectangle((pos[0] - base_size/2, pos[1] - base_size/2), 
                               base_size, base_size,
                               facecolor='white', edgecolor='black', linewidth=1))
 
-    # Home plate
     half = base_size / 2
     plate = Polygon([
         (home[0] - half, home[1]),
@@ -1732,7 +1612,6 @@ def draw_dirt_diamond(
     ], closed=True, facecolor='white', edgecolor='black', linewidth=1)
     ax.add_patch(plate)
 
-    # Foul lines
     for angle in [45, 135]:
         rad = math.radians(angle)
         end = home + np.array([outfield_radius * 1.1 * math.cos(rad),
@@ -1746,17 +1625,12 @@ def draw_dirt_diamond(
     return ax
 
 def bearing_distance_to_xy(bearing, distance):
-    """Convert bearing and distance to x,y coordinates"""
     angle_rad = np.radians(90 - bearing)
     x = distance * np.cos(angle_rad)
     y = distance * np.sin(angle_rad)
     return x, y
 
 def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = "Season"):
-    """
-    Creates a spray chart showing hits allowed (from batter's perspective).
-    Matches the visual style of the hitter app spray charts.
-    """
     df_p = subset_by_pitcher_if_possible(df, pitcher_name)
     
     bearing_col = pick_col(df_p, "Bearing", "HitBearing", "Hit Bearing", "Direction", "Angle")
@@ -1769,7 +1643,6 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
     if not bearing_col or not distance_col:
         return None, pd.DataFrame()
     
-    # Get balls in play
     if call_col:
         bip = df_p[df_p[call_col].eq('InPlay')].copy()
     else:
@@ -1789,15 +1662,12 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
     if bip.empty:
         return None, pd.DataFrame()
     
-    # Convert to x,y coordinates
     coords = [bearing_distance_to_xy(b, d) for b, d in zip(bearing, distance)]
     bip['x'] = [c[0] for c in coords]
     bip['y'] = [c[1] for c in coords]
     
-    # Create figure - SMALLER SIZE
     fig, ax = plt.subplots(figsize=(8, 8))
     
-    # Define wall distances (matching hitter app)
     angles = np.linspace(45, 135, 100)
     wall_data = []
     for angle in angles:
@@ -1809,15 +1679,12 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
             dist = 395 + t * (325 - 395)
         wall_data.append((angle, dist))
     
-    # Draw field - SMALLER SIZE (reduced from 100 to 70)
     draw_dirt_diamond(ax, origin=(0.0, 0.0), size=70, custom_wall_distances=wall_data)
     
-    # Draw outfield wall - THINNER LINE
     wall_x = [dist * np.cos(np.radians(ang)) for ang, dist in wall_data]
     wall_y = [dist * np.sin(np.radians(ang)) for ang, dist in wall_data]
     ax.plot(wall_x, wall_y, 'k-', linewidth=2, zorder=10)
     
-    # Add distance markers - SMALLER TEXT
     for angle, dist, label in [(45, 335, '335'), (90, 395, '395'), (135, 325, '325')]:
         rad = np.radians(angle)
         x = dist * np.cos(rad)
@@ -1826,7 +1693,6 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
                 fontweight='bold', bbox=dict(boxstyle='round,pad=0.3',
                 facecolor='yellow', edgecolor='black', linewidth=1.5, alpha=0.9), zorder=11)
     
-    # Categorize hit types and determine colors
     def categorize_hit_type(hit_type):
         if pd.isna(hit_type):
             return 'Other'
@@ -1844,23 +1710,20 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
     
     bip['HitCategory'] = bip.get(type_col, pd.Series(dtype=object)).apply(categorize_hit_type)
     
-    # Color scheme matching hitter app
     hit_type_colors = {
-        'GroundBall': '#DC143C',  # Crimson red
-        'LineDrive': '#FFD700',   # Gold
-        'FlyBall': '#1E90FF',     # Dodger blue
-        'Popup': '#FF69B4',       # Hot pink
-        'Other': '#A9A9A9'        # Dark gray
+        'GroundBall': '#DC143C',
+        'LineDrive': '#FFD700',
+        'FlyBall': '#1E90FF',
+        'Popup': '#FF69B4',
+        'Other': '#A9A9A9'
     }
     
-    # Plot each batted ball - SMALLER MARKERS
     for idx, row in bip.iterrows():
         hit_cat = row['HitCategory']
         play_result = str(row.get(result_col, ''))
         
         marker_size = 80
         
-        # Thicker edge for hits
         if play_result in ['Single', 'Double', 'Triple', 'HomeRun']:
             edgecolor = 'black'
             linewidth = 1.5
@@ -1877,7 +1740,6 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
                   alpha=0.85,
                   zorder=20)
     
-    # Create legend - SMALLER
     legend_elements = []
     
     for hit_type in ['GroundBall', 'LineDrive', 'FlyBall', 'Popup']:
@@ -1906,19 +1768,16 @@ def create_spray_chart(df: pd.DataFrame, pitcher_name: str, season_label: str = 
              bbox_to_anchor=(0.02, 0.98), frameon=True, 
              fancybox=True, shadow=True, fontsize=8)
     
-    # Set axis limits
     max_dist = max(bip['Distance'].max(), 400)
     ax.set_xlim(-max_dist * 0.85, max_dist * 0.85)
     ax.set_ylim(-30, max_dist * 1.1)
     ax.set_aspect('equal')
     
-    # SMALLER TITLE
     ax.set_title(f"{canonicalize_person_name(pitcher_name)} — Hits Allowed (Batter's View)\n{season_label}", 
                 fontsize=13, fontweight='bold', pad=15)
     
     plt.tight_layout()
     
-    # Create summary table
     summary_data = []
     for label in set(bip['HitCategory']):
         mask = bip['HitCategory'] == label
@@ -1975,7 +1834,6 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
     
     effectiveness_data = []
     
-    # Get columns needed for effectiveness calculation
     ev_col = pick_col(df_p, "ExitSpeed", "Exit Velo", "ExitVelocity", "Exit_Velocity", "ExitVel", "EV", "LaunchSpeed", "Launch_Speed")
     play_result_col = pick_col(df_p, "PlayResult", "Play Result", "KorBB", "PAResult", "PA_Result")
     
@@ -1988,7 +1846,6 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
             next_pitches = df_p[df_p.index.isin(grp.index + 1)]
             total_count = len(next_pitches)
             
-            # Calculate all outcome percentages
             is_whiff = next_pitches[call_col].eq('StrikeSwinging')
             whiff_pct = (is_whiff.sum() / total_count * 100) if total_count > 0 else 0
             
@@ -2001,12 +1858,10 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
             is_inplay = next_pitches[call_col].eq('InPlay')
             inplay_pct = (is_inplay.sum() / total_count * 100) if total_count > 0 else 0
             
-            # Calculate Strike% (for display only, not in formula)
             is_strike = next_pitches[call_col].isin(['StrikeCalled','StrikeSwinging',
                                                      'FoulBallNotFieldable','FoulBallFieldable','InPlay'])
             strike_pct = (is_strike.sum() / total_count * 100) if total_count > 0 else 0
             
-            # Calculate Weak Contact% (EV < 80 mph on balls in play)
             weak_contact_pct = 0
             if ev_col and ev_col in next_pitches.columns:
                 ev = pd.to_numeric(next_pitches[ev_col], errors="coerce")
@@ -2015,22 +1870,17 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
                     weak_contacts = ((ev < 80.0) & is_inplay & ev.notna()).sum()
                     weak_contact_pct = (weak_contacts / total_count) * 100
             
-            # Calculate HardHit% (EV >= 95 mph on total pitches, not just BIP)
             hardhit_pct = 0
             if ev_col and ev_col in next_pitches.columns:
                 ev = pd.to_numeric(next_pitches[ev_col], errors="coerce")
                 hard_hits = ((ev >= 95.0) & is_inplay & ev.notna()).sum()
                 hardhit_pct = (hard_hits / total_count) * 100
             
-            # Calculate Hit% (actual hits on total pitches)
             hit_pct = 0
             if play_result_col and play_result_col in next_pitches.columns:
                 is_hit = next_pitches[play_result_col].isin(['Single', 'Double', 'Triple', 'HomeRun'])
                 hit_pct = (is_hit.sum() / total_count) * 100
             
-            # EFFECTIVENESS FORMULA (removed Foul%, redistributed weight):
-            # Rewards: Whiff (increased), Called Strike (increased), Weak Contact
-            # Penalizes: Hit, Hard Hit
             effectiveness = (
                 (whiff_pct * 0.50) + 
                 (called_strike_pct * 0.35) + 
@@ -2082,11 +1932,11 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
         
         eff = row['Effectiveness Score']
         if eff > 12:
-            color = 'rgba(0, 200, 0, 0.4)'  # Green - pitcher winning decisively
+            color = 'rgba(0, 200, 0, 0.4)'
         elif eff >= 0:
-            color = 'rgba(255, 255, 0, 0.4)'  # Yellow - marginal edge to pitcher
+            color = 'rgba(255, 255, 0, 0.4)'
         else:
-            color = 'rgba(255, 0, 0, 0.4)'  # Red - batter winning
+            color = 'rgba(255, 0, 0, 0.4)'
         colors_link.append(color)
     
     node_colors = []
@@ -2122,7 +1972,6 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
     return transition_matrix, effectiveness_df, fig
 
 def find_best_sequences(df: pd.DataFrame, pitcher_name: str, min_count: int = 5):
-    """Returns the most effective pitch sequences."""
     _, effectiveness_df, _ = analyze_pitch_sequences(df, pitcher_name)
     
     if effectiveness_df is None or effectiveness_df.empty:
@@ -2131,12 +1980,10 @@ def find_best_sequences(df: pd.DataFrame, pitcher_name: str, min_count: int = 5)
     best = effectiveness_df[effectiveness_df['Count'] >= min_count].copy()
     best = best.sort_values('Effectiveness Score', ascending=False)
     
-    # Return key metrics: keep Strike% for context, show all formula components (removed Foul%)
     return best[['Sequence', 'Count', 'Strike%', 'Whiff%', 'Called Strike%', 
                  'Weak Contact%', 'Hit%', 'HardHit%', 'Effectiveness Score']]
 
 def analyze_sequence_by_count(df: pd.DataFrame, pitcher_name: str):
-    """Show pitch usage % by count situation."""
     df_p = subset_by_pitcher_if_possible(df, pitcher_name)
     df_p = add_inning_and_ab(df_p)
     
@@ -2159,13 +2006,12 @@ def analyze_sequence_by_count(df: pd.DataFrame, pitcher_name: str):
     usage = df_p.groupby([type_col, 'Count_Situation']).size().unstack(fill_value=0)
     usage_pct = usage.div(usage.sum(axis=0), axis=1) * 100
     
-    # Round and add % signs
     usage_pct = usage_pct.round(1)
     usage_pct = usage_pct.applymap(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
     
     return usage_pct
 
-# Part 5 of 6: Data Loading, Sidebar Filters, and Main App Structure
+# Part 5: Data Loading, Sidebar Filters, and Main App Structure
 
 # ─── Interactive strike zone (Plotly) ─────────────────────────────────────────
 def _zone_shapes_for_subplot():
@@ -2182,7 +2028,6 @@ def _zone_shapes_for_subplot():
     ]
 
 def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
-    """Plot a single-PA interactive strike zone."""
     if pa_df is None or pa_df.empty: return None
 
     type_col = pick_col(pa_df, type_col_in_df(pa_df), "Pitch Type","TaggedPitchType","PitchType")
@@ -2204,7 +2049,6 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
     for shp in _zone_shapes_for_subplot():
         fig.add_shape(shp, row=1, col=1)
 
-    # Build custom data array
     cd = np.column_stack([
         pa_df.get(type_col, pd.Series(dtype=object)).astype(str).values if type_col else np.array([""]*len(pa_df)),
         pd.to_numeric(pa_df.get(speed_col, pd.Series(dtype=float)), errors="coerce").values if speed_col else np.full(len(pa_df), np.nan),
@@ -2215,13 +2059,11 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
         pd.to_numeric(pa_df.get(pno_col,   pd.Series(dtype=float)), errors="coerce").values if pno_col   else np.full(len(pa_df), np.nan),
     ])
 
-    # Get colors for each pitch
     if type_col and type_col in pa_df.columns:
         colors_pts = [get_pitch_color(t) for t in pa_df[type_col].astype(str).tolist()]
     else:
         colors_pts = [HUSKER_RED] * len(pa_df)
 
-    # Add scatter trace with pitch numbers
     fig.add_trace(
         go.Scatter(
             x=xs, 
@@ -2269,7 +2111,6 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
         row=1, col=1
     )
     
-    # Calculate proper width to maintain aspect ratio
     x_range = x_max - x_min
     y_range = y_max - y_min
     aspect_ratio = x_range / y_range
@@ -2289,7 +2130,6 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
     return fig
 
 def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Build pitch-by-pitch table with PA results."""
     work = add_inning_and_ab(df)
 
     type_col   = type_col_in_df(work)
@@ -2324,14 +2164,12 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
         return g.index[-1]
 
     def _pa_label(row) -> str:
-        # First check PlayResult
         pr = row.get(col_play_result, "")
         base_result = ""
         
         if isinstance(pr, str) and pr.strip() and pr.strip().lower() != "undefined":
             base_result = pr.strip()
         else:
-            # Then check KorBB column
             kb = row.get(col_korbb, "")
             if isinstance(kb, str) and kb.strip():
                 low = kb.strip().lower()
@@ -2339,15 +2177,12 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
                     return "Strikeout"
                 if low in {"bb", "walk", "ibb", "intentional walk"}:
                     return "Walk"
-                # If KorBB has a value but not K or BB, return it
                 if low != "undefined":
                     base_result = kb.strip()
         
-        # If no result found, return dash
         if not base_result:
             return "—"
         
-        # Check if this is a hit or out that needs details
         result_lower = base_result.lower()
         is_hit = any(h in result_lower for h in ["single", "double", "triple", "home run", "homerun"])
         is_out = result_lower == "out"
@@ -2355,12 +2190,10 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
         if is_hit or is_out:
             details = []
             
-            # Add batted ball type
             if batted_ball_type_col:
                 bb_type = row.get(batted_ball_type_col, "")
                 if isinstance(bb_type, str) and bb_type.strip():
                     bb_type_clean = bb_type.strip()
-                    # Map common variations
                     bb_lower = bb_type_clean.lower()
                     if "ground" in bb_lower or bb_lower == "gb":
                         details.append("Groundball")
@@ -2373,14 +2206,12 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
                     else:
                         details.append(bb_type_clean)
             
-            # Add exit velocity
             if exit_velo_col:
                 ev = row.get(exit_velo_col, "")
                 ev_num = pd.to_numeric(ev, errors="coerce")
                 if pd.notna(ev_num):
                     details.append(f"{ev_num:.1f} mph")
             
-            # Add distance for hits
             if is_hit and distance_col:
                 dist = row.get(distance_col, "")
                 dist_num = pd.to_numeric(dist, errors="coerce")
@@ -2397,7 +2228,6 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
     pa_row["PA Result"] = pa_row.apply(_pa_label, axis=1)
     work = work.merge(pa_row[["AB #","PA Result"]], on="AB #", how="left")
 
-    # Build table with all columns (including PA Result and location data for strikezones)
     ordered = ["Inning #","AB #","Pitch # in AB", batter_col, "PA Result",
                type_col, result_col, velo_col, spin_col, ivb_col, hb_col, x_col, y_col]
     present = [c for c in ordered if c and c in work.columns]
@@ -2407,7 +2237,6 @@ def build_pitch_by_inning_pa_table(df: pd.DataFrame) -> pd.DataFrame:
         batter_col: "Batter", type_col: "Pitch Type", result_col: "Result",
         velo_col: "Velo", spin_col: "Spin Rate", ivb_col: "IVB", hb_col: "HB"
     }
-    # Add location columns to rename map only if they exist and need renaming
     if x_col and x_col != "PlateLocSide":
         rename_map[x_col] = "PlateLocSide"
     if y_col and y_col != "PlateLocHeight":
@@ -2442,13 +2271,7 @@ def style_pbp_expanders():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data
-def load_scrimmage_csv(_correction_version=3):  # Increment this to force cache refresh
-    """
-    Load scrimmage data with pitch type corrections.
-    
-    NOTE: When adding new pitch type corrections, increment _correction_version
-    to invalidate the cache and force the corrections to apply.
-    """
+def load_scrimmage_csv(_correction_version=3):
     if not os.path.exists(DATA_PATH_SCRIM):
         return pd.DataFrame()
     df = pd.read_csv(DATA_PATH_SCRIM, low_memory=False)
@@ -2460,83 +2283,54 @@ def load_scrimmage_csv(_correction_version=3):  # Increment this to force cache 
     else:
         df["PitcherDisplay"] = "Unknown"
     
-    # ═══════════════════════════════════════════════════════════════════════════
-    # PITCH TYPE CORRECTIONS
-    # ═══════════════════════════════════════════════════════════════════════════
     type_col = type_col_in_df(df)
     if type_col and "PitcherDisplay" in df.columns:
-        # Auden Pankonin: Convert all Fastballs to Sinkers (he only throws sinkers)
         pankonin_mask = df["PitcherDisplay"] == "Auden Pankonin"
         fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
         correction_mask = pankonin_mask & fastball_mask
-        
         if correction_mask.any():
             df.loc[correction_mask, type_col] = "Sinker"
         
-        # Kevin Mannel: Convert all Fastballs to Sinkers (he only throws sinkers)
         mannel_mask = df["PitcherDisplay"] == "Kevin Mannel"
         mannel_fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
         mannel_correction_mask = mannel_mask & mannel_fastball_mask
-        
         if mannel_correction_mask.any():
             df.loc[mannel_correction_mask, type_col] = "Sinker"
     
     return df
 
-df_scrim = load_scrimmage_csv()
-    
 @st.cache_data
 def load_season_csv(_correction_version=1):
     if not os.path.exists(DATA_PATH_SEASON):
         return pd.DataFrame()
     df = pd.read_csv(DATA_PATH_SEASON, low_memory=False)
     df = ensure_date_column(df)
+    
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name")
     if pitcher_col:
         df["PitcherDisplay"] = df[pitcher_col].map(canonicalize_person_name)
     else:
         df["PitcherDisplay"] = "Unknown"
-
+    
     type_col = type_col_in_df(df)
     if type_col and "PitcherDisplay" in df.columns:
         pankonin_mask = df["PitcherDisplay"] == "Auden Pankonin"
         fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
         if (pankonin_mask & fastball_mask).any():
             df.loc[pankonin_mask & fastball_mask, type_col] = "Sinker"
-
+        
         mannel_mask = df["PitcherDisplay"] == "Kevin Mannel"
         mannel_fb_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
         if (mannel_mask & mannel_fb_mask).any():
             df.loc[mannel_mask & mannel_fb_mask, type_col] = "Sinker"
-
+    
     return df
 
+df_scrim  = load_scrimmage_csv()
 df_season = load_season_csv()
-if df_scrim.empty:
-    st.error("No data file found. Please ensure Scrimmage(28).csv is present.")
-    st.stop()
 
-# Get scrimmage pitchers for filtering
-scrimmage_pitchers = set()
-if not df_scrim.empty:
-    scrimmage_pitchers = set(df_scrim[df_scrim.get('PitcherTeam','') == 'NEB']['PitcherDisplay'].dropna().unique())
-
-data_source = st.session_state.get("data_source_choice", "2025/26 Scrimmages")
-
-if data_source == "2025/26 Scrimmages":
-    df_all = df_scrim.copy()
-elif data_source == "2026 Season":
-    df_all = df_season.copy() if not df_season.empty else df_scrim.copy()
-else:  # Both Combined
-    frames = [f for f in [df_scrim, df_season] if not f.empty]
-    df_all = pd.concat(frames, ignore_index=True) if frames else df_scrim.copy()
-
-df_all = ensure_date_column(df_all)
-
-neb_pitchers = sorted(df_all[df_all.get('PitcherTeam','') == 'NEB']['PitcherDisplay'].dropna().unique())
-
-if len(neb_pitchers) == 0:
-    st.error("No Nebraska pitchers found in data.")
+if df_scrim.empty and df_season.empty:
+    st.error("No data files found. Please ensure Scrimmage(28).csv or S26.csv is present.")
     st.stop()
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2549,13 +2343,38 @@ with st.sidebar:
     
     st.markdown("### Data Filters")
     
-data_source = st.selectbox(
+    # ── Data source selector ──────────────────────────────────────────────────
+    season_available  = not df_season.empty
+    source_options = ["2025/26 Scrimmages"]
+    if season_available:
+        source_options += ["2026 Season", "Both Combined"]
+    
+    data_source = st.selectbox(
         "Data Source",
-        options=["2025/26 Scrimmages", "2026 Season", "Both Combined"],
+        options=source_options,
         index=0,
         key="data_source_choice"
     )
-    
+
+    # ── Assemble df_all based on selection ────────────────────────────────────
+    if data_source == "2025/26 Scrimmages":
+        df_all = df_scrim.copy()
+    elif data_source == "2026 Season":
+        df_all = df_season.copy()
+    else:  # Both Combined
+        frames = [f for f in [df_scrim, df_season] if not f.empty]
+        df_all = pd.concat(frames, ignore_index=True)
+
+    df_all = ensure_date_column(df_all)
+
+    neb_pitchers = sorted(
+        df_all[df_all.get('PitcherTeam', '') == 'NEB']['PitcherDisplay'].dropna().unique()
+    )
+
+    if len(neb_pitchers) == 0:
+        st.error("No Nebraska pitchers found in selected data source.")
+        st.stop()
+
     pitcher_choice = st.selectbox(
         "Select Pitcher",
         options=neb_pitchers,
@@ -2573,26 +2392,21 @@ data_source = st.selectbox(
     st.markdown("---")
     st.markdown("### Date Filters")
     
-    # Filter data by pitcher to get available dates
     df_for_date_filter = subset_by_pitcher_if_possible(df_all.copy(), pitcher_choice)
     
-    # Get unique dates for this pitcher
     if "Date" in df_for_date_filter.columns:
         pitcher_dates = pd.to_datetime(df_for_date_filter["Date"], errors="coerce").dropna()
         unique_dates = sorted(pitcher_dates.dt.date.unique())
         
-        # Get available months (only those where pitcher has data)
         available_months = sorted(pitcher_dates.dt.month.unique())
         month_options = [name for num, name in MONTH_CHOICES if num in available_months]
         
-        # Get available days (only those where pitcher has data)
         available_days = sorted(pitcher_dates.dt.day.unique())
     else:
         unique_dates = []
         month_options = []
         available_days = []
     
-    # Game selector (by date)
     game_choices = st.multiselect(
         "Select Game(s)",
         options=[format_date_long(d) for d in unique_dates],
@@ -2600,7 +2414,6 @@ data_source = st.selectbox(
         help="Select specific games by date"
     )
     
-    # Convert selected game strings back to dates
     date_lookup = {format_date_long(d): d for d in unique_dates}
     selected_game_dates = [date_lookup[g] for g in game_choices]
     
@@ -2634,18 +2447,15 @@ data_source = st.selectbox(
 # APPLY FILTERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Start with all scrimmage data
 df_pitcher_all = df_all.copy()
 
 df_pitcher_all = subset_by_pitcher_if_possible(df_pitcher_all, pitcher_choice)
 
-# Apply game filter (specific dates selected)
 if selected_game_dates and "Date" in df_pitcher_all.columns:
     df_pitcher_all = df_pitcher_all[
         pd.to_datetime(df_pitcher_all["Date"], errors="coerce").dt.date.isin(selected_game_dates)
     ].copy()
 
-# Apply batter handedness filter
 if batter_side_choice != "All":
     side_col = pick_col(df_pitcher_all, "BatterSide","Batter Side","Bats","Stand","BatSide")
     if side_col:
@@ -2653,18 +2463,16 @@ if batter_side_choice != "All":
         target = "R" if batter_side_choice == "RHH" else "L"
         df_pitcher_all = df_pitcher_all[side_norm == target].copy()
 
-# Apply month/day/lastN filters
 df_pitcher_all, season_label_display = apply_month_day_lastN(
     df_pitcher_all, months_sel, day_choices, last_n_games
 )
 
-# Build better season label if games were selected
 if selected_game_dates:
     if len(selected_game_dates) == 1:
         season_label_display = format_date_long(selected_game_dates[0])
     else:
         season_label_display = f"{len(selected_game_dates)} selected games"
-elif game_choices:  # Games were selected but resulted in no data
+elif game_choices:
     season_label_display = "Selected games"
 
 if df_pitcher_all.empty:
@@ -2677,7 +2485,6 @@ if df_pitcher_all.empty:
 
 tabs = st.tabs(["Post-Game", "Overview", "Pitch Arsenal", "Performance", "Rankings"])
 
-# Part 6 of 6: Main Tabs Implementation
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1: POST-GAME REPORT  
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2685,7 +2492,6 @@ with tabs[0]:
     section_header("Post-Game Report")
     st.caption("Select a specific game to view detailed pitch-by-pitch analysis")
     
-    # Get available games for this pitcher
     df_pitcher_games = subset_by_pitcher_if_possible(df_all.copy(), pitcher_choice)
     
     if "Date" in df_pitcher_games.columns:
@@ -2695,7 +2501,6 @@ with tabs[0]:
         if len(unique_game_dates) == 0:
             st.warning("No games found for this pitcher.")
         else:
-            # Game selector
             game_date_formatted = [format_date_long(d) for d in unique_game_dates]
             selected_game_str = st.selectbox(
                 "Select Game",
@@ -2704,11 +2509,9 @@ with tabs[0]:
                 key="postgame_game_selector"
             )
             
-            # Find the actual date
             date_lookup = {format_date_long(d): d for d in unique_game_dates}
             selected_date = date_lookup[selected_game_str]
             
-            # Filter to selected game
             df_game = df_pitcher_games[
                 pd.to_datetime(df_pitcher_games["Date"], errors="coerce").dt.date == selected_date
             ].copy()
@@ -2716,15 +2519,12 @@ with tabs[0]:
             if df_game.empty:
                 st.warning("No data found for selected game.")
             else:
-                # Comprehensive game summary stats
                 game_summary = make_outing_overall_summary(df_game)
                 
-                # Display all stats in a table format
                 st.dataframe(themed_table(game_summary), use_container_width=True, hide_index=True)
                 
                 professional_divider()
                 
-                # Movement profile for this game
                 st.markdown("### Game Movement Profile")
                 logo_img = load_logo_img()
                 fig_game_movement, summary_game_movement = combined_pitcher_report(
@@ -2738,19 +2538,16 @@ with tabs[0]:
                 
                 professional_divider()
                 
-                # Pitch-by-pitch table
                 st.markdown("### Pitch-by-Pitch Breakdown")
                 st.caption("Detailed pitch data organized by inning and at-bat")
                 
                 pbp_table = build_pitch_by_inning_pa_table(df_game)
                 
                 if not pbp_table.empty:
-                    # Group by inning
                     if "Inning #" in pbp_table.columns:
                         innings = pbp_table["Inning #"].dropna().unique()
                         innings = sorted([int(i) for i in innings if pd.notna(i)])
                         
-                        # Style for expanders
                         style_pbp_expanders()
                         
                         st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
@@ -2758,35 +2555,29 @@ with tabs[0]:
                         for inning in innings:
                             inning_data = pbp_table[pbp_table["Inning #"] == inning]
                             
-                            # Count pitches in this inning
                             pitch_count = len(inning_data)
                             
                             with st.expander(f"Inning {inning} ({pitch_count} pitches)", expanded=(inning == innings[0])):
-                                # Show inning table (exclude PA Result and location columns)
                                 display_cols = [c for c in inning_data.columns 
                                                if c not in ["PA Result", "PlateLocSide", "PlateLocHeight"]]
                                 st.dataframe(themed_table(inning_data[display_cols]), use_container_width=True)
                                 
-                                # Interactive strike zone for each AB in this inning
                                 if "AB #" in inning_data.columns:
                                     abs_in_inning = sorted(inning_data["AB #"].unique())
                                     
                                     for ab_num in abs_in_inning:
                                         ab_data = inning_data[inning_data["AB #"] == ab_num]
                                         
-                                        # Get batter name if available
                                         batter_name = "Unknown Batter"
                                         if "Batter" in ab_data.columns:
                                             batter_name = ab_data["Batter"].iloc[0]
                                         
-                                        # Get PA result
                                         pa_result = "—"
                                         if "PA Result" in ab_data.columns:
                                             pa_result = ab_data["PA Result"].iloc[-1]
                                         
                                         st.markdown(f"**AB #{ab_num}: {batter_name}** — Result: {pa_result}")
                                         
-                                        # Create interactive strike zone
                                         fig_sz = pa_interactive_strikezone(
                                             ab_data,
                                             title=f"Inning {inning}, AB #{ab_num}: {batter_name}"
@@ -2797,7 +2588,6 @@ with tabs[0]:
                         
                         st.markdown('</div>', unsafe_allow_html=True)
                     else:
-                        # No inning data, just show full table (exclude PA Result and location columns)
                         display_cols = [c for c in pbp_table.columns 
                                        if c not in ["PA Result", "PlateLocSide", "PlateLocHeight"]]
                         st.dataframe(themed_table(pbp_table[display_cols]), use_container_width=True)
@@ -2813,20 +2603,17 @@ with tabs[1]:
     section_header("Pitcher Overview")
     st.caption(f"**{season_label_display}** • Batter: {batter_side_choice}")
     
-    # Season stats summary
     summary_table = make_outing_overall_summary(df_pitcher_all)
     st.dataframe(themed_table(summary_table), use_container_width=True)
     
     professional_divider()
     
-    # Outcome summary
     section_header("Outcomes Summary")
     outcome_table = make_pitcher_outcome_summary_table(df_pitcher_all)
     st.dataframe(themed_table(outcome_table), use_container_width=True)
     
     professional_divider()
     
-    # Overall performance metrics
     section_header("Overall Performance Metrics")
     perf_table = create_overall_performance_table(df_pitcher_all)
     if not perf_table.empty:
@@ -2858,7 +2645,6 @@ with tabs[2]:
     section_header("Pitch Arsenal")
     st.caption(f"Movement profile and usage patterns")
     
-    # Movement profile
     logo_img = load_logo_img()
     fig_movement, summary_movement = combined_pitcher_report(
         df_pitcher_all, pitcher_choice, logo_img, season_label=season_label_display
@@ -2871,17 +2657,14 @@ with tabs[2]:
     
     professional_divider()
     
-    # Pitch location heatmaps by pitch type
     section_header("Pitch Location Patterns")
     st.caption("Heat maps showing where each pitch type is located")
     
-    # Get all available pitch types
     type_col = type_col_in_df(df_pitcher_all)
     all_pitch_types = []
     if type_col and type_col in df_pitcher_all.columns:
         all_pitch_types = sorted(df_pitcher_all[type_col].dropna().unique().tolist())
     
-    # Option to show all pitches
     show_all_pitches = st.checkbox(
         "Show all pitch types",
         value=False,
@@ -2889,7 +2672,6 @@ with tabs[2]:
         help="By default, shows top 3 most-used pitches. Check to see all pitches."
     )
     
-    # Determine which pitches to show
     if show_all_pitches and len(all_pitch_types) > 0:
         pitches_to_display = all_pitch_types
         fig_pitch_locations = create_pitch_type_location_heatmaps(
@@ -2898,7 +2680,6 @@ with tabs[2]:
             pitch_types_to_show=pitches_to_display
         )
     else:
-        # Show top 3 by default
         fig_pitch_locations = create_pitch_type_location_heatmaps(
             df_pitcher_all, 
             pitcher_choice, 
@@ -2913,11 +2694,9 @@ with tabs[2]:
     
     professional_divider()
     
-    # Miss location heatmaps
     section_header("Miss Locations (Called Balls)")
     st.caption("Heat maps showing where pitches miss the zone")
     
-    # Use same checkbox state for miss locations
     if show_all_pitches and len(all_pitch_types) > 0:
         fig_miss_locations = create_miss_location_heatmaps(
             df_pitcher_all, 
@@ -2925,7 +2704,6 @@ with tabs[2]:
             pitch_types_to_show=pitches_to_display
         )
     else:
-        # Show top 3 by default
         fig_miss_locations = create_miss_location_heatmaps(
             df_pitcher_all, 
             pitcher_choice, 
@@ -2945,18 +2723,13 @@ with tabs[3]:
     section_header("Performance Analysis")
     st.caption(f"Effectiveness metrics and situational performance")
     
-    # ───────────────────────────────────────────────────────────────────────────
-    # COUNT ANALYSIS
-    # ───────────────────────────────────────────────────────────────────────────
     st.markdown("### Count Situation Analysis")
     
-    # Get available pitch types for filtering
     type_col = type_col_in_df(df_pitcher_all)
     available_pitch_types = ["Overall"]
     if type_col and type_col in df_pitcher_all.columns:
         available_pitch_types += sorted(df_pitcher_all[type_col].dropna().unique().tolist())
     
-    # Pitch type filter
     count_pitch_filter = st.selectbox(
         "Filter by Pitch Type",
         options=available_pitch_types,
@@ -2967,7 +2740,6 @@ with tabs[3]:
     
     st.markdown("---")
     
-    # Count leveraging heatmaps
     st.markdown("#### Location by Count Situation")
     filter_display = f" - {count_pitch_filter}" if count_pitch_filter != "Overall" else ""
     st.caption(f"Pitch location density by count situation{filter_display}")
@@ -2985,7 +2757,6 @@ with tabs[3]:
     
     st.markdown("---")
     
-    # Performance by count table
     st.markdown("#### Performance by Count Situation")
     if count_pitch_filter != "Overall":
         st.caption(f"Performance metrics for {count_pitch_filter} across different count situations")
@@ -3004,7 +2775,6 @@ with tabs[3]:
     
     st.markdown("---")
     
-    # Pitch usage by count
     st.markdown("#### Pitch Usage by Count Situation")
     st.caption("Percentage of each pitch type used in different count situations")
     
@@ -3016,9 +2786,6 @@ with tabs[3]:
     
     professional_divider()
     
-    # ───────────────────────────────────────────────────────────────────────────
-    # PITCH SEQUENCING
-    # ───────────────────────────────────────────────────────────────────────────
     section_header("Pitch Sequencing Analysis")
     
     trans_matrix, effectiveness, sankey_fig = analyze_pitch_sequences(df_pitcher_all, pitcher_choice)
@@ -3035,11 +2802,11 @@ with tabs[3]:
                 try:
                     v = float(val)
                     if v > 12:
-                        return 'background-color: rgba(0, 200, 0, 0.3)'  # Green - pitcher winning decisively
+                        return 'background-color: rgba(0, 200, 0, 0.3)'
                     elif v < 0:
-                        return 'background-color: rgba(255, 0, 0, 0.3)'  # Red - batter winning
+                        return 'background-color: rgba(255, 0, 0, 0.3)'
                     else:
-                        return 'background-color: rgba(255, 255, 0, 0.3)'  # Yellow - marginal edge to pitcher
+                        return 'background-color: rgba(255, 255, 0, 0.3)'
                 except:
                     pass
                 return ''
@@ -3065,19 +2832,14 @@ with tabs[3]:
     
     professional_divider()
     
-    # ───────────────────────────────────────────────────────────────────────────
-    # OUTCOME HEATMAPS
-    # ───────────────────────────────────────────────────────────────────────────
     st.markdown("### Outcome Heatmaps")
     st.caption("Location patterns for different pitch outcomes")
     
-    # Get available pitch types for outcome filtering
     type_col = type_col_in_df(df_pitcher_all)
     available_pitch_types_outcomes = ["Overall"]
     if type_col and type_col in df_pitcher_all.columns:
         available_pitch_types_outcomes += sorted(df_pitcher_all[type_col].dropna().unique().tolist())
     
-    # Pitch type filter for outcome heatmaps
     outcome_pitch_filter = st.selectbox(
         "Filter by Pitch Type",
         options=available_pitch_types_outcomes,
@@ -3101,9 +2863,6 @@ with tabs[3]:
     
     professional_divider()
     
-    # ───────────────────────────────────────────────────────────────────────────
-    # SPRAY CHART
-    # ───────────────────────────────────────────────────────────────────────────
     section_header("Spray Chart: Hits Allowed")
     st.caption("Note: Spray chart shows hits from opponent batter's perspective")
     
@@ -3123,11 +2882,17 @@ with tabs[3]:
 # ═══════════════════════════════════════════════════════════════════════════════
 with tabs[4]:
     section_header("Team Rankings")
-    st.caption("Fall 2025/26 Scrimmages")
+    
+    # Dynamic caption based on data source
+    if data_source == "2025/26 Scrimmages":
+        st.caption("Fall 2025/26 Scrimmages")
+    elif data_source == "2026 Season":
+        st.caption("2026 Season")
+    else:
+        st.caption("2025/26 Scrimmages + 2026 Season (Combined)")
     
     st.markdown("### Filter Options")
     
-    # Use all scrimmage data
     df_rank_base = df_all.copy()
     
     type_col_rank = type_col_in_df(df_rank_base)
@@ -3160,42 +2925,33 @@ with tabs[4]:
         st.markdown("### Individual Pitcher Rankings")
         st.caption("D1 Average shown in gray for comparison")
         
-        # D1 Average benchmarks (calculated from 2024 D1 data)
         D1_AVERAGES = {
-            'WHIP': 1.64,      # Lower is better
-            'H9': 9.90,        # Lower is better
-            'Strike%': 60.7,   # Higher is better
-            'Whiff%': 23.0,    # Higher is better
-            'Zone%': 45.5,     # Higher is better
-            'Zwhiff%': 15.7,   # Higher is better
-            'Chase%': 24.3,    # Higher is better
-            'HH%': 36.0,       # Lower is better
-            'Barrel%': 17.3,   # Lower is better
-            'BB%': 11.3,       # Lower is better
-            'SO%': 19.3,       # Higher is better
+            'WHIP': 1.64,
+            'H9': 9.90,
+            'Strike%': 60.7,
+            'Whiff%': 23.0,
+            'Zone%': 45.5,
+            'Zwhiff%': 15.7,
+            'Chase%': 24.3,
+            'HH%': 36.0,
+            'Barrel%': 17.3,
+            'BB%': 11.3,
+            'SO%': 19.3,
         }
         
-        
-        # Sort by WHIP (ascending) by default
         rankings_display = rankings_df.sort_values("WHIP", ascending=True, na_position="last")
         rankings_display = rankings_display.drop(columns=["_IP_num"])
         
-        # When filtering by pitch type, remove App and IP columns (not meaningful for single pitch)
         if pitch_types_filter:
             cols_to_drop = [c for c in ["App", "IP"] if c in rankings_display.columns]
             if cols_to_drop:
                 rankings_display = rankings_display.drop(columns=cols_to_drop)
         
-        # Add D1 Average row at the top
         d1_row = pd.DataFrame([{
             'Pitcher': 'D1 Average',
             'App': '—' if 'App' in rankings_display.columns else None,
             'IP': '—' if 'IP' in rankings_display.columns else None,
-            'H': '—',
-            'HR': '—',
-            'BB': '—',
-            'HBP': '—',
-            'SO': '—',
+            'H': '—', 'HR': '—', 'BB': '—', 'HBP': '—', 'SO': '—',
             'WHIP': D1_AVERAGES.get('WHIP', np.nan),
             'H9': D1_AVERAGES.get('H9', np.nan),
             'BB%': D1_AVERAGES.get('BB%', np.nan),
@@ -3209,13 +2965,9 @@ with tabs[4]:
             'Whiff%': D1_AVERAGES.get('Whiff%', np.nan),
         }])
         
-        # Keep only columns that exist in rankings_display
         d1_row = d1_row[[c for c in d1_row.columns if c in rankings_display.columns]]
-        
-        # Prepend D1 row
         rankings_display = pd.concat([d1_row, rankings_display], ignore_index=True)
         
-        # Apply simple styling - just bold the D1 average row
         styled_rankings = rankings_display.style.hide(axis="index")
         
         def highlight_d1_row(row):
@@ -3225,7 +2977,6 @@ with tabs[4]:
         
         styled_rankings = styled_rankings.apply(highlight_d1_row, axis=1)
         
-        # Format numeric columns
         format_dict = {}
         for col in rankings_display.columns:
             if col in ['WHIP']:
@@ -3243,7 +2994,7 @@ with tabs[4]:
         st.download_button(
             label="Download Rankings CSV",
             data=csv,
-            file_name="nebraska_pitcher_rankings_fall_scrimmages.csv",
+            file_name="nebraska_pitcher_rankings.csv",
             mime="text/csv"
         )
     else:

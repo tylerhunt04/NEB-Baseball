@@ -33,7 +33,7 @@ st.set_page_config(
 st.set_option("client.showErrorDetails", True)
 
 DATA_PATH_SCRIM  = "Scrimmage(28).csv"
-DATA_PATH_SEASON = "S26 (1).csv"
+DATA_PATH_SEASON = "S26(1).csv"
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
 HUSKER_RED  = "#E60026"

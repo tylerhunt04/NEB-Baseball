@@ -363,15 +363,17 @@ def _is_terminal_row(row, col_result, col_korbb, col_call) -> bool:
     pr = str(row.get(col_result, "")) if col_result else ""
     kc = str(row.get(col_korbb, "")) if col_korbb else ""
     pc = str(row.get(col_call, ""))  if col_call  else ""
+    # TrackMan writes "Undefined" on every non-terminal pitch — treat it as empty
+    pr_valid = pr.strip().lower() not in ("", "undefined", "nan", "none")
     return (
-        (pr.strip() != "") or
+        pr_valid or
         (kc.lower() in {"k","so","strikeout","strikeout swinging","strikeout looking","bb","walk"}) or
         (pc.lower() in {"hitbypitch","hit by pitch","hbp"})
     )
 
 def _terminal_pa_table(df_in: pd.DataFrame) -> pd.DataFrame:
     if df_in is None or df_in.empty: return df_in.iloc[0:0].copy()
-    work = add_inning_and_ab(df_in.copy())
+    work = add_inning_and_ab(df_in.copy().reset_index(drop=True))
     col_result = _first_present_strict(work, ["PlayResult","Result","Event","PAResult","Outcome"])
     col_call   = _first_present_strict(work, ["PitchCall","Pitch Call","PitchResult","Call"])
     col_korbb  = _first_present_strict(work, ["KorBB","K_BB","KBB","K_or_BB","PA_KBB"])

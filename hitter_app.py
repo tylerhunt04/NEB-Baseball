@@ -308,7 +308,7 @@ st.markdown("""
 # Default data paths per period
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
 DATA_PATH_SCRIM  = "Scrimmage(27).csv"
-DATA_PATH_2026   = "_Nebraska2026.csv"
+DATA_PATH_2026   = "Nebraska26.csv"
 
 PROB_LOOKUP_PATH = "EV_LA_probabilities.csv"
 
@@ -2077,13 +2077,26 @@ def _expand_paths(path_like: str):
     return files
 
 @st.cache_data(show_spinner=True)
+def _skip_title_row(path: str) -> int:
+    """Return skiprows=1 if the first row is a non-header title line (e.g. 'S26 (1)')."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            first = f.readline().strip()
+        # If the first cell doesn't look like a real column name, skip it
+        if first and not first.startswith("PitchNo") and "," not in first[:20]:
+            return 1
+    except Exception:
+        pass
+    return 0
+
 def load_many_csv(paths: list) -> pd.DataFrame:
     dfs = []
     for p in paths:
+        skip = _skip_title_row(p)
         try:
-            df = pd.read_csv(p, low_memory=False)
+            df = pd.read_csv(p, low_memory=False, skiprows=skip)
         except UnicodeDecodeError:
-            df = pd.read_csv(p, low_memory=False, encoding="latin-1")
+            df = pd.read_csv(p, low_memory=False, encoding="latin-1", skiprows=skip)
         dfs.append(df)
     if not dfs:
         return pd.DataFrame()
@@ -2092,10 +2105,11 @@ def load_many_csv(paths: list) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=True)
 def load_single_csv(path: str) -> pd.DataFrame:
+    skip = _skip_title_row(path)
     try:
-        df = pd.read_csv(path, low_memory=False)
+        df = pd.read_csv(path, low_memory=False, skiprows=skip)
     except UnicodeDecodeError:
-        df = pd.read_csv(path, low_memory=False, encoding="latin-1")
+        df = pd.read_csv(path, low_memory=False, encoding="latin-1", skiprows=skip)
     return ensure_date_column(df)
 
 def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_2026: str) -> pd.DataFrame:

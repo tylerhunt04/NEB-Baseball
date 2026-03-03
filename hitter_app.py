@@ -2816,26 +2816,27 @@ elif view_mode == "Catcher Framing":
     def _draw_zone_plot(pos, neg, ax, shadow=None):
         if shadow is None:
             shadow = FRAME_SHADOW
-        ax.set_facecolor("#0d0d1a")
+        ax.set_facecolor("white")
+        ax.figure.set_facecolor("white")
         ax.set_xlim(*FRAME_PLOT_X_LIM)
         ax.set_ylim(*FRAME_PLOT_Y_LIM)
         # Shadow zone band
         shadow_rect = patches.Rectangle(
             (FRAME_ZONE_X_MIN - shadow, FRAME_ZONE_Y_MIN - shadow),
             FRAME_ZONE_WIDTH + 2 * shadow, FRAME_ZONE_HEIGHT + 2 * shadow,
-            linewidth=1.2, edgecolor="#aaaaaa", facecolor="#ffffff", alpha=0.06,
+            linewidth=1.2, edgecolor="#999999", facecolor="#eeeeee", alpha=0.5,
             linestyle="--", zorder=1
         )
         ax.add_patch(shadow_rect)
         # True strike zone
         zone_rect = patches.Rectangle(
             (FRAME_ZONE_X_MIN, FRAME_ZONE_Y_MIN), FRAME_ZONE_WIDTH, FRAME_ZONE_HEIGHT,
-            linewidth=2, edgecolor="white", facecolor="none", zorder=2
+            linewidth=2, edgecolor="black", facecolor="none", zorder=2
         )
         ax.add_patch(zone_rect)
         plate_x = [-0.71, 0, 0.71, 0.71, 0, -0.71]
         plate_y = [0.15, 0.0, 0.15, 0.30, 0.45, 0.30]
-        ax.plot(plate_x + [plate_x[0]], plate_y + [plate_y[0]], color="white", lw=1.2, alpha=0.5)
+        ax.plot(plate_x + [plate_x[0]], plate_y + [plate_y[0]], color="#555555", lw=1.2, alpha=0.6)
         if len(pos):
             ax.scatter(pd.to_numeric(pos["PlateLocSide"], errors="coerce"),
                        pd.to_numeric(pos["PlateLocHeight"], errors="coerce"),
@@ -2848,16 +2849,14 @@ elif view_mode == "Catcher Framing":
                        c=FRAME_NEG_COLOR, s=55, alpha=0.85, zorder=3,
                        edgecolors="white", linewidths=0.4,
                        label=f"− Frame ({len(neg)})")
-        ax.set_xlabel("Plate Side (ft)", color="#aaa", fontsize=8)
-        ax.set_ylabel("Plate Height (ft)", color="#aaa", fontsize=8)
-        ax.tick_params(colors="#aaa", labelsize=7)
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.set_xticks([])
+        ax.set_yticks([])
         for spine in ax.spines.values():
-            spine.set_edgecolor("#444")
-        ax.legend(loc="upper right", fontsize=7.5, facecolor="#111",
-                  labelcolor="white", framealpha=0.7)
-        ax.axvline(0, color="#444", lw=0.6, linestyle="--")
-        ax.text(0, FRAME_PLOT_Y_LIM[1] - 0.15, "C", ha="center", va="top",
-                color="#666", fontsize=7)
+            spine.set_visible(False)
+        ax.legend(loc="upper right", fontsize=7.5, facecolor="white",
+                  labelcolor="black", framealpha=0.9, edgecolor="#cccccc")
 
     # ── Page header ────────────────────────────────────────────────────────────
     st.markdown('<div class="section-container">', unsafe_allow_html=True)
@@ -2910,12 +2909,14 @@ elif view_mode == "Catcher Framing":
                 .applymap(lambda v: "color: #3498db", subset=["− Frames"])
                 .applymap(_color_steal,    subset=["Steal Rate %"])
                 .applymap(_color_giveback, subset=["Give-back Rate %"])
-                .set_properties(**{"background-color": "#111827", "color": "white", "border-color": "#333"})
+                .format({"Steal Rate %": "{:.1f}", "Give-back Rate %": "{:.1f}"})
+                .set_properties(**{"background-color": "white", "color": "black", "border-color": "#dddddd"})
                 .set_table_styles([
-                    {"selector": "th", "props": [("background-color", "#1f2937"),
-                                                  ("color", "white"),
+                    {"selector": "th", "props": [("background-color", "#f5f5f5"),
+                                                  ("color", "black"),
                                                   ("font-weight", "bold"),
-                                                  ("text-align", "center")]},
+                                                  ("text-align", "center"),
+                                                  ("border-bottom", "2px solid #dddddd")]},
                     {"selector": "td", "props": [("text-align", "center")]},
                 ])
                 .hide(axis="index")
@@ -2973,7 +2974,7 @@ elif view_mode == "Catcher Framing":
                     </div>
                     """, unsafe_allow_html=True)
 
-                    _fig, _ax = plt.subplots(figsize=(3.8, 4.2), facecolor="#0d0d1a")
+                    _fig, _ax = plt.subplots(figsize=(3.8, 4.2), facecolor="white")
                     _draw_zone_plot(_pos, _neg, _ax, shadow=FRAME_SHADOW)
                     _fig.tight_layout()
                     st.pyplot(_fig)

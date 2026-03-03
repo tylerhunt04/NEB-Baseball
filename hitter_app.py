@@ -2138,7 +2138,7 @@ display_name_by_key = (
 # ══════════════════════════════════════════════════════════════════════════════
 view_mode = st.radio(
     "Select Report Type",
-    ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary", "Catcher Framing"],
+    ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Season Summary", "Catcher Framing"],
     horizontal=True,
     key="view_mode"
 )
@@ -2406,7 +2406,7 @@ elif view_mode == "Rankings":
 # ══════════════════════════════════════════════════════════════════════════════
 # FALL SUMMARY / SEASON REPORT
 # ══════════════════════════════════════════════════════════════════════════════
-elif view_mode == "Fall Summary":
+elif view_mode == "Season Summary":
     if period not in ("2025/26 Scrimmages", "2026 season"):
         st.info("Please select '2025/26 Scrimmages' or '2026 season' from the Time Period dropdown to view this report.")
         st.stop()

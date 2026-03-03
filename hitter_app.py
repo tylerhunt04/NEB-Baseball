@@ -2190,9 +2190,9 @@ display_name_by_key = (
 _TABS = [
     "Standard Hitter Report",
     "Profiles & Heatmaps",
-    "Rankings",
     "Season Summary",
     "Catcher Framing",
+    "Rankings",
 ]
 
 if "view_mode" not in st.session_state:

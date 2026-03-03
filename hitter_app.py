@@ -2139,7 +2139,7 @@ display_name_by_key = (
 st.markdown('<div class="section-container">', unsafe_allow_html=True)
 view_mode = st.radio(
     "Select Report Type",
-    ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary"],
+    ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary", "Catcher Framing"],
     horizontal=True,
     key="view_mode"
 )
@@ -2428,7 +2428,7 @@ elif view_mode == "Rankings":
 # ══════════════════════════════════════════════════════════════════════════════
 # FALL SUMMARY
 # ══════════════════════════════════════════════════════════════════════════════
-else:
+elif view_mode == "Fall Summary":
     if period != "2025/26 Scrimmages":
         st.info("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")
         st.stop()
@@ -2701,3 +2701,225 @@ else:
     else:
         st.info("Not enough games to show progression chart.")
     st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CATCHER FRAMING
+# ══════════════════════════════════════════════════════════════════════════════
+elif view_mode == "Catcher Framing":
+    import matplotlib.patches as patches
+
+    # ── Constants ──────────────────────────────────────────────────────────────
+    FRAME_ZONE_X_MIN, FRAME_ZONE_X_MAX = -0.83, 0.83
+    FRAME_ZONE_Y_MIN, FRAME_ZONE_Y_MAX = 1.50, 3.50
+    FRAME_ZONE_WIDTH  = FRAME_ZONE_X_MAX - FRAME_ZONE_X_MIN
+    FRAME_ZONE_HEIGHT = FRAME_ZONE_Y_MAX - FRAME_ZONE_Y_MIN
+    FRAME_PLOT_X_LIM  = (-2.2, 2.2)
+    FRAME_PLOT_Y_LIM  = (0.8, 4.5)
+    FRAME_POS_COLOR   = "#2ecc71"
+    FRAME_NEG_COLOR   = "#e74c3c"
+
+    # ── Build catcher subset from the already-loaded df_all ───────────────────
+    for _col in ["Catcher", "CatcherTeam", "PlateLocSide", "PlateLocHeight", "PitchCall", "Date"]:
+        if _col not in df_all.columns:
+            df_all[_col] = pd.NA
+
+    neb_catch_df = df_all[df_all["CatcherTeam"].astype(str).str.upper().eq("NEB")].copy()
+    neb_catch_df["Catcher"] = neb_catch_df["Catcher"].astype(str).str.strip()
+    neb_catch_df = ensure_date_column(neb_catch_df)
+
+    # ── Sidebar filters ────────────────────────────────────────────────────────
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Catcher Framing Filters")
+
+    all_catch_dates    = sorted(neb_catch_df["Date"].dropna().unique())
+    all_catch_names    = sorted(neb_catch_df["Catcher"].dropna().unique())
+
+    catch_scope = st.sidebar.radio("Report Scope", ["Single Game", "Full Season"], key="catch_scope")
+
+    if catch_scope == "Single Game":
+        date_options = [str(d) for d in all_catch_dates]
+        if date_options:
+            sel_date_str = st.sidebar.selectbox("Select Game Date", date_options,
+                                                index=len(date_options) - 1, key="catch_date")
+            sel_date = pd.to_datetime(sel_date_str).date()
+            catch_view_df = neb_catch_df[neb_catch_df["Date"] == sel_date]
+        else:
+            catch_view_df = neb_catch_df.copy()
+    else:
+        catch_view_df = neb_catch_df.copy()
+
+    sel_catchers = st.sidebar.multiselect(
+        "Filter Catcher(s)", all_catch_names, default=all_catch_names, key="catch_names"
+    )
+    if sel_catchers:
+        catch_view_df = catch_view_df[catch_view_df["Catcher"].isin(sel_catchers)]
+
+    # ── Framing helpers ────────────────────────────────────────────────────────
+    def _classify_framing(sub):
+        called = sub[sub["PitchCall"].isin(["BallCalled", "StrikeCalled"])].copy()
+        called["InZone"] = (
+            pd.to_numeric(called["PlateLocSide"],   errors="coerce").between(FRAME_ZONE_X_MIN, FRAME_ZONE_X_MAX) &
+            pd.to_numeric(called["PlateLocHeight"], errors="coerce").between(FRAME_ZONE_Y_MIN, FRAME_ZONE_Y_MAX)
+        )
+        pos = called[(~called["InZone"]) & (called["PitchCall"] == "StrikeCalled")]
+        neg = called[( called["InZone"]) & (called["PitchCall"] == "BallCalled")]
+        totals = {
+            "total_called": len(called),
+            "pos_frames":   len(pos),
+            "neg_frames":   len(neg),
+            "net_frames":   len(pos) - len(neg),
+        }
+        return pos, neg, totals
+
+    def _draw_zone_plot(pos, neg, ax):
+        ax.set_facecolor("#0d0d1a")
+        ax.set_xlim(*FRAME_PLOT_X_LIM)
+        ax.set_ylim(*FRAME_PLOT_Y_LIM)
+        zone_rect = patches.Rectangle(
+            (FRAME_ZONE_X_MIN, FRAME_ZONE_Y_MIN), FRAME_ZONE_WIDTH, FRAME_ZONE_HEIGHT,
+            linewidth=2, edgecolor="white", facecolor="none", zorder=2
+        )
+        ax.add_patch(zone_rect)
+        plate_x = [-0.71, 0, 0.71, 0.71, 0, -0.71]
+        plate_y = [0.15, 0.0, 0.15, 0.30, 0.45, 0.30]
+        ax.plot(plate_x + [plate_x[0]], plate_y + [plate_y[0]], color="white", lw=1.2, alpha=0.5)
+        if len(pos):
+            ax.scatter(pd.to_numeric(pos["PlateLocSide"], errors="coerce"),
+                       pd.to_numeric(pos["PlateLocHeight"], errors="coerce"),
+                       c=FRAME_POS_COLOR, s=55, alpha=0.85, zorder=3,
+                       edgecolors="white", linewidths=0.4,
+                       label=f"+ Frame ({len(pos)})")
+        if len(neg):
+            ax.scatter(pd.to_numeric(neg["PlateLocSide"], errors="coerce"),
+                       pd.to_numeric(neg["PlateLocHeight"], errors="coerce"),
+                       c=FRAME_NEG_COLOR, s=55, alpha=0.85, zorder=3,
+                       edgecolors="white", linewidths=0.4,
+                       label=f"− Frame ({len(neg)})")
+        ax.set_xlabel("Plate Side (ft)", color="#aaa", fontsize=8)
+        ax.set_ylabel("Plate Height (ft)", color="#aaa", fontsize=8)
+        ax.tick_params(colors="#aaa", labelsize=7)
+        for spine in ax.spines.values():
+            spine.set_edgecolor("#444")
+        ax.legend(loc="upper right", fontsize=7.5, facecolor="#111",
+                  labelcolor="white", framealpha=0.7)
+        ax.axvline(0, color="#444", lw=0.6, linestyle="--")
+        ax.text(0, FRAME_PLOT_Y_LIM[1] - 0.15, "C", ha="center", va="top",
+                color="#666", fontsize=7)
+
+    # ── Page header ────────────────────────────────────────────────────────────
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
+    st.markdown("## Catcher Framing Report")
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("---")
+
+    if catch_view_df.empty or not sel_catchers:
+        st.info("No catcher data available for the selected filters.")
+    else:
+        # ── Summary table ──────────────────────────────────────────────────────
+        st.markdown('<div class="section-container">', unsafe_allow_html=True)
+        st.markdown("### Framing Summary by Catcher")
+
+        summary_rows = []
+        for _catcher, _grp in catch_view_df.groupby("Catcher"):
+            _pos, _neg, _totals = _classify_framing(_grp)
+            summary_rows.append({
+                "Catcher":                    _catcher,
+                "Called Pitches":             _totals["total_called"],
+                "+ Frames (Ball→Strike)":     _totals["pos_frames"],
+                "− Frames (Strike→Ball)":     _totals["neg_frames"],
+                "Net Frames":                 _totals["net_frames"],
+                "Frame %":                    round(_totals["pos_frames"] / max(_totals["total_called"], 1) * 100, 1),
+            })
+
+        if summary_rows:
+            summary_df = pd.DataFrame(summary_rows).sort_values("Net Frames", ascending=False)
+
+            def _color_net(val):
+                if val > 0:   return "color: #2ecc71; font-weight:bold"
+                elif val < 0: return "color: #e74c3c; font-weight:bold"
+                return ""
+
+            styled_catch = (
+                summary_df.style
+                .applymap(_color_net, subset=["Net Frames"])
+                .applymap(lambda v: "color: #2ecc71", subset=["+ Frames (Ball→Strike)"])
+                .applymap(lambda v: "color: #e74c3c", subset=["− Frames (Strike→Ball)"])
+                .set_properties(**{"background-color": "#111827", "color": "white", "border-color": "#333"})
+                .set_table_styles([
+                    {"selector": "th", "props": [("background-color", "#1f2937"),
+                                                  ("color", "white"),
+                                                  ("font-weight", "bold"),
+                                                  ("text-align", "center")]},
+                    {"selector": "td", "props": [("text-align", "center")]},
+                ])
+                .hide(axis="index")
+            )
+            st.dataframe(styled_catch, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # ── Zone plots ─────────────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown('<div class="section-container">', unsafe_allow_html=True)
+        st.markdown("### Framing Zone Plots")
+
+        catchers_in_view = [c for c in sel_catchers if c in catch_view_df["Catcher"].values]
+
+        if catchers_in_view:
+            n_cols = min(len(catchers_in_view), 3)
+            plot_cols = st.columns(n_cols)
+
+            for _i, _catcher in enumerate(catchers_in_view):
+                _cdf = catch_view_df[catch_view_df["Catcher"] == _catcher]
+                _pos, _neg, _totals = _classify_framing(_cdf)
+                _net = _totals["net_frames"]
+                _net_color = "#2ecc71" if _net >= 0 else "#e74c3c"
+                _net_sign  = "+" if _net >= 0 else ""
+
+                with plot_cols[_i % n_cols]:
+                    st.markdown(f"""
+                    <div style='background:#1f2937;border-radius:8px;padding:10px 14px;
+                                margin-bottom:8px;border-left:4px solid {HUSKER_RED}'>
+                      <div style='color:white;font-weight:bold;font-size:1rem'>{_catcher}</div>
+                      <div style='display:flex;gap:16px;margin-top:6px'>
+                        <div style='text-align:center'>
+                          <div style='color:#2ecc71;font-size:1.3rem;font-weight:bold'>{_totals["pos_frames"]}</div>
+                          <div style='color:#aaa;font-size:0.7rem'>+ Frames</div>
+                        </div>
+                        <div style='text-align:center'>
+                          <div style='color:#e74c3c;font-size:1.3rem;font-weight:bold'>{_totals["neg_frames"]}</div>
+                          <div style='color:#aaa;font-size:0.7rem'>− Frames</div>
+                        </div>
+                        <div style='text-align:center'>
+                          <div style='color:{_net_color};font-size:1.3rem;font-weight:bold'>{_net_sign}{_net}</div>
+                          <div style='color:#aaa;font-size:0.7rem'>Net</div>
+                        </div>
+                        <div style='text-align:center'>
+                          <div style='color:white;font-size:1.3rem;font-weight:bold'>{_totals["total_called"]}</div>
+                          <div style='color:#aaa;font-size:0.7rem'>Called</div>
+                        </div>
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    _fig, _ax = plt.subplots(figsize=(3.8, 4.2), facecolor="#0d0d1a")
+                    _draw_zone_plot(_pos, _neg, _ax)
+                    _fig.tight_layout()
+                    st.pyplot(_fig)
+                    plt.close(_fig)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # ── Legend / explainer ─────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown(f"""
+        <div style='background:#1f2937;border-radius:8px;padding:14px 20px;
+                    font-size:0.85rem;color:#ccc'>
+          <b style='color:white'>How to read this report:</b><br>
+          <span style='color:{FRAME_POS_COLOR}'>&#9679; Positive Frame (+)</span> — Pitch was
+          <b>outside the rulebook strike zone</b> but called a strike. The catcher stole a strike.<br>
+          <span style='color:{FRAME_NEG_COLOR}'>&#9679; Negative Frame (−)</span> — Pitch was
+          <b>inside the rulebook strike zone</b> but called a ball. The catcher lost a strike.<br>
+          Zone boundaries: horizontal ±0.83 ft, vertical 1.5–3.5 ft (catcher's perspective).
+        </div>
+        """, unsafe_allow_html=True)

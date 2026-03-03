@@ -2692,7 +2692,8 @@ elif view_mode == "Season Summary":
     split_type = st.selectbox(
         "Select Split Type",
         options=["vs Pitch Type", "vs Pitcher Handedness", "By Count Situation"],
-        index=0
+        index=0,
+        key="season_split_type"
     )
     
     if split_type == "vs Pitch Type":
@@ -2740,7 +2741,8 @@ elif view_mode == "Season Summary":
     metric_choice = st.selectbox(
         "Select Metric to Track",
         options=['OPS', 'AVG', 'wOBA', 'HardHit%', 'Barrel%', 'Whiff%'],
-        index=0
+        index=0,
+        key="season_progress_metric"
     )
     
     fig_progress = create_progress_chart(df_player_fall, metric=metric_choice)

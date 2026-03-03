@@ -2404,14 +2404,15 @@ elif view_mode == "Rankings":
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FALL SUMMARY
+# FALL SUMMARY / SEASON REPORT
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Fall Summary":
-    if period != "2025/26 Scrimmages":
-        st.info("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")
+    if period not in ("2025/26 Scrimmages", "2026 season"):
+        st.info("Please select '2025/26 Scrimmages' or '2026 season' from the Time Period dropdown to view this report.")
         st.stop()
-    
-    st.markdown("# Fall 2025 Performance Summary")
+
+    _report_title = "2026 Season Performance Report" if period == "2026 season" else "Fall 2025 Performance Summary"
+    st.markdown(f"# {_report_title}")
     
     st.markdown("---")
     
@@ -2427,13 +2428,13 @@ elif view_mode == "Fall Summary":
     )
     
     if not batter_key:
-        st.info("Select a player from the sidebar to view their fall summary.")
+        st.info("Select a player from the sidebar to view their report.")
         st.stop()
     
     df_player_fall = df_neb_bat[df_neb_bat["BatterKey"] == batter_key].copy()
     
     if df_player_fall.empty:
-        st.warning(f"No fall scrimmage data found for {display_name_by_key.get(batter_key, batter_key)}.")
+        st.warning(f"No data found for {display_name_by_key.get(batter_key, batter_key)}.")
         st.stop()
     
     player_display = display_name_by_key.get(batter_key, batter_key)
@@ -2638,7 +2639,7 @@ elif view_mode == "Fall Summary":
         if fig_spray:
             st.pyplot(fig_spray)
         else:
-            st.info("No balls in play with valid location data for fall scrimmages.")
+            st.info("No balls in play with valid location data.")
     
     with tab2:
         fig_hm = hitter_heatmaps(df_player_fall, batter_key)

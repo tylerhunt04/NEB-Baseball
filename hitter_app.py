@@ -147,12 +147,63 @@ st.markdown("""
         box-shadow: 0 6px 20px rgba(228, 28, 56, 0.4);
         transform: translateY(-2px);
     }
+
+    /* Nav tab button overrides */
+    [data-testid="stHorizontalBlock"] .stButton>button {
+        background: #f5f5f5 !important;
+        color: #58595B !important;
+        border: 1px solid #e0e0e0 !important;
+        border-radius: 4px 4px 0 0 !important;
+        box-shadow: none !important;
+        font-size: 0.78rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.3px !important;
+        padding: 10px 4px !important;
+        transform: none !important;
+        transition: background 0.15s ease !important;
+        width: 100% !important;
+    }
+    [data-testid="stHorizontalBlock"] .stButton>button:hover {
+        background: #e8e8e8 !important;
+        color: #1C1C1C !important;
+        box-shadow: none !important;
+        transform: none !important;
+    }
     
     /* Radio button styling */
     .stRadio > label {
         font-weight: 600;
         color: #1C1C1C;
         font-size: 1.1rem;
+    }
+
+    /* Custom nav tab bar */
+    .nav-tab-bar {
+        display: flex;
+        gap: 0;
+        border-bottom: 2px solid #E41C38;
+        margin-bottom: 24px;
+    }
+    .nav-tab {
+        padding: 10px 22px;
+        font-size: 0.88rem;
+        font-weight: 600;
+        letter-spacing: 0.4px;
+        color: #58595B;
+        background: #f5f5f5;
+        border: 1px solid #e0e0e0;
+        border-bottom: none;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.15s ease;
+    }
+    .nav-tab:first-child { border-radius: 6px 0 0 0; }
+    .nav-tab:last-child  { border-radius: 0 6px 0 0; }
+    .nav-tab:hover { background: #ebebeb; color: #1C1C1C; }
+    .nav-tab.active {
+        background: #E41C38;
+        color: white;
+        border-color: #E41C38;
     }
     
     /* Selectbox styling */
@@ -2136,14 +2187,43 @@ display_name_by_key = (
 # ══════════════════════════════════════════════════════════════════════════════
 # VIEW MODE SELECTOR IN MAIN AREA
 # ══════════════════════════════════════════════════════════════════════════════
-view_mode = st.radio(
-    "Select Report Type",
-    ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Season Summary", "Catcher Framing"],
-    horizontal=True,
-    key="view_mode"
+_TABS = [
+    "Standard Hitter Report",
+    "Profiles & Heatmaps",
+    "Rankings",
+    "Season Summary",
+    "Catcher Framing",
+]
+
+if "view_mode" not in st.session_state:
+    st.session_state["view_mode"] = _TABS[0]
+
+_tab_cols = st.columns(len(_TABS))
+for _ti, _tab_label in enumerate(_TABS):
+    _is_active = st.session_state["view_mode"] == _tab_label
+    with _tab_cols[_ti]:
+        if _is_active:
+            st.markdown(
+                f"<div style='background:#E41C38;color:white;text-align:center;padding:10px 4px;"
+                f"font-weight:700;font-size:0.78rem;letter-spacing:0.3px;border-radius:4px 4px 0 0;"
+                f"border-bottom:3px solid #B71C1C;cursor:default;'>{_tab_label}</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            if st.button(
+                _tab_label,
+                key=f"nav_{_ti}",
+                use_container_width=True,
+            ):
+                st.session_state["view_mode"] = _tab_label
+                st.rerun()
+
+st.markdown(
+    "<div style='border-bottom:2px solid #E41C38;margin-bottom:20px;'></div>",
+    unsafe_allow_html=True
 )
 
-st.markdown("---")
+view_mode = st.session_state["view_mode"]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STANDARD HITTER REPORT

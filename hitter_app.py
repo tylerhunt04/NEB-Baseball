@@ -2200,23 +2200,27 @@ if "view_mode" not in st.session_state:
 
 _tab_cols = st.columns(len(_TABS))
 for _ti, _tab_label in enumerate(_TABS):
-    _is_active = st.session_state["view_mode"] == _tab_label
     with _tab_cols[_ti]:
-        if _is_active:
-            st.markdown(
-                f"<div style='background:#E41C38;color:white;text-align:center;padding:10px 4px;"
-                f"font-weight:700;font-size:0.78rem;letter-spacing:0.3px;border-radius:4px 4px 0 0;"
-                f"border-bottom:3px solid #B71C1C;cursor:default;'>{_tab_label}</div>",
-                unsafe_allow_html=True
-            )
-        else:
-            if st.button(
-                _tab_label,
-                key=f"nav_{_ti}",
-                use_container_width=True,
-            ):
-                st.session_state["view_mode"] = _tab_label
-                st.rerun()
+        st.button(_tab_label, key=f"nav_{_ti}", use_container_width=True)
+        if st.session_state.get(f"nav_{_ti}"):
+            st.session_state["view_mode"] = _tab_label
+            st.rerun()
+
+# Highlight the active tab via nth-child CSS — no widget tree changes
+_active_idx = _TABS.index(st.session_state["view_mode"])
+st.markdown(f"""
+<style>
+[data-testid="stHorizontalBlock"] > div:nth-child({_active_idx + 1}) button {{
+    background: #E41C38 !important;
+    color: white !important;
+    border-color: #E41C38 !important;
+    box-shadow: 0 2px 8px rgba(228,28,56,0.35) !important;
+}}
+[data-testid="stHorizontalBlock"] > div:nth-child({_active_idx + 1}) button:hover {{
+    background: #C41830 !important;
+}}
+</style>
+""", unsafe_allow_html=True)
 
 st.markdown(
     "<div style='border-bottom:2px solid #E41C38;margin-bottom:20px;'></div>",

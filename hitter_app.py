@@ -2935,7 +2935,7 @@ elif view_mode == "Catcher Framing":
         catchers_in_view = [c for c in sel_catchers if c in catch_view_df["Catcher"].values]
 
         if catchers_in_view:
-            n_cols = min(len(catchers_in_view), 3)
+            n_cols = 3
             plot_cols = st.columns(n_cols)
 
             for _i, _catcher in enumerate(catchers_in_view):

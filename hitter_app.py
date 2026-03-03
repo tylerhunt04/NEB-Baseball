@@ -96,11 +96,11 @@ st.markdown("""
     /* Section containers */
     .section-container {
         background-color: #FFFFFF;
-        padding: 30px;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        margin-bottom: 30px;
-        border-left: 4px solid #E41C38;
+        padding: 0px;
+        border-radius: 0px;
+        box-shadow: none;
+        margin-bottom: 0px;
+        border-left: none;
     }
     
     /* Metric cards */
@@ -2136,14 +2136,12 @@ display_name_by_key = (
 # ══════════════════════════════════════════════════════════════════════════════
 # VIEW MODE SELECTOR IN MAIN AREA
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-container">', unsafe_allow_html=True)
 view_mode = st.radio(
     "Select Report Type",
     ["Standard Hitter Report", "Profiles & Heatmaps", "Rankings", "Fall Summary", "Catcher Framing"],
     horizontal=True,
     key="view_mode"
 )
-st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -2151,9 +2149,7 @@ st.markdown("---")
 # STANDARD HITTER REPORT
 # ══════════════════════════════════════════════════════════════════════════════
 if view_mode == "Standard Hitter Report":
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("## Standard Hitter Report")
-    st.markdown('</div>', unsafe_allow_html=True)
     
     # Player selection in sidebar
     st.sidebar.markdown("---")
@@ -2209,22 +2205,18 @@ if view_mode == "Standard Hitter Report":
             st.pyplot(fig_std)
         
         st.markdown("---")
-        st.markdown('<div class="section-container">', unsafe_allow_html=True)
         st.markdown("### Spray Chart")
         fig_spray = create_spray_chart(df_date, batter_display)
         if fig_spray:
             st.pyplot(fig_spray)
         else:
             st.info("No balls in play with valid location data for this game.")
-        st.markdown('</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PROFILES & HEATMAPS
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Profiles & Heatmaps":
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("## Profiles & Heatmaps")
-    st.markdown('</div>', unsafe_allow_html=True)
 
     # Player selection in sidebar
     st.sidebar.markdown("---")
@@ -2314,50 +2306,38 @@ elif view_mode == "Profiles & Heatmaps":
 
         t1_counts, t2_rates, t3_batted = build_profile_tables(df_profiles)
 
-        st.markdown('<div class="section-container">', unsafe_allow_html=True)
         st.markdown("### Summary Statistics")
         st.table(themed_styler(t1_counts, nowrap=True))
-        st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="section-container">', unsafe_allow_html=True)
         st.markdown("### Plate Discipline")
         st.table(themed_styler(t2_rates, nowrap=True))
-        st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="section-container">', unsafe_allow_html=True)
         st.markdown("### Batted Ball Distribution")
         st.table(themed_styler(t3_batted, nowrap=True))
-        st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown("---")
         
         tab1, tab2 = st.tabs(["Spray Chart", "Heatmaps"])
         
         with tab1:
-            st.markdown('<div class="section-container">', unsafe_allow_html=True)
             fig_spray = create_profile_spray_chart(df_profiles, display_name_by_key.get(batter_key, batter_key))
             if fig_spray:
                 st.pyplot(fig_spray)
             else:
                 st.info("No balls in play with valid location data for the selected filters.")
-            st.markdown('</div>', unsafe_allow_html=True)
 
         with tab2:
-            st.markdown('<div class="section-container">', unsafe_allow_html=True)
             fig_hm = hitter_heatmaps(df_profiles, batter_key)
             if fig_hm:
                 st.pyplot(fig_hm)
             else:
                 st.info("Not enough data for heatmaps.")
-            st.markdown('</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RANKINGS
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Rankings":
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("## Team Rankings")
-    st.markdown('</div>', unsafe_allow_html=True)
 
     # Filters in sidebar
     st.sidebar.markdown("---")
@@ -2416,14 +2396,12 @@ elif view_mode == "Rankings":
 
     styled = style_rankings(rankings_df)
 
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.dataframe(
         styled,
         use_container_width=True,
         hide_index=True,
         height=600
     )
-    st.markdown('</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FALL SUMMARY
@@ -2433,9 +2411,7 @@ elif view_mode == "Fall Summary":
         st.info("Please select '2025/26 Scrimmages' from the Time Period dropdown to view Fall Summary.")
         st.stop()
     
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("# Fall 2025 Performance Summary")
-    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
@@ -2498,7 +2474,6 @@ elif view_mode == "Fall Summary":
     """, unsafe_allow_html=True)
     
     # SECTION 1: OVERALL PERFORMANCE
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Overall Performance")
     
     perf_data_1 = pd.DataFrame({
@@ -2563,12 +2538,10 @@ elif view_mode == "Fall Summary":
         use_container_width=True,
         height=200
     )
-    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 2: BATTED BALL QUALITY
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Batted Ball Quality")
     
     bb_data = pd.DataFrame({
@@ -2587,12 +2560,10 @@ elif view_mode == "Fall Summary":
         use_container_width=True,
         height=230
     )
-    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 3: PLATE DISCIPLINE
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Plate Discipline")
     
     pd_data = pd.DataFrame({
@@ -2612,12 +2583,10 @@ elif view_mode == "Fall Summary":
         use_container_width=True,
         height=260
     )
-    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 4: GAME-BY-GAME PERFORMANCE
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Game-by-Game Performance")
     
     game_table = create_game_by_game_table(df_player_fall)
@@ -2629,12 +2598,10 @@ elif view_mode == "Fall Summary":
         )
     else:
         st.info("No game-by-game data available.")
-    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 5: PERFORMANCE SPLITS
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Performance Splits")
     
     split_type = st.selectbox(
@@ -2658,12 +2625,10 @@ elif view_mode == "Fall Summary":
         )
     else:
         st.info("No split data available.")
-    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 6: VISUALIZATIONS
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Visualizations")
     
     tab1, tab2 = st.tabs(["Spray Chart", "Heatmaps"])
@@ -2681,12 +2646,10 @@ elif view_mode == "Fall Summary":
             st.pyplot(fig_hm)
         else:
             st.info("Not enough data for heatmaps.")
-    st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
     # SECTION 7: PROGRESS TRACKER
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("### Progress Tracker")
     
     metric_choice = st.selectbox(
@@ -2700,7 +2663,6 @@ elif view_mode == "Fall Summary":
         st.pyplot(fig_progress)
     else:
         st.info("Not enough games to show progression chart.")
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2862,16 +2824,13 @@ elif view_mode == "Catcher Framing":
                   labelcolor="black", framealpha=0.9, edgecolor="#cccccc")
 
     # ── Page header ────────────────────────────────────────────────────────────
-    st.markdown('<div class="section-container">', unsafe_allow_html=True)
     st.markdown("## Catcher Framing Report")
-    st.markdown('</div>', unsafe_allow_html=True)
     st.markdown("---")
 
     if catch_view_df.empty or not sel_catchers:
         st.info("No catcher data available for the selected filters.")
     else:
         # ── Summary table ──────────────────────────────────────────────────────
-        st.markdown('<div class="section-container">', unsafe_allow_html=True)
         st.markdown("### Framing Summary by Catcher")
 
         summary_rows = []
@@ -2925,11 +2884,9 @@ elif view_mode == "Catcher Framing":
                 .hide(axis="index")
             )
             st.dataframe(styled_catch, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
         # ── Zone plots ─────────────────────────────────────────────────────────
         st.markdown("---")
-        st.markdown('<div class="section-container">', unsafe_allow_html=True)
         st.markdown("### Framing Zone Plots")
 
         catchers_in_view = [c for c in sel_catchers if c in catch_view_df["Catcher"].values]
@@ -2983,7 +2940,6 @@ elif view_mode == "Catcher Framing":
                     st.pyplot(_fig)
                     plt.close(_fig)
 
-        st.markdown('</div>', unsafe_allow_html=True)
 
         # ── Legend / explainer ─────────────────────────────────────────────────
         st.markdown("---")

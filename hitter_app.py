@@ -2716,8 +2716,8 @@ elif view_mode == "Catcher Framing":
     FRAME_ZONE_HEIGHT = FRAME_ZONE_Y_MAX - FRAME_ZONE_Y_MIN
     FRAME_PLOT_X_LIM  = (-2.2, 2.2)
     FRAME_PLOT_Y_LIM  = (0.8, 4.5)
-    FRAME_POS_COLOR   = "#2ecc71"
-    FRAME_NEG_COLOR   = "#e74c3c"
+    FRAME_POS_COLOR   = "#e74c3c"   # red  — out-of-zone called strike
+    FRAME_NEG_COLOR   = "#3498db"   # blue — in-zone called ball
 
     # ── Build catcher subset from the already-loaded df_all ───────────────────
     for _col in ["Catcher", "CatcherTeam", "PlateLocSide", "PlateLocHeight", "PitchCall", "Date"]:
@@ -2755,27 +2755,79 @@ elif view_mode == "Catcher Framing":
     if sel_catchers:
         catch_view_df = catch_view_df[catch_view_df["Catcher"].isin(sel_catchers)]
 
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Shadow Zone")
+    st.sidebar.caption(
+        "Pitches within this buffer outside the strike zone are considered 'frameable'. "
+        "Pitches beyond the buffer are excluded from rate calculations."
+    )
+    FRAME_SHADOW = st.sidebar.slider(
+        "Shadow Zone Buffer (ft)", min_value=0.10, max_value=0.60,
+        value=0.33, step=0.05, key="catch_shadow",
+        help="0.33 ft ≈ 4 inches outside the rulebook zone"
+    )
+
     # ── Framing helpers ────────────────────────────────────────────────────────
-    def _classify_framing(sub):
+    def _classify_framing(sub, shadow=None):
+        if shadow is None:
+            shadow = FRAME_SHADOW
         called = sub[sub["PitchCall"].isin(["BallCalled", "StrikeCalled"])].copy()
-        called["InZone"] = (
-            pd.to_numeric(called["PlateLocSide"],   errors="coerce").between(FRAME_ZONE_X_MIN, FRAME_ZONE_X_MAX) &
-            pd.to_numeric(called["PlateLocHeight"], errors="coerce").between(FRAME_ZONE_Y_MIN, FRAME_ZONE_Y_MAX)
+        side   = pd.to_numeric(called["PlateLocSide"],   errors="coerce")
+        height = pd.to_numeric(called["PlateLocHeight"], errors="coerce")
+        in_zone = (
+            side.between(FRAME_ZONE_X_MIN, FRAME_ZONE_X_MAX) &
+            height.between(FRAME_ZONE_Y_MIN, FRAME_ZONE_Y_MAX)
         )
-        pos = called[(~called["InZone"]) & (called["PitchCall"] == "StrikeCalled")]
-        neg = called[( called["InZone"]) & (called["PitchCall"] == "BallCalled")]
+        # Outside zone but within shadow buffer — truly frameable
+        in_shadow_outside = (
+            side.between(FRAME_ZONE_X_MIN - shadow, FRAME_ZONE_X_MAX + shadow) &
+            height.between(FRAME_ZONE_Y_MIN - shadow, FRAME_ZONE_Y_MAX + shadow) &
+            ~in_zone
+        )
+        # Inside zone near the edge — loseable through poor framing
+        in_shadow_inside = (
+            in_zone &
+            (
+                (side   < FRAME_ZONE_X_MIN + shadow) | (side   > FRAME_ZONE_X_MAX - shadow) |
+                (height < FRAME_ZONE_Y_MIN + shadow) | (height > FRAME_ZONE_Y_MAX - shadow)
+            )
+        )
+        called["InZone"]          = in_zone
+        called["InShadowOutside"] = in_shadow_outside
+        called["InShadowInside"]  = in_shadow_inside
+        pos = called[in_shadow_outside & (called["PitchCall"] == "StrikeCalled")]
+        neg = called[in_shadow_inside  & (called["PitchCall"] == "BallCalled")]
+        frameable_pos_opps = int(in_shadow_outside.sum())
+        frameable_neg_opps = int(in_shadow_inside.sum())
+        steal_rate    = round(len(pos) / max(frameable_pos_opps, 1) * 100, 1)
+        giveback_rate = round(len(neg) / max(frameable_neg_opps, 1) * 100, 1)
         totals = {
-            "total_called": len(called),
-            "pos_frames":   len(pos),
-            "neg_frames":   len(neg),
-            "net_frames":   len(pos) - len(neg),
+            "total_called":       len(called),
+            "pos_frames":         len(pos),
+            "neg_frames":         len(neg),
+            "net_frames":         len(pos) - len(neg),
+            "frameable_pos_opps": frameable_pos_opps,
+            "frameable_neg_opps": frameable_neg_opps,
+            "steal_rate":         steal_rate,
+            "giveback_rate":      giveback_rate,
         }
         return pos, neg, totals
 
-    def _draw_zone_plot(pos, neg, ax):
+    def _draw_zone_plot(pos, neg, ax, shadow=None):
+        if shadow is None:
+            shadow = FRAME_SHADOW
         ax.set_facecolor("#0d0d1a")
         ax.set_xlim(*FRAME_PLOT_X_LIM)
         ax.set_ylim(*FRAME_PLOT_Y_LIM)
+        # Shadow zone band
+        shadow_rect = patches.Rectangle(
+            (FRAME_ZONE_X_MIN - shadow, FRAME_ZONE_Y_MIN - shadow),
+            FRAME_ZONE_WIDTH + 2 * shadow, FRAME_ZONE_HEIGHT + 2 * shadow,
+            linewidth=1.2, edgecolor="#aaaaaa", facecolor="#ffffff", alpha=0.06,
+            linestyle="--", zorder=1
+        )
+        ax.add_patch(shadow_rect)
+        # True strike zone
         zone_rect = patches.Rectangle(
             (FRAME_ZONE_X_MIN, FRAME_ZONE_Y_MIN), FRAME_ZONE_WIDTH, FRAME_ZONE_HEIGHT,
             linewidth=2, edgecolor="white", facecolor="none", zorder=2
@@ -2824,12 +2876,15 @@ elif view_mode == "Catcher Framing":
         for _catcher, _grp in catch_view_df.groupby("Catcher"):
             _pos, _neg, _totals = _classify_framing(_grp)
             summary_rows.append({
-                "Catcher":                    _catcher,
-                "Called Pitches":             _totals["total_called"],
-                "+ Frames (Ball→Strike)":     _totals["pos_frames"],
-                "− Frames (Strike→Ball)":     _totals["neg_frames"],
-                "Net Frames":                 _totals["net_frames"],
-                "Frame %":                    round(_totals["pos_frames"] / max(_totals["total_called"], 1) * 100, 1),
+                "Catcher":              _catcher,
+                "Called Pitches":       _totals["total_called"],
+                "+ Frames":             _totals["pos_frames"],
+                "− Frames":              _totals["neg_frames"],
+                "Net Frames":           _totals["net_frames"],
+                "Shadow Opps (+)":      _totals["frameable_pos_opps"],
+                "Shadow Opps (−)":      _totals["frameable_neg_opps"],
+                "Steal Rate %":         _totals["steal_rate"],
+                "Give-back Rate %":     _totals["giveback_rate"],
             })
 
         if summary_rows:
@@ -2840,11 +2895,21 @@ elif view_mode == "Catcher Framing":
                 elif val < 0: return "color: #e74c3c; font-weight:bold"
                 return ""
 
+            def _color_steal(val):
+                if val >= 50:  return "color: #2ecc71; font-weight:bold"
+                elif val < 30: return "color: #e74c3c"
+                return "color: #f39c12"
+            def _color_giveback(val):
+                if val <= 15:  return "color: #2ecc71; font-weight:bold"
+                elif val > 30: return "color: #e74c3c"
+                return "color: #f39c12"
             styled_catch = (
                 summary_df.style
-                .applymap(_color_net, subset=["Net Frames"])
-                .applymap(lambda v: "color: #2ecc71", subset=["+ Frames (Ball→Strike)"])
-                .applymap(lambda v: "color: #e74c3c", subset=["− Frames (Strike→Ball)"])
+                .applymap(_color_net,      subset=["Net Frames"])
+                .applymap(lambda v: "color: #e74c3c", subset=["+ Frames"])
+                .applymap(lambda v: "color: #3498db", subset=["− Frames"])
+                .applymap(_color_steal,    subset=["Steal Rate %"])
+                .applymap(_color_giveback, subset=["Give-back Rate %"])
                 .set_properties(**{"background-color": "#111827", "color": "white", "border-color": "#333"})
                 .set_table_styles([
                     {"selector": "th", "props": [("background-color", "#1f2937"),
@@ -2877,17 +2942,19 @@ elif view_mode == "Catcher Framing":
                 _net_sign  = "+" if _net >= 0 else ""
 
                 with plot_cols[_i % n_cols]:
+                    _steal_color = "#2ecc71" if _totals["steal_rate"] >= 50 else ("#e74c3c" if _totals["steal_rate"] < 30 else "#f39c12")
+                    _gb_color    = "#2ecc71" if _totals["giveback_rate"] <= 15 else ("#e74c3c" if _totals["giveback_rate"] > 30 else "#f39c12")
                     st.markdown(f"""
                     <div style='background:#1f2937;border-radius:8px;padding:10px 14px;
                                 margin-bottom:8px;border-left:4px solid {HUSKER_RED}'>
                       <div style='color:white;font-weight:bold;font-size:1rem'>{_catcher}</div>
-                      <div style='display:flex;gap:16px;margin-top:6px'>
+                      <div style='display:flex;gap:12px;margin-top:6px;flex-wrap:wrap'>
                         <div style='text-align:center'>
-                          <div style='color:#2ecc71;font-size:1.3rem;font-weight:bold'>{_totals["pos_frames"]}</div>
+                          <div style='color:#e74c3c;font-size:1.3rem;font-weight:bold'>{_totals["pos_frames"]}</div>
                           <div style='color:#aaa;font-size:0.7rem'>+ Frames</div>
                         </div>
                         <div style='text-align:center'>
-                          <div style='color:#e74c3c;font-size:1.3rem;font-weight:bold'>{_totals["neg_frames"]}</div>
+                          <div style='color:#3498db;font-size:1.3rem;font-weight:bold'>{_totals["neg_frames"]}</div>
                           <div style='color:#aaa;font-size:0.7rem'>− Frames</div>
                         </div>
                         <div style='text-align:center'>
@@ -2895,15 +2962,19 @@ elif view_mode == "Catcher Framing":
                           <div style='color:#aaa;font-size:0.7rem'>Net</div>
                         </div>
                         <div style='text-align:center'>
-                          <div style='color:white;font-size:1.3rem;font-weight:bold'>{_totals["total_called"]}</div>
-                          <div style='color:#aaa;font-size:0.7rem'>Called</div>
+                          <div style='color:{_steal_color};font-size:1.3rem;font-weight:bold'>{_totals["steal_rate"]}%</div>
+                          <div style='color:#aaa;font-size:0.7rem'>Steal Rate</div>
+                        </div>
+                        <div style='text-align:center'>
+                          <div style='color:{_gb_color};font-size:1.3rem;font-weight:bold'>{_totals["giveback_rate"]}%</div>
+                          <div style='color:#aaa;font-size:0.7rem'>Give-back</div>
                         </div>
                       </div>
                     </div>
                     """, unsafe_allow_html=True)
 
                     _fig, _ax = plt.subplots(figsize=(3.8, 4.2), facecolor="#0d0d1a")
-                    _draw_zone_plot(_pos, _neg, _ax)
+                    _draw_zone_plot(_pos, _neg, _ax, shadow=FRAME_SHADOW)
                     _fig.tight_layout()
                     st.pyplot(_fig)
                     plt.close(_fig)
@@ -2915,11 +2986,18 @@ elif view_mode == "Catcher Framing":
         st.markdown(f"""
         <div style='background:#1f2937;border-radius:8px;padding:14px 20px;
                     font-size:0.85rem;color:#ccc'>
-          <b style='color:white'>How to read this report:</b><br>
-          <span style='color:{FRAME_POS_COLOR}'>&#9679; Positive Frame (+)</span> — Pitch was
-          <b>outside the rulebook strike zone</b> but called a strike. The catcher stole a strike.<br>
-          <span style='color:{FRAME_NEG_COLOR}'>&#9679; Negative Frame (−)</span> — Pitch was
-          <b>inside the rulebook strike zone</b> but called a ball. The catcher lost a strike.<br>
-          Zone boundaries: horizontal ±0.83 ft, vertical 1.5–3.5 ft (catcher's perspective).
+          <b style='color:white'>How to read this report:</b><br><br>
+          <span style='color:{FRAME_POS_COLOR}'>&#9679; Positive Frame / Steal (+)</span> —
+          Pitch was <b>outside the rulebook zone but within the shadow band</b> and called a strike.
+          The catcher converted a borderline pitch.<br>
+          <span style='color:{FRAME_NEG_COLOR}'>&#9679; Negative Frame / Give-back (−)</span> —
+          Pitch was <b>inside the rulebook zone near the edge</b> but called a ball.
+          The catcher failed to hold a gettable strike.<br><br>
+          <b style='color:white'>Steal Rate %</b> — % of shadow-band pitches outside the zone that
+          were called strikes. Higher is better.<br>
+          <b style='color:white'>Give-back Rate %</b> — % of shadow-band pitches inside the zone
+          that were called balls. Lower is better.<br><br>
+          <span style='color:#aaa'>The dashed box on the plot shows the shadow zone ({FRAME_SHADOW:.2f} ft buffer).
+          Pitches outside the shadow band are excluded from rate calculations.</span>
         </div>
         """, unsafe_allow_html=True)

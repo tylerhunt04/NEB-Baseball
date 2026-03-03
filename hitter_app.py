@@ -2732,8 +2732,11 @@ elif view_mode == "Catcher Framing":
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Catcher Framing Filters")
 
-    all_catch_dates    = sorted(neb_catch_df["Date"].dropna().unique())
-    all_catch_names    = sorted(neb_catch_df["Catcher"].dropna().unique())
+    # Normalize Date to plain date objects so timestamps don't break filtering
+    neb_catch_df["DateOnly"] = pd.to_datetime(neb_catch_df["Date"], errors="coerce").dt.date
+
+    all_catch_dates = sorted(neb_catch_df["DateOnly"].dropna().unique())
+    all_catch_names = sorted(neb_catch_df["Catcher"].dropna().unique())
 
     catch_scope = st.sidebar.radio("Report Scope", ["Single Game", "Full Season"], key="catch_scope")
 
@@ -2743,7 +2746,7 @@ elif view_mode == "Catcher Framing":
             sel_date_str = st.sidebar.selectbox("Select Game Date", date_options,
                                                 index=len(date_options) - 1, key="catch_date")
             sel_date = pd.to_datetime(sel_date_str).date()
-            catch_view_df = neb_catch_df[neb_catch_df["Date"] == sel_date]
+            catch_view_df = neb_catch_df[neb_catch_df["DateOnly"] == sel_date]
         else:
             catch_view_df = neb_catch_df.copy()
     else:

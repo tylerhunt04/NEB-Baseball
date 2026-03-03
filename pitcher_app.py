@@ -2272,11 +2272,23 @@ def style_pbp_expanders():
 # DATA LOADING
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _skip_title_row(path: str) -> int:
+    """Return skiprows=1 if the first row is a non-header title line (e.g. 'S26 (1)')."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            first = f.readline().strip()
+        if first and not first.startswith("PitchNo") and "," not in first[:20]:
+            return 1
+    except Exception:
+        pass
+    return 0
+
 @st.cache_data
 def load_scrimmage_csv(_correction_version=3):
     if not os.path.exists(DATA_PATH_SCRIM):
         return pd.DataFrame()
-    df = pd.read_csv(DATA_PATH_SCRIM, low_memory=False)
+    skip = _skip_title_row(DATA_PATH_SCRIM)
+    df = pd.read_csv(DATA_PATH_SCRIM, low_memory=False, skiprows=skip)
     df = ensure_date_column(df)
     
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name")
@@ -2305,7 +2317,8 @@ def load_scrimmage_csv(_correction_version=3):
 def load_season_csv(_correction_version=1):
     if not os.path.exists(DATA_PATH_SEASON):
         return pd.DataFrame()
-    df = pd.read_csv(DATA_PATH_SEASON, low_memory=False)
+    skip = _skip_title_row(DATA_PATH_SEASON)
+    df = pd.read_csv(DATA_PATH_SEASON, low_memory=False, skiprows=skip)
     df = ensure_date_column(df)
     
     pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name")

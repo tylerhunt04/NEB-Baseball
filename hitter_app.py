@@ -2207,6 +2207,7 @@ _TABS = [
     "Season Summary",
     "Catcher Framing",
     "Rankings",
+    "Weekend Series",
 ]
 
 if "view_mode" not in st.session_state:
@@ -3062,3 +3063,411 @@ elif view_mode == "Catcher Framing":
           Pitches outside the shadow band are excluded from rate calculations.</span>
         </div>
         """, unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WEEKEND SERIES SUMMARY
+# ══════════════════════════════════════════════════════════════════════════════
+elif view_mode == "Weekend Series":
+    st.markdown("## Weekend Series Summary")
+    st.markdown("---")
+
+    # ── Build series list ─────────────────────────────────────────────────────
+    # A "series" = contiguous cluster of Nebraska game dates vs same opponent.
+    # We use a 3-day gap to separate series.
+
+    def build_series_index(df: pd.DataFrame) -> list[dict]:
+        """Return list of dicts: {label, opponent, dates, mask}."""
+        if df.empty or "DateOnly" not in df.columns:
+            return []
+        opp_col = "PitcherTeam"
+        if opp_col not in df.columns:
+            return []
+
+        # one row per game date / opponent
+        dated = (
+            df[df["BatterTeam"].astype(str).str.upper().eq("NEB")]
+            .groupby("DateOnly")[opp_col]
+            .agg(lambda s: s.mode().iloc[0] if len(s.mode()) else "UNK")
+            .reset_index()
+            .sort_values("DateOnly")
+        )
+        if dated.empty:
+            return []
+
+        # cluster consecutive dates vs same opponent (gap ≤ 3 days)
+        series_list = []
+        cur_opp   = dated.iloc[0][opp_col]
+        cur_dates = [dated.iloc[0]["DateOnly"]]
+
+        for _, row in dated.iloc[1:].iterrows():
+            gap = (row["DateOnly"] - cur_dates[-1]).days
+            if row[opp_col] == cur_opp and gap <= 3:
+                cur_dates.append(row["DateOnly"])
+            else:
+                series_list.append((cur_opp, cur_dates))
+                cur_opp   = row[opp_col]
+                cur_dates = [row["DateOnly"]]
+        series_list.append((cur_opp, cur_dates))
+
+        result = []
+        for opp, dates in series_list:
+            d0, d1 = min(dates), max(dates)
+            if d0 == d1:
+                label = f"{opp}  –  {format_date_long(d0)}"
+            else:
+                label = (
+                    f"{opp}  –  "
+                    f"{d0.strftime('%b %d')} – {format_date_long(d1)}"
+                )
+            result.append({"label": label, "opponent": opp, "dates": dates})
+        # most-recent first
+        result.reverse()
+        return result
+
+    if "DateOnly" not in df_neb_bat.columns:
+        df_neb_bat["DateOnly"] = pd.to_datetime(df_neb_bat["Date"], errors="coerce").dt.date
+
+    if "DateOnly" not in df_all.columns:
+        df_all["DateOnly"] = pd.to_datetime(df_all["Date"], errors="coerce").dt.date
+
+    series_index = build_series_index(df_neb_bat)
+
+    if not series_index:
+        st.info("No series data found. Make sure Nebraska game data is loaded.")
+    else:
+        series_labels = [s["label"] for s in series_index]
+        sel_label = st.selectbox(
+            "Select Series",
+            options=series_labels,
+            index=0,
+            key="weekend_series_picker",
+        )
+        sel_series = next(s for s in series_index if s["label"] == sel_label)
+        sel_dates  = sel_series["dates"]
+        sel_opp    = sel_series["opponent"]
+
+        # Filter Nebraska batting rows for this series
+        neb_ser = df_neb_bat[df_neb_bat["DateOnly"].isin(sel_dates)].copy()
+        # All rows for this series (for pitcher velo lookup)
+        all_ser = df_all[df_all["DateOnly"].isin(sel_dates)].copy()
+
+        if neb_ser.empty:
+            st.warning("No Nebraska batting data found for this series.")
+        else:
+            n_games = len(sel_dates)
+            game_word = "game" if n_games == 1 else "games"
+            st.caption(
+                f"**{sel_opp}** · {n_games} {game_word}: "
+                + ", ".join(format_date_long(d) for d in sorted(sel_dates))
+            )
+
+            # ─── SECTION 1: Team Batting Line ────────────────────────────────
+            st.markdown("### Team Batting")
+
+            def _series_team_stats(df: pd.DataFrame) -> dict:
+                """Compute team-level slash + counting stats from pitch-level data."""
+                # One row per PA (last pitch of each PA)
+                def _last_pitch(g):
+                    po = pd.to_numeric(g.get("PitchofPA", pd.Series(dtype=float)), errors="coerce")
+                    if po.notna().any():
+                        return g.loc[po.idxmax()]
+                    return g.iloc[-1]
+
+                df = df.copy()
+                df["_ab_id"] = (
+                    df.groupby(["BatterKey", "DateOnly"], group_keys=False)
+                    .apply(lambda g: (pd.to_numeric(g["PitchofPA"], errors="coerce") == 1).cumsum())
+                    .reset_index(level=0, drop=True)
+                )
+                pa_rows = (
+                    df.groupby(["BatterKey", "DateOnly", "_ab_id"], dropna=False)
+                    .apply(_last_pitch)
+                    .reset_index(drop=True)
+                )
+
+                PR = pa_rows["PlayResult"].astype(str).str.lower()
+                KC = pa_rows.get("KorBB", pd.Series(dtype=str)).astype(str).str.lower()
+                PC = pa_rows.get("PitchCall", pd.Series(dtype=str)).astype(str).str.lower()
+
+                is_1b  = PR.str.contains(r"\bsingle\b", regex=True)
+                is_2b  = PR.str.contains(r"\bdouble\b", regex=True)
+                is_3b  = PR.str.contains(r"\btriple\b", regex=True)
+                is_hr  = PR.str.contains(r"\bhome\s*run\b|^hr$", regex=True)
+                is_hit = is_1b | is_2b | is_3b | is_hr
+                is_bb  = PR.str.contains(r"\bwalk\b", regex=True) | KC.isin({"bb", "walk", "ibb"})
+                is_hbp = PR.str.contains(r"hit.by.pitch", regex=True) | PC.isin({"hitbypitch", "hbp"})
+                is_sf  = PR.str.contains(r"sac.*fly|\bsf\b", regex=True)
+                is_so  = PR.str.contains(r"strikeout", regex=True) | KC.isin({"k", "so", "strikeout"})
+                is_out = (PR.str.contains(r"\bout\b|groundout|flyout|lineout|popout|forceout", regex=True)
+                          & ~is_hit & ~is_bb & ~is_hbp)
+
+                TB   = (is_1b*1 + is_2b*2 + is_3b*3 + is_hr*4).sum()
+                H    = int(is_hit.sum())
+                BB   = int(is_bb.sum())
+                HBP  = int(is_hbp.sum())
+                SF   = int(is_sf.sum())
+                SO   = int(is_so.sum())
+                HR   = int(is_hr.sum())
+                PA   = len(pa_rows)
+                AB   = max(PA - BB - HBP - SF, 0)
+                R    = int(pd.to_numeric(df.get("RunsScored", pd.Series(dtype=float)), errors="coerce").sum()) if "RunsScored" in df.columns else 0
+
+                AVG  = H / AB if AB > 0 else np.nan
+                OBP  = (H+BB+HBP) / (AB+BB+HBP+SF) if (AB+BB+HBP+SF) > 0 else np.nan
+                SLG  = TB / AB if AB > 0 else np.nan
+                OPS  = OBP + SLG if pd.notna(OBP) and pd.notna(SLG) else np.nan
+
+                # plate discipline
+                call_col = "PitchCall"
+                is_swing = pa_rows[call_col].astype(str).isin(
+                    ["StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay"]
+                ) if call_col in pa_rows.columns else pd.Series(False, index=pa_rows.index)
+                is_whiff = pa_rows[call_col].astype(str).eq("StrikeSwinging") if call_col in pa_rows.columns else pd.Series(False, index=pa_rows.index)
+                swings   = int(is_swing.sum())
+
+                # hard hit
+                ev_all = pd.to_numeric(neb_ser.get("ExitSpeed", pd.Series(dtype=float)), errors="coerce").dropna()
+                hh_pct = float((ev_all >= 95).mean() * 100) if len(ev_all) else np.nan
+
+                return {
+                    "PA": PA, "AB": AB, "H": H, "2B": int(is_2b.sum()),
+                    "3B": int(is_3b.sum()), "HR": HR, "BB": BB, "SO": SO,
+                    "AVG": f"{AVG:.3f}" if pd.notna(AVG) else "—",
+                    "OBP": f"{OBP:.3f}" if pd.notna(OBP) else "—",
+                    "SLG": f"{SLG:.3f}" if pd.notna(SLG) else "—",
+                    "OPS": f"{OPS:.3f}" if pd.notna(OPS) else "—",
+                    "K%": f"{SO/PA*100:.1f}%" if PA > 0 else "—",
+                    "BB%": f"{BB/PA*100:.1f}%" if PA > 0 else "—",
+                    "HardHit%": f"{hh_pct:.1f}%" if pd.notna(hh_pct) else "—",
+                }
+
+            team_stats = _series_team_stats(neb_ser)
+
+            # Display as metric cards in two rows
+            batting_row1 = ["PA","AB","H","2B","3B","HR","BB","SO"]
+            batting_row2 = ["AVG","OBP","SLG","OPS","K%","BB%","HardHit%"]
+
+            cols1 = st.columns(len(batting_row1))
+            for col_w, stat in zip(cols1, batting_row1):
+                col_w.metric(stat, team_stats.get(stat, "—"))
+
+            cols2 = st.columns(len(batting_row2))
+            for col_w, stat in zip(cols2, batting_row2):
+                col_w.metric(stat, team_stats.get(stat, "—"))
+
+            st.markdown("---")
+
+            # ─── SECTION 2: Exit Velo / Distance leaders ─────────────────────
+            left_col, mid_col, right_col = st.columns(3)
+
+            # Top 3 Exit Velos
+            with left_col:
+                st.markdown("### 💥 Top Exit Velocities")
+                ev_df = neb_ser[
+                    neb_ser["PitchCall"].astype(str).eq("InPlay") &
+                    pd.to_numeric(neb_ser["ExitSpeed"], errors="coerce").notna()
+                ].copy()
+                ev_df["EV"] = pd.to_numeric(ev_df["ExitSpeed"], errors="coerce")
+                ev_top3 = (
+                    ev_df.nlargest(3, "EV")
+                    [["BatterKey", "EV", "DateOnly", "PlayResult"]]
+                    .reset_index(drop=True)
+                )
+                if ev_top3.empty:
+                    st.info("No exit velocity data.")
+                else:
+                    for rank, row in ev_top3.iterrows():
+                        result = str(row.get("PlayResult", "")).strip()
+                        if not result or result.lower() in ("", "nan", "undefined"):
+                            result = "—"
+                        st.markdown(
+                            f"""<div style='background:#1a1a2e;border-left:4px solid #E41C38;
+                            border-radius:6px;padding:10px 14px;margin-bottom:8px;'>
+                            <span style='color:#aaa;font-size:0.8em'>#{rank+1}</span>
+                            <span style='font-size:1.4em;font-weight:700;color:#E41C38;
+                            margin-left:8px'>{row['EV']:.1f} mph</span><br>
+                            <span style='color:white;font-size:0.95em'>{row['BatterKey']}</span>
+                            <span style='color:#888;font-size:0.8em;margin-left:8px'>
+                            {result} · {row['DateOnly']}</span>
+                            </div>""",
+                            unsafe_allow_html=True,
+                        )
+
+            # Top 3 Hit Distances
+            with mid_col:
+                st.markdown("### 📏 Top Hit Distances")
+                dist_df = neb_ser[
+                    neb_ser["PitchCall"].astype(str).eq("InPlay") &
+                    pd.to_numeric(neb_ser["Distance"], errors="coerce").notna()
+                ].copy()
+                dist_df["Dist"] = pd.to_numeric(dist_df["Distance"], errors="coerce")
+                dist_top3 = (
+                    dist_df.nlargest(3, "Dist")
+                    [["BatterKey", "Dist", "DateOnly", "PlayResult"]]
+                    .reset_index(drop=True)
+                )
+                if dist_top3.empty:
+                    st.info("No distance data.")
+                else:
+                    for rank, row in dist_top3.iterrows():
+                        result = str(row.get("PlayResult", "")).strip()
+                        if not result or result.lower() in ("", "nan", "undefined"):
+                            result = "—"
+                        st.markdown(
+                            f"""<div style='background:#1a1a2e;border-left:4px solid #f59e0b;
+                            border-radius:6px;padding:10px 14px;margin-bottom:8px;'>
+                            <span style='color:#aaa;font-size:0.8em'>#{rank+1}</span>
+                            <span style='font-size:1.4em;font-weight:700;color:#f59e0b;
+                            margin-left:8px'>{row['Dist']:.0f} ft</span><br>
+                            <span style='color:white;font-size:0.95em'>{row['BatterKey']}</span>
+                            <span style='color:#888;font-size:0.8em;margin-left:8px'>
+                            {result} · {row['DateOnly']}</span>
+                            </div>""",
+                            unsafe_allow_html=True,
+                        )
+
+            # Top 3 velos from 3 different pitchers (opponent pitchers)
+            with right_col:
+                st.markdown("### 🔥 Top Pitch Velos (3 Pitchers)")
+                # Only NEB pitchers throwing to opponent batters (or just all pitchers in the series)
+                velo_src = all_ser.copy()
+                velo_src["RV"] = pd.to_numeric(velo_src.get("RelSpeed", pd.Series(dtype=float)), errors="coerce")
+                velo_src = velo_src[velo_src["RV"].notna()].copy()
+
+                # Prefer NEB pitchers; fall back to all
+                neb_pitch_mask = velo_src.get("PitcherTeam", pd.Series(dtype=str)).astype(str).str.upper().eq("NEB")
+                velo_neb = velo_src[neb_pitch_mask]
+                if velo_neb.empty:
+                    velo_neb = velo_src
+
+                # get pitcher display name
+                pitch_name_col = next(
+                    (c for c in ["Pitcher"] if c in velo_neb.columns), None
+                )
+                if pitch_name_col:
+                    velo_neb = velo_neb.copy()
+                    velo_neb["_PitcherDisp"] = velo_neb[pitch_name_col].map(
+                        lambda x: normalize_name(str(x)) if pd.notna(x) else "Unknown"
+                    )
+                else:
+                    velo_neb = velo_neb.copy()
+                    velo_neb["_PitcherDisp"] = "Unknown"
+
+                # For each pitcher get their personal top pitch
+                pitcher_bests = (
+                    velo_neb.groupby("_PitcherDisp")["RV"]
+                    .max()
+                    .reset_index()
+                    .nlargest(3, "RV")
+                    .reset_index(drop=True)
+                )
+
+                if pitcher_bests.empty:
+                    st.info("No pitch velocity data.")
+                else:
+                    for rank, row in pitcher_bests.iterrows():
+                        # also get the top 3 velos for that individual pitcher
+                        p_rows = velo_neb[velo_neb["_PitcherDisp"] == row["_PitcherDisp"]].nlargest(3, "RV")
+                        top3_str = "  /  ".join(f"{v:.1f}" for v in p_rows["RV"].tolist())
+                        st.markdown(
+                            f"""<div style='background:#1a1a2e;border-left:4px solid #22d3ee;
+                            border-radius:6px;padding:10px 14px;margin-bottom:8px;'>
+                            <span style='color:#aaa;font-size:0.8em'>#{rank+1}</span>
+                            <span style='font-size:1.4em;font-weight:700;color:#22d3ee;
+                            margin-left:8px'>{row['RV']:.1f} mph</span><br>
+                            <span style='color:white;font-size:0.95em'>{row['_PitcherDisp']}</span><br>
+                            <span style='color:#888;font-size:0.78em'>Top 3: {top3_str}</span>
+                            </div>""",
+                            unsafe_allow_html=True,
+                        )
+
+            st.markdown("---")
+
+            # ─── SECTION 3: Individual Batter Breakdown ───────────────────────
+            st.markdown("### Individual Batter Breakdown")
+
+            def _batter_series_line(df: pd.DataFrame) -> pd.DataFrame:
+                """PA-level stats per batter for the series."""
+                df = df.copy()
+                df["_ab_id"] = (
+                    df.groupby("BatterKey", group_keys=False)
+                    .apply(lambda g: (pd.to_numeric(g["PitchofPA"], errors="coerce") == 1).cumsum())
+                    .reset_index(level=0, drop=True)
+                )
+
+                def _last(g):
+                    po = pd.to_numeric(g.get("PitchofPA", pd.Series(dtype=float)), errors="coerce")
+                    return g.loc[po.idxmax()] if po.notna().any() else g.iloc[-1]
+
+                pa_rows = (
+                    df.groupby(["BatterKey", "_ab_id"], dropna=False)
+                    .apply(_last)
+                    .reset_index(drop=True)
+                )
+
+                rows = []
+                for bk, grp in pa_rows.groupby("BatterKey", dropna=False):
+                    PR = grp["PlayResult"].astype(str).str.lower()
+                    KC = grp.get("KorBB", pd.Series(dtype=str)).astype(str).str.lower()
+                    PC = grp.get("PitchCall", pd.Series(dtype=str)).astype(str).str.lower()
+
+                    is_1b  = PR.str.contains(r"\bsingle\b", regex=True)
+                    is_2b  = PR.str.contains(r"\bdouble\b", regex=True)
+                    is_3b  = PR.str.contains(r"\btriple\b", regex=True)
+                    is_hr  = PR.str.contains(r"\bhome\s*run\b|^hr$", regex=True)
+                    is_hit = is_1b | is_2b | is_3b | is_hr
+                    is_bb  = PR.str.contains(r"\bwalk\b", regex=True) | KC.isin({"bb", "walk", "ibb"})
+                    is_hbp = PR.str.contains(r"hit.by.pitch", regex=True) | PC.isin({"hitbypitch", "hbp"})
+                    is_sf  = PR.str.contains(r"sac.*fly|\bsf\b", regex=True)
+                    is_so  = PR.str.contains(r"strikeout", regex=True) | KC.isin({"k", "so", "strikeout"})
+
+                    TB  = (is_1b*1 + is_2b*2 + is_3b*3 + is_hr*4).sum()
+                    H   = int(is_hit.sum()); BB = int(is_bb.sum())
+                    HBP = int(is_hbp.sum()); SF = int(is_sf.sum())
+                    SO  = int(is_so.sum()); HR = int(is_hr.sum())
+                    PA  = len(grp); AB = max(PA - BB - HBP - SF, 0)
+
+                    AVG = H / AB if AB > 0 else np.nan
+                    OBP = (H+BB+HBP)/(AB+BB+HBP+SF) if (AB+BB+HBP+SF)>0 else np.nan
+                    SLG = TB / AB if AB > 0 else np.nan
+                    OPS = OBP + SLG if pd.notna(OBP) and pd.notna(SLG) else np.nan
+
+                    batter_ev = pd.to_numeric(
+                        df[df["BatterKey"] == bk].get("ExitSpeed", pd.Series(dtype=float)),
+                        errors="coerce"
+                    ).dropna()
+                    avg_ev = float(batter_ev.mean()) if len(batter_ev) else np.nan
+                    max_ev = float(batter_ev.max())  if len(batter_ev) else np.nan
+
+                    rows.append({
+                        "Batter": bk,
+                        "PA": PA, "AB": AB, "H": H, "HR": HR,
+                        "BB": BB, "SO": SO,
+                        "AVG": round(AVG, 3) if pd.notna(AVG) else np.nan,
+                        "OBP": round(OBP, 3) if pd.notna(OBP) else np.nan,
+                        "SLG": round(SLG, 3) if pd.notna(SLG) else np.nan,
+                        "OPS": round(OPS, 3) if pd.notna(OPS) else np.nan,
+                        "Avg EV": round(avg_ev, 1) if pd.notna(avg_ev) else np.nan,
+                        "Max EV": round(max_ev, 1) if pd.notna(max_ev) else np.nan,
+                    })
+
+                out = pd.DataFrame(rows).sort_values("OPS", ascending=False, na_position="last")
+                return out
+
+            batter_breakdown = _batter_series_line(neb_ser)
+            if not batter_breakdown.empty:
+                fmt_map = {
+                    "AVG": "{:.3f}", "OBP": "{:.3f}", "SLG": "{:.3f}", "OPS": "{:.3f}",
+                    "Avg EV": "{:.1f}", "Max EV": "{:.1f}",
+                }
+                st.dataframe(
+                    batter_breakdown.style
+                    .hide(axis="index")
+                    .format(fmt_map, na_rep="—")
+                    .background_gradient(subset=["OPS"], cmap="RdYlGn", vmin=0.5, vmax=1.2)
+                    .background_gradient(subset=["Max EV"], cmap="RdYlGn", vmin=75, vmax=105),
+                    use_container_width=True,
+                )
+            else:
+                st.info("No batter data available.")

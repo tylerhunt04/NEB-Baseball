@@ -2427,18 +2427,10 @@ elif view_mode == "Profiles & Heatmaps":
 
         with tab2:
             _pt_col = _pitch_type_col(df_profiles)
-            _raw_types = (
-                df_profiles[_pt_col].dropna()
-                .astype(str)
-                .str.strip()
-                .replace("", pd.NA)
-                .dropna()
-                .unique()
-                .tolist()
-            )
-            _raw_types = sorted([t for t in _raw_types if t and t.lower() not in ("none", "nan", "")])
+            df_profiles["_PitchGroup"] = df_profiles[_pt_col].astype(str).map(pitch_group_of)
+            _avail_groups = [g for g in ["Fastball", "Offspeed", "Breaking"] if g in df_profiles["_PitchGroup"].values]
 
-            _pitch_opts = ["All Pitch Types"] + _raw_types
+            _pitch_opts = ["All Pitch Types"] + _avail_groups
             _sel_pt = st.selectbox(
                 "Filter by pitch type",
                 options=_pitch_opts,
@@ -2446,7 +2438,7 @@ elif view_mode == "Profiles & Heatmaps":
                 key="hm_pitch_type_profiles",
             )
 
-            _df_hm = df_profiles if _sel_pt == "All Pitch Types" else df_profiles[df_profiles[_pt_col].astype(str).str.strip().eq(_sel_pt)]
+            _df_hm = df_profiles if _sel_pt == "All Pitch Types" else df_profiles[df_profiles["_PitchGroup"].eq(_sel_pt)]
 
             if _df_hm.empty:
                 st.info("No pitches of that type in the current filter.")
@@ -2850,18 +2842,10 @@ elif view_mode == "Season Summary":
     
     with tab2:
         _pt_col2 = _pitch_type_col(df_player_fall)
-        _raw_types2 = (
-            df_player_fall[_pt_col2].dropna()
-            .astype(str)
-            .str.strip()
-            .replace("", pd.NA)
-            .dropna()
-            .unique()
-            .tolist()
-        )
-        _raw_types2 = sorted([t for t in _raw_types2 if t and t.lower() not in ("none", "nan", "")])
+        df_player_fall["_PitchGroup"] = df_player_fall[_pt_col2].astype(str).map(pitch_group_of)
+        _avail_groups2 = [g for g in ["Fastball", "Offspeed", "Breaking"] if g in df_player_fall["_PitchGroup"].values]
 
-        _pitch_opts2 = ["All Pitch Types"] + _raw_types2
+        _pitch_opts2 = ["All Pitch Types"] + _avail_groups2
         _sel_pt2 = st.selectbox(
             "Filter by pitch type",
             options=_pitch_opts2,
@@ -2869,7 +2853,7 @@ elif view_mode == "Season Summary":
             key="hm_pitch_type_season",
         )
 
-        _df_hm2 = df_player_fall if _sel_pt2 == "All Pitch Types" else df_player_fall[df_player_fall[_pt_col2].astype(str).str.strip().eq(_sel_pt2)]
+        _df_hm2 = df_player_fall if _sel_pt2 == "All Pitch Types" else df_player_fall[df_player_fall["_PitchGroup"].eq(_sel_pt2)]
 
         if _df_hm2.empty:
             st.info("No pitches of that type in the current filter.")

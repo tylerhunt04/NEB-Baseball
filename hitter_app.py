@@ -3166,73 +3166,61 @@ elif view_mode == "Weekend Series":
             st.markdown("### Team Batting")
 
             def _series_team_stats(df: pd.DataFrame) -> dict:
-                """Compute team-level slash + counting stats from pitch-level data."""
-                # One row per PA (last pitch of each PA)
-                def _last_pitch(g):
-                    po = pd.to_numeric(g.get("PitchofPA", pd.Series(dtype=float)), errors="coerce")
-                    if po.notna().any():
-                        return g.loc[po.idxmax()]
-                    return g.iloc[-1]
+                """
+                Team stats using GameID+Inning+Top/Bottom+PAofInning grouping —
+                same PA identification method as create_hitter_report.
+                """
+                pa_key = [c for c in ["GameID","Inning","Top/Bottom","PAofInning"] if c in df.columns]
+                if not pa_key:
+                    return {}
 
-                df = df.copy()
-                df["_ab_id"] = (
-                    df.groupby(["BatterKey", "DateOnly"], group_keys=False)
-                    .apply(lambda g: (pd.to_numeric(g["PitchofPA"], errors="coerce") == 1).cumsum())
-                    .reset_index(level=0, drop=True)
-                )
-                pa_rows = (
-                    df.groupby(["BatterKey", "DateOnly", "_ab_id"], dropna=False)
-                    .apply(_last_pitch)
-                    .reset_index(drop=True)
-                )
+                if "PitchofPA" in df.columns:
+                    df_s = df.sort_values(pa_key + ["PitchofPA"])
+                else:
+                    df_s = df.copy()
 
-                PR = pa_rows["PlayResult"].astype(str).str.lower()
-                KC = pa_rows.get("KorBB", pd.Series(dtype=str)).astype(str).str.lower()
-                PC = pa_rows.get("PitchCall", pd.Series(dtype=str)).astype(str).str.lower()
+                pa_last = df_s.groupby(pa_key, dropna=False).last().reset_index()
 
-                is_1b  = PR.str.contains(r"\bsingle\b", regex=True)
-                is_2b  = PR.str.contains(r"\bdouble\b", regex=True)
-                is_3b  = PR.str.contains(r"\btriple\b", regex=True)
-                is_hr  = PR.str.contains(r"\bhome\s*run\b|^hr$", regex=True)
-                is_hit = is_1b | is_2b | is_3b | is_hr
-                is_bb  = PR.str.contains(r"\bwalk\b", regex=True) | KC.isin({"bb", "walk", "ibb"})
-                is_hbp = PR.str.contains(r"hit.by.pitch", regex=True) | PC.isin({"hitbypitch", "hbp"})
-                is_sf  = PR.str.contains(r"sac.*fly|\bsf\b", regex=True)
-                is_so  = PR.str.contains(r"strikeout", regex=True) | KC.isin({"k", "so", "strikeout"})
-                is_out = (PR.str.contains(r"\bout\b|groundout|flyout|lineout|popout|forceout", regex=True)
-                          & ~is_hit & ~is_bb & ~is_hbp)
+                play  = pa_last.get("PlayResult", pd.Series(dtype=object)).astype(str)
+                korbb = pa_last.get("KorBB",      pd.Series(dtype=object)).astype(str)
+                s_call= pa_last.get("PitchCall",  pd.Series(dtype=object)).astype(str)
 
-                TB   = (is_1b*1 + is_2b*2 + is_3b*3 + is_hr*4).sum()
-                H    = int(is_hit.sum())
-                BB   = int(is_bb.sum())
-                HBP  = int(is_hbp.sum())
-                SF   = int(is_sf.sum())
-                SO   = int(is_so.sum())
-                HR   = int(is_hr.sum())
-                PA   = len(pa_rows)
-                AB   = max(PA - BB - HBP - SF, 0)
-                R    = int(pd.to_numeric(df.get("RunsScored", pd.Series(dtype=float)), errors="coerce").sum()) if "RunsScored" in df.columns else 0
+                is_hit = play.isin(["Single","Double","Triple","HomeRun"])
+                is_so  = korbb.eq("Strikeout")
+                is_bb  = korbb.eq("Walk")
+                is_hbp = s_call.eq("HitByPitch")
+                is_sf  = play.str.contains(r"SacrificeFly|SacFly", case=False, regex=True)
+                is_sac = play.str.contains(r"SacrificeBunt|SacBunt", case=False, regex=True)
 
-                AVG  = H / AB if AB > 0 else np.nan
-                OBP  = (H+BB+HBP) / (AB+BB+HBP+SF) if (AB+BB+HBP+SF) > 0 else np.nan
-                SLG  = TB / AB if AB > 0 else np.nan
-                OPS  = OBP + SLG if pd.notna(OBP) and pd.notna(SLG) else np.nan
+                H  = int(is_hit.sum())
+                SO = int(is_so.sum())
+                BB = int(is_bb.sum())
+                HBP= int(is_hbp.sum())
+                SF = int(is_sf.sum())
+                HR = int(play.eq("HomeRun").sum())
+                doubles = int(play.eq("Double").sum())
+                triples = int(play.eq("Triple").sum())
+                PA = len(pa_last)
+                AB = max(PA - BB - HBP - SF - int(is_sac.sum()), 0)
 
-                # plate discipline
-                call_col = "PitchCall"
-                is_swing = pa_rows[call_col].astype(str).isin(
-                    ["StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay"]
-                ) if call_col in pa_rows.columns else pd.Series(False, index=pa_rows.index)
-                is_whiff = pa_rows[call_col].astype(str).eq("StrikeSwinging") if call_col in pa_rows.columns else pd.Series(False, index=pa_rows.index)
-                swings   = int(is_swing.sum())
+                bases = (play.eq("Single").sum()
+                         + 2*play.eq("Double").sum()
+                         + 3*play.eq("Triple").sum()
+                         + 4*play.eq("HomeRun").sum())
 
-                # hard hit
-                ev_all = pd.to_numeric(neb_ser.get("ExitSpeed", pd.Series(dtype=float)), errors="coerce").dropna()
-                hh_pct = float((ev_all >= 95).mean() * 100) if len(ev_all) else np.nan
+                AVG = H / AB if AB > 0 else np.nan
+                OBP = (H+BB+HBP) / (AB+BB+HBP+SF) if (AB+BB+HBP+SF) > 0 else np.nan
+                SLG = bases / AB if AB > 0 else np.nan
+                OPS = OBP + SLG if pd.notna(OBP) and pd.notna(SLG) else np.nan
+
+                exitv = pd.to_numeric(df.get("ExitSpeed", pd.Series(dtype=float)), errors="coerce")
+                inplay = df.get("PitchCall", pd.Series(dtype=object)).astype(str).eq("InPlay")
+                ev_bip = exitv[inplay].dropna()
+                hh_pct = float((ev_bip >= 95).mean() * 100) if len(ev_bip) else np.nan
 
                 return {
-                    "PA": PA, "AB": AB, "H": H, "2B": int(is_2b.sum()),
-                    "3B": int(is_3b.sum()), "HR": HR, "BB": BB, "SO": SO,
+                    "PA": PA, "AB": AB, "H": H, "2B": doubles,
+                    "3B": triples, "HR": HR, "BB": BB, "SO": SO,
                     "AVG": f"{AVG:.3f}" if pd.notna(AVG) else "—",
                     "OBP": f"{OBP:.3f}" if pd.notna(OBP) else "—",
                     "SLG": f"{SLG:.3f}" if pd.notna(SLG) else "—",
@@ -3241,7 +3229,6 @@ elif view_mode == "Weekend Series":
                     "BB%": f"{BB/PA*100:.1f}%" if PA > 0 else "—",
                     "HardHit%": f"{hh_pct:.1f}%" if pd.notna(hh_pct) else "—",
                 }
-
             team_stats = _series_team_stats(neb_ser)
 
             # Display as metric cards in two rows
@@ -3388,57 +3375,66 @@ elif view_mode == "Weekend Series":
             st.markdown("### Individual Batter Breakdown")
 
             def _batter_series_line(df: pd.DataFrame) -> pd.DataFrame:
-                """PA-level stats per batter for the series."""
-                df = df.copy()
-                df["_ab_id"] = (
-                    df.groupby("BatterKey", group_keys=False)
-                    .apply(lambda g: (pd.to_numeric(g["PitchofPA"], errors="coerce") == 1).cumsum())
-                    .reset_index(level=0, drop=True)
-                )
+                """
+                Per-batter stats using GameID+Inning+Top/Bottom+PAofInning grouping —
+                same PA identification method as create_hitter_report.
+                """
+                pa_key = ["GameID","Inning","Top/Bottom","PAofInning"]
+                pa_key = [c for c in pa_key if c in df.columns]
+                if not pa_key:
+                    return pd.DataFrame()
 
-                def _last(g):
-                    po = pd.to_numeric(g.get("PitchofPA", pd.Series(dtype=float)), errors="coerce")
-                    return g.loc[po.idxmax()] if po.notna().any() else g.iloc[-1]
-
-                pa_rows = (
-                    df.groupby(["BatterKey", "_ab_id"], dropna=False)
-                    .apply(_last)
-                    .reset_index(drop=True)
-                )
+                if "PitchofPA" in df.columns:
+                    df_s = df.sort_values(["BatterKey"] + pa_key + ["PitchofPA"])
+                else:
+                    df_s = df.copy()
 
                 rows = []
-                for bk, grp in pa_rows.groupby("BatterKey", dropna=False):
-                    PR = grp["PlayResult"].astype(str).str.lower()
-                    KC = grp.get("KorBB", pd.Series(dtype=str)).astype(str).str.lower()
-                    PC = grp.get("PitchCall", pd.Series(dtype=str)).astype(str).str.lower()
+                for bk, grp in df_s.groupby("BatterKey", dropna=False):
+                    if not bk:
+                        continue
 
-                    is_1b  = PR.str.contains(r"\bsingle\b", regex=True)
-                    is_2b  = PR.str.contains(r"\bdouble\b", regex=True)
-                    is_3b  = PR.str.contains(r"\btriple\b", regex=True)
-                    is_hr  = PR.str.contains(r"\bhome\s*run\b|^hr$", regex=True)
-                    is_hit = is_1b | is_2b | is_3b | is_hr
-                    is_bb  = PR.str.contains(r"\bwalk\b", regex=True) | KC.isin({"bb", "walk", "ibb"})
-                    is_hbp = PR.str.contains(r"hit.by.pitch", regex=True) | PC.isin({"hitbypitch", "hbp"})
-                    is_sf  = PR.str.contains(r"sac.*fly|\bsf\b", regex=True)
-                    is_so  = PR.str.contains(r"strikeout", regex=True) | KC.isin({"k", "so", "strikeout"})
+                    # Last pitch of each PA for this batter
+                    pa_last = grp.groupby(pa_key, dropna=False).last().reset_index()
+                    PA = len(pa_last)
+                    if PA == 0:
+                        continue
 
-                    TB  = (is_1b*1 + is_2b*2 + is_3b*3 + is_hr*4).sum()
-                    H   = int(is_hit.sum()); BB = int(is_bb.sum())
-                    HBP = int(is_hbp.sum()); SF = int(is_sf.sum())
-                    SO  = int(is_so.sum()); HR = int(is_hr.sum())
-                    PA  = len(grp); AB = max(PA - BB - HBP - SF, 0)
+                    play  = pa_last.get("PlayResult", pd.Series(dtype=object)).astype(str)
+                    korbb = pa_last.get("KorBB",      pd.Series(dtype=object)).astype(str)
+                    s_call= pa_last.get("PitchCall",  pd.Series(dtype=object)).astype(str)
+
+                    is_hit = play.isin(["Single","Double","Triple","HomeRun"])
+                    is_so  = korbb.eq("Strikeout")
+                    is_bb  = korbb.eq("Walk")
+                    is_hbp = s_call.eq("HitByPitch")
+                    is_sf  = play.str.contains(r"SacrificeFly|SacFly", case=False, regex=True)
+                    is_sac_bunt = play.str.contains(r"SacrificeBunt|SacBunt", case=False, regex=True)
+
+                    H   = int(is_hit.sum())
+                    SO  = int(is_so.sum())
+                    BB  = int(is_bb.sum())
+                    HBP = int(is_hbp.sum())
+                    SF  = int(is_sf.sum())
+                    HR  = int(play.eq("HomeRun").sum())
+                    AB  = PA - BB - HBP - SF - int(is_sac_bunt.sum())
+                    AB  = max(AB, 0)
+
+                    bases = (play.eq("Single").sum()
+                             + 2*play.eq("Double").sum()
+                             + 3*play.eq("Triple").sum()
+                             + 4*play.eq("HomeRun").sum())
 
                     AVG = H / AB if AB > 0 else np.nan
-                    OBP = (H+BB+HBP)/(AB+BB+HBP+SF) if (AB+BB+HBP+SF)>0 else np.nan
-                    SLG = TB / AB if AB > 0 else np.nan
+                    OBP = (H+BB+HBP) / (AB+BB+HBP+SF) if (AB+BB+HBP+SF) > 0 else np.nan
+                    SLG = bases / AB if AB > 0 else np.nan
                     OPS = OBP + SLG if pd.notna(OBP) and pd.notna(SLG) else np.nan
 
-                    batter_ev = pd.to_numeric(
-                        df[df["BatterKey"] == bk].get("ExitSpeed", pd.Series(dtype=float)),
-                        errors="coerce"
-                    ).dropna()
-                    avg_ev = float(batter_ev.mean()) if len(batter_ev) else np.nan
-                    max_ev = float(batter_ev.max())  if len(batter_ev) else np.nan
+                    exitv  = pd.to_numeric(grp.get("ExitSpeed", pd.Series(dtype=float)), errors="coerce")
+                    inplay = grp.get("PitchCall", pd.Series(dtype=object)).astype(str).eq("InPlay")
+                    ev_bip = exitv[inplay].dropna()
+                    avg_ev = float(ev_bip.mean()) if len(ev_bip) else np.nan
+                    max_ev = float(ev_bip.max())  if len(ev_bip) else np.nan
 
                     rows.append({
                         "Batter": bk,

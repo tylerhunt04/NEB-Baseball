@@ -2426,11 +2426,36 @@ elif view_mode == "Profiles & Heatmaps":
                 st.info("No balls in play with valid location data for the selected filters.")
 
         with tab2:
-            fig_hm = hitter_heatmaps(df_profiles, batter_key)
-            if fig_hm:
-                st.pyplot(fig_hm)
+            _pt_col = _pitch_type_col(df_profiles)
+            _raw_types = (
+                df_profiles[_pt_col].dropna()
+                .astype(str)
+                .str.strip()
+                .replace("", pd.NA)
+                .dropna()
+                .unique()
+                .tolist()
+            )
+            _raw_types = sorted([t for t in _raw_types if t and t.lower() not in ("none", "nan", "")])
+
+            _pitch_opts = ["All Pitch Types"] + _raw_types
+            _sel_pt = st.selectbox(
+                "Filter by pitch type",
+                options=_pitch_opts,
+                index=0,
+                key="hm_pitch_type_profiles",
+            )
+
+            _df_hm = df_profiles if _sel_pt == "All Pitch Types" else df_profiles[df_profiles[_pt_col].astype(str).str.strip().eq(_sel_pt)]
+
+            if _df_hm.empty:
+                st.info("No pitches of that type in the current filter.")
             else:
-                st.info("Not enough data for heatmaps.")
+                fig_hm = hitter_heatmaps(_df_hm, batter_key)
+                if fig_hm:
+                    st.pyplot(fig_hm)
+                else:
+                    st.info("Not enough data for heatmaps.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RANKINGS
@@ -2824,11 +2849,36 @@ elif view_mode == "Season Summary":
             st.info("No balls in play with valid location data.")
     
     with tab2:
-        fig_hm = hitter_heatmaps(df_player_fall, batter_key)
-        if fig_hm:
-            st.pyplot(fig_hm)
+        _pt_col2 = _pitch_type_col(df_player_fall)
+        _raw_types2 = (
+            df_player_fall[_pt_col2].dropna()
+            .astype(str)
+            .str.strip()
+            .replace("", pd.NA)
+            .dropna()
+            .unique()
+            .tolist()
+        )
+        _raw_types2 = sorted([t for t in _raw_types2 if t and t.lower() not in ("none", "nan", "")])
+
+        _pitch_opts2 = ["All Pitch Types"] + _raw_types2
+        _sel_pt2 = st.selectbox(
+            "Filter by pitch type",
+            options=_pitch_opts2,
+            index=0,
+            key="hm_pitch_type_season",
+        )
+
+        _df_hm2 = df_player_fall if _sel_pt2 == "All Pitch Types" else df_player_fall[df_player_fall[_pt_col2].astype(str).str.strip().eq(_sel_pt2)]
+
+        if _df_hm2.empty:
+            st.info("No pitches of that type in the current filter.")
         else:
-            st.info("Not enough data for heatmaps.")
+            fig_hm = hitter_heatmaps(_df_hm2, batter_key)
+            if fig_hm:
+                st.pyplot(fig_hm)
+            else:
+                st.info("Not enough data for heatmaps.")
     
     st.markdown("---")
     

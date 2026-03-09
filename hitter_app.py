@@ -2493,6 +2493,88 @@ elif view_mode == "Rankings":
     if min_pa > 0:
         rankings_df = rankings_df[rankings_df["PA"] >= min_pa]
 
+    # ── Team Totals Banner ───────────────────────────────────────────────────
+    if not df_scope.empty:
+        def _team_totals_from_scope(df: pd.DataFrame) -> dict:
+            pa_key = [c for c in ["GameID","Inning","Top/Bottom","PAofInning"] if c in df.columns]
+            if not pa_key:
+                return {}
+            if "PitchofPA" in df.columns:
+                df_s = df.sort_values(pa_key + ["PitchofPA"])
+            else:
+                df_s = df.copy()
+            pa_last = df_s.groupby(pa_key, dropna=False).last().reset_index()
+            play  = pa_last.get("PlayResult", pd.Series(dtype=object)).astype(str)
+            korbb = pa_last.get("KorBB",      pd.Series(dtype=object)).astype(str)
+            s_call= pa_last.get("PitchCall",  pd.Series(dtype=object)).astype(str)
+            is_hit = play.isin(["Single","Double","Triple","HomeRun"])
+            is_so  = korbb.eq("Strikeout")
+            is_bb  = korbb.eq("Walk")
+            is_hbp = s_call.eq("HitByPitch")
+            is_sf  = play.str.contains(r"SacrificeFly|SacFly", case=False, regex=True)
+            is_sac = play.str.contains(r"SacrificeBunt|SacBunt", case=False, regex=True)
+            H  = int(is_hit.sum()); SO = int(is_so.sum())
+            BB = int(is_bb.sum()); HBP = int(is_hbp.sum())
+            SF = int(is_sf.sum()); HR  = int(play.eq("HomeRun").sum())
+            PA = len(pa_last)
+            AB = max(PA - BB - HBP - SF - int(is_sac.sum()), 0)
+            bases = (play.eq("Single").sum() + 2*play.eq("Double").sum()
+                     + 3*play.eq("Triple").sum() + 4*play.eq("HomeRun").sum())
+            AVG = H / AB if AB > 0 else np.nan
+            OBP = (H+BB+HBP)/(AB+BB+HBP+SF) if (AB+BB+HBP+SF) > 0 else np.nan
+            SLG = bases / AB if AB > 0 else np.nan
+            OPS = OBP + SLG if pd.notna(OBP) and pd.notna(SLG) else np.nan
+            exitv  = pd.to_numeric(df.get("ExitSpeed", pd.Series(dtype=float)), errors="coerce")
+            inplay = df.get("PitchCall", pd.Series(dtype=object)).astype(str).eq("InPlay")
+            ev_bip = exitv[inplay].dropna()
+            hh_pct = float((ev_bip >= 95).mean() * 100) if len(ev_bip) else np.nan
+            avg_ev = float(ev_bip.mean()) if len(ev_bip) else np.nan
+            return {
+                "PA": PA, "AB": AB, "H": H,
+                "2B": int(play.eq("Double").sum()),
+                "3B": int(play.eq("Triple").sum()),
+                "HR": HR, "BB": BB, "SO": SO,
+                "AVG": f"{AVG:.3f}" if pd.notna(AVG) else "—",
+                "OBP": f"{OBP:.3f}" if pd.notna(OBP) else "—",
+                "SLG": f"{SLG:.3f}" if pd.notna(SLG) else "—",
+                "OPS": f"{OPS:.3f}" if pd.notna(OPS) else "—",
+                "K%": f"{SO/PA*100:.1f}%" if PA > 0 else "—",
+                "BB%": f"{BB/PA*100:.1f}%" if PA > 0 else "—",
+                "Avg EV": f"{avg_ev:.1f}" if pd.notna(avg_ev) else "—",
+                "HardHit%": f"{hh_pct:.1f}%" if pd.notna(hh_pct) else "—",
+            }
+
+        t = _team_totals_from_scope(df_scope)
+        if t:
+            st.markdown("<div style='font-size:1.0rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px;border-bottom:2px solid #E41C38;padding-bottom:5px;'>Team Totals</div>", unsafe_allow_html=True)
+
+            def _rk_stat_card(label, value, highlight=False):
+                border = "#E41C38" if highlight else "#333"
+                val_color = "#E41C38" if highlight else "#f0f0f0"
+                return f"""<div style='background:#111;border:1px solid {border};border-radius:7px;
+                    padding:12px 6px;text-align:center;'>
+                  <div style='color:#777;font-size:0.68rem;text-transform:uppercase;
+                    letter-spacing:0.08em;margin-bottom:5px;'>{label}</div>
+                  <div style='color:{val_color};font-size:1.25rem;font-weight:700;
+                    line-height:1;'>{value}</div>
+                </div>"""
+
+            highlight_set = {"AVG", "OBP", "OPS"}
+            row1 = ["PA","AB","H","2B","3B","HR","BB","SO"]
+            row2 = ["AVG","OBP","SLG","OPS","K%","BB%","Avg EV","HardHit%"]
+
+            c1 = st.columns(len(row1))
+            for col_w, s in zip(c1, row1):
+                col_w.markdown(_rk_stat_card(s, t.get(s,"—")), unsafe_allow_html=True)
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            c2 = st.columns(len(row2))
+            for col_w, s in zip(c2, row2):
+                col_w.markdown(_rk_stat_card(s, t.get(s,"—"), highlight=s in highlight_set), unsafe_allow_html=True)
+
+            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='font-size:1.0rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px;border-bottom:2px solid #E41C38;padding-bottom:5px;'>Individual Rankings</div>", unsafe_allow_html=True)
+
     styled = style_rankings(rankings_df)
 
     st.dataframe(
@@ -3157,13 +3239,23 @@ elif view_mode == "Weekend Series":
         else:
             n_games = len(sel_dates)
             game_word = "game" if n_games == 1 else "games"
-            st.caption(
-                f"**{sel_opp}** · {n_games} {game_word}: "
-                + ", ".join(format_date_long(d) for d in sorted(sel_dates))
-            )
+
+            # ── Series header banner ──────────────────────────────────────────
+            date_range = ", ".join(format_date_long(d) for d in sorted(sel_dates))
+            st.markdown(f"""
+<div style='background:linear-gradient(90deg,#1a0a0e 0%,#2d0e16 60%,#1a0a0e 100%);
+            border:1px solid #E41C38;border-radius:10px;padding:18px 28px;margin-bottom:24px;'>
+  <div style='font-size:1.6rem;font-weight:700;color:white;letter-spacing:0.04em;'>
+    Nebraska vs. {sel_opp}
+  </div>
+  <div style='color:#aaa;font-size:0.92rem;margin-top:4px;'>
+    {n_games}-game series &nbsp;·&nbsp; {date_range}
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
             # ─── SECTION 1: Team Batting Line ────────────────────────────────
-            st.markdown("### Team Batting")
+            st.markdown("<div style='font-size:1.1rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #E41C38;padding-bottom:6px;'>Team Batting</div>", unsafe_allow_html=True)
 
             def _series_team_stats(df: pd.DataFrame) -> dict:
                 """
@@ -3231,26 +3323,42 @@ elif view_mode == "Weekend Series":
                 }
             team_stats = _series_team_stats(neb_ser)
 
-            # Display as metric cards in two rows
-            batting_row1 = ["PA","AB","H","2B","3B","HR","BB","SO"]
-            batting_row2 = ["AVG","OBP","SLG","OPS","K%","BB%","HardHit%"]
+            # Counting stats row
+            counting = ["PA","AB","H","2B","3B","HR","BB","SO"]
+            rate_stats = ["AVG","OBP","SLG","OPS","K%","BB%","HardHit%"]
 
-            cols1 = st.columns(len(batting_row1))
-            for col_w, stat in zip(cols1, batting_row1):
-                col_w.metric(stat, team_stats.get(stat, "—"))
+            def _stat_card(label, value, highlight=False):
+                border = "#E41C38" if highlight else "#444"
+                val_color = "#E41C38" if highlight else "#f0f0f0"
+                return f"""
+<div style='background:#111;border:1px solid {border};border-radius:8px;
+            padding:14px 8px;text-align:center;'>
+  <div style='color:#888;font-size:0.72rem;text-transform:uppercase;
+              letter-spacing:0.08em;margin-bottom:6px;'>{label}</div>
+  <div style='color:{val_color};font-size:1.45rem;font-weight:700;
+              line-height:1;'>{value}</div>
+</div>"""
 
-            cols2 = st.columns(len(batting_row2))
-            for col_w, stat in zip(cols2, batting_row2):
-                col_w.metric(stat, team_stats.get(stat, "—"))
+            highlight_stats = {"OPS", "AVG"}
+            cols1 = st.columns(len(counting))
+            for col_w, stat in zip(cols1, counting):
+                col_w.markdown(_stat_card(stat, team_stats.get(stat, "—")), unsafe_allow_html=True)
 
-            st.markdown("---")
+            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+            cols2 = st.columns(len(rate_stats))
+            for col_w, stat in zip(cols2, rate_stats):
+                col_w.markdown(_stat_card(stat, team_stats.get(stat, "—"), highlight=stat in highlight_stats), unsafe_allow_html=True)
+
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
 
             # ─── SECTION 2: Exit Velo / Distance leaders ─────────────────────
-            left_col, mid_col, right_col = st.columns(3)
+            st.markdown("<div style='font-size:1.1rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:16px;border-bottom:2px solid #E41C38;padding-bottom:6px;'>Series Leaders</div>", unsafe_allow_html=True)
+            left_col, mid_col, right_col = st.columns(3, gap="large")
 
             # Top 3 Exit Velos
             with left_col:
-                st.markdown("### 💥 Top Exit Velocities")
+                st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#ccc;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;'>Top Exit Velocities</div>", unsafe_allow_html=True)
                 ev_df = neb_ser[
                     neb_ser["PitchCall"].astype(str).eq("InPlay") &
                     pd.to_numeric(neb_ser["ExitSpeed"], errors="coerce").notna()
@@ -3269,21 +3377,27 @@ elif view_mode == "Weekend Series":
                         if not result or result.lower() in ("", "nan", "undefined"):
                             result = "—"
                         st.markdown(
-                            f"""<div style='background:#1a1a2e;border-left:4px solid #E41C38;
-                            border-radius:6px;padding:10px 14px;margin-bottom:8px;'>
-                            <span style='color:#aaa;font-size:0.8em'>#{rank+1}</span>
-                            <span style='font-size:1.4em;font-weight:700;color:#E41C38;
-                            margin-left:8px'>{row['EV']:.1f} mph</span><br>
-                            <span style='color:white;font-size:0.95em'>{row['BatterKey']}</span>
-                            <span style='color:#888;font-size:0.8em;margin-left:8px'>
-                            {result} · {row['DateOnly']}</span>
+                            f"""<div style='background:#111;border:1px solid #333;
+                            border-left:4px solid #E41C38;border-radius:8px;
+                            padding:14px 16px;margin-bottom:10px;'>
+                            <div style='display:flex;align-items:baseline;gap:10px;margin-bottom:6px;'>
+                              <span style='color:#E41C38;font-size:0.75rem;font-weight:700;
+                                letter-spacing:0.1em;'>#{rank+1}</span>
+                              <span style='font-size:1.55rem;font-weight:800;color:white;
+                                line-height:1;'>{row['EV']:.1f}</span>
+                              <span style='color:#888;font-size:0.85rem;'>mph</span>
+                            </div>
+                            <div style='color:#e0e0e0;font-size:0.92rem;font-weight:600;
+                              margin-bottom:3px;'>{row['BatterKey']}</div>
+                            <div style='color:#666;font-size:0.78rem;'>
+                              {result} &nbsp;·&nbsp; {row['DateOnly']}</div>
                             </div>""",
                             unsafe_allow_html=True,
                         )
 
             # Top 3 Hit Distances
             with mid_col:
-                st.markdown("### 📏 Top Hit Distances")
+                st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#ccc;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;'>Top Hit Distances</div>", unsafe_allow_html=True)
                 dist_df = neb_ser[
                     neb_ser["PitchCall"].astype(str).eq("InPlay") &
                     pd.to_numeric(neb_ser["Distance"], errors="coerce").notna()
@@ -3302,21 +3416,27 @@ elif view_mode == "Weekend Series":
                         if not result or result.lower() in ("", "nan", "undefined"):
                             result = "—"
                         st.markdown(
-                            f"""<div style='background:#1a1a2e;border-left:4px solid #f59e0b;
-                            border-radius:6px;padding:10px 14px;margin-bottom:8px;'>
-                            <span style='color:#aaa;font-size:0.8em'>#{rank+1}</span>
-                            <span style='font-size:1.4em;font-weight:700;color:#f59e0b;
-                            margin-left:8px'>{row['Dist']:.0f} ft</span><br>
-                            <span style='color:white;font-size:0.95em'>{row['BatterKey']}</span>
-                            <span style='color:#888;font-size:0.8em;margin-left:8px'>
-                            {result} · {row['DateOnly']}</span>
+                            f"""<div style='background:#111;border:1px solid #333;
+                            border-left:4px solid #d4a017;border-radius:8px;
+                            padding:14px 16px;margin-bottom:10px;'>
+                            <div style='display:flex;align-items:baseline;gap:10px;margin-bottom:6px;'>
+                              <span style='color:#d4a017;font-size:0.75rem;font-weight:700;
+                                letter-spacing:0.1em;'>#{rank+1}</span>
+                              <span style='font-size:1.55rem;font-weight:800;color:white;
+                                line-height:1;'>{row['Dist']:.0f}</span>
+                              <span style='color:#888;font-size:0.85rem;'>ft</span>
+                            </div>
+                            <div style='color:#e0e0e0;font-size:0.92rem;font-weight:600;
+                              margin-bottom:3px;'>{row['BatterKey']}</div>
+                            <div style='color:#666;font-size:0.78rem;'>
+                              {result} &nbsp;·&nbsp; {row['DateOnly']}</div>
                             </div>""",
                             unsafe_allow_html=True,
                         )
 
             # Top 3 velos from 3 different pitchers (opponent pitchers)
             with right_col:
-                st.markdown("### 🔥 Top Pitch Velos (3 Pitchers)")
+                st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#ccc;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;'>Nebraska Pitch Velocities</div>", unsafe_allow_html=True)
                 # Only NEB pitchers throwing to opponent batters (or just all pitchers in the series)
                 velo_src = all_ser.copy()
                 velo_src["RV"] = pd.to_numeric(velo_src.get("RelSpeed", pd.Series(dtype=float)), errors="coerce")
@@ -3354,25 +3474,31 @@ elif view_mode == "Weekend Series":
                     st.info("No pitch velocity data.")
                 else:
                     for rank, row in pitcher_bests.iterrows():
-                        # also get the top 3 velos for that individual pitcher
                         p_rows = velo_neb[velo_neb["_PitcherDisp"] == row["_PitcherDisp"]].nlargest(3, "RV")
-                        top3_str = "  /  ".join(f"{v:.1f}" for v in p_rows["RV"].tolist())
+                        top3_str = "  ·  ".join(f"{v:.1f}" for v in p_rows["RV"].tolist())
                         st.markdown(
-                            f"""<div style='background:#1a1a2e;border-left:4px solid #22d3ee;
-                            border-radius:6px;padding:10px 14px;margin-bottom:8px;'>
-                            <span style='color:#aaa;font-size:0.8em'>#{rank+1}</span>
-                            <span style='font-size:1.4em;font-weight:700;color:#22d3ee;
-                            margin-left:8px'>{row['RV']:.1f} mph</span><br>
-                            <span style='color:white;font-size:0.95em'>{row['_PitcherDisp']}</span><br>
-                            <span style='color:#888;font-size:0.78em'>Top 3: {top3_str}</span>
+                            f"""<div style='background:#111;border:1px solid #333;
+                            border-left:4px solid #4da6c8;border-radius:8px;
+                            padding:14px 16px;margin-bottom:10px;'>
+                            <div style='display:flex;align-items:baseline;gap:10px;margin-bottom:6px;'>
+                              <span style='color:#4da6c8;font-size:0.75rem;font-weight:700;
+                                letter-spacing:0.1em;'>#{rank+1}</span>
+                              <span style='font-size:1.55rem;font-weight:800;color:white;
+                                line-height:1;'>{row['RV']:.1f}</span>
+                              <span style='color:#888;font-size:0.85rem;'>mph</span>
+                            </div>
+                            <div style='color:#e0e0e0;font-size:0.92rem;font-weight:600;
+                              margin-bottom:4px;'>{row['_PitcherDisp']}</div>
+                            <div style='color:#555;font-size:0.78rem;'>
+                              Top 3: {top3_str}</div>
                             </div>""",
                             unsafe_allow_html=True,
                         )
 
-            st.markdown("---")
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
 
             # ─── SECTION 3: Individual Batter Breakdown ───────────────────────
-            st.markdown("### Individual Batter Breakdown")
+            st.markdown("<div style='font-size:1.1rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #E41C38;padding-bottom:6px;'>Individual Batter Breakdown</div>", unsafe_allow_html=True)
 
             def _batter_series_line(df: pd.DataFrame) -> pd.DataFrame:
                 """

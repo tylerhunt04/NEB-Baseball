@@ -320,11 +320,13 @@ BANNER_CANDIDATES = [
 
 # Big Ten / opponents pretty names
 TEAM_NAME_MAP = {
+    # Big Ten
     "ILL_ILL": "Illinois",
     "MIC_SPA": "Michigan State",
     "UCLA": "UCLA",
     "IOWA_HAW": "Iowa",
     "IU": "Indiana",
+    "IND_HOS": "Indiana",
     "MAR_TER": "Maryland",
     "MIC_WOL": "Michigan",
     "MIN_GOL": "Minnesota",
@@ -337,7 +339,45 @@ TEAM_NAME_MAP = {
     "RUT_SCA": "Rutgers",
     "SOU_TRO": "USC",
     "WAS_HUS": "Washington",
+    # Non-conference 2026 schedule
+    "AUB_TIG": "Auburn",
+    "AUB": "Auburn",
+    "LOU_CAR": "Louisville",
+    "LOU": "Louisville",
+    "KSU_WIL": "Kansas State",
+    "KAN_STA": "Kansas State",
+    "KSU": "Kansas State",
+    "FSU_SEM": "Florida State",
+    "FLO_SEM": "Florida State",
+    "FSU": "Florida State",
+    "OMA_MAV": "Omaha",
+    "OMA": "Omaha",
+    "SDU_JAC": "South Dakota State",
+    "SDA_JAC": "South Dakota State",
+    "SDSU": "South Dakota State",
+    "NDU_BIS": "North Dakota State",
+    "NDA_BIS": "North Dakota State",
+    "NDSU": "North Dakota State",
+    "MAI_BLA": "Maine",
+    "UME_BLA": "Maine",
+    "MAINE": "Maine",
+    "CRE_JAY": "Creighton",
+    "CRE": "Creighton",
+    "KAN_JAY": "Kansas",
+    "KU_JAY": "Kansas",
+    "KAN": "Kansas",
     "WIC_SHO": "Wichita State",
+    "WIC": "Wichita State",
+    # Desert Invitational common opponents
+    "ARI_CAT": "Arizona",
+    "ARI_SUN": "Arizona State",
+    "TCU_HOR": "TCU",
+    "TCU": "TCU",
+    "TEX_LON": "Texas",
+    "TEX": "Texas",
+    "OKL_SOO": "Oklahoma",
+    "OKL": "Oklahoma",
+    "OKS_COW": "Oklahoma State",
 }
 
 # D1 AVERAGES FOR COMPARISON
@@ -3261,7 +3301,7 @@ elif view_mode == "Weekend Series":
         )
         sel_series = next(s for s in series_index if s["label"] == sel_label)
         sel_dates  = sel_series["dates"]
-        sel_opp    = sel_series["opponent"]
+        sel_opp    = TEAM_NAME_MAP.get(sel_series["opponent"], sel_series["opponent"])
 
         # Filter Nebraska batting rows for this series
         neb_ser = df_neb_bat[df_neb_bat["DateOnly"].isin(sel_dates)].copy()

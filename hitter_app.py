@@ -351,6 +351,7 @@ TEAM_NAME_MAP = {
     "FLO_SEM": "Florida State",
     "FSU": "Florida State",
     "UNO_MAV": "Omaha",
+    "OMA_MAV": "Omaha",
     "OMA": "Omaha",
     "SDU_JAC": "South Dakota State",
     "SDA_JAC": "South Dakota State",
@@ -378,6 +379,13 @@ TEAM_NAME_MAP = {
     "OKL_SOO": "Oklahoma",
     "OKL": "Oklahoma",
     "OKS_COW": "Oklahoma State",
+}
+
+# Maps a frozenset of opponent codes to a tournament/event display name
+TOURNAMENT_NAME_MAP = {
+    frozenset({"LOU_CAR", "FSU_SEM", "KAN_WIL"}): "Globe Life Field",
+    frozenset({"LOU_CAR", "FLO_SEM", "KAN_WIL"}): "Globe Life Field",
+    frozenset({"LOU", "FSU", "KAN_WIL"}): "Globe Life Field",
 }
 
 # D1 AVERAGES FOR COMPARISON
@@ -3233,14 +3241,14 @@ elif view_mode == "Weekend Series":
     # We use a 3-day gap to separate series.
 
     def build_series_index(df: pd.DataFrame) -> list[dict]:
-        """Return list of dicts: {label, opponent, dates, mask}."""
+        """Return list of dicts: {label, opponents (list), dates}."""
         if df.empty or "DateOnly" not in df.columns:
             return []
         opp_col = "PitcherTeam"
         if opp_col not in df.columns:
             return []
 
-        # one row per game date / opponent
+        # One dominant opponent per game date
         dated = (
             df[df["BatterTeam"].astype(str).str.upper().eq("NEB")]
             .groupby("DateOnly")[opp_col]
@@ -3251,33 +3259,47 @@ elif view_mode == "Weekend Series":
         if dated.empty:
             return []
 
-        # cluster consecutive dates vs same opponent (gap ≤ 3 days)
-        series_list = []
-        cur_opp   = dated.iloc[0][opp_col]
+        # Cluster by date proximity only (≤ 3-day gap) — handles
+        # neutral-site tournaments where each game is vs a different opponent
+        clusters = []
         cur_dates = [dated.iloc[0]["DateOnly"]]
+        cur_opps  = [dated.iloc[0][opp_col]]
 
         for _, row in dated.iloc[1:].iterrows():
             gap = (row["DateOnly"] - cur_dates[-1]).days
-            if row[opp_col] == cur_opp and gap <= 3:
+            if gap <= 3:
                 cur_dates.append(row["DateOnly"])
+                cur_opps.append(row[opp_col])
             else:
-                series_list.append((cur_opp, cur_dates))
-                cur_opp   = row[opp_col]
+                clusters.append((cur_dates[:], cur_opps[:]))
                 cur_dates = [row["DateOnly"]]
-        series_list.append((cur_opp, cur_dates))
+                cur_opps  = [row[opp_col]]
+        clusters.append((cur_dates, cur_opps))
 
         result = []
-        for opp, dates in series_list:
+        for dates, opps in clusters:
             d0, d1 = min(dates), max(dates)
+            # Translate codes → full names, deduplicate preserving order
+            seen = set()
+            opp_names = []
+            for code in opps:
+                name = TEAM_NAME_MAP.get(str(code), str(code))
+                if name not in seen:
+                    seen.add(name)
+                    opp_names.append(name)
+            # Check for a known tournament name
+            raw_code_set = frozenset(opps)
+            tournament = None
+            for key, name in TOURNAMENT_NAME_MAP.items():
+                if key <= raw_code_set or raw_code_set <= key or key == raw_code_set:
+                    tournament = name
+                    break
+            display_name = tournament if tournament else " / ".join(opp_names)
             if d0 == d1:
-                label = f"{opp}  –  {format_date_long(d0)}"
+                label = f"{display_name}  –  {format_date_long(d0)}"
             else:
-                label = (
-                    f"{opp}  –  "
-                    f"{d0.strftime('%b %d')} – {format_date_long(d1)}"
-                )
-            result.append({"label": label, "opponent": opp, "dates": dates})
-        # most-recent first
+                label = f"{display_name}  –  {d0.strftime('%b %d')} – {format_date_long(d1)}"
+            result.append({"label": label, "opponent": display_name, "opponents": opp_names, "dates": dates})
         result.reverse()
         return result
 
@@ -3299,9 +3321,10 @@ elif view_mode == "Weekend Series":
             index=0,
             key="weekend_series_picker",
         )
-        sel_series = next(s for s in series_index if s["label"] == sel_label)
-        sel_dates  = sel_series["dates"]
-        sel_opp    = TEAM_NAME_MAP.get(sel_series["opponent"], sel_series["opponent"])
+        sel_series    = next(s for s in series_index if s["label"] == sel_label)
+        sel_dates     = sel_series["dates"]
+        sel_opp       = sel_series["opponent"]  # already display name
+        sel_opp_str   = sel_series["opponent"]
 
         # Filter Nebraska batting rows for this series
         neb_ser = df_neb_bat[df_neb_bat["DateOnly"].isin(sel_dates)].copy()
@@ -3320,7 +3343,7 @@ elif view_mode == "Weekend Series":
 <div style='background:linear-gradient(90deg,#1a0a0e 0%,#2d0e16 60%,#1a0a0e 100%);
             border:1px solid #E41C38;border-radius:10px;padding:18px 28px;margin-bottom:24px;'>
   <div style='font-size:1.6rem;font-weight:700;color:white;letter-spacing:0.04em;'>
-    Nebraska vs. {sel_opp}
+    Nebraska vs. {sel_opp_str}
   </div>
   <div style='color:#aaa;font-size:0.92rem;margin-top:4px;'>
     {n_games}-game series &nbsp;·&nbsp; {date_range}

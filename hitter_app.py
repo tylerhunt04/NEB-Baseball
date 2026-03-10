@@ -2459,6 +2459,56 @@ elif view_mode == "Profiles & Heatmaps":
         st.markdown("### Plate Discipline")
         st.table(themed_styler(t2_rates, nowrap=True))
 
+        # ── EV / Barrel / Launch Angle by Pitch Group ─────────────────────────
+        st.markdown("### Exit Velocity & Barrel by Pitch Type")
+
+        def _ev_barrel_row(grp: pd.DataFrame) -> dict:
+            inplay = grp.get("PitchCall", pd.Series(dtype=object)).astype(str).eq("InPlay")
+            ev_bip  = pd.to_numeric(grp.loc[inplay, "ExitSpeed"] if inplay.any() else pd.Series(dtype=float), errors="coerce").dropna()
+            la_bip  = pd.to_numeric(grp.loc[inplay, "Angle"]     if inplay.any() else pd.Series(dtype=float), errors="coerce").dropna()
+            common  = ev_bip.index.intersection(la_bip.index)
+            barrels = int(college_barrel_mask(ev_bip.loc[common], la_bip.loc[common]).sum()) if len(common) else 0
+            n_bip   = len(common)
+            return {
+                "HardHit%": round(float((ev_bip >= 95).mean() * 100), 1) if len(ev_bip) else None,
+                "Barrel%":  round(barrels / n_bip * 100, 1)              if n_bip   else None,
+                "Avg EV":   round(float(ev_bip.mean()), 1)               if len(ev_bip) else None,
+                "Max EV":   round(float(ev_bip.max()),  1)               if len(ev_bip) else None,
+                "Avg LA":   round(float(la_bip.mean()), 1)               if len(la_bip) else None,
+            }
+
+        _pt_col_ev = _pitch_type_col(df_profiles)
+        df_profiles["_PG_EV"] = df_profiles[_pt_col_ev].astype(str).map(pitch_group_of)
+        _batter_ev_df = df_profiles[df_profiles.get("BatterKey") == batter_key].copy()
+
+        _ev_rows = []
+        _overall = _ev_barrel_row(_batter_ev_df)
+        _overall["Split"] = "Overall"
+        _ev_rows.append(_overall)
+
+        for _grp_name in ["Fastball", "Breaking", "Offspeed"]:
+            _sub = _batter_ev_df[_batter_ev_df["_PG_EV"] == _grp_name]
+            if not _sub.empty:
+                _r = _ev_barrel_row(_sub)
+                _r["Split"] = _grp_name
+                _ev_rows.append(_r)
+
+        if _ev_rows:
+            _ev_tbl = pd.DataFrame(_ev_rows)[["Split","HardHit%","Barrel%","Avg EV","Max EV","Avg LA"]]
+
+            def _fmt_pct(v):
+                return f"{v:.1f}%" if v is not None and pd.notna(v) else "—"
+            def _fmt_ev(v):
+                return f"{v:.1f}" if v is not None and pd.notna(v) else "—"
+
+            _ev_tbl["HardHit%"] = _ev_tbl["HardHit%"].apply(_fmt_pct)
+            _ev_tbl["Barrel%"]  = _ev_tbl["Barrel%"].apply(_fmt_pct)
+            _ev_tbl["Avg EV"]   = _ev_tbl["Avg EV"].apply(_fmt_ev)
+            _ev_tbl["Max EV"]   = _ev_tbl["Max EV"].apply(_fmt_ev)
+            _ev_tbl["Avg LA"]   = _ev_tbl["Avg LA"].apply(_fmt_ev)
+
+            st.table(themed_styler(_ev_tbl.rename(columns={"Split": ""}), nowrap=True))
+
         st.markdown("### Batted Ball Distribution")
         st.table(themed_styler(t3_batted, nowrap=True))
 

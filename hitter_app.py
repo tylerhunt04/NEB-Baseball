@@ -344,7 +344,7 @@ TEAM_NAME_MAP = {
     "AUB": "Auburn",
     "LOU_CAR": "Louisville",
     "LOU": "Louisville",
-    "KSU_WIL": "Kansas State",
+    "KAN_WIL": "Kansas State",
     "KAN_STA": "Kansas State",
     "KSU": "Kansas State",
     "FSU_SEM": "Florida State",

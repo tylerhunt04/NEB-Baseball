@@ -3259,17 +3259,39 @@ elif view_mode == "Weekend Series":
         if dated.empty:
             return []
 
-        # Cluster by date proximity only (≤ 3-day gap) — handles
-        # neutral-site tournaments where each game is vs a different opponent
+        # Cluster by date proximity — use tight gap (≤ 1 day) so that
+        # midweek single games don't bleed into adjacent series.
+        # Exception: neutral-site tournaments (Globe Life etc.) span 3 days
+        # with different opponents each day, so we allow ≤ 2-day gap only
+        # when a known tournament set of opponents is involved.
         clusters = []
         cur_dates = [dated.iloc[0]["DateOnly"]]
         cur_opps  = [dated.iloc[0][opp_col]]
 
         for _, row in dated.iloc[1:].iterrows():
             gap = (row["DateOnly"] - cur_dates[-1]).days
-            if gap <= 3:
+            if gap <= 1:
                 cur_dates.append(row["DateOnly"])
                 cur_opps.append(row[opp_col])
+            elif gap == 2:
+                # Only merge on a 2-day gap if it looks like a tournament
+                # (current cluster already has 2+ different opponents, or
+                # the incoming opponent differs from current — neutral site)
+                unique_so_far = len(set(cur_opps))
+                if unique_so_far >= 2 or row[opp_col] not in cur_opps:
+                    # Check if any known tournament key overlaps current opps
+                    candidate = set(cur_opps) | {row[opp_col]}
+                    is_tournament = any(
+                        key <= candidate or candidate <= key or key == candidate
+                        for key in TOURNAMENT_NAME_MAP
+                    )
+                    if is_tournament:
+                        cur_dates.append(row["DateOnly"])
+                        cur_opps.append(row[opp_col])
+                        continue
+                clusters.append((cur_dates[:], cur_opps[:]))
+                cur_dates = [row["DateOnly"]]
+                cur_opps  = [row[opp_col]]
             else:
                 clusters.append((cur_dates[:], cur_opps[:]))
                 cur_dates = [row["DateOnly"]]

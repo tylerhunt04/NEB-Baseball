@@ -350,7 +350,7 @@ TEAM_NAME_MAP = {
     "FSU_SEM": "Florida State",
     "FLO_SEM": "Florida State",
     "FSU": "Florida State",
-    "OMA_MAV": "Omaha",
+    "UNO_MAV": "Omaha",
     "OMA": "Omaha",
     "SDU_JAC": "South Dakota State",
     "SDA_JAC": "South Dakota State",

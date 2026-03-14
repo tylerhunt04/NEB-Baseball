@@ -308,7 +308,7 @@ st.markdown("""
 # Default data paths per period
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
 DATA_PATH_SCRIM  = "Scrimmage(27).csv"
-DATA_PATH_2026   = "_2626S.csv"
+DATA_PATH_2026   = "_0626.csv"
 
 PROB_LOOKUP_PATH = "EV_LA_probabilities.csv"
 

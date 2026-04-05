@@ -3182,11 +3182,11 @@ elif view_mode == "Catcher Framing":
                 return "color: #f39c12"
             styled_catch = (
                 summary_df.style
-                .applymap(_color_net,      subset=["Net Frames"])
-                .applymap(lambda v: "color: #e74c3c", subset=["+ Frames"])
-                .applymap(lambda v: "color: #3498db", subset=["− Frames"])
-                .applymap(_color_steal,    subset=["Steal Rate %"])
-                .applymap(_color_giveback, subset=["Give-back Rate %"])
+                .map(_color_net,      subset=["Net Frames"])
+                .map(lambda v: "color: #e74c3c", subset=["+ Frames"])
+                .map(lambda v: "color: #3498db", subset=["− Frames"])
+                .map(_color_steal,    subset=["Steal Rate %"])
+                .map(_color_giveback, subset=["Give-back Rate %"])
                 .format({"Steal Rate %": "{:.1f}", "Give-back Rate %": "{:.1f}"})
                 .set_properties(**{"background-color": "white", "color": "black", "border-color": "#dddddd"})
                 .set_table_styles([

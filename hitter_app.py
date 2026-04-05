@@ -548,7 +548,7 @@ def parse_date_robust(df: pd.DataFrame) -> pd.Series:
     series = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
 
     def _try_parse(s: pd.Series):
-        out = pd.to_datetime(s, errors="coerce", utc=False, infer_datetime_format=True)
+        out = pd.to_datetime(s, errors="coerce", utc=False)
         if out.isna().mean() > 0.8:
             out2 = pd.to_datetime(s, errors="coerce", utc=False, dayfirst=True)
             if out2.isna().mean() < out.isna().mean():

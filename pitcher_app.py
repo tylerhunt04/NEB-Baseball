@@ -2009,7 +2009,7 @@ def analyze_sequence_by_count(df: pd.DataFrame, pitcher_name: str):
     usage_pct = usage.div(usage.sum(axis=0), axis=1) * 100
     
     usage_pct = usage_pct.round(1)
-    usage_pct = usage_pct.applymap(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
+    usage_pct = usage_pct.map(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
     
     return usage_pct
 

@@ -2826,7 +2826,7 @@ with tabs[3]:
                     pass
                 return ''
             
-            styled = best_sequences.style.applymap(
+            styled = best_sequences.style.map(
                 style_effectiveness, 
                 subset=['Effectiveness Score']
             ).hide(axis="index").format({

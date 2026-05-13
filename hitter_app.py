@@ -407,45 +407,36 @@ D1_AVERAGES = {
 }
 
 def get_performance_color_gradient(stat_name: str, value: float) -> str:
-    """
-    Return a background color based on how the value compares to D1 average.
-    Returns a hex color - greener for better, redder for worse, white for average
-    """
     if pd.isna(value) or stat_name not in D1_AVERAGES:
-        return "#ffffff"  # white for no comparison
+        return "#ffffff"
     
     avg = D1_AVERAGES[stat_name]
     
-    # For stats where LOWER is better (strikeouts, whiffs, chase)
     if stat_name in ["K%", "Whiff%", "Chase%", "ZWhiff%"]:
-        diff_pct = (avg - value) / avg  # Positive if player is better (lower)
-    # For stats where HIGHER is better (including HardHit%, exit velocities, ZContact%)
+        diff_pct = (avg - value) / avg
     else:
-        diff_pct = (value - avg) / avg  # Positive if player is better (higher)
+        diff_pct = (value - avg) / avg
     
-    # Create gradient based on difference
-    if diff_pct >= 0.20:  # 20%+ better - darkest green
+    if diff_pct >= 0.20:
         return "#28a745"
-    elif diff_pct >= 0.10:  # 10-20% better - medium green
+    elif diff_pct >= 0.10:
         return "#5cb85c"
-    elif diff_pct >= 0.05:  # 5-10% better - light green
+    elif diff_pct >= 0.05:
         return "#90ee90"
-    elif diff_pct >= -0.05:  # Within 5% - white/neutral
+    elif diff_pct >= -0.05:
         return "#ffffff"
-    elif diff_pct >= -0.10:  # 5-10% worse - light red
+    elif diff_pct >= -0.10:
         return "#ffb3b3"
-    elif diff_pct >= -0.20:  # 10-20% worse - medium red
+    elif diff_pct >= -0.20:
         return "#ff8080"
-    else:  # 20%+ worse - darkest red
+    else:
         return "#dc3545"
 
 def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.DataFrame:
-    """Apply color gradient styling to performance tables based on D1 averages."""
     def apply_color(row):
         stat_name = row[stat_name_col]
         value_str = row['Value']
         
-        # Map display names to D1_AVERAGES keys
         stat_mapping = {
             'Avg Exit Velocity': 'Avg Exit Velocity',
             'Max Exit Velocity': 'Max Exit Velocity',
@@ -466,10 +457,8 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
             'Z-Whiff%': 'ZWhiff%'
         }
         
-        # Get the correct key for D1_AVERAGES lookup
         d1_key = stat_mapping.get(stat_name, stat_name)
         
-        # Extract numeric value from string
         try:
             if '%' in value_str:
                 value = float(value_str.replace('%', ''))
@@ -486,7 +475,6 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
         
         bg_color = get_performance_color_gradient(d1_key, value)
         
-        # Make text white if background is dark
         if bg_color in ["#28a745", "#dc3545"]:
             text_color = "white"
         else:
@@ -497,7 +485,6 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
     
     styled = df.style.apply(apply_color, axis=1)
     
-    # Apply Husker Red header
     header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
     styled = styled.set_table_styles([
         {'selector': 'thead th', 'props': header_props},
@@ -764,7 +751,6 @@ def _img_to_b64(path: str):
         return None
 
 def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Baseball", subtitle="Hitter Analytics Platform", height_px=200):
-    """Render premium championship banner with Nebraska Baseball branding."""
     b64 = None
     for p in image_candidates:
         b64 = _img_to_b64(p)
@@ -795,7 +781,6 @@ def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Basebal
             unsafe_allow_html=True,
         )
     else:
-        # Fallback banner if image can't be loaded
         st.markdown(
             f"""
             <div style="background: linear-gradient(135deg, #1C1C1C 0%, #E41C38 100%); 
@@ -1379,10 +1364,8 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
     if len(dates) < 2:
         return None
     
-    # Calculate cumulative stats up to each date
     stats_by_date = []
     for i, date in enumerate(dates):
-        # Get all games up to and including this date
         cumulative_df = df[df['DateOnly'].isin(dates[:i+1])]
         stats = _compute_split_core(cumulative_df)
         stats_by_date.append({
@@ -1405,7 +1388,6 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
     ax.plot(dates_plot, metric_values, marker='o', linewidth=2.5, 
             markersize=8, color=HUSKER_RED, label=metric)
     
-    # Final value line
     final_val = metric_values[-1]
     ax.axhline(y=final_val, color='gray', linestyle='--', linewidth=1.5, 
                alpha=0.7, label=f'Final: {final_val:.3f}')
@@ -2126,11 +2108,9 @@ def _expand_paths(path_like: str):
 
 @st.cache_data(show_spinner=True)
 def _skip_title_row(path: str) -> int:
-    """Return skiprows=1 if the first row is a non-header title line (e.g. 'S26 (1)')."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             first = f.readline().strip()
-        # If the first cell doesn't look like a real column name, skip it
         if first and not first.startswith("PitchNo") and "," not in first[:20]:
             return 1
     except Exception:
@@ -2269,7 +2249,7 @@ for _ti, _tab_label in enumerate(_TABS):
             st.session_state["view_mode"] = _tab_label
             st.rerun()
 
-# Highlight the active tab via nth-child CSS — no widget tree changes
+# Highlight the active tab via nth-child CSS
 _active_idx = _TABS.index(st.session_state["view_mode"])
 st.markdown(f"""
 <style>
@@ -2298,7 +2278,6 @@ view_mode = st.session_state["view_mode"]
 if view_mode == "Standard Hitter Report":
     st.markdown("## Standard Hitter Report")
     
-    # Player selection in sidebar
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Player Selection")
     batter_key_std = st.sidebar.selectbox(
@@ -2365,7 +2344,6 @@ if view_mode == "Standard Hitter Report":
 elif view_mode == "Profiles & Heatmaps":
     st.markdown("## Profiles & Heatmaps")
 
-    # Player selection in sidebar
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Player Selection")
     batter_key = st.sidebar.selectbox(
@@ -2376,7 +2354,6 @@ elif view_mode == "Profiles & Heatmaps":
         key="prof_player"
     )
 
-    # Filters in sidebar
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Filters")
 
@@ -2440,7 +2417,6 @@ elif view_mode == "Profiles & Heatmaps":
             "2026 season": "2026",
         }.get(period, "—")
         
-        # Professional section header
         st.markdown(f"""
             <div style="background: linear-gradient(135deg, {DARK_GRAY} 0%, {HUSKER_RED} 100%); 
                         padding: 25px; border-radius: 10px; margin-bottom: 25px; 
@@ -2459,7 +2435,6 @@ elif view_mode == "Profiles & Heatmaps":
         st.markdown("### Plate Discipline")
         st.table(themed_styler(t2_rates, nowrap=True))
 
-        # ── EV / Barrel / Launch Angle by Pitch Group ─────────────────────────
         st.markdown("### Exit Velocity & Barrel by Pitch Type")
 
         def _ev_barrel_row(grp: pd.DataFrame) -> dict:
@@ -2553,7 +2528,6 @@ elif view_mode == "Profiles & Heatmaps":
 elif view_mode == "Rankings":
     st.markdown("## Team Rankings")
 
-    # Filters in sidebar
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Filters")
 
@@ -2608,7 +2582,6 @@ elif view_mode == "Rankings":
     if min_pa > 0:
         rankings_df = rankings_df[rankings_df["PA"] >= min_pa]
 
-    # ── Team Totals Banner ───────────────────────────────────────────────────
     if not df_scope.empty:
         def _team_totals_from_scope(df: pd.DataFrame) -> dict:
             pa_key = [c for c in ["GameID","Inning","Top/Bottom","PAofInning"] if c in df.columns]
@@ -2712,7 +2685,6 @@ elif view_mode == "Season Summary":
     
     st.markdown("---")
     
-    # Player selection in sidebar
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Player Selection")
     batter_key = st.sidebar.selectbox(
@@ -2735,7 +2707,6 @@ elif view_mode == "Season Summary":
     
     player_display = display_name_by_key.get(batter_key, batter_key)
     
-    # Professional player header
     st.markdown(f"""
         <div style="background: linear-gradient(135deg, {DARK_GRAY} 0%, {HUSKER_RED} 100%); 
                     padding: 30px; border-radius: 10px; margin-bottom: 25px; 
@@ -2750,7 +2721,6 @@ elif view_mode == "Season Summary":
     
     player_stats = _compute_split_core(df_player_fall)
     
-    # Color key
     st.markdown("""
     <div style='background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #E60026;'>
         <p style='margin: 0 0 8px 0; font-size: 15px; color: #2C3E50; font-weight: 600;'>
@@ -2770,7 +2740,6 @@ elif view_mode == "Season Summary":
     </div>
     """, unsafe_allow_html=True)
     
-    # SECTION 1: OVERALL PERFORMANCE
     st.markdown("### Overall Performance")
     
     perf_data_1 = pd.DataFrame({
@@ -2838,7 +2807,6 @@ elif view_mode == "Season Summary":
     
     st.markdown("---")
     
-    # SECTION 2: BATTED BALL QUALITY
     st.markdown("### Batted Ball Quality")
     
     bb_data = pd.DataFrame({
@@ -2860,7 +2828,6 @@ elif view_mode == "Season Summary":
     
     st.markdown("---")
     
-    # SECTION 3: PLATE DISCIPLINE
     st.markdown("### Plate Discipline")
     
     pd_data = pd.DataFrame({
@@ -2883,7 +2850,6 @@ elif view_mode == "Season Summary":
     
     st.markdown("---")
     
-    # SECTION 4: GAME-BY-GAME PERFORMANCE
     st.markdown("### Game-by-Game Performance")
     
     game_table = create_game_by_game_table(df_player_fall)
@@ -2898,7 +2864,6 @@ elif view_mode == "Season Summary":
     
     st.markdown("---")
     
-    # SECTION 5: PERFORMANCE SPLITS
     st.markdown("### Performance Splits")
     
     split_type = st.selectbox(
@@ -2926,7 +2891,6 @@ elif view_mode == "Season Summary":
     
     st.markdown("---")
     
-    # SECTION 6: VISUALIZATIONS
     st.markdown("### Visualizations")
     
     tab1, tab2 = st.tabs(["Spray Chart", "Heatmaps"])
@@ -2964,7 +2928,6 @@ elif view_mode == "Season Summary":
     
     st.markdown("---")
     
-    # SECTION 7: PROGRESS TRACKER
     st.markdown("### Progress Tracker")
     
     metric_choice = st.selectbox(
@@ -2987,17 +2950,15 @@ elif view_mode == "Season Summary":
 elif view_mode == "Catcher Framing":
     import matplotlib.patches as patches
 
-    # ── Constants ──────────────────────────────────────────────────────────────
     FRAME_ZONE_X_MIN, FRAME_ZONE_X_MAX = -0.83, 0.83
     FRAME_ZONE_Y_MIN, FRAME_ZONE_Y_MAX = 1.50, 3.50
     FRAME_ZONE_WIDTH  = FRAME_ZONE_X_MAX - FRAME_ZONE_X_MIN
     FRAME_ZONE_HEIGHT = FRAME_ZONE_Y_MAX - FRAME_ZONE_Y_MIN
     FRAME_PLOT_X_LIM  = (-2.2, 2.2)
     FRAME_PLOT_Y_LIM  = (0.8, 4.5)
-    FRAME_POS_COLOR   = "#e74c3c"   # red  — out-of-zone called strike
-    FRAME_NEG_COLOR   = "#3498db"   # blue — in-zone called ball
+    FRAME_POS_COLOR   = "#e74c3c"
+    FRAME_NEG_COLOR   = "#3498db"
 
-    # ── Build catcher subset from the already-loaded df_all ───────────────────
     for _col in ["Catcher", "CatcherTeam", "PlateLocSide", "PlateLocHeight", "PitchCall", "Date"]:
         if _col not in df_all.columns:
             df_all[_col] = pd.NA
@@ -3006,11 +2967,9 @@ elif view_mode == "Catcher Framing":
     neb_catch_df["Catcher"] = neb_catch_df["Catcher"].astype(str).str.strip()
     neb_catch_df = ensure_date_column(neb_catch_df)
 
-    # ── Sidebar filters ────────────────────────────────────────────────────────
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Catcher Framing Filters")
 
-    # Normalize Date to plain date objects so timestamps don't break filtering
     neb_catch_df["DateOnly"] = pd.to_datetime(neb_catch_df["Date"], errors="coerce").dt.date
 
     all_catch_dates = sorted(neb_catch_df["DateOnly"].dropna().unique())
@@ -3048,7 +3007,6 @@ elif view_mode == "Catcher Framing":
         help="0.33 ft ≈ 4 inches outside the rulebook zone"
     )
 
-    # ── Framing helpers ────────────────────────────────────────────────────────
     def _classify_framing(sub, shadow=None):
         if shadow is None:
             shadow = FRAME_SHADOW
@@ -3059,13 +3017,11 @@ elif view_mode == "Catcher Framing":
             side.between(FRAME_ZONE_X_MIN, FRAME_ZONE_X_MAX) &
             height.between(FRAME_ZONE_Y_MIN, FRAME_ZONE_Y_MAX)
         )
-        # Outside zone but within shadow buffer — truly frameable
         in_shadow_outside = (
             side.between(FRAME_ZONE_X_MIN - shadow, FRAME_ZONE_X_MAX + shadow) &
             height.between(FRAME_ZONE_Y_MIN - shadow, FRAME_ZONE_Y_MAX + shadow) &
             ~in_zone
         )
-        # Inside zone near the edge — loseable through poor framing
         in_shadow_inside = (
             in_zone &
             (
@@ -3101,7 +3057,6 @@ elif view_mode == "Catcher Framing":
         ax.figure.set_facecolor("white")
         ax.set_xlim(*FRAME_PLOT_X_LIM)
         ax.set_ylim(*FRAME_PLOT_Y_LIM)
-        # Shadow zone band
         shadow_rect = patches.Rectangle(
             (FRAME_ZONE_X_MIN - shadow, FRAME_ZONE_Y_MIN - shadow),
             FRAME_ZONE_WIDTH + 2 * shadow, FRAME_ZONE_HEIGHT + 2 * shadow,
@@ -3109,7 +3064,6 @@ elif view_mode == "Catcher Framing":
             linestyle="--", zorder=1
         )
         ax.add_patch(shadow_rect)
-        # True strike zone
         zone_rect = patches.Rectangle(
             (FRAME_ZONE_X_MIN, FRAME_ZONE_Y_MIN), FRAME_ZONE_WIDTH, FRAME_ZONE_HEIGHT,
             linewidth=2, edgecolor="black", facecolor="none", zorder=2
@@ -3139,14 +3093,12 @@ elif view_mode == "Catcher Framing":
         ax.legend(loc="upper right", fontsize=7.5, facecolor="white",
                   labelcolor="black", framealpha=0.9, edgecolor="#cccccc")
 
-    # ── Page header ────────────────────────────────────────────────────────────
     st.markdown("## Catcher Framing Report")
     st.markdown("---")
 
     if catch_view_df.empty or not sel_catchers:
         st.info("No catcher data available for the selected filters.")
     else:
-        # ── Summary table ──────────────────────────────────────────────────────
         st.markdown("### Framing Summary by Catcher")
 
         summary_rows = []
@@ -3201,7 +3153,6 @@ elif view_mode == "Catcher Framing":
             )
             st.dataframe(styled_catch, use_container_width=True)
 
-        # ── Zone plots ─────────────────────────────────────────────────────────
         st.markdown("---")
         st.markdown("### Framing Zone Plots")
 
@@ -3256,8 +3207,6 @@ elif view_mode == "Catcher Framing":
                     st.pyplot(_fig)
                     plt.close(_fig)
 
-
-        # ── Legend / explainer ─────────────────────────────────────────────────
         st.markdown("---")
         st.markdown(f"""
         <div style='background:#1f2937;border-radius:8px;padding:14px 20px;
@@ -3286,10 +3235,6 @@ elif view_mode == "Weekend Series":
     st.markdown("## Weekend Series Summary")
     st.markdown("---")
 
-    # ── Build series list ─────────────────────────────────────────────────────
-    # A "series" = contiguous cluster of Nebraska game dates vs same opponent.
-    # We use a 3-day gap to separate series.
-
     def build_series_index(df: pd.DataFrame) -> list[dict]:
         """Return list of dicts: {label, opponents (list), dates}."""
         if df.empty or "DateOnly" not in df.columns:
@@ -3298,7 +3243,6 @@ elif view_mode == "Weekend Series":
         if opp_col not in df.columns:
             return []
 
-        # One dominant opponent per game date
         dated = (
             df[df["BatterTeam"].astype(str).str.upper().eq("NEB")]
             .groupby("DateOnly")[opp_col]
@@ -3309,11 +3253,6 @@ elif view_mode == "Weekend Series":
         if dated.empty:
             return []
 
-        # Cluster by date proximity — use tight gap (≤ 1 day) so that
-        # midweek single games don't bleed into adjacent series.
-        # Exception: neutral-site tournaments (Globe Life etc.) span 3 days
-        # with different opponents each day, so we allow ≤ 2-day gap only
-        # when a known tournament set of opponents is involved.
         clusters = []
         cur_dates = [dated.iloc[0]["DateOnly"]]
         cur_opps  = [dated.iloc[0][opp_col]]
@@ -3324,12 +3263,8 @@ elif view_mode == "Weekend Series":
                 cur_dates.append(row["DateOnly"])
                 cur_opps.append(row[opp_col])
             elif gap == 2:
-                # Only merge on a 2-day gap if it looks like a tournament
-                # (current cluster already has 2+ different opponents, or
-                # the incoming opponent differs from current — neutral site)
                 unique_so_far = len(set(cur_opps))
                 if unique_so_far >= 2 or row[opp_col] not in cur_opps:
-                    # Check if any known tournament key overlaps current opps
                     candidate = set(cur_opps) | {row[opp_col]}
                     is_tournament = any(
                         key <= candidate or candidate <= key or key == candidate
@@ -3351,7 +3286,6 @@ elif view_mode == "Weekend Series":
         result = []
         for dates, opps in clusters:
             d0, d1 = min(dates), max(dates)
-            # Translate codes → full names, deduplicate preserving order
             seen = set()
             opp_names = []
             for code in opps:
@@ -3359,7 +3293,6 @@ elif view_mode == "Weekend Series":
                 if name not in seen:
                     seen.add(name)
                     opp_names.append(name)
-            # Check for a known tournament name
             raw_code_set = frozenset(opps)
             tournament = None
             for key, name in TOURNAMENT_NAME_MAP.items():
@@ -3375,13 +3308,45 @@ elif view_mode == "Weekend Series":
         result.reverse()
         return result
 
+    def build_opponent_combined_entries(series_index: list) -> list:
+        """
+        For opponents appearing in 2+ separate date-based clusters,
+        build a combined 'All Games' entry to prepend to the series list.
+        """
+        from collections import defaultdict
+        opp_to_series = defaultdict(list)
+
+        for s in series_index:
+            for opp_name in s["opponents"]:
+                opp_to_series[opp_name].append(s)
+
+        combined = []
+        for opp_name, clusters in opp_to_series.items():
+            if len(clusters) < 2:
+                continue
+            all_dates = sorted(set(d for c in clusters for d in c["dates"]))
+            n_games = len(all_dates)
+            label = f"{opp_name} – All {n_games} Games"
+            combined.append({
+                "label": label,
+                "opponent": opp_name,
+                "opponents": [opp_name],
+                "dates": all_dates,
+            })
+
+        combined.sort(key=lambda x: x["opponent"])
+        return combined
+
     if "DateOnly" not in df_neb_bat.columns:
         df_neb_bat["DateOnly"] = pd.to_datetime(df_neb_bat["Date"], errors="coerce").dt.date
 
     if "DateOnly" not in df_all.columns:
         df_all["DateOnly"] = pd.to_datetime(df_all["Date"], errors="coerce").dt.date
 
+    # Build date-based series, then prepend any combined opponent entries
     series_index = build_series_index(df_neb_bat)
+    combined_entries = build_opponent_combined_entries(series_index)
+    series_index = combined_entries + series_index
 
     if not series_index:
         st.info("No series data found. Make sure Nebraska game data is loaded.")
@@ -3395,12 +3360,10 @@ elif view_mode == "Weekend Series":
         )
         sel_series    = next(s for s in series_index if s["label"] == sel_label)
         sel_dates     = sel_series["dates"]
-        sel_opp       = sel_series["opponent"]  # already display name
+        sel_opp       = sel_series["opponent"]
         sel_opp_str   = sel_series["opponent"]
 
-        # Filter Nebraska batting rows for this series
         neb_ser = df_neb_bat[df_neb_bat["DateOnly"].isin(sel_dates)].copy()
-        # All rows for this series (for pitcher velo lookup)
         all_ser = df_all[df_all["DateOnly"].isin(sel_dates)].copy()
 
         if neb_ser.empty:
@@ -3409,7 +3372,6 @@ elif view_mode == "Weekend Series":
             n_games = len(sel_dates)
             game_word = "game" if n_games == 1 else "games"
 
-            # ── Series header banner ──────────────────────────────────────────
             date_range = ", ".join(format_date_long(d) for d in sorted(sel_dates))
             st.markdown(f"""
 <div style='background:linear-gradient(90deg,#1a0a0e 0%,#2d0e16 60%,#1a0a0e 100%);
@@ -3423,14 +3385,9 @@ elif view_mode == "Weekend Series":
 </div>
 """, unsafe_allow_html=True)
 
-            # ─── SECTION 1: Team Batting Line ────────────────────────────────
             st.markdown("<div style='font-size:1.1rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #E41C38;padding-bottom:6px;'>Team Batting</div>", unsafe_allow_html=True)
 
             def _series_team_stats(df: pd.DataFrame) -> dict:
-                """
-                Team stats using GameID+Inning+Top/Bottom+PAofInning grouping —
-                same PA identification method as create_hitter_report.
-                """
                 pa_key = [c for c in ["GameID","Inning","Top/Bottom","PAofInning"] if c in df.columns]
                 if not pa_key:
                     return {}
@@ -3492,7 +3449,6 @@ elif view_mode == "Weekend Series":
                 }
             team_stats = _series_team_stats(neb_ser)
 
-            # Counting stats row
             counting = ["PA","AB","H","2B","3B","HR","BB","SO"]
             rate_stats = ["AVG","OBP","SLG","OPS","K%","BB%","HardHit%"]
 
@@ -3521,11 +3477,9 @@ elif view_mode == "Weekend Series":
 
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
 
-            # ─── SECTION 2: Exit Velo / Distance leaders ─────────────────────
             st.markdown("<div style='font-size:1.1rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:16px;border-bottom:2px solid #E41C38;padding-bottom:6px;'>Series Leaders</div>", unsafe_allow_html=True)
             left_col, mid_col, right_col = st.columns(3, gap="large")
 
-            # Top 3 Exit Velos
             with left_col:
                 st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#ccc;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;'>Top Exit Velocities</div>", unsafe_allow_html=True)
                 ev_df = neb_ser[
@@ -3564,7 +3518,6 @@ elif view_mode == "Weekend Series":
                             unsafe_allow_html=True,
                         )
 
-            # Top 3 Hit Distances
             with mid_col:
                 st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#ccc;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;'>Top Hit Distances</div>", unsafe_allow_html=True)
                 dist_df = neb_ser[
@@ -3603,21 +3556,17 @@ elif view_mode == "Weekend Series":
                             unsafe_allow_html=True,
                         )
 
-            # Top 3 velos from 3 different pitchers (opponent pitchers)
             with right_col:
                 st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#ccc;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;'>Nebraska Pitch Velocities</div>", unsafe_allow_html=True)
-                # Only NEB pitchers throwing to opponent batters (or just all pitchers in the series)
                 velo_src = all_ser.copy()
                 velo_src["RV"] = pd.to_numeric(velo_src.get("RelSpeed", pd.Series(dtype=float)), errors="coerce")
                 velo_src = velo_src[velo_src["RV"].notna()].copy()
 
-                # Prefer NEB pitchers; fall back to all
                 neb_pitch_mask = velo_src.get("PitcherTeam", pd.Series(dtype=str)).astype(str).str.upper().eq("NEB")
                 velo_neb = velo_src[neb_pitch_mask]
                 if velo_neb.empty:
                     velo_neb = velo_src
 
-                # get pitcher display name
                 pitch_name_col = next(
                     (c for c in ["Pitcher"] if c in velo_neb.columns), None
                 )
@@ -3630,7 +3579,6 @@ elif view_mode == "Weekend Series":
                     velo_neb = velo_neb.copy()
                     velo_neb["_PitcherDisp"] = "Unknown"
 
-                # For each pitcher get their personal top pitch
                 pitcher_bests = (
                     velo_neb.groupby("_PitcherDisp")["RV"]
                     .max()
@@ -3666,14 +3614,9 @@ elif view_mode == "Weekend Series":
 
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
 
-            # ─── SECTION 3: Individual Batter Breakdown ───────────────────────
             st.markdown("<div style='font-size:1.1rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #E41C38;padding-bottom:6px;'>Individual Batter Breakdown</div>", unsafe_allow_html=True)
 
             def _batter_series_line(df: pd.DataFrame) -> pd.DataFrame:
-                """
-                Per-batter stats using GameID+Inning+Top/Bottom+PAofInning grouping —
-                same PA identification method as create_hitter_report.
-                """
                 pa_key = ["GameID","Inning","Top/Bottom","PAofInning"]
                 pa_key = [c for c in pa_key if c in df.columns]
                 if not pa_key:
@@ -3689,7 +3632,6 @@ elif view_mode == "Weekend Series":
                     if not bk:
                         continue
 
-                    # Last pitch of each PA for this batter
                     pa_last = grp.groupby(pa_key, dropna=False).last().reset_index()
                     PA = len(pa_last)
                     if PA == 0:

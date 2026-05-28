@@ -2248,8 +2248,13 @@ _TABS = [
     "Catcher Framing",
     "Rankings",
     "Weekend Series",
-    "Regional Scouting",
 ]
+if period == "2026 season":
+    _TABS.append("Regional Scouting")
+
+# If user was on Regional Scouting and switches period, fall back to first tab
+if st.session_state.get("view_mode") == "Regional Scouting" and "Regional Scouting" not in _TABS:
+    st.session_state["view_mode"] = _TABS[0]
 
 if "view_mode" not in st.session_state:
     st.session_state["view_mode"] = _TABS[0]
@@ -3837,60 +3842,125 @@ elif view_mode == "Regional Scouting":
     </style>
     """, unsafe_allow_html=True)
 
-    # ── Opponent pitcher data (swap with real NCAA CSV data when available) ───
-    SCOUT_PITCHERS = {
-        "bristo_tcu": {
-            "name": "A. Bristo", "tm": "TCU", "tm_label": "TCU", "hand": "RHP",
-            "era": "2.84", "ip": "72.1", "kbb": 3.6,
-            "ar": [
-                {"t": "4-Seam",   "v": 93.4, "ivb": 16.2, "hb":  8.1, "u": "38%"},
-                {"t": "Slider",   "v": 84.1, "ivb": -2.1, "hb": -9.4, "u": "29%"},
-                {"t": "Changeup", "v": 83.7, "ivb":  4.2, "hb":  9.8, "u": "18%"},
-                {"t": "Curveball","v": 77.2, "ivb": -8.3, "hb":  2.1, "u": "15%"},
-            ],
-            "zone": [0, 1, 3, 0, 2, 2, 0, 1, 2],
-        },
-        "malone_tcu": {
-            "name": "D. Malone", "tm": "TCU", "tm_label": "TCU", "hand": "LHP",
-            "era": "3.61", "ip": "48.2", "kbb": 2.8,
-            "ar": [
-                {"t": "4-Seam",   "v": 90.2, "ivb": 13.4, "hb": -7.2, "u": "42%"},
-                {"t": "Curveball","v": 74.3, "ivb":-10.1, "hb":  3.4, "u": "33%"},
-                {"t": "Changeup", "v": 80.8, "ivb":  3.1, "hb": -9.6, "u": "25%"},
-            ],
-            "zone": [1, 2, 1, 1, 2, 1, 0, 2, 2],
-        },
-        "torres_dbu": {
-            "name": "R. Torres", "tm": "DBU", "tm_label": "Dallas Baptist", "hand": "RHP",
-            "era": "2.12", "ip": "89.0", "kbb": 3.1,
-            "ar": [
-                {"t": "2-Seam",   "v": 92.1, "ivb":  8.4, "hb": 14.2, "u": "44%"},
-                {"t": "Cutter",   "v": 87.3, "ivb":  5.1, "hb": -4.8, "u": "31%"},
-                {"t": "Changeup", "v": 82.4, "ivb":  2.8, "hb": 11.3, "u": "25%"},
-            ],
-            "zone": [0, 0, 0, 1, 1, 1, 3, 2, 2],
-        },
-        "hensley_sam": {
-            "name": "J. Hensley", "tm": "SAM", "tm_label": "Samford", "hand": "RHP",
-            "era": "3.22", "ip": "61.1", "kbb": 2.6,
-            "ar": [
-                {"t": "4-Seam",   "v": 91.4, "ivb": 14.8, "hb":  7.2, "u": "45%"},
-                {"t": "Slider",   "v": 80.1, "ivb": -1.4, "hb":-11.2, "u": "35%"},
-                {"t": "Curveball","v": 72.8, "ivb": -9.1, "hb":  1.8, "u": "20%"},
-            ],
-            "zone": [1, 2, 2, 1, 2, 1, 0, 1, 1],
-        },
-        "riley_sam": {
-            "name": "C. Riley", "tm": "SAM", "tm_label": "Samford", "hand": "LHP",
-            "era": "4.01", "ip": "44.0", "kbb": 2.9,
-            "ar": [
-                {"t": "4-Seam",   "v": 89.1, "ivb": 11.8, "hb": -8.4, "u": "38%"},
-                {"t": "Slider",   "v": 78.4, "ivb": -2.8, "hb": -8.1, "u": "36%"},
-                {"t": "Changeup", "v": 79.8, "ivb":  2.1, "hb":-10.2, "u": "26%"},
-            ],
-            "zone": [0, 1, 1, 1, 2, 2, 2, 2, 3],
-        },
-    }
+    # ── Build opponent pitcher profiles from NCAA parquet ────────────────────
+    def _ivb_col(df):
+        for c in ["InducedVertBreak", "VertBreak", "pfx_z"]:
+            if c in df.columns:
+                return c
+        return None
+
+    def _hb_col(df):
+        for c in ["HorzBreak", "pfx_x"]:
+            if c in df.columns:
+                return c
+        return None
+
+    def _build_scout_pitchers(df_ncaa: pd.DataFrame) -> dict:
+        if df_ncaa.empty:
+            return {}
+
+        pt_col  = next((c for c in ["AutoPitchType","TaggedPitchType","PitchType"] if c in df_ncaa.columns), None)
+        ivb_c   = _ivb_col(df_ncaa)
+        hb_c    = _hb_col(df_ncaa)
+
+        # Exclude Nebraska pitchers — we want opponents facing our hitters
+        team_col = "PitcherTeam" if "PitcherTeam" in df_ncaa.columns else None
+        if team_col:
+            opp = df_ncaa[~df_ncaa[team_col].astype(str).str.upper().eq("NEB")].copy()
+        else:
+            opp = df_ncaa.copy()
+
+        if opp.empty or pt_col is None:
+            return {}
+
+        result = {}
+        group_cols = [c for c in ["Pitcher","PitcherTeam","PitcherThrows"] if c in opp.columns]
+        if not group_cols:
+            return {}
+
+        for keys, grp in opp.groupby(group_cols, dropna=False):
+            if len(grp) < 50:
+                continue
+
+            if len(group_cols) == 3:
+                p_name, p_team, p_throws = keys
+            elif len(group_cols) == 2:
+                p_name, p_team = keys; p_throws = "R"
+            else:
+                p_name = keys; p_team = "UNK"; p_throws = "R"
+
+            p_name   = str(p_name)
+            p_team   = str(p_team)
+            p_throws = str(p_throws).strip().upper()
+            p_hand   = "LHP" if p_throws.startswith("L") else "RHP"
+
+            # Arsenal
+            ar = []
+            for ptype, pg in grp.groupby(pt_col, dropna=False):
+                ptype = str(ptype)
+                if ptype.lower() in ("", "nan", "undefined", "other", "unknown"):
+                    continue
+                if len(pg) < 8:
+                    continue
+                velo = pd.to_numeric(pg.get("RelSpeed", pd.Series(dtype=float)), errors="coerce").mean()
+                ivb  = pd.to_numeric(pg.get(ivb_c, pd.Series(dtype=float)), errors="coerce").mean() if ivb_c else 0.0
+                hb   = pd.to_numeric(pg.get(hb_c,  pd.Series(dtype=float)), errors="coerce").mean() if hb_c else 0.0
+                if pd.isna(velo):
+                    continue
+                usage = f"{len(pg)/len(grp)*100:.0f}%"
+                display = _pretty_pitch_name(ptype)
+                ar.append({
+                    "t":   display,
+                    "v":   round(float(velo), 1),
+                    "ivb": round(float(ivb) if pd.notna(ivb) else 0.0, 1),
+                    "hb":  round(float(hb)  if pd.notna(hb)  else 0.0, 1),
+                    "u":   usage,
+                })
+
+            if not ar:
+                continue
+
+            ar.sort(key=lambda x: float(x["u"].replace("%", "")), reverse=True)
+
+            # Zone tendency — where this pitcher locates
+            lside = pd.to_numeric(grp.get("PlateLocSide",   pd.Series(dtype=float)), errors="coerce")
+            lht   = pd.to_numeric(grp.get("PlateLocHeight", pd.Series(dtype=float)), errors="coerce")
+            x_bounds = [(-0.83, -0.277), (-0.277, 0.277), (0.277, 0.83)]
+            y_bounds = [(2.83, 3.5), (1.83, 2.83), (1.5, 1.83)]
+            zone_counts = []
+            for yr, yb in y_bounds:
+                for xr in x_bounds:
+                    cell = ((lside >= xr[0]) & (lside <= xr[1]) & (lht >= yr) & (lht <= yb))
+                    zone_counts.append(int(cell.sum()))
+            mx = max(zone_counts) if any(zone_counts) else 1
+            zone = [round(c / max(mx, 1) * 3) for c in zone_counts]
+
+            # K/BB proxy
+            korbb_s = grp.get("KorBB", pd.Series(dtype=object)).astype(str)
+            n_k  = int(korbb_s.eq("Strikeout").sum())
+            n_bb = int(korbb_s.eq("Walk").sum())
+            kbb  = round(n_k / max(n_bb, 1), 1)
+
+            key = f"{normalize_name(p_name)}_{p_team}".lower().replace(" ", "_").replace(",", "")
+            result[key] = {
+                "name":     normalize_name(p_name),
+                "tm":       p_team,
+                "tm_label": TEAM_NAME_MAP.get(p_team, p_team),
+                "hand":     p_hand,
+                "era":      "—",
+                "ip":       "—",
+                "kbb":      kbb,
+                "ar":       ar,
+                "zone":     zone,
+            }
+
+        return result
+
+    SCOUT_PITCHERS = _build_scout_pitchers(df_ncaa)
+
+    if not SCOUT_PITCHERS:
+        st.warning("No opponent pitcher data found. Make sure the NCAA parquet file is loaded and the path is set correctly in DATA_PATH_NCAA.")
+        st.stop()
 
     PITCH_COLORS = {
         "4-Seam":   "#4a9eff",
@@ -4231,15 +4301,15 @@ elif view_mode == "Regional Scouting":
         fig, ax = _plt.subplots(figsize=(3.8, 3.8), subplot_kw=dict(polar=True),
                                 facecolor="#161616")
         ax.set_facecolor("#161616")
-        ax.spines["polar"].set_color("rgba(255,255,255,0.07)")
+        ax.spines["polar"].set_color((1, 1, 1, 0.07))
         ax.set_thetagrids([a * 180 / _np.pi for a in angles[:-1]], labels,
                           fontsize=8, color="#555")
         ax.set_ylim(0, 100)
         ax.yaxis.set_visible(False)
         for gl in ax.yaxis.get_gridlines():
-            gl.set_color("rgba(255,255,255,0.06)")
+            gl.set_color((1, 1, 1, 0.06))
         for gl in ax.xaxis.get_gridlines():
-            gl.set_color("rgba(255,255,255,0.06)")
+            gl.set_color((1, 1, 1, 0.06))
         ax.set_xticks(angles[:-1])
         ax.set_xticklabels(labels, fontsize=7.5, color="#585858")
 

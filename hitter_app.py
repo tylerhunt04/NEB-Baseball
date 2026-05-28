@@ -309,6 +309,7 @@ st.markdown("""
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
 DATA_PATH_SCRIM  = "Scrimmage(27).csv"
 DATA_PATH_2026   = "_ABCD.csv"
+DATA_PATH_NCAA   = "2026_reg_season.parquet"  # ← swap in your actual filename here
 
 PROB_LOOKUP_PATH = "EV_LA_probabilities.csv"
 
@@ -2196,6 +2197,17 @@ if df_all.empty:
     st.error(f"No data loaded for '{period}'. Check the path(s) in the sidebar.")
     st.stop()
 
+@st.cache_data(show_spinner=False)
+def load_ncaa_parquet(path: str) -> pd.DataFrame:
+    try:
+        if os.path.exists(path):
+            return pd.read_parquet(path)
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+df_ncaa = load_ncaa_parquet(DATA_PATH_NCAA)
+
 # Build hitter keyspace
 for col in ["Batter", "BatterTeam", "PitchofPA", "PitcherThrows", "PitcherTeam",
             "PlayResult", "KorBB", "PitchCall", "AutoPitchType", "ExitSpeed", "Angle",
@@ -2236,6 +2248,7 @@ _TABS = [
     "Catcher Framing",
     "Rankings",
     "Weekend Series",
+    "Regional Scouting",
 ]
 
 if "view_mode" not in st.session_state:
@@ -3704,3 +3717,785 @@ elif view_mode == "Weekend Series":
                 )
             else:
                 st.info("No batter data available.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# REGIONAL SCOUTING — THEIR PITCHERS vs OUR HITTERS
+# ══════════════════════════════════════════════════════════════════════════════
+elif view_mode == "Regional Scouting":
+
+    import requests as _requests
+
+    # ── Color constants for this page (blue accent = hitter-side framing) ────
+    SC_BLU   = "#4a9eff"
+    SC_RED   = "#E41C38"
+    SC_GRN   = "#3adb76"
+    SC_AMB   = "#f5a623"
+    SC_DARK  = "#0f0f0f"
+    SC_D2    = "#161616"
+    SC_D3    = "#1d1d1d"
+    SC_D4    = "#252525"
+
+    # ── Shared CSS for dark-panel scouting UI ────────────────────────────────
+    st.markdown("""
+    <style>
+    .sc-page { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .sc-header-card {
+        background: linear-gradient(135deg, #0d1117 0%, #0f1e30 100%);
+        border: 0.5px solid rgba(74,158,255,0.25);
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 14px;
+    }
+    .sc-tag-nb {
+        display:inline-block;font-size:11px;padding:2px 9px;border-radius:4px;
+        background:rgba(74,158,255,0.1);color:#7bb8ff;
+        border:0.5px solid rgba(74,158,255,0.25);margin-right:6px;
+    }
+    .sc-tag-opp {
+        display:inline-block;font-size:11px;padding:2px 9px;border-radius:4px;
+        background:rgba(255,255,255,0.04);color:#888;
+        border:0.5px solid rgba(255,255,255,0.1);
+    }
+    .sc-matchup-names {
+        font-size:20px;font-weight:500;color:#fff;line-height:1.3;margin:8px 0 4px 0;
+    }
+    .sc-matchup-sub { font-size:11px;color:#555;margin-bottom:12px; }
+    .sc-grade-segs { display:flex;gap:3px;height:5px;margin-bottom:5px; }
+    .sc-grade-seg { flex:1;border-radius:1px; }
+    .sc-grade-labels { display:flex;justify-content:space-between;align-items:center; }
+    .sc-grade-verdict { font-size:12px;font-weight:500;text-align:center;flex:1; }
+    .sc-grade-lbl { font-size:10px;color:#444; }
+    .sc-section-title {
+        font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:#555;
+        margin-bottom:12px;display:flex;align-items:center;gap:6px;
+    }
+    .sc-section-title::before {
+        content:'';width:2px;height:9px;background:#4a9eff;
+        border-radius:1px;flex-shrink:0;display:block;
+    }
+    .sc-pitch-card {
+        background:#1d1d1d;border:0.5px solid rgba(255,255,255,0.06);
+        border-radius:9px;padding:12px 14px;margin-bottom:9px;
+    }
+    .sc-pitch-head { display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px; }
+    .sc-pitch-name { font-size:14px;font-weight:500;color:#d8d8d8; }
+    .sc-pitch-usage {
+        font-size:10px;color:#555;background:#252525;padding:2px 8px;
+        border-radius:4px;border:0.5px solid rgba(255,255,255,0.06);
+        margin-left:8px;vertical-align:middle;
+    }
+    .sc-pitch-det { font-size:11px;color:#666;margin-top:3px; }
+    .sc-mrow { display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin-bottom:8px; }
+    .sc-mbox {
+        background:#252525;border-radius:6px;padding:7px 8px;
+        border:0.5px solid rgba(255,255,255,0.06);
+    }
+    .sc-mlbl { font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px; }
+    .sc-mval { font-size:18px;font-weight:500;line-height:1; }
+    .sc-mbar { height:2px;border-radius:1px;margin-top:5px; }
+    .sc-chip {
+        font-size:9px;padding:1px 6px;border-radius:3px;
+        margin-top:5px;display:inline-block;font-weight:500;
+    }
+    .sc-chip-bad  { background:rgba(228,28,56,.12);color:#ff6b7a;border:0.5px solid rgba(228,28,56,.2); }
+    .sc-chip-ok   { background:rgba(245,166,35,.09);color:#f5a623;border:0.5px solid rgba(245,166,35,.2); }
+    .sc-chip-good { background:rgba(58,219,118,.09);color:#3adb76;border:0.5px solid rgba(58,219,118,.15); }
+    .sc-pnote { font-size:11px;color:#555;line-height:1.55; }
+    .sc-right-card {
+        background:#161616;border:0.5px solid rgba(255,255,255,0.06);
+        border-radius:12px;padding:14px 16px;margin-bottom:12px;
+    }
+    .sc-zone-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:3px;width:150px; }
+    .sc-zone-cell {
+        aspect-ratio:1;border-radius:4px;display:flex;align-items:center;
+        justify-content:center;font-size:11px;font-weight:500;
+        border:0.5px solid rgba(255,255,255,0.03);
+    }
+    .sc-plt-grid { display:grid;grid-template-columns:1fr 1fr;gap:8px; }
+    .sc-plt-card {
+        background:#1d1d1d;border:0.5px solid rgba(255,255,255,0.06);
+        border-radius:7px;padding:10px 12px;
+    }
+    .sc-plt-hdr { font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:7px; }
+    .sc-plt-row { display:flex;justify-content:space-between;margin-bottom:4px; }
+    .sc-plt-lbl { font-size:11px;color:#666; }
+    .sc-plt-val { font-size:12px;font-weight:500;color:#ccc; }
+    .sc-note-box {
+        background:#161616;border:0.5px solid rgba(255,255,255,0.06);
+        border-radius:12px;padding:15px 17px;margin-top:12px;
+    }
+    .sc-note-body {
+        background:rgba(74,158,255,0.06);border-left:2px solid #1a3a5e;
+        border-radius:0 7px 7px 0;padding:11px 13px;
+        font-size:12px;color:#999;line-height:1.75;
+    }
+    .cr { color:#ff6b7a; }
+    .ca { color:#f5a623; }
+    .cg { color:#3adb76; }
+    .cb { color:#4a9eff; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ── Opponent pitcher data (swap with real NCAA CSV data when available) ───
+    SCOUT_PITCHERS = {
+        "bristo_tcu": {
+            "name": "A. Bristo", "tm": "TCU", "tm_label": "TCU", "hand": "RHP",
+            "era": "2.84", "ip": "72.1", "kbb": 3.6,
+            "ar": [
+                {"t": "4-Seam",   "v": 93.4, "ivb": 16.2, "hb":  8.1, "u": "38%"},
+                {"t": "Slider",   "v": 84.1, "ivb": -2.1, "hb": -9.4, "u": "29%"},
+                {"t": "Changeup", "v": 83.7, "ivb":  4.2, "hb":  9.8, "u": "18%"},
+                {"t": "Curveball","v": 77.2, "ivb": -8.3, "hb":  2.1, "u": "15%"},
+            ],
+            "zone": [0, 1, 3, 0, 2, 2, 0, 1, 2],
+        },
+        "malone_tcu": {
+            "name": "D. Malone", "tm": "TCU", "tm_label": "TCU", "hand": "LHP",
+            "era": "3.61", "ip": "48.2", "kbb": 2.8,
+            "ar": [
+                {"t": "4-Seam",   "v": 90.2, "ivb": 13.4, "hb": -7.2, "u": "42%"},
+                {"t": "Curveball","v": 74.3, "ivb":-10.1, "hb":  3.4, "u": "33%"},
+                {"t": "Changeup", "v": 80.8, "ivb":  3.1, "hb": -9.6, "u": "25%"},
+            ],
+            "zone": [1, 2, 1, 1, 2, 1, 0, 2, 2],
+        },
+        "torres_dbu": {
+            "name": "R. Torres", "tm": "DBU", "tm_label": "Dallas Baptist", "hand": "RHP",
+            "era": "2.12", "ip": "89.0", "kbb": 3.1,
+            "ar": [
+                {"t": "2-Seam",   "v": 92.1, "ivb":  8.4, "hb": 14.2, "u": "44%"},
+                {"t": "Cutter",   "v": 87.3, "ivb":  5.1, "hb": -4.8, "u": "31%"},
+                {"t": "Changeup", "v": 82.4, "ivb":  2.8, "hb": 11.3, "u": "25%"},
+            ],
+            "zone": [0, 0, 0, 1, 1, 1, 3, 2, 2],
+        },
+        "hensley_sam": {
+            "name": "J. Hensley", "tm": "SAM", "tm_label": "Samford", "hand": "RHP",
+            "era": "3.22", "ip": "61.1", "kbb": 2.6,
+            "ar": [
+                {"t": "4-Seam",   "v": 91.4, "ivb": 14.8, "hb":  7.2, "u": "45%"},
+                {"t": "Slider",   "v": 80.1, "ivb": -1.4, "hb":-11.2, "u": "35%"},
+                {"t": "Curveball","v": 72.8, "ivb": -9.1, "hb":  1.8, "u": "20%"},
+            ],
+            "zone": [1, 2, 2, 1, 2, 1, 0, 1, 1],
+        },
+        "riley_sam": {
+            "name": "C. Riley", "tm": "SAM", "tm_label": "Samford", "hand": "LHP",
+            "era": "4.01", "ip": "44.0", "kbb": 2.9,
+            "ar": [
+                {"t": "4-Seam",   "v": 89.1, "ivb": 11.8, "hb": -8.4, "u": "38%"},
+                {"t": "Slider",   "v": 78.4, "ivb": -2.8, "hb": -8.1, "u": "36%"},
+                {"t": "Changeup", "v": 79.8, "ivb":  2.1, "hb":-10.2, "u": "26%"},
+            ],
+            "zone": [0, 1, 1, 1, 2, 2, 2, 2, 3],
+        },
+    }
+
+    PITCH_COLORS = {
+        "4-Seam":   "#4a9eff",
+        "2-Seam":   "#2ec4b6",
+        "Sinker":   "#2ec4b6",
+        "Slider":   "#f5a623",
+        "Curveball":"#a78bfa",
+        "Changeup": "#f97316",
+        "Cutter":   "#3adb76",
+        "Splitter": "#e879f9",
+    }
+
+    # ── Helper: compute Nebraska hitter profile from CSV data ─────────────────
+    def _sc_hitter_profile(df_h: "pd.DataFrame", pitcher_hand: str) -> dict:
+        """Extract scouting profile stats for one Nebraska hitter."""
+        import numpy as _np
+
+        s_call  = df_h.get("PitchCall",    pd.Series(dtype=object)).astype(str)
+        play    = df_h.get("PlayResult",   pd.Series(dtype=object)).astype(str)
+        korbb   = df_h.get("KorBB",        pd.Series(dtype=object)).astype(str)
+        exitv   = pd.to_numeric(df_h.get("ExitSpeed",   pd.Series(dtype=float)), errors="coerce")
+        lside   = pd.to_numeric(df_h.get("PlateLocSide",  pd.Series(dtype=float)), errors="coerce")
+        lht     = pd.to_numeric(df_h.get("PlateLocHeight",pd.Series(dtype=float)), errors="coerce")
+        balls_c = pd.to_numeric(df_h.get("Balls",   pd.Series(dtype=float)), errors="coerce")
+        strikes_c = pd.to_numeric(df_h.get("Strikes", pd.Series(dtype=float)), errors="coerce")
+        ht_col  = df_h.get("TaggedHitType", pd.Series(dtype=object)).astype(str)
+        bearing = pd.to_numeric(df_h.get("Bearing", pd.Series(dtype=float)), errors="coerce")
+        pthrows = df_h.get("PitcherThrows", pd.Series(dtype=object)).astype(str)
+        bside   = df_h.get("BatterSide", pd.Series(dtype=object)).astype(str)
+        pitchofpa = pd.to_numeric(df_h.get("PitchofPA", pd.Series(dtype=float)), errors="coerce")
+
+        is_swing   = s_call.isin(["StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay"])
+        is_whiff   = s_call.eq("StrikeSwinging")
+        is_inzone  = lside.between(-0.83, 0.83) & lht.between(1.5, 3.5)
+        is_inplay  = s_call.eq("InPlay")
+
+        n_pa   = int((pitchofpa == 1).sum())
+        n_so   = int(korbb.eq("Strikeout").sum())
+        n_bb   = int(korbb.eq("Walk").sum())
+        k_pct  = round(n_so / n_pa * 100, 1) if n_pa else 0.0
+        bb_pct = round(n_bb / n_pa * 100, 1) if n_pa else 0.0
+
+        # Pull %
+        def _is_pull(row_side, row_bear):
+            if not _np.isfinite(row_bear):
+                return False
+            side = str(row_side).strip().upper()[:1]
+            if side == "R":
+                return row_bear < -15
+            elif side == "L":
+                return row_bear > 15
+            return False
+
+        inplay_mask = is_inplay.values
+        if inplay_mask.sum() > 0:
+            inplay_df = df_h[inplay_mask].copy()
+            bear_vals = pd.to_numeric(inplay_df.get("Bearing", pd.Series(dtype=float)), errors="coerce")
+            side_vals = inplay_df.get("BatterSide", pd.Series(dtype=object)).astype(str)
+            pull_flags = [_is_pull(s, b) for s, b in zip(side_vals, bear_vals)]
+            pull_pct = round(sum(pull_flags) / len(pull_flags) * 100, 1) if pull_flags else 0.0
+            gb_pct   = round(ht_col[is_inplay].str.contains("GroundBall", case=False, na=False).mean() * 100, 1)
+        else:
+            pull_pct = 0.0
+            gb_pct   = 0.0
+
+        # First pitch swing %
+        fps_mask = (balls_c == 0) & (strikes_c == 0)
+        fps_pct  = round(is_swing[fps_mask].mean() * 100, 1) if fps_mask.sum() else 0.0
+
+        # Two-strike chase %
+        ts_mask  = (strikes_c == 2)
+        ts_oos   = ts_mask & ~is_inzone
+        ts_chase = round(is_swing[ts_oos].mean() * 100, 1) if ts_oos.sum() else 0.0
+
+        # Batter hand
+        bside_vals = df_h.get("BatterSide", pd.Series(dtype=object)).astype(str)
+        bside_counts = bside_vals.value_counts()
+        raw_side = bside_counts.index[0] if not bside_counts.empty else "R"
+        if str(raw_side).strip().upper().startswith("L"):
+            bhand = "LHH"
+        elif str(raw_side).strip().upper() in ("B","S","SW"):
+            bhand = "SWB"
+        else:
+            bhand = "RHH"
+
+        # Season batting line
+        is_hit  = is_inplay & play.isin(["Single","Double","Triple","HomeRun"])
+        bbout   = is_inplay & play.eq("Out")
+        fc_mask = play.eq("FieldersChoice")
+        err_m   = play.eq("Error")
+        hbp_m   = s_call.eq("HitByPitch")
+        n_hits  = int(is_hit.sum())
+        n_ab    = int(n_hits + n_so + bbout.sum() + fc_mask.sum() + err_m.sum())
+        n_hbp   = int(hbp_m.sum())
+        bases   = (play.eq("Single").sum() + 2*play.eq("Double").sum()
+                   + 3*play.eq("Triple").sum() + 4*play.eq("HomeRun").sum())
+        _avg = n_hits/n_ab if n_ab else 0.0
+        _obp = (n_hits + n_bb + n_hbp) / n_pa if n_pa else 0.0
+        _slg = bases/n_ab if n_ab else 0.0
+        avg_str = f".{int(round(_avg*1000)):03d}"
+        obp_str = f".{int(round(_obp*1000)):03d}"
+        ops_str = f".{int(round((_obp+_slg)*1000)):03d}"
+
+        # Platoon splits (basic)
+        def _plt_stats(hand_filter):
+            sub = df_h[pthrows.str.strip().str.upper().str.startswith(hand_filter[0].upper())]
+            if sub.empty:
+                return {"avg": "—", "ops": "—", "k": "—", "bb": "—"}
+            _sc = sub.get("PitchCall", pd.Series(dtype=object)).astype(str)
+            _pl = sub.get("PlayResult", pd.Series(dtype=object)).astype(str)
+            _kb = sub.get("KorBB",     pd.Series(dtype=object)).astype(str)
+            _pp = pd.to_numeric(sub.get("PitchofPA", pd.Series(dtype=float)), errors="coerce")
+            _pa = int((_pp == 1).sum())
+            if not _pa:
+                return {"avg": "—", "ops": "—", "k": "—", "bb": "—"}
+            _so  = int(_kb.eq("Strikeout").sum())
+            _bb2 = int(_kb.eq("Walk").sum())
+            _ip  = _sc.eq("InPlay")
+            _hit = _ip & _pl.isin(["Single","Double","Triple","HomeRun"])
+            _bbo = _ip & _pl.eq("Out")
+            _fc  = _pl.eq("FieldersChoice")
+            _err = _pl.eq("Error")
+            _hbp2= _sc.eq("HitByPitch")
+            _h   = int(_hit.sum())
+            _ab2 = int(_h + _so + _bbo.sum() + _fc.sum() + _err.sum())
+            _bas = (_pl.eq("Single").sum() + 2*_pl.eq("Double").sum()
+                    + 3*_pl.eq("Triple").sum() + 4*_pl.eq("HomeRun").sum())
+            _a   = _h/_ab2 if _ab2 else 0.0
+            _o   = (_h+_bb2+_hbp2.sum())/_pa if _pa else 0.0
+            _s   = _bas/_ab2 if _ab2 else 0.0
+            return {
+                "avg": f".{int(round(_a*1000)):03d}",
+                "ops": f".{int(round((_o+_s)*1000)):03d}",
+                "k":   f"{round(_so/_pa*100,1)}%",
+                "bb":  f"{round(_bb2/_pa*100,1)}%",
+            }
+
+        plt_R = _plt_stats("R")
+        plt_L = _plt_stats("L")
+
+        # Zone vulnerability (3x3) — whiff or weak contact rate per zone
+        x_bounds = [(-0.83, -0.277), (-0.277, 0.277), (0.277, 0.83)]
+        y_bounds = [(2.83, 3.5), (1.83, 2.83), (1.5, 1.83)]
+        zone_scores = []
+        for yr, yb in y_bounds:
+            for xr in x_bounds:
+                cell_mask = (lside.between(xr[0], xr[1]) & lht.between(yr, yb))
+                if cell_mask.sum() < 3:
+                    zone_scores.append(0)
+                    continue
+                cell_whiff = is_whiff[cell_mask].mean()
+                cell_hard  = (exitv[is_inplay & cell_mask] >= 95).mean() if (is_inplay & cell_mask).sum() else 0.0
+                vuln = cell_whiff * 0.6 + (1 - min(cell_hard, 1.0)) * 0.4
+                zone_scores.append(round(vuln * 3))
+        # Normalise to 0-3
+        mx = max(zone_scores) if any(zone_scores) else 1
+        zone_scores = [min(3, round(z / max(mx, 1) * 3)) for z in zone_scores]
+
+        return {
+            "k": k_pct, "bb": bb_pct, "pull": pull_pct,
+            "fps": fps_pct, "tkc": ts_chase, "gb": gb_pct,
+            "hand": bhand, "avg": avg_str, "obp": obp_str, "ops": ops_str,
+            "zone": zone_scores,
+            "plt": {"R": plt_R, "L": plt_L},
+        }
+
+    # ── Pitch metric computation (hitter framing: green = good for hitter) ───
+    def _sc_calc(h: dict, pitch: dict, p_hand: str) -> dict:
+        k, bb, pull = h["k"], h["bb"], h["pull"]
+        fps, tkc, gb = h["fps"], h["tkc"], h["gb"]
+        hh = h["hand"]
+        t, v, ivb, hb = pitch["t"], pitch["v"], pitch["ivb"], pitch["hb"]
+        same = (p_hand == "RHP" and hh == "RHH") or (p_hand == "LHP" and hh == "LHH")
+        glove = (p_hand == "RHP" and hb < -4) or (p_hand == "LHP" and hb > 4)
+
+        w = k * 1.0 + 9
+        if t in ("4-Seam", "Sinker"):
+            if ivb > 14: w += (k - 18) * 0.15
+            if v > 93:   w += 2.5
+        if t == "2-Seam":
+            if gb > 42: w -= 3
+        if t in ("Slider", "Cutter"):
+            if glove and pull > 46: w += 5
+            w += tkc * 0.08
+        if t == "Changeup":
+            w += tkc * 0.14
+            if not same: w += 3
+        if t == "Curveball":
+            w += (k - 18) * 0.12 + 3
+        w = int(round(min(max(w, 12), 53)))
+
+        hrd = max(9.0, 41 - w * 0.32 + (fps - 38) * 0.1)
+        if t == "4-Seam" and (100 - gb) > 36: hrd += 3
+        if t in ("2-Seam", "Sinker") and gb > 42: hrd += 4
+        hrd = int(round(min(max(hrd, 9), 50)))
+
+        ev = round(min(max(82 + (hrd - 20) * 0.33, 79), 96), 1)
+
+        ch = tkc * 0.5 + ((-2) if bb > 11 else 3) + 11
+        if t in ("Curveball", "Slider"): ch += 4
+        ch = int(round(min(max(ch, 12), 51)))
+
+        return {"w": w, "hrd": hrd, "ev": ev, "ch": ch}
+
+    def _sc_verdict(val, metric):
+        """Hitter framing: green = good for our hitter."""
+        if metric == "w":   return "good" if val < 22 else ("ok" if val < 34 else "bad")
+        if metric == "hrd": return "good" if val > 30 else ("ok" if val > 21 else "bad")
+        if metric == "ev":  return "good" if val > 88 else ("ok" if val > 84 else "bad")
+        if metric == "ch":  return "good" if val < 22 else ("ok" if val < 33 else "bad")
+        return "ok"
+
+    def _sc_chip_label(metric, verdict):
+        g, b = verdict == "good", verdict == "bad"
+        if metric == "w":
+            return "Low whiff" if g else ("High whiff" if b else "Average")
+        if metric == "hrd":
+            return "Hard contact" if g else ("Weak contact" if b else "Average")
+        if metric == "ev":
+            return "High EV" if g else ("Low EV" if b else "Avg EV")
+        if metric == "ch":
+            return "Disciplined" if g else ("Chase risk" if b else "Moderate")
+        return "—"
+
+    def _sc_color(verdict):
+        return {"good": SC_GRN, "ok": SC_AMB, "bad": SC_RED}.get(verdict, SC_AMB)
+
+    def _sc_chip_cls(verdict):
+        return {"good": "sc-chip-good", "ok": "sc-chip-ok", "bad": "sc-chip-bad"}.get(verdict, "sc-chip-ok")
+
+    def _sc_val_color(verdict):
+        return {"good": "cg", "ok": "ca", "bad": "cr"}.get(verdict, "ca")
+
+    def _sc_grade(results: list) -> int:
+        """Hitter framing: high score = favorable matchup."""
+        n = len(results)
+        if not n: return 50
+        aw  = sum(r["w"]   for r in results) / n
+        ah  = sum(r["hrd"] for r in results) / n
+        ae  = sum(r["ev"]  for r in results) / n
+        ac  = sum(r["ch"]  for r in results) / n
+        s = ((53 - aw)/53*35) + (ah/50*25) + ((ae - 79)/17*20) + ((51 - ac)/51*20)
+        return int(min(max(round(s), 5), 95))
+
+    def _sc_movement_svg(ivb: float, hb: float, color: str) -> str:
+        cx = round(8 + ((hb + 16) / 32) * 64, 1)
+        cy = round(72 - ((ivb + 14) / 34) * 64, 1)
+        return (
+            f'<svg viewBox="0 0 80 80" width="70" height="70" style="display:block;flex-shrink:0;">'
+            f'<rect width="80" height="80" fill="rgba(255,255,255,0.02)" rx="5"/>'
+            f'<line x1="40" y1="3" x2="40" y2="77" stroke="rgba(255,255,255,0.07)" stroke-width="0.5"/>'
+            f'<line x1="3" y1="40" x2="77" y2="40" stroke="rgba(255,255,255,0.07)" stroke-width="0.5"/>'
+            f'<circle cx="{cx}" cy="{cy}" r="5.5" fill="{color}" opacity="0.9"/>'
+            f'<circle cx="{cx}" cy="{cy}" r="9.5" fill="{color}" opacity="0.14"/>'
+            f'<text x="40" y="79" text-anchor="middle" font-size="6.5" fill="rgba(255,255,255,0.2)" font-family="sans-serif">HB</text>'
+            f'<text x="3" y="44" text-anchor="middle" font-size="6.5" fill="rgba(255,255,255,0.2)" '
+            f'font-family="sans-serif" transform="rotate(-90,3,42)">IVB</text>'
+            f'</svg>'
+        )
+
+    def _sc_pitch_note(pitch: dict, hitter: dict, p_hand: str) -> str:
+        t, v, ivb, hb = pitch["t"], pitch["v"], pitch["ivb"], pitch["hb"]
+        pull, k, tkc, gb, hh = hitter["pull"], hitter["k"], hitter["tkc"], hitter["gb"], hitter["hand"]
+        same  = (p_hand == "RHP" and hh == "RHH") or (p_hand == "LHP" and hh == "LHH")
+        glove = (p_hand == "RHP" and hb < -4) or (p_hand == "LHP" and hb > 4)
+
+        if t in ("4-Seam", "Sinker"):
+            if ivb > 15 and k < 18:
+                return "Elite ride — stay in the zone and attack contact early in the count."
+            if ivb < 13:
+                return "Below-average ride — attack this fastball aggressively in hitter-friendly counts."
+            return "Handle the ride — squared-up contact is achievable when it's located middle."
+        if t == "2-Seam":
+            return "Heavy arm-side run. Stay up the middle — don't over-commit to the pull side."
+        if t in ("Slider", "Cutter"):
+            if glove and pull > 46:
+                return "Glove-side break is dangerous for pull-heavy hitters. Stay patient and take it deep if it's away."
+            return "Breaking ball off the fastball tunnel. Don't commit early — let it travel."
+        if t == "Changeup":
+            return "Arm-side fade — keep your weight back. Don't expand down and away in two-strike counts."
+        if t == "Curveball":
+            return "12-6 break — look for it early and attack it in the zone. Don't chase below the knees."
+        return "Secondary offering. Stay disciplined."
+
+    def _sc_grade_html(score: int) -> str:
+        col   = SC_GRN if score > 62 else (SC_AMB if score > 40 else SC_RED)
+        label = ("Favorable matchup" if score > 62
+                 else ("Neutral" if score > 40 else "High threat"))
+        segs  = "".join(
+            f'<div class="sc-grade-seg" style="background:{"' + col + '" if score >= (i+1)*10 else "rgba(255,255,255,0.05)"}"></div>'
+            for i in range(10)
+        )
+        return (
+            f'<div class="sc-grade-segs">{segs}</div>'
+            f'<div class="sc-grade-labels">'
+            f'  <span class="sc-grade-lbl" style="color:{"' + col + '" if score < 40 else "rgba(255,255,255,0.15)"}">High threat</span>'
+            f'  <span class="sc-grade-verdict" style="color:{col};">{label}</span>'
+            f'  <span class="sc-grade-lbl" style="color:{"' + col + '" if score > 62 else "rgba(255,255,255,0.15)"}">Favorable</span>'
+            f'</div>'
+        )
+
+    def _sc_zone_html(zone_arr: list) -> str:
+        mx = max(zone_arr) if any(zone_arr) else 1
+        cells = []
+        for v in zone_arr:
+            if not v:
+                cells.append('<div class="sc-zone-cell" style="background:rgba(255,255,255,0.03);"></div>')
+                continue
+            i = v / mx
+            bg = (f"rgba(228,28,56,{0.5 if i > 0.7 else (0.25 if i > 0.4 else 0.1)})")
+            tc = "#fff" if i > 0.7 else ("#ffaaaa" if i > 0.4 else "#cc8080")
+            cells.append(f'<div class="sc-zone-cell" style="background:{bg};color:{tc};">{v}</div>')
+        return "".join(cells)
+
+    # ── Radar chart (matplotlib, dark bg, blue) ───────────────────────────────
+    def _sc_radar_pitcher(pitcher: dict):
+        import matplotlib.pyplot as _plt
+        import numpy as _np
+        labels = ["Velocity", "Vert. break", "Horiz. break", "ERA quality", "Arsenal depth", "K/BB ratio"]
+        av = sum(p["v"] for p in pitcher["ar"]) / len(pitcher["ar"])
+        ai = sum(abs(p["ivb"]) for p in pitcher["ar"]) / len(pitcher["ar"])
+        ah = sum(abs(p["hb"]) for p in pitcher["ar"]) / len(pitcher["ar"])
+        er = float(pitcher["era"])
+        kb = float(pitcher["kbb"])
+        values = [
+            min((av - 73) / 25 * 100, 100),
+            min(ai / 16 * 100, 100),
+            min(ah / 13 * 100, 100),
+            max(0, (5.5 - er) / 4 * 100),
+            min(len(pitcher["ar"]) / 4 * 100, 100),
+            min(kb / 5 * 100, 100),
+        ]
+        N = len(labels)
+        angles = [n / float(N) * 2 * _np.pi for n in range(N)]
+        angles += angles[:1]
+        values += values[:1]
+
+        fig, ax = _plt.subplots(figsize=(3.8, 3.8), subplot_kw=dict(polar=True),
+                                facecolor="#161616")
+        ax.set_facecolor("#161616")
+        ax.spines["polar"].set_color("rgba(255,255,255,0.07)")
+        ax.set_thetagrids([a * 180 / _np.pi for a in angles[:-1]], labels,
+                          fontsize=8, color="#555")
+        ax.set_ylim(0, 100)
+        ax.yaxis.set_visible(False)
+        for gl in ax.yaxis.get_gridlines():
+            gl.set_color("rgba(255,255,255,0.06)")
+        for gl in ax.xaxis.get_gridlines():
+            gl.set_color("rgba(255,255,255,0.06)")
+        ax.set_xticks(angles[:-1])
+        ax.set_xticklabels(labels, fontsize=7.5, color="#585858")
+
+        ax.plot(angles, values, color=SC_BLU, linewidth=1.5, linestyle="solid")
+        ax.fill(angles, values, color=SC_BLU, alpha=0.12)
+        ax.scatter(angles[:-1], values[:-1], color=SC_BLU, s=20, zorder=5)
+
+        fig.tight_layout(pad=0.5)
+        return fig
+
+    # ── Selectors ─────────────────────────────────────────────────────────────
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Scouting Selectors")
+
+    hitter_opts  = batters_keys
+    pitcher_opts = list(SCOUT_PITCHERS.keys())
+
+    sel_hitter_key = st.sidebar.selectbox(
+        "Nebraska hitter",
+        options=hitter_opts,
+        format_func=lambda k: display_name_by_key.get(k, k),
+        key="scout_hitter",
+    )
+    sel_pitcher_key = st.sidebar.selectbox(
+        "Opponent pitcher",
+        options=pitcher_opts,
+        format_func=lambda k: f"{SCOUT_PITCHERS[k]['name']} — {SCOUT_PITCHERS[k]['tm_label']} {SCOUT_PITCHERS[k]['hand']}",
+        key="scout_pitcher",
+    )
+
+    # ── Compute matchup ───────────────────────────────────────────────────────
+    pitcher = SCOUT_PITCHERS[sel_pitcher_key]
+    df_h    = df_neb_bat[df_neb_bat["BatterKey"] == sel_hitter_key].copy()
+    hitter_name = display_name_by_key.get(sel_hitter_key, sel_hitter_key)
+    hitter_pos  = ""  # position not reliably in CSV; can wire up later
+
+    if df_h.empty:
+        st.warning("No data found for selected hitter. Try a different selection.")
+    else:
+        hitter = _sc_hitter_profile(df_h, pitcher["hand"])
+        results = [_sc_calc(hitter, p, pitcher["hand"]) for p in pitcher["ar"]]
+        score   = _sc_grade(results)
+
+        # ── Matchup header card ───────────────────────────────────────────────
+        grade_segs_html = ""
+        col   = SC_GRN if score > 62 else (SC_AMB if score > 40 else SC_RED)
+        label = "Favorable matchup" if score > 62 else ("Neutral" if score > 40 else "High threat")
+        segs  = "".join(
+            f'<div class="sc-grade-seg" style="background:{col if score >= (i+1)*10 else "rgba(255,255,255,0.05)"}"></div>'
+            for i in range(10)
+        )
+        lbl_left_col  = col if score < 40   else "rgba(255,255,255,0.15)"
+        lbl_right_col = col if score > 62   else "rgba(255,255,255,0.15)"
+
+        st.markdown(f"""
+        <div class="sc-header-card">
+          <div>
+            <span class="sc-tag-nb">Nebraska</span>
+            <span style="color:#444;font-size:11px;">vs</span>
+            <span class="sc-tag-opp">{pitcher['tm_label']}</span>
+          </div>
+          <div class="sc-matchup-names">
+            {hitter_name}
+            <span style="color:#444;font-weight:400;font-size:15px;"> vs </span>
+            {pitcher['name']}
+          </div>
+          <div class="sc-matchup-sub">
+            Nebraska {hitter['hand']} &nbsp;&middot;&nbsp;
+            {hitter['avg']} AVG &nbsp;&middot;&nbsp; {hitter['obp']} OBP &nbsp;&middot;&nbsp; {hitter['ops']} OPS
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            {pitcher['hand']} &nbsp;&middot;&nbsp; {pitcher['era']} ERA &nbsp;&middot;&nbsp; {pitcher['ip']} IP &nbsp;&middot;&nbsp; K/BB {pitcher['kbb']}
+          </div>
+          <div style="margin-top:12px;">
+            <div class="sc-grade-segs">{segs}</div>
+            <div class="sc-grade-labels">
+              <span class="sc-grade-lbl" style="color:{lbl_left_col};">High threat</span>
+              <span class="sc-grade-verdict" style="color:{col};">{label}</span>
+              <span class="sc-grade-lbl" style="color:{lbl_right_col};">Favorable</span>
+            </div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── Two-column layout ─────────────────────────────────────────────────
+        lcol, rcol = st.columns([1.0, 0.85])
+
+        # LEFT — pitch breakdown cards
+        with lcol:
+            st.markdown(
+                f'<div class="sc-section-title"><span>{hitter_name} vs this arsenal</span></div>',
+                unsafe_allow_html=True,
+            )
+            for i, pitch in enumerate(pitcher["ar"]):
+                m    = results[i]
+                vw   = _sc_verdict(m["w"],   "w")
+                vh   = _sc_verdict(m["hrd"], "hrd")
+                ve   = _sc_verdict(m["ev"],  "ev")
+                vc   = _sc_verdict(m["ch"],  "ch")
+                pcol = PITCH_COLORS.get(pitch["t"], "#4a9eff")
+                note = _sc_pitch_note(pitch, hitter, pitcher["hand"])
+                fm   = lambda x: (f"+{x:.1f}" if x >= 0 else f"{x:.1f}")
+                svg  = _sc_movement_svg(pitch["ivb"], pitch["hb"], pcol)
+
+                st.markdown(f"""
+                <div class="sc-pitch-card">
+                  <div class="sc-pitch-head">
+                    <div>
+                      <span class="sc-pitch-name">{pitch['t']}</span>
+                      <span class="sc-pitch-usage">{pitch['u']}</span>
+                      <div class="sc-pitch-det">{pitch['v']} mph &nbsp;&middot;&nbsp;
+                        IVB {fm(pitch['ivb'])}&quot; &nbsp;&middot;&nbsp; HB {fm(pitch['hb'])}&quot;</div>
+                    </div>
+                    {svg}
+                  </div>
+                  <div class="sc-mrow">
+                    <div class="sc-mbox">
+                      <div class="sc-mlbl">Whiff %</div>
+                      <div class="sc-mval {_sc_val_color(vw)}">{m['w']}%</div>
+                      <div class="sc-mbar" style="background:{_sc_color(vw)};width:{m['w']}%;max-width:100%;"></div>
+                      <span class="sc-chip {_sc_chip_cls(vw)}">{_sc_chip_label('w', vw)}</span>
+                    </div>
+                    <div class="sc-mbox">
+                      <div class="sc-mlbl">Hard hit %</div>
+                      <div class="sc-mval {_sc_val_color(vh)}">{m['hrd']}%</div>
+                      <div class="sc-mbar" style="background:{_sc_color(vh)};width:{m['hrd']}%;max-width:100%;"></div>
+                      <span class="sc-chip {_sc_chip_cls(vh)}">{_sc_chip_label('hrd', vh)}</span>
+                    </div>
+                    <div class="sc-mbox">
+                      <div class="sc-mlbl">Avg EV</div>
+                      <div class="sc-mval {_sc_val_color(ve)}">{m['ev']}</div>
+                      <div class="sc-mbar" style="background:{_sc_color(ve)};width:{min((m['ev']-79)/17*100,100):.0f}%;max-width:100%;"></div>
+                      <span class="sc-chip {_sc_chip_cls(ve)}">{_sc_chip_label('ev', ve)}</span>
+                    </div>
+                    <div class="sc-mbox">
+                      <div class="sc-mlbl">Chase %</div>
+                      <div class="sc-mval {_sc_val_color(vc)}">{m['ch']}%</div>
+                      <div class="sc-mbar" style="background:{_sc_color(vc)};width:{m['ch']}%;max-width:100%;"></div>
+                      <span class="sc-chip {_sc_chip_cls(vc)}">{_sc_chip_label('ch', vc)}</span>
+                    </div>
+                  </div>
+                  <div class="sc-pnote">{note}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        # RIGHT — radar, zone, platoon splits
+        with rcol:
+            # Pitcher threat radar
+            st.markdown(
+                '<div class="sc-right-card"><div class="sc-section-title" '
+                'style="--accent:#4a9eff"><span>Pitcher threat profile</span></div>',
+                unsafe_allow_html=True,
+            )
+            fig_r = _sc_radar_pitcher(pitcher)
+            st.pyplot(fig_r, use_container_width=True)
+            plt.close(fig_r)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            # Zone grid — pitcher location tendency (red)
+            zone_cells_html = _sc_zone_html(pitcher["zone"])
+            st.markdown(f"""
+            <div class="sc-right-card">
+              <div class="sc-section-title"><span>Pitcher location tendency</span></div>
+              <div class="sc-zone-grid">{zone_cells_html}</div>
+              <div style="display:flex;gap:10px;margin-top:8px;">
+                <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#555;">
+                  <div style="width:8px;height:8px;border-radius:2px;background:rgba(228,28,56,0.5);"></div>
+                  Most frequent
+                </div>
+                <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#555;">
+                  <div style="width:8px;height:8px;border-radius:2px;background:rgba(228,28,56,0.1);"></div>
+                  Least frequent
+                </div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Platoon splits
+            plt_R = hitter["plt"]["R"]
+            plt_L = hitter["plt"]["L"]
+            st.markdown(f"""
+            <div class="sc-right-card">
+              <div class="sc-section-title"><span>Platoon splits</span></div>
+              <div class="sc-plt-grid">
+                <div class="sc-plt-card">
+                  <div class="sc-plt-hdr">vs RHP</div>
+                  <div class="sc-plt-row"><span class="sc-plt-lbl">AVG</span><span class="sc-plt-val">{plt_R['avg']}</span></div>
+                  <div class="sc-plt-row"><span class="sc-plt-lbl">OPS</span><span class="sc-plt-val">{plt_R['ops']}</span></div>
+                  <div class="sc-plt-row"><span class="sc-plt-lbl">K%</span><span class="sc-plt-val">{plt_R['k']}</span></div>
+                  <div class="sc-plt-row"><span class="sc-plt-lbl">BB%</span><span class="sc-plt-val">{plt_R['bb']}</span></div>
+                </div>
+                <div class="sc-plt-card">
+                  <div class="sc-plt-hdr">vs LHP</div>
+                  <div class="sc-plt-row"><span class="sc-plt-lbl">AVG</span><span class="sc-plt-val">{plt_L['avg']}</span></div>
+                  <div class="sc-plt-row"><span class="sc-plt-lbl">OPS</span><span class="sc-plt-val">{plt_L['ops']}</span></div>
+                  <div class="sc-plt-row"><span class="sc-plt-lbl">K%</span><span class="sc-plt-val">{plt_L['k']}</span></div>
+                  <div class="sc-plt-row"><span class="sc-plt-lbl">BB%</span><span class="sc-plt-val">{plt_L['bb']}</span></div>
+                </div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # ── AI Scout note ─────────────────────────────────────────────────────
+        st.markdown(
+            '<div class="sc-note-box"><div class="sc-section-title"><span>Scout note</span></div>',
+            unsafe_allow_html=True,
+        )
+
+        @st.cache_data(show_spinner=False)
+        def _sc_ai_note(hitter_name: str, hitter_dict: str, pitcher_name: str,
+                        pitcher_hand: str, pitcher_team: str, era: str,
+                        arsenal_summary: str) -> str:
+            prompt = (
+                f"You are a college baseball analyst. Write a pregame hitting plan for "
+                f"{hitter_name} (Nebraska hitter) facing {pitcher_name} "
+                f"({pitcher_team} {pitcher_hand}, {era} ERA). "
+                f"Hitter profile — K%: {hitter_dict}. "
+                f"How the hitter performs vs this arsenal: {arsenal_summary}. "
+                f"Write 2-3 sentences spoken directly to the hitter. "
+                f"Name the pitch to attack and the pitch to respect. "
+                f"Be specific and concrete like a hitting coach in a pregame meeting."
+            )
+            try:
+                resp = _requests.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "model": "claude-sonnet-4-20250514",
+                        "max_tokens": 250,
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                    timeout=20,
+                )
+                data = resp.json()
+                for block in data.get("content", []):
+                    if block.get("type") == "text":
+                        return block["text"].strip()
+            except Exception:
+                pass
+            return "Scout note unavailable."
+
+        h_summary = (
+            f"K%={hitter['k']}, BB%={hitter['bb']}, pull={hitter['pull']}%, "
+            f"FPS={hitter['fps']}%, 2K-chase={hitter['tkc']}%, GB%={hitter['gb']}%"
+        )
+        fm2 = lambda x: (f"+{x:.1f}" if x >= 0 else f"{x:.1f}")
+        ar_summary = "; ".join(
+            f"{p['t']}({p['u']}, IVB {fm2(p['ivb'])}\", HB {fm2(p['hb'])}\", {p['v']} mph): "
+            f"whiff {m['w']}%, hardHit {m['hrd']}%, EV {m['ev']}, chase {m['ch']}%"
+            for p, m in zip(pitcher["ar"], results)
+        )
+
+        note_text = _sc_ai_note(
+            hitter_name, h_summary, pitcher["name"],
+            pitcher["hand"], pitcher["tm_label"], pitcher["era"], ar_summary,
+        )
+        st.markdown(
+            f'<div class="sc-note-body">{note_text}</div></div>',
+            unsafe_allow_html=True,
+        )

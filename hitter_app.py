@@ -308,7 +308,7 @@ st.markdown("""
 # Default data paths per period
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
 DATA_PATH_SCRIM  = "Scrimmage(27).csv"
-DATA_PATH_2026   = "_ABCD.csv"
+DATA_PATH_2026   = "_AT.csv"
 DATA_PATH_NCAA   = "2026_reg_season.parquet"  # ← swap in your actual filename here
 
 PROB_LOOKUP_PATH = "EV_LA_probabilities.csv"

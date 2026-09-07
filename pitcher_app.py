@@ -34,6 +34,8 @@ st.set_option("client.showErrorDetails", True)
 
 DATA_PATH_SCRIM  = "Scrimmage(28).csv"
 DATA_PATH_SEASON = "_AH.csv"
+DATA_PATH_SCRIM_2627 = "Scrimmage(2627).csv"      # ← new: 2026/27 scrimmages
+DATA_PATH_SEASON_2027 = "_AH_2027.csv"            # ← new: 2027 season
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"
 HUSKER_RED  = "#E60026"
@@ -2341,11 +2343,71 @@ def load_season_csv(_correction_version=1):
     
     return df
 
+@st.cache_data
+def load_scrimmage_2627_csv(_correction_version=1):
+    if not os.path.exists(DATA_PATH_SCRIM_2627):
+        return pd.DataFrame()
+    skip = _skip_title_row(DATA_PATH_SCRIM_2627)
+    df = pd.read_csv(DATA_PATH_SCRIM_2627, low_memory=False, skiprows=skip)
+    df = ensure_date_column(df)
+    
+    pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name")
+    if pitcher_col:
+        df["PitcherDisplay"] = df[pitcher_col].map(canonicalize_person_name)
+    else:
+        df["PitcherDisplay"] = "Unknown"
+    
+    type_col = type_col_in_df(df)
+    if type_col and "PitcherDisplay" in df.columns:
+        pankonin_mask = df["PitcherDisplay"] == "Auden Pankonin"
+        fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
+        correction_mask = pankonin_mask & fastball_mask
+        if correction_mask.any():
+            df.loc[correction_mask, type_col] = "Sinker"
+        
+        mannel_mask = df["PitcherDisplay"] == "Kevin Mannel"
+        mannel_fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
+        mannel_correction_mask = mannel_mask & mannel_fastball_mask
+        if mannel_correction_mask.any():
+            df.loc[mannel_correction_mask, type_col] = "Sinker"
+    
+    return df
+
+@st.cache_data
+def load_season_2027_csv(_correction_version=1):
+    if not os.path.exists(DATA_PATH_SEASON_2027):
+        return pd.DataFrame()
+    skip = _skip_title_row(DATA_PATH_SEASON_2027)
+    df = pd.read_csv(DATA_PATH_SEASON_2027, low_memory=False, skiprows=skip)
+    df = ensure_date_column(df)
+    
+    pitcher_col = pick_col(df, "Pitcher","PitcherName","Pitcher Full Name","Name")
+    if pitcher_col:
+        df["PitcherDisplay"] = df[pitcher_col].map(canonicalize_person_name)
+    else:
+        df["PitcherDisplay"] = "Unknown"
+    
+    type_col = type_col_in_df(df)
+    if type_col and "PitcherDisplay" in df.columns:
+        pankonin_mask = df["PitcherDisplay"] == "Auden Pankonin"
+        fastball_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
+        if (pankonin_mask & fastball_mask).any():
+            df.loc[pankonin_mask & fastball_mask, type_col] = "Sinker"
+        
+        mannel_mask = df["PitcherDisplay"] == "Kevin Mannel"
+        mannel_fb_mask = df[type_col].astype(str).str.lower().str.contains('fastball', na=False)
+        if (mannel_mask & mannel_fb_mask).any():
+            df.loc[mannel_mask & mannel_fb_mask, type_col] = "Sinker"
+    
+    return df
+
 df_scrim  = load_scrimmage_csv()
 df_season = load_season_csv()
+df_scrim2627  = load_scrimmage_2627_csv()
+df_season2027 = load_season_2027_csv()
 
-if df_scrim.empty and df_season.empty:
-    st.error("No data files found. Please ensure Scrimmage(28).csv or Neb2026.csv is present.")
+if df_scrim.empty and df_season.empty and df_scrim2627.empty and df_season2027.empty:
+    st.error("No data files found. Please ensure Scrimmage(28).csv, _AH.csv, Scrimmage(2627).csv, or _AH_2027.csv is present.")
     st.stop()
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2360,9 +2422,18 @@ with st.sidebar:
     
     # ── Data source selector ──────────────────────────────────────────────────
     season_available  = not df_season.empty
+    scrim2627_available = not df_scrim2627.empty
+    season2027_available = not df_season2027.empty
+
     source_options = ["2025/26 Scrimmages"]
     if season_available:
-        source_options += ["2026 Season", "Both Combined"]
+        source_options.append("2026 Season")
+    if scrim2627_available:
+        source_options.append("2026/27 Scrimmages")
+    if season2027_available:
+        source_options.append("2027 Season")
+    if season_available or scrim2627_available or season2027_available:
+        source_options.append("All Combined")
     
     data_source = st.selectbox(
         "Data Source",
@@ -2376,8 +2447,12 @@ with st.sidebar:
         df_all = df_scrim.copy()
     elif data_source == "2026 Season":
         df_all = df_season.copy()
-    else:  # Both Combined
-        frames = [f for f in [df_scrim, df_season] if not f.empty]
+    elif data_source == "2026/27 Scrimmages":
+        df_all = df_scrim2627.copy()
+    elif data_source == "2027 Season":
+        df_all = df_season2027.copy()
+    else:  # All Combined
+        frames = [f for f in [df_scrim, df_season, df_scrim2627, df_season2027] if not f.empty]
         df_all = pd.concat(frames, ignore_index=True)
 
     df_all = ensure_date_column(df_all)
@@ -2903,8 +2978,12 @@ with tabs[4]:
         st.caption("Fall 2025/26 Scrimmages")
     elif data_source == "2026 Season":
         st.caption("2026 Season")
+    elif data_source == "2026/27 Scrimmages":
+        st.caption("Fall 2026/27 Scrimmages")
+    elif data_source == "2027 Season":
+        st.caption("2027 Season")
     else:
-        st.caption("2025/26 Scrimmages + 2026 Season (Combined)")
+        st.caption("All Available Data (Combined)")
     
     st.markdown("### Filter Options")
     

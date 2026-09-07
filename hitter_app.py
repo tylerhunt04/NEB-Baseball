@@ -309,6 +309,8 @@ st.markdown("""
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
 DATA_PATH_SCRIM  = "Scrimmage(27).csv"
 DATA_PATH_2026   = "_AH.csv"
+DATA_PATH_SCRIM_2627 = "Scrimmage(2627).csv"      # ← new: 2026/27 scrimmages
+DATA_PATH_2027   = "_AH_2027.csv"                 # ← new: 2027 season
 DATA_PATH_NCAA   = "2026_reg_season.parquet"  # ← swap in your actual filename here
 
 PROB_LOOKUP_PATH = "EV_LA_probabilities.csv"
@@ -2141,7 +2143,8 @@ def load_single_csv(path: str) -> pd.DataFrame:
         df = pd.read_csv(path, low_memory=False, encoding="latin-1", skiprows=skip)
     return ensure_date_column(df)
 
-def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_2026: str) -> pd.DataFrame:
+def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_2026: str,
+                     path_scrim2627: str = "", path_2027: str = "") -> pd.DataFrame:
     if period_label == "2025 season":
         return load_single_csv(path_2025)
     elif period_label == "2025/26 Scrimmages":
@@ -2154,6 +2157,19 @@ def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_202
         if not paths:
             try:
                 return load_single_csv(path_2026)
+            except Exception:
+                return pd.DataFrame()
+        return load_many_csv(paths)
+    elif period_label == "2026/27 Scrimmages":
+        paths = _expand_paths(path_scrim2627)
+        if not paths:
+            return pd.DataFrame()
+        return load_many_csv(paths)
+    elif period_label == "2027 season":
+        paths = _expand_paths(path_2027)
+        if not paths:
+            try:
+                return load_single_csv(path_2027)
             except Exception:
                 return pd.DataFrame()
         return load_many_csv(paths)
@@ -2177,22 +2193,32 @@ st.sidebar.markdown("<br>", unsafe_allow_html=True)
 # Time Period Selection
 period = st.sidebar.selectbox(
     "Time Period",
-    options=["2025 season", "2025/26 Scrimmages", "2026 season"],
+    options=[
+        "2025 season",
+        "2025/26 Scrimmages",
+        "2026 season",
+        "2026/27 Scrimmages",
+        "2027 season",
+    ],
     index=0
 )
 
 # Data paths in sidebar expander
 with st.sidebar.expander("Data Paths", expanded=False):
     st.caption("Paste a CSV path, a directory path, or a glob pattern.")
-    path_2025  = st.text_input("2025 season path", value=DATA_PATH_2025,  key="path_2025")
-    path_scrim = st.text_input("2025/26 Scrimmages path/pattern", value=DATA_PATH_SCRIM, key="path_scrim")
-    path_2026  = st.text_input("2026 season path/pattern", value=DATA_PATH_2026,  key="path_2026")
+    path_2025      = st.text_input("2025 season path", value=DATA_PATH_2025,  key="path_2025")
+    path_scrim     = st.text_input("2025/26 Scrimmages path/pattern", value=DATA_PATH_SCRIM, key="path_scrim")
+    path_2026      = st.text_input("2026 season path/pattern", value=DATA_PATH_2026,  key="path_2026")
+    path_scrim2627 = st.text_input("2026/27 Scrimmages path/pattern", value=DATA_PATH_SCRIM_2627, key="path_scrim2627")
+    path_2027      = st.text_input("2027 season path/pattern", value=DATA_PATH_2027,  key="path_2027")
 
-path_2025  = st.session_state.get("path_2025", DATA_PATH_2025)
-path_scrim = st.session_state.get("path_scrim", DATA_PATH_SCRIM)
-path_2026  = st.session_state.get("path_2026", DATA_PATH_2026)
+path_2025      = st.session_state.get("path_2025", DATA_PATH_2025)
+path_scrim     = st.session_state.get("path_scrim", DATA_PATH_SCRIM)
+path_2026      = st.session_state.get("path_2026", DATA_PATH_2026)
+path_scrim2627 = st.session_state.get("path_scrim2627", DATA_PATH_SCRIM_2627)
+path_2027      = st.session_state.get("path_2027", DATA_PATH_2027)
 
-df_all = load_for_period(period, path_2025, path_scrim, path_2026)
+df_all = load_for_period(period, path_2025, path_scrim, path_2026, path_scrim2627, path_2027)
 if df_all.empty:
     st.error(f"No data loaded for '{period}'. Check the path(s) in the sidebar.")
     st.stop()
@@ -2249,7 +2275,7 @@ _TABS = [
     "Rankings",
     "Weekend Series",
 ]
-if period == "2026 season":
+if period in ("2026 season", "2027 season"):
     _TABS.append("Regional Scouting")
 
 # If user was on Regional Scouting and switches period, fall back to first tab
@@ -2433,6 +2459,8 @@ elif view_mode == "Profiles & Heatmaps":
             "2025 season": "2025",
             "2025/26 Scrimmages": "2025/26 Scrimmages",
             "2026 season": "2026",
+            "2026/27 Scrimmages": "2026/27 Scrimmages",
+            "2027 season": "2027",
         }.get(period, "—")
         
         st.markdown(f"""
@@ -2694,11 +2722,16 @@ elif view_mode == "Rankings":
 # FALL SUMMARY / SEASON REPORT
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Season Summary":
-    if period not in ("2025/26 Scrimmages", "2026 season"):
-        st.info("Please select '2025/26 Scrimmages' or '2026 season' from the Time Period dropdown to view this report.")
+    if period not in ("2025/26 Scrimmages", "2026 season", "2026/27 Scrimmages", "2027 season"):
+        st.info("Please select a scrimmage or season period from the Time Period dropdown to view this report.")
         st.stop()
 
-    _report_title = "2026 Season Performance Report" if period == "2026 season" else "Fall 2025 Performance Summary"
+    _report_title = {
+        "2025/26 Scrimmages": "Fall 2025 Performance Summary",
+        "2026 season":        "2026 Season Performance Report",
+        "2026/27 Scrimmages": "Fall 2026 Performance Summary",
+        "2027 season":        "2027 Season Performance Report",
+    }.get(period, "Season Performance Report")
     st.markdown(f"# {_report_title}")
     
     st.markdown("---")

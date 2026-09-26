@@ -309,7 +309,7 @@ st.markdown("""
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
 DATA_PATH_SCRIM  = "Scrimmage(27).csv"
 DATA_PATH_2026   = "_AH.csv"
-DATA_PATH_SCRIM_2627 = "Scrimmage(2627).csv"      # ← new: 2026/27 scrimmages
+DATA_PATH_SCRIM_2627 = "_0.csv"      # ← new: 2026/27 scrimmages
 DATA_PATH_2027   = "_AH_2027.csv"                 # ← new: 2027 season
 DATA_PATH_NCAA   = "2026_reg_season.parquet"  # ← swap in your actual filename here
 

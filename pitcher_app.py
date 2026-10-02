@@ -34,7 +34,7 @@ st.set_option("client.showErrorDetails", True)
 
 DATA_PATH_SCRIM  = "Scrimmage(28).csv"
 DATA_PATH_SEASON = "_AH.csv"
-DATA_PATH_SCRIM_2627 = "Scrimmage(2627).csv"      # ← new: 2026/27 scrimmages
+DATA_PATH_SCRIM_2627 = "fall_26.csv"      # ← new: 2026/27 scrimmages
 DATA_PATH_SEASON_2027 = "_AH_2027.csv"            # ← new: 2027 season
 LOGO_PATH   = "Nebraska-Cornhuskers-Logo.png"
 BANNER_IMG  = "NebraskaChampions.jpg"

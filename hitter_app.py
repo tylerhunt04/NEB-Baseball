@@ -49,7 +49,7 @@ html, body, [class*="css"], .stMarkdown, .stText, button, input, select, textare
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 .stApp { background: #FAFAFA; }
-.block-container { padding-top: 1.5rem; padding-bottom: 3rem; max-width: 1400px; }
+.block-container { padding-top: 4.5rem; padding-bottom: 3rem; max-width: 1400px; }
 
 /* Hide Streamlit chrome */
 footer { visibility: hidden; }
@@ -1900,7 +1900,8 @@ def create_hitter_report(df, batter_display_name, ncols=3):
 
         ax.set_xlim(*X_LIM); ax.set_ylim(*Y_LIM)
         ax.set_xticks([]); ax.set_yticks([])
-        ax.set_title(f"PA {idx+1} | Inning {inn} {tb}", fontsize=10, fontweight='bold', pad=6)
+        _inn = int(inn) if pd.notna(inn) and float(inn).is_integer() else inn
+        ax.set_title(f"PA {idx+1} | Inning {_inn} {tb}", fontsize=10, fontweight='bold', pad=6)
         ax.text(0.5, 0.1, f"vs {pitcher} ({hand_lbl})", transform=ax.transAxes,
                 ha='center', va='top', fontsize=9, style='italic')
 

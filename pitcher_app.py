@@ -44,53 +44,113 @@ DARK_GRAY = "#2B2B2B"
 LIGHT_GRAY = "#F5F5F5"
 EXT_VIS_WIDTH = 480
 
-# ─── Professional CSS Styling ─────────────────────────────────────────────────
+# ─── Global styles — clean, light, single accent color ────────────────────────
 st.markdown("""
 <style>
-    .main { background-color: #FFFFFF; }
-    .section-header {
-        background: linear-gradient(135deg, #E60026 0%, #B8001F 100%);
-        color: white; padding: 16px 24px; border-radius: 8px;
-        margin: 24px 0 16px 0; font-weight: 600; font-size: 20px;
-        box-shadow: 0 2px 8px rgba(230, 0, 38, 0.15);
-    }
-    .subsection-header {
-        color: #2B2B2B; padding: 12px 0; border-bottom: 3px solid #E60026;
-        margin: 20px 0 12px 0; font-weight: 600; font-size: 18px;
-    }
-    .metric-card {
-        background: linear-gradient(135deg, #FFFFFF 0%, #F8F8F8 100%);
-        border-left: 4px solid #E60026; padding: 16px; border-radius: 8px;
-        margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-    }
-    .professional-divider {
-        height: 2px; background: linear-gradient(to right, transparent, #E60026, transparent);
-        margin: 32px 0;
-    }
-    .info-box {
-        background-color: #F0F7FF; border-left: 4px solid #1E88E5;
-        padding: 12px 16px; border-radius: 4px; margin: 12px 0; color: #1565C0;
-    }
-    .warning-box {
-        background-color: #FFF8E1; border-left: 4px solid #FFA726;
-        padding: 12px 16px; border-radius: 4px; margin: 12px 0; color: #EF6C00;
-    }
-    .stDownloadButton button {
-        background-color: #E60026; color: white; border: none;
-        border-radius: 6px; padding: 8px 20px; font-weight: 500;
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px; background-color: #F8F9FA; padding: 8px; border-radius: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        background-color: white; border-radius: 6px; padding: 8px 16px;
-        font-weight: 500; border: 1px solid #E0E0E0;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #E60026; color: white; border-color: #E60026;
-    }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+html, body, [class*="css"], .stMarkdown, .stText, button, input, select, textarea {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.stApp { background: #FAFAFA; }
+.block-container { padding-top: 4.5rem; padding-bottom: 3rem; max-width: 1400px; }
+footer { visibility: hidden; }
+[data-testid="stDecoration"] { display: none; }
+
+h1, h2, h3, h4 { color: #111827; font-weight: 700; letter-spacing: -0.01em; }
+hr { margin: 28px 0; border: none; border-top: 1px solid #E5E7EB; }
+
+/* Sidebar */
+[data-testid="stSidebar"] { background: #FFFFFF; border-right: 1px solid #E5E7EB; }
+[data-testid="stSidebar"] h3 {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #6B7280; margin: 0.25rem 0 0.5rem 0; font-weight: 600;
+}
+[data-testid="stSidebar"] hr { margin: 18px 0; }
+
+/* Buttons */
+.stButton > button, .stDownloadButton > button {
+    background: #FFFFFF; color: #111827; border: 1px solid #D1D5DB;
+    border-radius: 6px; font-weight: 500; box-shadow: none;
+}
+.stButton > button:hover, .stDownloadButton > button:hover { border-color: #E41C38; color: #E41C38; }
+
+/* Main tabs */
+.stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid #E5E7EB; }
+.stTabs [data-baseweb="tab"] {
+    padding: 10px 18px; background: transparent; font-weight: 500; color: #6B7280; border: none;
+}
+.stTabs [data-baseweb="tab"]:hover { color: #111827; }
+.stTabs [aria-selected="true"] { color: #E41C38 !important; }
+.stTabs [data-baseweb="tab-highlight"] { background-color: #E41C38; }
+
+/* Expanders */
+[data-testid="stExpander"] details { border: 1px solid #E5E7EB; border-radius: 8px; background: #FFFFFF; }
+[data-testid="stExpander"] summary { font-weight: 600; color: #111827; }
+
+.stAlert { border-radius: 8px; }
+
+/* ── Components ─────────────────────────────────────── */
+.app-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0 14px 0; margin-bottom: 14px; border-bottom: 3px solid #E41C38;
+}
+.app-header .title { font-size: 1.35rem; font-weight: 700; color: #111827; line-height: 1.1; }
+.app-header .subtitle { font-size: 0.82rem; color: #6B7280; margin-top: 2px; }
+.app-header .period {
+    font-size: 0.78rem; font-weight: 600; color: #E41C38; background: #FDECEF;
+    padding: 4px 10px; border-radius: 999px;
+}
+.section-title {
+    font-size: 0.78rem; font-weight: 600; color: #374151; text-transform: uppercase;
+    letter-spacing: 0.08em; margin: 26px 0 10px 0; padding-bottom: 6px;
+    border-bottom: 1px solid #E5E7EB;
+}
+.player-card {
+    background: #FFFFFF; border: 1px solid #E5E7EB; border-left: 4px solid #E41C38;
+    border-radius: 8px; padding: 16px 20px; margin-bottom: 8px;
+}
+.player-card .name { font-size: 1.4rem; font-weight: 700; color: #111827; }
+.player-card .meta { font-size: 0.85rem; color: #6B7280; margin-top: 2px; }
+.stat-card {
+    background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px;
+    padding: 12px 8px; text-align: center;
+}
+.stat-card .lbl {
+    font-size: 0.68rem; color: #6B7280; text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: 4px;
+}
+.stat-card .val { font-size: 1.3rem; font-weight: 700; color: #111827; line-height: 1.1; }
+.stat-card.hl { border-top: 3px solid #E41C38; }
+.stat-card.hl .val { color: #E41C38; }
+.info-box {
+    background: #FFFFFF; border: 1px solid #E5E7EB; border-left: 3px solid #9CA3AF;
+    padding: 10px 14px; border-radius: 6px; margin: 10px 0; color: #4B5563; font-size: 0.9rem;
+}
+.ab-label { font-size: 0.9rem; color: #111827; margin: 14px 0 2px 0; }
+.ab-label .res { color: #6B7280; font-weight: 400; }
 </style>
 """, unsafe_allow_html=True)
+
+# Matplotlib defaults so every chart shares the same clean look
+plt.rcParams.update({
+    "font.family": "DejaVu Sans",
+    "axes.edgecolor": "#D1D5DB",
+    "axes.labelcolor": "#374151",
+    "axes.titleweight": "bold",
+    "axes.titlecolor": "#111827",
+    "xtick.color": "#6B7280",
+    "ytick.color": "#6B7280",
+    "figure.facecolor": "white",
+    "axes.facecolor": "white",
+})
+
+TABLE_HEADER_PROPS = (
+    "background-color: #F3F4F6; color: #374151; font-weight: 600; "
+    "font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; "
+    "white-space: nowrap; border-bottom: 1px solid #E5E7EB; text-align: center;"
+)
+PLOTLY_FONT = "Inter, -apple-system, Segoe UI, sans-serif"
 
 custom_cmap = colors.LinearSegmentedColormap.from_list(
     'custom_cmap', [(0.0, 'white'), (0.2, 'deepskyblue'), (0.3, 'white'), 
@@ -114,52 +174,35 @@ def show_and_close(fig, *, use_container_width=False):
     finally:
         plt.close(fig); gc.collect()
 
-def hero_banner(title: str, *, subtitle: str | None = None, height_px: int = 280):
-    from streamlit.components.v1 import html as _html
-    b64 = load_banner_b64() or ""
-    sub_html = f'<div class="hero-sub">{subtitle}</div>' if subtitle else ""
-    _html(f"""
-        <style>
-        .hero-wrap {{
-            position: relative; width: 100%; height: {height_px}px; border-radius: 12px;
-            overflow: hidden; margin-bottom: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }}
-        .hero-bg {{
-            position: absolute; inset: 0;
-            background: linear-gradient(135deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.4) 100%),
-                        url('data:image/jpeg;base64,{b64}');
-            background-size: cover; background-position: center;
-        }}
-        .hero-text {{
-            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-            flex-direction: column; color: #fff; text-align: center; z-index: 10;
-        }}
-        .hero-title {{ 
-            font-size: 42px; font-weight: 700; letter-spacing: 0.5px; 
-            text-shadow: 0 4px 12px rgba(0,0,0,0.6); margin: 0; text-transform: uppercase;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
-        }}
-        .hero-sub {{ 
-            font-size: 18px; font-weight: 400; opacity: .95; margin-top: 8px;
-            text-shadow: 0 2px 8px rgba(0,0,0,0.5); letter-spacing: 0.3px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
-        }}
-        </style>
-        <div class="hero-wrap"><div class="hero-bg"></div>
-          <div class="hero-text"><h1 class="hero-title">{title}</h1>{sub_html}</div>
-        </div>
-        """, height=height_px + 40)
-
-hero_banner("Nebraska Baseball", subtitle="Pitcher Analytics Platform", height_px=280)
+def app_header(title="Nebraska Baseball", subtitle="Pitcher Analytics", period_label=""):
+    """Compact app bar: title on the left, active data source on the right."""
+    pill = f"<span class='period'>{period_label}</span>" if period_label else ""
+    st.markdown(
+        f"<div class='app-header'><div><div class='title'>{title}</div>"
+        f"<div class='subtitle'>{subtitle}</div></div>{pill}</div>",
+        unsafe_allow_html=True,
+    )
 
 def section_header(text: str):
-    st.markdown(f'<div class="section-header">{text}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title">{text}</div>', unsafe_allow_html=True)
 
 def professional_divider():
-    st.markdown('<div class="professional-divider"></div>', unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 def info_message(text: str):
     st.markdown(f'<div class="info-box">{text}</div>', unsafe_allow_html=True)
+
+def player_card(name: str, meta: str = ""):
+    m = f"<div class='meta'>{meta}</div>" if meta else ""
+    st.markdown(f"<div class='player-card'><div class='name'>{name}</div>{m}</div>",
+                unsafe_allow_html=True)
+
+def stat_row(stats: dict, keys: list, highlight: set = frozenset()):
+    cols = st.columns(len(keys))
+    for c, k in zip(cols, keys):
+        cls = "stat-card hl" if k in highlight else "stat-card"
+        c.markdown(f"<div class='{cls}'><div class='lbl'>{k}</div>"
+                   f"<div class='val'>{stats.get(k, '—')}</div></div>", unsafe_allow_html=True)
 
 # ─── Date helpers ─────────────────────────────────────────────────────────────
 DATE_CANDIDATES = ["Date","date","GameDate","GAME_DATE","Game Date","Datetime","DateTime"]
@@ -334,9 +377,9 @@ def themed_table(df: pd.DataFrame):
         elif c in percent_cols: fmt_map[c] = "{:.1f}"
         else: fmt_map[c] = "{:.1f}"
     styles = [
-        {'selector': 'thead th', 'props': f'background: linear-gradient(135deg, {HUSKER_RED} 0%, #B8001F 100%); color: white; font-weight: 600; text-align: center; padding: 12px 8px;'},
-        {'selector': 'td', 'props': 'padding: 10px 8px; border-bottom: 1px solid #E0E0E0;'},
-        {'selector': 'tr:hover', 'props': 'background-color: #F8F9FA;'},
+        {'selector': 'thead th', 'props': TABLE_HEADER_PROPS + ' padding: 10px 8px;'},
+        {'selector': 'td', 'props': 'padding: 8px; border-bottom: 1px solid #F3F4F6;'},
+        {'selector': 'tr:hover', 'props': 'background-color: #F9FAFB;'},
     ]
     return df.style.hide(axis="index").format(fmt_map, na_rep="—").set_table_styles(styles)
 
@@ -805,8 +848,8 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     gs = GridSpec(2, 1, figure=fig, height_ratios=[1.5, 0.7], hspace=0.3)
     axm = fig.add_subplot(gs[0, 0])
     axm.set_title('Movement Profile', fontweight='bold', fontsize=14)
-    axm.axhline(0, ls='--', color='grey', alpha=0.5)
-    axm.axvline(0, ls='--', color='grey', alpha=0.5)
+    axm.axhline(0, ls='-', color='#D1D5DB', lw=1)
+    axm.axvline(0, ls='-', color='#D1D5DB', lw=1)
     chi2v = chi2.ppf(coverage, df=2)
 
     for ptype, g in df_p.groupby(type_col, dropna=False):
@@ -833,21 +876,22 @@ def combined_pitcher_report(df, pitcher_name, logo_img, coverage=0.8, season_lab
     axm.set_xlim(-30,30); axm.set_ylim(-30,30); axm.set_aspect('equal','box')
     axm.set_xlabel('Horizontal Break (inches)', fontsize=11, fontweight='500')
     axm.set_ylabel('Induced Vertical Break (inches)', fontsize=11, fontweight='500')
-    axm.legend(title='Pitch Type', fontsize=9, title_fontsize=10, loc='upper right', framealpha=0.95)
-    axm.grid(True, alpha=0.2, linestyle=':')
+    axm.legend(title='Pitch Type', fontsize=9, title_fontsize=10, loc='upper right', framealpha=0.95, edgecolor='#E5E7EB')
+    axm.grid(True, color='#F3F4F6', linewidth=1)
 
     axt = fig.add_subplot(gs[1, 0]); axt.axis('off')
     tbl = axt.table(cellText=summary.values, colLabels=summary.columns, cellLoc='center', loc='center')
     tbl.auto_set_font_size(False); tbl.set_fontsize(9); tbl.scale(1.5, 1.5)
     
     for i in range(len(summary.columns)):
-        tbl[(0, i)].set_facecolor(HUSKER_RED)
-        tbl[(0, i)].set_text_props(weight='bold', color='white')
+        tbl[(0, i)].set_facecolor('#F3F4F6')
+        tbl[(0, i)].set_edgecolor('#E5E7EB')
+        tbl[(0, i)].set_text_props(weight='bold', color='#374151')
     
     for i in range(1, len(summary) + 1):
         for j in range(len(summary.columns)):
-            tbl[(i, j)].set_facecolor('#F8F9FA' if i % 2 == 0 else 'white')
-            tbl[(i, j)].set_edgecolor('#E0E0E0')
+            tbl[(i, j)].set_facecolor('#F9FAFB' if i % 2 == 0 else 'white')
+            tbl[(i, j)].set_edgecolor('#E5E7EB')
     
     axt.set_title('Performance Metrics by Pitch Type', fontweight='bold', y=0.88, fontsize=12)
 
@@ -1936,11 +1980,11 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
         
         eff = row['Effectiveness Score']
         if eff > 12:
-            color = 'rgba(0, 200, 0, 0.4)'
+            color = 'rgba(22, 163, 74, 0.35)'
         elif eff >= 0:
-            color = 'rgba(255, 255, 0, 0.4)'
+            color = 'rgba(156, 163, 175, 0.35)'
         else:
-            color = 'rgba(255, 0, 0, 0.4)'
+            color = 'rgba(220, 38, 38, 0.35)'
         colors_link.append(color)
     
     node_colors = []
@@ -1967,8 +2011,8 @@ def analyze_pitch_sequences(df: pd.DataFrame, pitcher_name: str):
     
     fig.update_layout(
         title_text=f"Pitch Sequencing Flow: {canonicalize_person_name(pitcher_name)}",
-        title_font=dict(size=16, color=DARK_GRAY, family="Arial Black"),
-        font_size=11,
+        title_font=dict(size=15, color="#111827", family=PLOTLY_FONT),
+        font=dict(family=PLOTLY_FONT, size=11, color="#374151"),
         height=600,
         margin=dict(l=20, r=20, t=60, b=20)
     )
@@ -2075,7 +2119,7 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
             mode="markers+text",
             text=[str(int(n)) if pd.notna(n) else "" for n in cd[:,6]],
             textposition="top center",
-            textfont=dict(size=10, color="black", family="Arial Black"),
+            textfont=dict(size=10, color="#111827", family=PLOTLY_FONT),
             marker=dict(
                 size=14, 
                 color=colors_pts,
@@ -2126,7 +2170,7 @@ def pa_interactive_strikezone(pa_df: pd.DataFrame, title: str | None = None):
         width=plot_width,
         title_text=(title or "Plate Appearance Strike Zone"), 
         title_x=0.5,
-        title_font=dict(size=14, color=DARK_GRAY, family="Arial Black"),
+        title_font=dict(size=13, color="#111827", family=PLOTLY_FONT),
         margin=dict(l=20, r=20, t=60, b=20),
         plot_bgcolor='white',
         paper_bgcolor='white'
@@ -2416,9 +2460,13 @@ if df_scrim.empty and df_season.empty and df_scrim2627.empty and df_season2027.e
 
 with st.sidebar:
     if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, width=150)
-    
-    st.markdown("### Data Filters")
+        st.image(LOGO_PATH, width=72)
+    st.markdown(
+        "<div style='font-size:1.05rem;font-weight:700;color:#111827;padding:4px 0 2px 0;'>Nebraska Baseball</div>"
+        "<div style='font-size:0.8rem;color:#6B7280;margin-bottom:14px;'>Pitcher Analytics</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("### Data")
     
     # ── Data source selector ──────────────────────────────────────────────────
     season_available  = not df_season.empty
@@ -2530,8 +2578,6 @@ with st.sidebar:
         step=1
     )
     
-    st.markdown("---")
-    st.caption("Nebraska Baseball Analytics")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # APPLY FILTERS
@@ -2573,6 +2619,14 @@ if df_pitcher_all.empty:
 # MAIN TABS SETUP
 # ═══════════════════════════════════════════════════════════════════════════════
 
+app_header(period_label=data_source)
+
+_n_games = pd.to_datetime(df_pitcher_all["Date"], errors="coerce").dt.date.nunique() if "Date" in df_pitcher_all.columns else 0
+_meta_bits = [season_label_display, f"{_n_games} game{'s' if _n_games != 1 else ''}", f"{len(df_pitcher_all)} pitches"]
+if batter_side_choice != "All":
+    _meta_bits.append(f"vs {batter_side_choice}")
+player_card(pitcher_choice, " · ".join(_meta_bits))
+
 tabs = st.tabs(["Post-Game", "Overview", "Pitch Arsenal", "Performance", "Rankings"])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2580,7 +2634,6 @@ tabs = st.tabs(["Post-Game", "Overview", "Pitch Arsenal", "Performance", "Rankin
 # ═══════════════════════════════════════════════════════════════════════════════
 with tabs[0]:
     section_header("Post-Game Report")
-    st.caption("Select a specific game to view detailed pitch-by-pitch analysis")
     
     df_pitcher_games = subset_by_pitcher_if_possible(df_all.copy(), pitcher_choice)
     
@@ -2610,12 +2663,18 @@ with tabs[0]:
                 st.warning("No data found for selected game.")
             else:
                 game_summary = make_outing_overall_summary(df_game)
-                
-                st.dataframe(themed_table(game_summary), use_container_width=True, hide_index=True)
+                _g = game_summary.iloc[0]
+                def _gp(v): return f"{v:.1f}%" if pd.notna(v) else "—"
+                _gcards = {
+                    "IP": _g["IP"], "Pitches": int(_g["Pitches"]), "H": int(_g["Hits"]),
+                    "BB": int(_g["Walks"]), "SO": int(_g["SO"]), "Strike%": _gp(_g["Strike%"]),
+                    "Whiff%": _gp(_g["Whiff%"]), "HardHit%": _gp(_g["HardHit%"]),
+                }
+                stat_row(_gcards, list(_gcards.keys()), highlight={"Strike%", "Whiff%"})
                 
                 professional_divider()
                 
-                st.markdown("### Game Movement Profile")
+                section_header("Game Movement Profile")
                 logo_img = load_logo_img()
                 fig_game_movement, summary_game_movement = combined_pitcher_report(
                     df_game, pitcher_choice, logo_img, season_label=selected_game_str
@@ -2628,7 +2687,7 @@ with tabs[0]:
                 
                 professional_divider()
                 
-                st.markdown("### Pitch-by-Pitch Breakdown")
+                section_header("Pitch-by-Pitch Breakdown")
                 st.caption("Detailed pitch data organized by inning and at-bat")
                 
                 pbp_table = build_pitch_by_inning_pa_table(df_game)
@@ -2638,9 +2697,6 @@ with tabs[0]:
                         innings = pbp_table["Inning #"].dropna().unique()
                         innings = sorted([int(i) for i in innings if pd.notna(i)])
                         
-                        style_pbp_expanders()
-                        
-                        st.markdown('<div class="pbp-scope">', unsafe_allow_html=True)
                         
                         for inning in innings:
                             inning_data = pbp_table[pbp_table["Inning #"] == inning]
@@ -2666,7 +2722,11 @@ with tabs[0]:
                                         if "PA Result" in ab_data.columns:
                                             pa_result = ab_data["PA Result"].iloc[-1]
                                         
-                                        st.markdown(f"**AB #{ab_num}: {batter_name}** — Result: {pa_result}")
+                                        st.markdown(
+                                            f"<div class='ab-label'><b>AB {ab_num} · {batter_name}</b> "
+                                            f"<span class='res'>— {pa_result}</span></div>",
+                                            unsafe_allow_html=True,
+                                        )
                                         
                                         fig_sz = pa_interactive_strikezone(
                                             ab_data,
@@ -2675,8 +2735,7 @@ with tabs[0]:
                                         
                                         if fig_sz:
                                             st.plotly_chart(fig_sz, use_container_width=True)
-                        
-                        st.markdown('</div>', unsafe_allow_html=True)
+
                     else:
                         display_cols = [c for c in pbp_table.columns 
                                        if c not in ["PA Result", "PlateLocSide", "PlateLocHeight"]]
@@ -2690,11 +2749,16 @@ with tabs[0]:
 # TAB 2: OVERVIEW
 # ═══════════════════════════════════════════════════════════════════════════════
 with tabs[1]:
-    section_header("Pitcher Overview")
-    st.caption(f"**{season_label_display}** • Batter: {batter_side_choice}")
-    
     summary_table = make_outing_overall_summary(df_pitcher_all)
-    st.dataframe(themed_table(summary_table), use_container_width=True)
+    _r = summary_table.iloc[0]
+    def _p(v): return f"{v:.1f}%" if pd.notna(v) else "—"
+    _cards = {
+        "IP": _r["IP"], "Pitches": int(_r["Pitches"]), "H": int(_r["Hits"]),
+        "BB": int(_r["Walks"]), "SO": int(_r["SO"]), "Strike%": _p(_r["Strike%"]),
+        "Whiff%": _p(_r["Whiff%"]), "HardHit%": _p(_r["HardHit%"]),
+    }
+    section_header("Pitcher Overview")
+    stat_row(_cards, list(_cards.keys()), highlight={"Strike%", "Whiff%"})
     
     professional_divider()
     
@@ -2709,7 +2773,7 @@ with tabs[1]:
     if not perf_table.empty:
         def highlight_overall(row):
             if row['Pitch Type'] == 'OVERALL':
-                return ['background-color: rgba(230, 0, 38, 0.1); font-weight: 600'] * len(row)
+                return ['background-color: #F3F4F6; font-weight: 600'] * len(row)
             return [''] * len(row)
         
         styled_perf = perf_table.style.apply(highlight_overall, axis=1).hide(axis="index").format({
@@ -2733,7 +2797,6 @@ with tabs[1]:
 # ═══════════════════════════════════════════════════════════════════════════════
 with tabs[2]:
     section_header("Pitch Arsenal")
-    st.caption(f"Movement profile and usage patterns")
     
     logo_img = load_logo_img()
     fig_movement, summary_movement = combined_pitcher_report(
@@ -2811,9 +2874,8 @@ with tabs[2]:
 # ═══════════════════════════════════════════════════════════════════════════════
 with tabs[3]:
     section_header("Performance Analysis")
-    st.caption(f"Effectiveness metrics and situational performance")
     
-    st.markdown("### Count Situation Analysis")
+    section_header("Count Situation Analysis")
     
     type_col = type_col_in_df(df_pitcher_all)
     available_pitch_types = ["Overall"]
@@ -2828,9 +2890,8 @@ with tabs[3]:
         help="Filter count analysis by specific pitch type or view overall performance"
     )
     
-    st.markdown("---")
     
-    st.markdown("#### Location by Count Situation")
+    section_header("Location by Count Situation")
     filter_display = f" - {count_pitch_filter}" if count_pitch_filter != "Overall" else ""
     st.caption(f"Pitch location density by count situation{filter_display}")
     
@@ -2845,9 +2906,8 @@ with tabs[3]:
     else:
         info_message("Count leveraging heatmaps not available. Requires count and location data.")
     
-    st.markdown("---")
     
-    st.markdown("#### Performance by Count Situation")
+    section_header("Performance by Count Situation")
     if count_pitch_filter != "Overall":
         st.caption(f"Performance metrics for {count_pitch_filter} across different count situations")
     else:
@@ -2863,9 +2923,8 @@ with tabs[3]:
     else:
         info_message("Count situation performance data not available.")
     
-    st.markdown("---")
     
-    st.markdown("#### Pitch Usage by Count Situation")
+    section_header("Pitch Usage by Count Situation")
     st.caption("Percentage of each pitch type used in different count situations")
     
     seq_by_count = analyze_sequence_by_count(df_pitcher_all, pitcher_choice)
@@ -2883,8 +2942,8 @@ with tabs[3]:
     if sankey_fig:
         st.plotly_chart(sankey_fig, use_container_width=True)
         
-        st.markdown("#### Most Effective Sequences")
-        st.caption("Effectiveness = (Whiff%×0.50) + (Called Strike%×0.35) + (Weak Contact%×0.15) - (Hit%×0.60) - (HardHit%×0.40) | Green > 12 | Yellow 0-12 | Red < 0")
+        section_header("Most Effective Sequences")
+        st.caption("Effectiveness = (Whiff%×0.50) + (Called Strike%×0.35) + (Weak Contact%×0.15) - (Hit%×0.60) - (HardHit%×0.40) | Green > 12 · Gray 0–12 · Red < 0")
         best_sequences = find_best_sequences(df_pitcher_all, pitcher_choice, min_count=5)
         
         if not best_sequences.empty:
@@ -2892,11 +2951,11 @@ with tabs[3]:
                 try:
                     v = float(val)
                     if v > 12:
-                        return 'background-color: rgba(0, 200, 0, 0.3)'
+                        return 'background-color: #DCFCE7'
                     elif v < 0:
-                        return 'background-color: rgba(255, 0, 0, 0.3)'
+                        return 'background-color: #FEE2E2'
                     else:
-                        return 'background-color: rgba(255, 255, 0, 0.3)'
+                        return 'background-color: #F9FAFB'
                 except:
                     pass
                 return ''
@@ -2922,7 +2981,7 @@ with tabs[3]:
     
     professional_divider()
     
-    st.markdown("### Outcome Heatmaps")
+    section_header("Outcome Heatmaps")
     st.caption("Location patterns for different pitch outcomes")
     
     type_col = type_col_in_df(df_pitcher_all)
@@ -2962,7 +3021,7 @@ with tabs[3]:
         show_and_close(fig_spray, use_container_width=True)
         
         if summary_spray is not None and not summary_spray.empty:
-            st.markdown("#### Batted Ball Summary")
+            section_header("Batted Ball Summary")
             st.dataframe(themed_table(summary_spray), use_container_width=True, hide_index=True)
     else:
         info_message("Spray chart not available. Requires batted ball location data (Bearing/Distance).")
@@ -2985,7 +3044,6 @@ with tabs[4]:
     else:
         st.caption("All Available Data (Combined)")
     
-    st.markdown("### Filter Options")
     
     df_rank_base = df_all.copy()
     
@@ -3007,7 +3065,7 @@ with tabs[4]:
     )
     
     if not rankings_df.empty:
-        st.markdown("### Team Averages")
+        section_header("Team Averages")
         team_avg = make_team_averages(
             df_rank_base,
             pitch_types_filter if pitch_types_filter else None
@@ -3016,7 +3074,7 @@ with tabs[4]:
         
         professional_divider()
         
-        st.markdown("### Individual Pitcher Rankings")
+        section_header("Individual Pitcher Rankings")
         st.caption("D1 Average shown in gray for comparison")
         
         D1_AVERAGES = {
@@ -3066,7 +3124,7 @@ with tabs[4]:
         
         def highlight_d1_row(row):
             if row['Pitcher'] == 'D1 Average':
-                return ['background-color: rgba(200, 200, 200, 0.3); font-weight: 600'] * len(row)
+                return ['background-color: #F3F4F6; color: #4B5563; font-weight: 600'] * len(row)
             return [''] * len(row)
         
         styled_rankings = styled_rankings.apply(highlight_d1_row, axis=1)
@@ -3094,20 +3152,11 @@ with tabs[4]:
     else:
         st.info("No ranking data available for the selected filters.")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# FOOTER
-# ═══════════════════════════════════════════════════════════════════════════════
 
-st.markdown("---")
 st.markdown(
-    f"""
-    <div style='text-align: center; color: #666; padding: 20px; font-size: 14px;'>
-        <strong>Nebraska Baseball Pitcher Analytics Platform</strong><br>
-        Built with Streamlit • Data updated through {date.today().strftime('%B %d, %Y')}<br>
-        <span style='color: {HUSKER_RED}; font-weight: 600;'>Go Big Red!</span>
-    </div>
-    """,
-    unsafe_allow_html=True
+    f"<div style='text-align:center;color:#9CA3AF;padding:32px 0 8px 0;font-size:0.78rem;'>"
+    f"Nebraska Baseball · Pitcher Analytics · Updated {date.today().strftime('%B %d, %Y')}</div>",
+    unsafe_allow_html=True,
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════

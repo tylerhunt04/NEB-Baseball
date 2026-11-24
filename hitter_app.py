@@ -34,276 +34,188 @@ LIGHT_GRAY = "#F5F5F5"
 ACCENT_GRAY = "#58595B"
 WHITE = "#FFFFFF"
 
-# Enhanced Custom CSS for premium styling
+# ──────────────────────────────────────────────────────────────────────────────
+# GLOBAL STYLES — clean, light, single accent color
+# ──────────────────────────────────────────────────────────────────────────────
+BORDER = "#E5E7EB"
+MUTED  = "#6B7280"
+INK    = "#111827"
+
 st.markdown("""
-    <style>
-    /* Import Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap');
-    
-    /* Main content styling */
-    .main {
-        background-color: #FEFDFA;
-        font-family: 'Roboto', sans-serif;
-    }
-    
-    /* Headers */
-    h1, h2, h3, h4, h5, h6 {
-        color: #1C1C1C;
-        font-family: 'Roboto', sans-serif;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-    }
-    
-    h1 {
-        font-size: 2.5rem;
-        font-weight: 900;
-    }
-    
-    h2 {
-        font-size: 2rem;
-        font-weight: 700;
-        margin-top: 2rem;
-    }
-    
-    h3 {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: #E41C38;
-        border-bottom: 2px solid #E41C38;
-        padding-bottom: 8px;
-        margin-bottom: 1.5rem;
-    }
-    
-    /* Sidebar styling */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1C1C1C 0%, #2C2C2C 100%);
-    }
-    
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
-        color: #FEFDFA;
-    }
-    
-    [data-testid="stSidebar"] label {
-        color: #FEFDFA !important;
-        font-weight: 500;
-    }
-    
-    [data-testid="stSidebar"] .stSelectbox label,
-    [data-testid="stSidebar"] .stRadio label {
-        color: #FEFDFA !important;
-    }
-    
-    /* Section containers */
-    .section-container {
-        background-color: #FFFFFF;
-        padding: 0px;
-        border-radius: 0px;
-        box-shadow: none;
-        margin-bottom: 0px;
-        border-left: none;
-    }
-    
-    /* Metric cards */
-    .metric-card {
-        background: linear-gradient(135deg, #E41C38 0%, #B71C1C 100%);
-        padding: 25px;
-        border-radius: 12px;
-        color: white;
-        text-align: center;
-        margin: 10px 0;
-        box-shadow: 0 4px 12px rgba(228, 28, 56, 0.3);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    
-    .metric-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 6px 20px rgba(228, 28, 56, 0.4);
-    }
-    
-    /* Professional dividers */
-    hr {
-        margin: 40px 0;
-        border: none;
-        border-top: 2px solid #E41C38;
-        opacity: 0.3;
-    }
-    
-    /* Button styling */
-    .stButton>button {
-        background: linear-gradient(135deg, #E41C38 0%, #B71C1C 100%);
-        color: white;
-        border-radius: 8px;
-        border: none;
-        padding: 12px 32px;
-        font-weight: 600;
-        font-size: 1rem;
-        letter-spacing: 0.5px;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 12px rgba(228, 28, 56, 0.3);
-    }
-    
-    .stButton>button:hover {
-        background: linear-gradient(135deg, #C41830 0%, #9C1818 100%);
-        box-shadow: 0 6px 20px rgba(228, 28, 56, 0.4);
-        transform: translateY(-2px);
-    }
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    /* Nav tab button overrides */
-    [data-testid="stHorizontalBlock"] .stButton>button {
-        background: #f5f5f5 !important;
-        color: #58595B !important;
-        border: 1px solid #e0e0e0 !important;
-        border-radius: 4px 4px 0 0 !important;
-        box-shadow: none !important;
-        font-size: 0.78rem !important;
-        font-weight: 600 !important;
-        letter-spacing: 0.3px !important;
-        padding: 10px 4px !important;
-        transform: none !important;
-        transition: background 0.15s ease !important;
-        width: 100% !important;
-    }
-    [data-testid="stHorizontalBlock"] .stButton>button:hover {
-        background: #e8e8e8 !important;
-        color: #1C1C1C !important;
-        box-shadow: none !important;
-        transform: none !important;
-    }
-    
-    /* Radio button styling */
-    .stRadio > label {
-        font-weight: 600;
-        color: #1C1C1C;
-        font-size: 1.1rem;
-    }
+html, body, [class*="css"], .stMarkdown, .stText, button, input, select, textarea {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.stApp { background: #FAFAFA; }
+.block-container { padding-top: 1.5rem; padding-bottom: 3rem; max-width: 1400px; }
 
-    /* Custom nav tab bar */
-    .nav-tab-bar {
-        display: flex;
-        gap: 0;
-        border-bottom: 2px solid #E41C38;
-        margin-bottom: 24px;
-    }
-    .nav-tab {
-        padding: 10px 22px;
-        font-size: 0.88rem;
-        font-weight: 600;
-        letter-spacing: 0.4px;
-        color: #58595B;
-        background: #f5f5f5;
-        border: 1px solid #e0e0e0;
-        border-bottom: none;
-        cursor: pointer;
-        text-decoration: none;
-        transition: background 0.15s ease;
-    }
-    .nav-tab:first-child { border-radius: 6px 0 0 0; }
-    .nav-tab:last-child  { border-radius: 0 6px 0 0; }
-    .nav-tab:hover { background: #ebebeb; color: #1C1C1C; }
-    .nav-tab.active {
-        background: #E41C38;
-        color: white;
-        border-color: #E41C38;
-    }
-    
-    /* Selectbox styling */
-    .stSelectbox > label {
-        font-weight: 600;
-        color: #1C1C1C;
-        font-size: 1.1rem;
-    }
-    
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 12px;
-        background-color: transparent;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        padding: 14px 28px;
-        background-color: #F5F5F5;
-        border-radius: 8px 8px 0 0;
-        font-weight: 600;
-        color: #58595B;
-        border: none;
-        transition: all 0.3s ease;
-    }
-    
-    .stTabs [data-baseweb="tab"]:hover {
-        background-color: #E8E8E8;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #E41C38 0%, #B71C1C 100%);
-        color: white;
-        box-shadow: 0 4px 12px rgba(228, 28, 56, 0.3);
-    }
-    
-    /* Info/Warning boxes */
-    .stAlert {
-        border-radius: 8px;
-        border-left: 4px solid #E41C38;
-        background-color: #FFF5F5;
-        padding: 1rem;
-    }
-    
-    /* Dataframe styling */
-    .dataframe {
-        border: none !important;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-    
-    /* Color guide box */
-    .color-guide {
-        background: linear-gradient(135deg, #F5F5F5 0%, #FFFFFF 100%);
-        padding: 20px;
-        border-radius: 10px;
-        margin-bottom: 25px;
-        border-left: 5px solid #E41C38;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    }
-    
-    /* Player header card */
-    .player-header {
-        background: linear-gradient(135deg, #1C1C1C 0%, #E41C38 100%);
-        padding: 40px;
-        border-radius: 12px;
-        margin-bottom: 30px;
-        box-shadow: 0 6px 20px rgba(0,0,0,0.2);
-        text-align: center;
-    }
-    
-    .player-header h1 {
-        color: white;
-        font-weight: 900;
-        font-size: 3rem;
-        letter-spacing: 2px;
-        margin: 0;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-    }
-    
-    /* Metric title styling */
-    .metric-title {
-        font-size: 1.2rem;
-        font-weight: 700;
-        color: #1C1C1C;
-        margin-bottom: 1rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 2px solid #E41C38;
-    }
-    
-    /* Card hover effects */
-    .hover-card {
-        transition: all 0.3s ease;
-    }
-    
-    .hover-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 8px 16px rgba(0,0,0,0.15);
-    }
-    </style>
+/* Hide Streamlit chrome */
+footer { visibility: hidden; }
+[data-testid="stDecoration"] { display: none; }
+
+/* Typography */
+h1, h2, h3, h4 { color: #111827; font-weight: 700; letter-spacing: -0.01em; }
+h1 { font-size: 1.9rem; }
+h2 { font-size: 1.5rem; margin-top: 0.5rem; }
+h3 { font-size: 1.1rem; margin-top: 1.5rem; }
+h4 { font-size: 0.95rem; color: #374151; }
+
+hr { margin: 28px 0; border: none; border-top: 1px solid #E5E7EB; }
+
+/* Sidebar */
+[data-testid="stSidebar"] { background: #FFFFFF; border-right: 1px solid #E5E7EB; }
+[data-testid="stSidebar"] h3 {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #6B7280; margin: 0.25rem 0 0.5rem 0; font-weight: 600;
+}
+[data-testid="stSidebar"] hr { margin: 18px 0; }
+
+/* Buttons (generic) */
+.stButton > button {
+    background: #FFFFFF; color: #111827; border: 1px solid #D1D5DB;
+    border-radius: 6px; font-weight: 500; box-shadow: none;
+}
+.stButton > button:hover { border-color: #E41C38; color: #E41C38; }
+
+/* Top navigation (button row) */
+.nav-row [data-testid="stHorizontalBlock"] { gap: 0.4rem; }
+[data-testid="stHorizontalBlock"] .stButton > button {
+    background: transparent; border: 1px solid transparent; color: #4B5563;
+    font-size: 0.85rem; font-weight: 500; padding: 8px 6px; width: 100%;
+    border-radius: 6px;
+}
+[data-testid="stHorizontalBlock"] .stButton > button:hover {
+    background: #F3F4F6; color: #111827; border-color: transparent;
+}
+
+/* Native tabs */
+.stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid #E5E7EB; }
+.stTabs [data-baseweb="tab"] {
+    padding: 8px 16px; background: transparent; font-weight: 500; color: #6B7280;
+}
+.stTabs [aria-selected="true"] { color: #E41C38; }
+.stTabs [data-baseweb="tab-highlight"] { background-color: #E41C38; }
+
+/* Alerts */
+.stAlert { border-radius: 8px; }
+
+/* st.table */
+[data-testid="stTable"] table { border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden; }
+[data-testid="stTable"] td { font-size: 0.88rem; padding: 8px 12px; border-color: #F3F4F6; }
+
+/* ── Reusable components ───────────────────────────── */
+.app-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0 14px 0; margin-bottom: 8px; border-bottom: 3px solid #E41C38;
+}
+.app-header .brand { display: flex; align-items: center; gap: 14px; }
+.app-header img { height: 44px; width: auto; border-radius: 4px; }
+.app-header .title { font-size: 1.35rem; font-weight: 700; color: #111827; line-height: 1.1; }
+.app-header .subtitle { font-size: 0.82rem; color: #6B7280; margin-top: 2px; }
+.app-header .period {
+    font-size: 0.78rem; font-weight: 600; color: #E41C38; background: #FDECEF;
+    padding: 4px 10px; border-radius: 999px;
+}
+
+.page-title { font-size: 1.5rem; font-weight: 700; color: #111827; margin: 8px 0 2px 0; }
+.page-sub { font-size: 0.9rem; color: #6B7280; margin-bottom: 18px; }
+
+.section-title {
+    font-size: 0.78rem; font-weight: 600; color: #374151; text-transform: uppercase;
+    letter-spacing: 0.08em; margin: 26px 0 10px 0; padding-bottom: 6px;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.player-card {
+    background: #FFFFFF; border: 1px solid #E5E7EB; border-left: 4px solid #E41C38;
+    border-radius: 8px; padding: 16px 20px; margin-bottom: 18px;
+}
+.player-card .name { font-size: 1.4rem; font-weight: 700; color: #111827; }
+.player-card .meta { font-size: 0.85rem; color: #6B7280; margin-top: 2px; }
+
+.stat-card {
+    background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px;
+    padding: 12px 8px; text-align: center;
+}
+.stat-card .lbl {
+    font-size: 0.68rem; color: #6B7280; text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: 4px;
+}
+.stat-card .val { font-size: 1.3rem; font-weight: 700; color: #111827; line-height: 1.1; }
+.stat-card.hl { border-top: 3px solid #E41C38; }
+.stat-card.hl .val { color: #E41C38; }
+
+.leader-card {
+    background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 14px;
+}
+.leader-card .rank {
+    font-size: 0.75rem; font-weight: 700; color: #9CA3AF; width: 22px;
+}
+.leader-card .big { font-size: 1.35rem; font-weight: 700; color: #111827; min-width: 74px; }
+.leader-card .big small { font-size: 0.75rem; color: #6B7280; font-weight: 500; margin-left: 2px; }
+.leader-card .who { font-size: 0.9rem; font-weight: 600; color: #111827; }
+.leader-card .ctx { font-size: 0.76rem; color: #6B7280; }
+
+.legend-note {
+    background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px;
+    padding: 12px 16px; margin-bottom: 18px; font-size: 0.85rem; color: #4B5563;
+}
+.legend-note .chip { display: inline-block; padding: 1px 8px; border-radius: 4px; margin: 0 4px; font-size: 0.78rem; }
+.legend-note .fine { font-size: 0.76rem; color: #9CA3AF; margin-top: 6px; }
+</style>
 """, unsafe_allow_html=True)
+
+# Matplotlib defaults so every chart shares the same clean look
+plt.rcParams.update({
+    "font.family": "DejaVu Sans",
+    "axes.edgecolor": "#D1D5DB",
+    "axes.labelcolor": "#374151",
+    "axes.titleweight": "bold",
+    "axes.titlecolor": "#111827",
+    "xtick.color": "#6B7280",
+    "ytick.color": "#6B7280",
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "legend.frameon": False,
+    "figure.facecolor": "white",
+    "axes.facecolor": "white",
+})
+
+TABLE_HEADER_PROPS = (
+    "background-color: #F3F4F6; color: #374151; font-weight: 600; "
+    "font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; "
+    "white-space: nowrap; border-bottom: 1px solid #E5E7EB;"
+)
+
+# ── Small HTML helpers used throughout the app ───────────────────────────────
+def section_title(text: str):
+    st.markdown(f"<div class='section-title'>{text}</div>", unsafe_allow_html=True)
+
+def page_title(title: str, subtitle: str = ""):
+    sub = f"<div class='page-sub'>{subtitle}</div>" if subtitle else "<div style='height:12px'></div>"
+    st.markdown(f"<div class='page-title'>{title}</div>{sub}", unsafe_allow_html=True)
+
+def player_card(name: str, meta: str = ""):
+    m = f"<div class='meta'>{meta}</div>" if meta else ""
+    st.markdown(f"<div class='player-card'><div class='name'>{name}</div>{m}</div>",
+                unsafe_allow_html=True)
+
+def stat_card_html(label, value, highlight=False) -> str:
+    cls = "stat-card hl" if highlight else "stat-card"
+    return f"<div class='{cls}'><div class='lbl'>{label}</div><div class='val'>{value}</div></div>"
+
+def stat_row(stats: dict, keys: list, highlight: set = frozenset()):
+    cols = st.columns(len(keys))
+    for c, k in zip(cols, keys):
+        c.markdown(stat_card_html(k, stats.get(k, "—"), k in highlight), unsafe_allow_html=True)
+
+def leader_card_html(rank, big, unit, who, ctx) -> str:
+    return (f"<div class='leader-card'><div class='rank'>#{rank}</div>"
+            f"<div class='big'>{big}<small>{unit}</small></div>"
+            f"<div><div class='who'>{who}</div><div class='ctx'>{ctx}</div></div></div>")
 
 # Default data paths per period
 DATA_PATH_2025   = "B10C25_hitter_app_columns.csv"
@@ -421,19 +333,19 @@ def get_performance_color_gradient(stat_name: str, value: float) -> str:
         diff_pct = (value - avg) / avg
     
     if diff_pct >= 0.20:
-        return "#28a745"
+        return "#BBF7D0"
     elif diff_pct >= 0.10:
-        return "#5cb85c"
+        return "#D1FAE5"
     elif diff_pct >= 0.05:
-        return "#90ee90"
+        return "#ECFDF5"
     elif diff_pct >= -0.05:
         return "#ffffff"
     elif diff_pct >= -0.10:
-        return "#ffb3b3"
+        return "#FEF2F2"
     elif diff_pct >= -0.20:
-        return "#ff8080"
+        return "#FEE2E2"
     else:
-        return "#dc3545"
+        return "#FECACA"
 
 def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.DataFrame:
     def apply_color(row):
@@ -478,17 +390,14 @@ def style_performance_table(df: pd.DataFrame, stat_name_col='Metric') -> pd.Data
         
         bg_color = get_performance_color_gradient(d1_key, value)
         
-        if bg_color in ["#28a745", "#dc3545"]:
-            text_color = "white"
-        else:
-            text_color = "black"
+        text_color = "#111827"
         
         return [f'background-color: {bg_color}; color: {text_color}' if col == 'Value' else '' 
                 for col in row.index]
     
     styled = df.style.apply(apply_color, axis=1)
     
-    header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
+    header_props = TABLE_HEADER_PROPS
     styled = styled.set_table_styles([
         {'selector': 'thead th', 'props': header_props},
         {'selector': 'th.col_heading', 'props': header_props},
@@ -577,6 +486,10 @@ def draw_strikezone(ax, left=-0.83, right=0.83, bottom=1.5, top=3.5):
 
 X_LIM = (-3, 3)
 Y_LIM = (0, 5)
+
+SOFT_RYG = colors.LinearSegmentedColormap.from_list(
+    "soft_ryg", ["#FECACA", "#FFFFFF", "#BBF7D0"], N=256
+)
 
 custom_cmap = colors.LinearSegmentedColormap.from_list(
     "custom_cmap",
@@ -731,7 +644,7 @@ def fmt_avg3(x):
         return "—"
 
 def themed_styler(df: pd.DataFrame, nowrap=True):
-    header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
+    header_props = TABLE_HEADER_PROPS
     styles = [
         {'selector': 'thead th', 'props': header_props},
         {'selector': 'th.col_heading', 'props': header_props},
@@ -753,54 +666,23 @@ def _img_to_b64(path: str):
     except Exception:
         return None
 
-def render_nb_banner(image_candidates=BANNER_CANDIDATES, title="Nebraska Baseball", subtitle="Hitter Analytics Platform", height_px=200):
-    b64 = None
-    for p in image_candidates:
-        b64 = _img_to_b64(p)
-        if b64:
-            break
-    
-    if b64:
-        st.markdown(
-            f"""
-            <div style="position: relative; width: 100%; margin: -1rem -1rem 2rem -1rem;">
-                <img src="data:image/png;base64,{b64}" 
-                     style="width: 100%; height: auto; display: block; border-radius: 0;">
-                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-                            text-align: center; width: 100%;">
-                    <h1 style="color: white; font-size: 4rem; font-weight: 900; 
-                               text-shadow: 3px 3px 8px rgba(0,0,0,0.8); 
-                               letter-spacing: 3px; margin: 0; line-height: 1.2;">
-                        {title}
-                    </h1>
-                    <p style="color: white; font-size: 1.8rem; font-weight: 400; 
-                              text-shadow: 2px 2px 6px rgba(0,0,0,0.8); 
-                              margin: 10px 0 0 0; letter-spacing: 1px;">
-                        {subtitle}
-                    </p>
-                </div>
+def render_nb_banner(title="Nebraska Baseball", subtitle="Hitter Analytics", period_label=""):
+    """Compact app bar: title on the left, active time period on the right."""
+    pill = f"<span class='period'>{period_label}</span>" if period_label else ""
+    st.markdown(
+        f"""
+        <div class="app-header">
+          <div class="brand">
+            <div>
+              <div class="title">{title}</div>
+              <div class="subtitle">{subtitle}</div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            f"""
-            <div style="background: linear-gradient(135deg, #1C1C1C 0%, #E41C38 100%); 
-                        padding: 60px 30px; text-align: center; margin: -1rem -1rem 2rem -1rem; 
-                        box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-                <h1 style="color: white; font-size: 4rem; font-weight: 900; 
-                           letter-spacing: 3px; margin: 0; line-height: 1.2;">
-                    {title}
-                </h1>
-                <p style="color: white; font-size: 1.8rem; font-weight: 400; 
-                          margin: 10px 0 0 0; letter-spacing: 1px;">
-                    {subtitle}
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+          </div>
+          {pill}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # BATTED BALL / DISCIPLINE / STATS
@@ -1383,7 +1265,7 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
     
     df_stats = pd.DataFrame(stats_by_date)
     
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(11, 4.5))
     
     metric_values = df_stats[metric].values
     dates_plot = range(len(dates))
@@ -1392,16 +1274,16 @@ def create_progress_chart(df: pd.DataFrame, metric='OPS') -> plt.Figure:
             markersize=8, color=HUSKER_RED, label=metric)
     
     final_val = metric_values[-1]
-    ax.axhline(y=final_val, color='gray', linestyle='--', linewidth=1.5, 
+    ax.axhline(y=final_val, color='#9CA3AF', linestyle='--', linewidth=1, 
                alpha=0.7, label=f'Final: {final_val:.3f}')
     
-    ax.set_xlabel('Game', fontsize=12, fontweight='bold')
-    ax.set_ylabel(metric, fontsize=12, fontweight='bold')
-    ax.set_title(f'{metric} Progression - Fall 2025', fontsize=14, fontweight='bold', pad=15)
+    ax.set_xlabel('Game', fontsize=10)
+    ax.set_ylabel(metric, fontsize=10)
+    ax.set_title(f'{metric} — cumulative by game', fontsize=13, loc='left', pad=12)
     ax.set_xticks(dates_plot)
     ax.set_xticklabels([f"Game {i+1}" for i in dates_plot], rotation=45, ha='right')
-    ax.legend(loc='best', frameon=True, shadow=True)
-    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.legend(loc='best')
+    ax.grid(True, axis='y', color='#F3F4F6', linewidth=1)
     
     plt.tight_layout()
     return fig
@@ -1571,7 +1453,7 @@ def style_rankings(df: pd.DataFrame):
                         styles.append('')
         return styles
 
-    header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
+    header_props = TABLE_HEADER_PROPS
     sty = (
         df.style
           .hide(axis="index")
@@ -2179,16 +2061,13 @@ def load_for_period(period_label: str, path_2025: str, path_scrim: str, path_202
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN APP
 # ══════════════════════════════════════════════════════════════════════════════
-render_nb_banner()
-
 # SIDEBAR CONFIGURATION
-st.sidebar.markdown("""
-    <div style="text-align: center; padding: 20px 0; border-bottom: 2px solid #E60026;">
-        <h2 style="color: #2C3E50; margin: 0; font-weight: 700;">Configuration</h2>
-    </div>
-""", unsafe_allow_html=True)
-
-st.sidebar.markdown("<br>", unsafe_allow_html=True)
+st.sidebar.markdown(
+    "<div style='font-size:1.05rem;font-weight:700;color:#111827;padding:4px 0 2px 0;'>Nebraska Baseball</div>"
+    "<div style='font-size:0.8rem;color:#6B7280;margin-bottom:14px;'>Hitter Analytics</div>",
+    unsafe_allow_html=True,
+)
+st.sidebar.markdown("### Data")
 
 # Time Period Selection
 period = st.sidebar.selectbox(
@@ -2217,6 +2096,8 @@ path_scrim     = st.session_state.get("path_scrim", DATA_PATH_SCRIM)
 path_2026      = st.session_state.get("path_2026", DATA_PATH_2026)
 path_scrim2627 = st.session_state.get("path_scrim2627", DATA_PATH_SCRIM_2627)
 path_2027      = st.session_state.get("path_2027", DATA_PATH_2027)
+
+render_nb_banner(period_label=period.title())
 
 df_all = load_for_period(period, path_2025, path_scrim, path_2026, path_scrim2627, path_2027)
 if df_all.empty:
@@ -2285,34 +2166,46 @@ if st.session_state.get("view_mode") == "Regional Scouting" and "Regional Scouti
 if "view_mode" not in st.session_state:
     st.session_state["view_mode"] = _TABS[0]
 
-_tab_cols = st.columns(len(_TABS))
-for _ti, _tab_label in enumerate(_TABS):
-    with _tab_cols[_ti]:
-        st.button(_tab_label, key=f"nav_{_ti}", use_container_width=True)
-        if st.session_state.get(f"nav_{_ti}"):
-            st.session_state["view_mode"] = _tab_label
-            st.rerun()
+_TAB_LABELS = {
+    "Standard Hitter Report": "Game Report",
+    "Profiles & Heatmaps":    "Profiles",
+    "Season Summary":         "Season Summary",
+    "Catcher Framing":        "Catcher Framing",
+    "Rankings":               "Rankings",
+    "Weekend Series":         "Series",
+    "Regional Scouting":      "Scouting",
+}
 
-# Highlight the active tab via nth-child CSS
-_active_idx = _TABS.index(st.session_state["view_mode"])
-st.markdown(f"""
+def _set_view(label: str):
+    st.session_state["view_mode"] = label
+
+st.markdown("""
 <style>
-[data-testid="stHorizontalBlock"] > div:nth-child({_active_idx + 1}) button {{
-    background: #E41C38 !important;
-    color: white !important;
-    border-color: #E41C38 !important;
-    box-shadow: 0 2px 8px rgba(228,28,56,0.35) !important;
-}}
-[data-testid="stHorizontalBlock"] > div:nth-child({_active_idx + 1}) button:hover {{
-    background: #C41830 !important;
-}}
+/* active nav item */
+button[kind="primary"], [data-testid="stBaseButton-primary"] {
+    background: #E41C38 !important; color: #FFFFFF !important;
+    border: 1px solid #E41C38 !important; font-weight: 600 !important;
+}
+button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover {
+    background: #C41830 !important; border-color: #C41830 !important; color: #FFFFFF !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown(
-    "<div style='border-bottom:2px solid #E41C38;margin-bottom:20px;'></div>",
-    unsafe_allow_html=True
-)
+_tab_cols = st.columns(len(_TABS))
+for _ti, _tab_label in enumerate(_TABS):
+    with _tab_cols[_ti]:
+        st.button(
+            _TAB_LABELS.get(_tab_label, _tab_label),
+            key=f"nav_{_ti}",
+            use_container_width=True,
+            type="primary" if st.session_state["view_mode"] == _tab_label else "secondary",
+            on_click=_set_view,
+            args=(_tab_label,),
+        )
+
+st.markdown("<div style='border-bottom:1px solid #E5E7EB;margin:6px 0 18px 0;'></div>",
+            unsafe_allow_html=True)
 
 view_mode = st.session_state["view_mode"]
 
@@ -2320,7 +2213,7 @@ view_mode = st.session_state["view_mode"]
 # STANDARD HITTER REPORT
 # ══════════════════════════════════════════════════════════════════════════════
 if view_mode == "Standard Hitter Report":
-    st.markdown("## Standard Hitter Report")
+    page_title("Game Report", "Pitch-by-pitch breakdown and spray chart for a single game")
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Player Selection")
@@ -2374,8 +2267,7 @@ if view_mode == "Standard Hitter Report":
         if fig_std:
             st.pyplot(fig_std)
         
-        st.markdown("---")
-        st.markdown("### Spray Chart")
+        section_title("Spray Chart")
         fig_spray = create_spray_chart(df_date, batter_display)
         if fig_spray:
             st.pyplot(fig_spray)
@@ -2386,7 +2278,7 @@ if view_mode == "Standard Hitter Report":
 # PROFILES & HEATMAPS
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Profiles & Heatmaps":
-    st.markdown("## Profiles & Heatmaps")
+    page_title("Player Profile", "Filtered production, plate discipline and batted-ball profile")
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Player Selection")
@@ -2463,25 +2355,23 @@ elif view_mode == "Profiles & Heatmaps":
             "2027 season": "2027",
         }.get(period, "—")
         
-        st.markdown(f"""
-            <div style="background: linear-gradient(135deg, {DARK_GRAY} 0%, {HUSKER_RED} 100%); 
-                        padding: 25px; border-radius: 10px; margin-bottom: 25px; 
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                <h2 style="color: white; margin: 0; font-weight: 700; letter-spacing: 1px;">
-                    {display_name_by_key.get(batter_key,batter_key)} ({season_label})
-                </h2>
-            </div>
-        """, unsafe_allow_html=True)
+        _filters = []
+        if sel_months: _filters.append(", ".join(MONTH_NAME_BY_NUM.get(m, str(m)) for m in sel_months))
+        if sel_days:   _filters.append("Days " + ", ".join(str(d) for d in sel_days))
+        if lastN:      _filters.append(f"Last {lastN} games")
+        if hand_choice != "Both": _filters.append(f"vs {hand_choice}")
+        _meta = season_label + (" · " + " · ".join(_filters) if _filters else " · All games")
+        player_card(display_name_by_key.get(batter_key, batter_key), _meta)
 
         t1_counts, t2_rates, t3_batted = build_profile_tables(df_profiles)
 
-        st.markdown("### Summary Statistics")
+        section_title("Summary Statistics")
         st.table(themed_styler(t1_counts, nowrap=True))
 
-        st.markdown("### Plate Discipline")
+        section_title("Plate Discipline")
         st.table(themed_styler(t2_rates, nowrap=True))
 
-        st.markdown("### Exit Velocity & Barrel by Pitch Type")
+        section_title("Exit Velocity & Barrel by Pitch Type")
 
         def _ev_barrel_row(grp: pd.DataFrame) -> dict:
             inplay = grp.get("PitchCall", pd.Series(dtype=object)).astype(str).eq("InPlay")
@@ -2530,10 +2420,9 @@ elif view_mode == "Profiles & Heatmaps":
 
             st.table(themed_styler(_ev_tbl.rename(columns={"Split": ""}), nowrap=True))
 
-        st.markdown("### Batted Ball Distribution")
+        section_title("Batted Ball Distribution")
         st.table(themed_styler(t3_batted, nowrap=True))
 
-        st.markdown("---")
         
         tab1, tab2 = st.tabs(["Spray Chart", "Heatmaps"])
         
@@ -2572,7 +2461,7 @@ elif view_mode == "Profiles & Heatmaps":
 # RANKINGS
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Rankings":
-    st.markdown("## Team Rankings")
+    page_title("Team Rankings", "Team totals and individual leaderboard")
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Filters")
@@ -2680,34 +2569,17 @@ elif view_mode == "Rankings":
 
         t = _team_totals_from_scope(df_scope)
         if t:
-            st.markdown("<div style='font-size:1.0rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px;border-bottom:2px solid #E41C38;padding-bottom:5px;'>Team Totals</div>", unsafe_allow_html=True)
+            section_title("Team Totals")
 
-            def _rk_stat_card(label, value, highlight=False):
-                border = "#E41C38" if highlight else "#333"
-                val_color = "#E41C38" if highlight else "#f0f0f0"
-                return f"""<div style='background:#111;border:1px solid {border};border-radius:7px;
-                    padding:12px 6px;text-align:center;'>
-                  <div style='color:#777;font-size:0.68rem;text-transform:uppercase;
-                    letter-spacing:0.08em;margin-bottom:5px;'>{label}</div>
-                  <div style='color:{val_color};font-size:1.25rem;font-weight:700;
-                    line-height:1;'>{value}</div>
-                </div>"""
-
-            highlight_set = {"AVG", "OBP", "OPS"}
             row1 = ["PA","AB","H","2B","3B","HR","BB","SO"]
             row2 = ["AVG","OBP","SLG","OPS","K%","BB%","Avg EV","HardHit%"]
-
-            c1 = st.columns(len(row1))
-            for col_w, s in zip(c1, row1):
-                col_w.markdown(_rk_stat_card(s, t.get(s,"—")), unsafe_allow_html=True)
+            stat_row(t, row1)
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            c2 = st.columns(len(row2))
-            for col_w, s in zip(c2, row2):
-                col_w.markdown(_rk_stat_card(s, t.get(s,"—"), highlight=s in highlight_set), unsafe_allow_html=True)
+            stat_row(t, row2, highlight={"OPS"})
 
             st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
 
-    st.markdown("<div style='font-size:1.0rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px;border-bottom:2px solid #E41C38;padding-bottom:5px;'>Individual Rankings</div>", unsafe_allow_html=True)
+    section_title("Individual Rankings")
 
     styled = style_rankings(rankings_df)
 
@@ -2732,9 +2604,8 @@ elif view_mode == "Season Summary":
         "2026/27 Scrimmages": "Fall 2026 Performance Summary",
         "2027 season":        "2027 Season Performance Report",
     }.get(period, "Season Performance Report")
-    st.markdown(f"# {_report_title}")
+    page_title(_report_title)
     
-    st.markdown("---")
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Player Selection")
@@ -2758,40 +2629,37 @@ elif view_mode == "Season Summary":
     
     player_display = display_name_by_key.get(batter_key, batter_key)
     
-    st.markdown(f"""
-        <div style="background: linear-gradient(135deg, {DARK_GRAY} 0%, {HUSKER_RED} 100%); 
-                    padding: 30px; border-radius: 10px; margin-bottom: 25px; 
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-            <h1 style="color: white; margin: 0; font-weight: 700; letter-spacing: 1px; text-align: center;">
-                {player_display}
-            </h1>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
     player_stats = _compute_split_core(df_player_fall)
-    
+    _n_games = pd.to_datetime(df_player_fall["Date"], errors="coerce").dt.date.nunique()
+    player_card(player_display, f"{_n_games} games · {player_stats['PA']} PA")
+
+    _pa = player_stats["PA"]
+    _headline = {
+        "PA":   f"{_pa}",
+        "AVG":  fmt_avg3(player_stats["AVG"]),
+        "OBP":  fmt_avg3(player_stats["OBP"]),
+        "SLG":  fmt_avg3(player_stats["SLG"]),
+        "OPS":  fmt_avg3(player_stats["OPS"]),
+        "wOBA": fmt_avg3(player_stats["wOBA"]),
+        "K%":   f"{player_stats['SO']/_pa*100:.1f}%" if _pa else "—",
+        "BB%":  f"{player_stats['BB']/_pa*100:.1f}%" if _pa else "—",
+    }
+    stat_row(_headline, list(_headline.keys()), highlight={"OPS"})
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
     st.markdown("""
-    <div style='background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #E60026;'>
-        <p style='margin: 0 0 8px 0; font-size: 15px; color: #2C3E50; font-weight: 600;'>
-            <strong>Color Guide:</strong>
-        </p>
-        <p style='margin: 0 0 8px 0; font-size: 14px; color: #666;'>
-            <span style='background-color: #28a745; color: white; padding: 3px 10px; border-radius: 4px; margin: 0 6px;'>Green</span> 
-            Above D1 Average | 
-            <span style='background-color: #ffffff; color: black; padding: 3px 10px; border-radius: 4px; border: 1px solid #ddd; margin: 0 6px;'>White</span> 
-            Near D1 Average | 
-            <span style='background-color: #dc3545; color: white; padding: 3px 10px; border-radius: 4px; margin: 0 6px;'>Red</span> 
-            Below D1 Average
-        </p>
-        <p style='margin: 5px 0 0 0; font-size: 12px; color: #888; font-style: italic;'>
-            Note: PA, Hits, Doubles, Triples, Home Runs, Avg Launch Angle, Swing%, and Z-Swing% are not color-coded
-        </p>
+    <div class='legend-note'>
+      <b>Shading vs. D1 average:</b>
+      <span class='chip' style='background:#BBF7D0;'>Well above</span>
+      <span class='chip' style='background:#ECFDF5;'>Above</span>
+      <span class='chip' style='background:#FFFFFF;border:1px solid #E5E7EB;'>Near</span>
+      <span class='chip' style='background:#FEE2E2;'>Below</span>
+      <span class='chip' style='background:#FECACA;'>Well below</span>
+      <div class='fine'>PA, hit counts, launch angle, Swing% and Z-Swing% are not shaded.</div>
     </div>
     """, unsafe_allow_html=True)
-    
-    st.markdown("### Overall Performance")
+
+    section_title("Overall Performance")
     
     perf_data_1 = pd.DataFrame({
         'Metric': ['AVG', 'OBP', 'SLG', 'OPS'],
@@ -2816,22 +2684,20 @@ elif view_mode == "Season Summary":
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("#### Batting Statistics")
+        section_title("Batting Statistics")
         st.dataframe(
             style_performance_table(perf_data_1),
-            use_container_width=True,
-            height=200
+            use_container_width=True
         )
     
     with col2:
-        st.markdown("#### Advanced Metrics")
+        section_title("Advanced Metrics")
         st.dataframe(
             style_performance_table(perf_data_2),
-            use_container_width=True,
-            height=200
+            use_container_width=True
         )
     
-    st.markdown("#### Extra Base Hits")
+    section_title("Extra Base Hits")
     xbh_data = pd.DataFrame({
         'Metric': ['Hits', 'Doubles', 'Triples', 'Home Runs'],
         'Value': [
@@ -2842,7 +2708,7 @@ elif view_mode == "Season Summary":
         ]
     })
     
-    header_props = f'background-color: {HUSKER_RED}; color: white; white-space: nowrap;'
+    header_props = TABLE_HEADER_PROPS
     xbh_styled = xbh_data.style.set_table_styles([
         {'selector': 'thead th', 'props': header_props},
         {'selector': 'th.col_heading', 'props': header_props},
@@ -2852,13 +2718,11 @@ elif view_mode == "Season Summary":
     
     st.dataframe(
         xbh_styled,
-        use_container_width=True,
-        height=200
+        use_container_width=True
     )
     
-    st.markdown("---")
     
-    st.markdown("### Batted Ball Quality")
+    section_title("Batted Ball Quality")
     
     bb_data = pd.DataFrame({
         'Metric': ['Avg Exit Velocity', 'Max Exit Velocity', 'Avg Launch Angle', 'Hard Hit%', 'Barrel%'],
@@ -2873,13 +2737,11 @@ elif view_mode == "Season Summary":
     
     st.dataframe(
         style_performance_table(bb_data),
-        use_container_width=True,
-        height=230
+        use_container_width=True
     )
     
-    st.markdown("---")
     
-    st.markdown("### Plate Discipline")
+    section_title("Plate Discipline")
     
     pd_data = pd.DataFrame({
         'Metric': ['Swing%', 'Whiff%', 'Chase%', 'Z-Swing%', 'Z-Contact%', 'Z-Whiff%'],
@@ -2895,27 +2757,23 @@ elif view_mode == "Season Summary":
     
     st.dataframe(
         style_performance_table(pd_data),
-        use_container_width=True,
-        height=260
+        use_container_width=True
     )
     
-    st.markdown("---")
     
-    st.markdown("### Game-by-Game Performance")
+    section_title("Game-by-Game Performance")
     
     game_table = create_game_by_game_table(df_player_fall)
     if not game_table.empty:
         st.dataframe(
             themed_styler(game_table, nowrap=False),
-            use_container_width=True,
-            height=400
+            use_container_width=True
         )
     else:
         st.info("No game-by-game data available.")
     
-    st.markdown("---")
     
-    st.markdown("### Performance Splits")
+    section_title("Performance Splits")
     
     split_type = st.selectbox(
         "Select Split Type",
@@ -2934,15 +2792,13 @@ elif view_mode == "Season Summary":
     if not splits_table.empty:
         st.dataframe(
             themed_styler(splits_table, nowrap=False),
-            use_container_width=True,
-            height=300
+            use_container_width=True
         )
     else:
         st.info("No split data available.")
     
-    st.markdown("---")
     
-    st.markdown("### Visualizations")
+    section_title("Visualizations")
     
     tab1, tab2 = st.tabs(["Spray Chart", "Heatmaps"])
     
@@ -2977,9 +2833,8 @@ elif view_mode == "Season Summary":
             else:
                 st.info("Not enough data for heatmaps.")
     
-    st.markdown("---")
     
-    st.markdown("### Progress Tracker")
+    section_title("Progress Tracker")
     
     metric_choice = st.selectbox(
         "Select Metric to Track",
@@ -3007,7 +2862,7 @@ elif view_mode == "Catcher Framing":
     FRAME_ZONE_HEIGHT = FRAME_ZONE_Y_MAX - FRAME_ZONE_Y_MIN
     FRAME_PLOT_X_LIM  = (-2.2, 2.2)
     FRAME_PLOT_Y_LIM  = (0.8, 4.5)
-    FRAME_POS_COLOR   = "#e74c3c"
+    FRAME_POS_COLOR   = "#DC2626"
     FRAME_NEG_COLOR   = "#3498db"
 
     for _col in ["Catcher", "CatcherTeam", "PlateLocSide", "PlateLocHeight", "PitchCall", "Date"]:
@@ -3144,13 +2999,12 @@ elif view_mode == "Catcher Framing":
         ax.legend(loc="upper right", fontsize=7.5, facecolor="white",
                   labelcolor="black", framealpha=0.9, edgecolor="#cccccc")
 
-    st.markdown("## Catcher Framing Report")
-    st.markdown("---")
+    page_title("Catcher Framing", "Strikes stolen and given back in the shadow zone")
 
     if catch_view_df.empty or not sel_catchers:
         st.info("No catcher data available for the selected filters.")
     else:
-        st.markdown("### Framing Summary by Catcher")
+        section_title("Framing Summary by Catcher")
 
         summary_rows = []
         for _catcher, _grp in catch_view_df.groupby("Catcher"):
@@ -3171,29 +3025,29 @@ elif view_mode == "Catcher Framing":
             summary_df = pd.DataFrame(summary_rows).sort_values("Net Frames", ascending=False)
 
             def _color_net(val):
-                if val > 0:   return "color: #2ecc71; font-weight:bold"
-                elif val < 0: return "color: #e74c3c; font-weight:bold"
+                if val > 0:   return "color: #16A34A; font-weight:bold"
+                elif val < 0: return "color: #DC2626; font-weight:bold"
                 return ""
 
             def _color_steal(val):
-                if val >= 50:  return "color: #2ecc71; font-weight:bold"
-                elif val < 30: return "color: #e74c3c"
-                return "color: #f39c12"
+                if val >= 50:  return "color: #16A34A; font-weight:bold"
+                elif val < 30: return "color: #DC2626"
+                return "color: #D97706"
             def _color_giveback(val):
-                if val <= 15:  return "color: #2ecc71; font-weight:bold"
-                elif val > 30: return "color: #e74c3c"
-                return "color: #f39c12"
+                if val <= 15:  return "color: #16A34A; font-weight:bold"
+                elif val > 30: return "color: #DC2626"
+                return "color: #D97706"
             styled_catch = (
                 summary_df.style
                 .map(_color_net,      subset=["Net Frames"])
-                .map(lambda v: "color: #e74c3c", subset=["+ Frames"])
+                .map(lambda v: "color: #DC2626", subset=["+ Frames"])
                 .map(lambda v: "color: #3498db", subset=["− Frames"])
                 .map(_color_steal,    subset=["Steal Rate %"])
                 .map(_color_giveback, subset=["Give-back Rate %"])
                 .format({"Steal Rate %": "{:.1f}", "Give-back Rate %": "{:.1f}"})
                 .set_properties(**{"background-color": "white", "color": "black", "border-color": "#dddddd"})
                 .set_table_styles([
-                    {"selector": "th", "props": [("background-color", "#f5f5f5"),
+                    {"selector": "th", "props": [("background-color", "#F3F4F6"),
                                                   ("color", "black"),
                                                   ("font-weight", "bold"),
                                                   ("text-align", "center"),
@@ -3204,8 +3058,7 @@ elif view_mode == "Catcher Framing":
             )
             st.dataframe(styled_catch, use_container_width=True)
 
-        st.markdown("---")
-        st.markdown("### Framing Zone Plots")
+        section_title("Framing Zone Plots")
 
         catchers_in_view = [c for c in sel_catchers if c in catch_view_df["Catcher"].values]
 
@@ -3217,40 +3070,29 @@ elif view_mode == "Catcher Framing":
                 _cdf = catch_view_df[catch_view_df["Catcher"] == _catcher]
                 _pos, _neg, _totals = _classify_framing(_cdf)
                 _net = _totals["net_frames"]
-                _net_color = "#2ecc71" if _net >= 0 else "#e74c3c"
+                _net_color = "#16A34A" if _net >= 0 else "#DC2626"
                 _net_sign  = "+" if _net >= 0 else ""
 
                 with plot_cols[_i % n_cols]:
-                    _steal_color = "#2ecc71" if _totals["steal_rate"] >= 50 else ("#e74c3c" if _totals["steal_rate"] < 30 else "#f39c12")
-                    _gb_color    = "#2ecc71" if _totals["giveback_rate"] <= 15 else ("#e74c3c" if _totals["giveback_rate"] > 30 else "#f39c12")
-                    st.markdown(f"""
-                    <div style='background:#1f2937;border-radius:8px;padding:10px 14px;
-                                margin-bottom:8px;border-left:4px solid {HUSKER_RED}'>
-                      <div style='color:white;font-weight:bold;font-size:1rem'>{_catcher}</div>
-                      <div style='display:flex;gap:12px;margin-top:6px;flex-wrap:wrap'>
-                        <div style='text-align:center'>
-                          <div style='color:#e74c3c;font-size:1.3rem;font-weight:bold'>{_totals["pos_frames"]}</div>
-                          <div style='color:#aaa;font-size:0.7rem'>+ Frames</div>
-                        </div>
-                        <div style='text-align:center'>
-                          <div style='color:#3498db;font-size:1.3rem;font-weight:bold'>{_totals["neg_frames"]}</div>
-                          <div style='color:#aaa;font-size:0.7rem'>− Frames</div>
-                        </div>
-                        <div style='text-align:center'>
-                          <div style='color:{_net_color};font-size:1.3rem;font-weight:bold'>{_net_sign}{_net}</div>
-                          <div style='color:#aaa;font-size:0.7rem'>Net</div>
-                        </div>
-                        <div style='text-align:center'>
-                          <div style='color:{_steal_color};font-size:1.3rem;font-weight:bold'>{_totals["steal_rate"]}%</div>
-                          <div style='color:#aaa;font-size:0.7rem'>Steal Rate</div>
-                        </div>
-                        <div style='text-align:center'>
-                          <div style='color:{_gb_color};font-size:1.3rem;font-weight:bold'>{_totals["giveback_rate"]}%</div>
-                          <div style='color:#aaa;font-size:0.7rem'>Give-back</div>
-                        </div>
-                      </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    _steal_color = "#16A34A" if _totals["steal_rate"] >= 50 else ("#DC2626" if _totals["steal_rate"] < 30 else "#D97706")
+                    _gb_color    = "#16A34A" if _totals["giveback_rate"] <= 15 else ("#DC2626" if _totals["giveback_rate"] > 30 else "#D97706")
+                    def _fm(v, lbl, c="#111827"):
+                        return (f"<div style='text-align:center;min-width:52px'>"
+                                f"<div style='color:{c};font-size:1.15rem;font-weight:700'>{v}</div>"
+                                f"<div style='color:#6B7280;font-size:0.68rem;text-transform:uppercase;"
+                                f"letter-spacing:0.04em'>{lbl}</div></div>")
+                    st.markdown(
+                        f"<div class='player-card' style='padding:12px 14px;margin-bottom:8px'>"
+                        f"<div class='name' style='font-size:1.05rem'>{_catcher}</div>"
+                        f"<div style='display:flex;gap:10px;margin-top:8px;flex-wrap:wrap'>"
+                        + _fm(_totals["pos_frames"], "+ Frames", FRAME_POS_COLOR)
+                        + _fm(_totals["neg_frames"], "− Frames", FRAME_NEG_COLOR)
+                        + _fm(f"{_net_sign}{_net}", "Net", _net_color)
+                        + _fm(f"{_totals['steal_rate']}%", "Steal", _steal_color)
+                        + _fm(f"{_totals['giveback_rate']}%", "Give-back", _gb_color)
+                        + "</div></div>",
+                        unsafe_allow_html=True,
+                    )
 
                     _fig, _ax = plt.subplots(figsize=(3.8, 4.2), facecolor="white")
                     _draw_zone_plot(_pos, _neg, _ax, shadow=FRAME_SHADOW)
@@ -3258,33 +3100,22 @@ elif view_mode == "Catcher Framing":
                     st.pyplot(_fig)
                     plt.close(_fig)
 
-        st.markdown("---")
-        st.markdown(f"""
-        <div style='background:#1f2937;border-radius:8px;padding:14px 20px;
-                    font-size:0.85rem;color:#ccc'>
-          <b style='color:white'>How to read this report:</b><br><br>
-          <span style='color:{FRAME_POS_COLOR}'>&#9679; Positive Frame / Steal (+)</span> —
-          Pitch was <b>outside the rulebook zone but within the shadow band</b> and called a strike.
-          The catcher converted a borderline pitch.<br>
-          <span style='color:{FRAME_NEG_COLOR}'>&#9679; Negative Frame / Give-back (−)</span> —
-          Pitch was <b>inside the rulebook zone near the edge</b> but called a ball.
-          The catcher failed to hold a gettable strike.<br><br>
-          <b style='color:white'>Steal Rate %</b> — % of shadow-band pitches outside the zone that
-          were called strikes. Higher is better.<br>
-          <b style='color:white'>Give-back Rate %</b> — % of shadow-band pitches inside the zone
-          that were called balls. Lower is better.<br><br>
-          <span style='color:#aaa'>The dashed box on the plot shows the shadow zone ({FRAME_SHADOW:.2f} ft buffer).
-          Pitches outside the shadow band are excluded from rate calculations.</span>
-        </div>
-        """, unsafe_allow_html=True)
+        with st.expander("How to read this report"):
+            st.markdown(f"""
+- <span style='color:{FRAME_POS_COLOR}'>●</span> **Positive frame (steal)** — pitch outside the rulebook zone but inside the shadow band, called a strike.
+- <span style='color:{FRAME_NEG_COLOR}'>●</span> **Negative frame (give-back)** — pitch inside the zone near the edge, called a ball.
+- **Steal rate** — share of outside shadow-band pitches called strikes. Higher is better.
+- **Give-back rate** — share of inside shadow-band pitches called balls. Lower is better.
+
+The dashed box on each plot is the shadow zone ({FRAME_SHADOW:.2f} ft buffer). Pitches beyond it are excluded from the rates.
+""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # WEEKEND SERIES SUMMARY
 # ══════════════════════════════════════════════════════════════════════════════
 elif view_mode == "Weekend Series":
-    st.markdown("## Weekend Series Summary")
-    st.markdown("---")
+    page_title("Series Summary", "Team and individual production by series")
 
     def build_series_index(df: pd.DataFrame) -> list[dict]:
         """Return list of dicts: {label, opponents (list), dates}."""
@@ -3424,19 +3255,9 @@ elif view_mode == "Weekend Series":
             game_word = "game" if n_games == 1 else "games"
 
             date_range = ", ".join(format_date_long(d) for d in sorted(sel_dates))
-            st.markdown(f"""
-<div style='background:linear-gradient(90deg,#1a0a0e 0%,#2d0e16 60%,#1a0a0e 100%);
-            border:1px solid #E41C38;border-radius:10px;padding:18px 28px;margin-bottom:24px;'>
-  <div style='font-size:1.6rem;font-weight:700;color:white;letter-spacing:0.04em;'>
-    Nebraska vs. {sel_opp_str}
-  </div>
-  <div style='color:#aaa;font-size:0.92rem;margin-top:4px;'>
-    {n_games}-game series &nbsp;·&nbsp; {date_range}
-  </div>
-</div>
-""", unsafe_allow_html=True)
+            player_card(f"Nebraska vs. {sel_opp_str}", f"{n_games} {game_word} · {date_range}")
 
-            st.markdown("<div style='font-size:1.1rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #E41C38;padding-bottom:6px;'>Team Batting</div>", unsafe_allow_html=True)
+            section_title("Team Batting")
 
             def _series_team_stats(df: pd.DataFrame) -> dict:
                 pa_key = [c for c in ["GameID","Inning","Top/Bottom","PAofInning"] if c in df.columns]
@@ -3503,36 +3324,15 @@ elif view_mode == "Weekend Series":
             counting = ["PA","AB","H","2B","3B","HR","BB","SO"]
             rate_stats = ["AVG","OBP","SLG","OPS","K%","BB%","HardHit%"]
 
-            def _stat_card(label, value, highlight=False):
-                border = "#E41C38" if highlight else "#444"
-                val_color = "#E41C38" if highlight else "#f0f0f0"
-                return f"""
-<div style='background:#111;border:1px solid {border};border-radius:8px;
-            padding:14px 8px;text-align:center;'>
-  <div style='color:#888;font-size:0.72rem;text-transform:uppercase;
-              letter-spacing:0.08em;margin-bottom:6px;'>{label}</div>
-  <div style='color:{val_color};font-size:1.45rem;font-weight:700;
-              line-height:1;'>{value}</div>
-</div>"""
+            stat_row(team_stats, counting)
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            stat_row(team_stats, rate_stats, highlight={"OPS"})
 
-            highlight_stats = {"OPS", "AVG"}
-            cols1 = st.columns(len(counting))
-            for col_w, stat in zip(cols1, counting):
-                col_w.markdown(_stat_card(stat, team_stats.get(stat, "—")), unsafe_allow_html=True)
-
-            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-
-            cols2 = st.columns(len(rate_stats))
-            for col_w, stat in zip(cols2, rate_stats):
-                col_w.markdown(_stat_card(stat, team_stats.get(stat, "—"), highlight=stat in highlight_stats), unsafe_allow_html=True)
-
-            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-
-            st.markdown("<div style='font-size:1.1rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:16px;border-bottom:2px solid #E41C38;padding-bottom:6px;'>Series Leaders</div>", unsafe_allow_html=True)
+            section_title("Series Leaders")
             left_col, mid_col, right_col = st.columns(3, gap="large")
 
             with left_col:
-                st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#ccc;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;'>Top Exit Velocities</div>", unsafe_allow_html=True)
+                st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:10px;'>Top Exit Velocities</div>", unsafe_allow_html=True)
                 ev_df = neb_ser[
                     neb_ser["PitchCall"].astype(str).eq("InPlay") &
                     pd.to_numeric(neb_ser["ExitSpeed"], errors="coerce").notna()
@@ -3551,26 +3351,13 @@ elif view_mode == "Weekend Series":
                         if not result or result.lower() in ("", "nan", "undefined"):
                             result = "—"
                         st.markdown(
-                            f"""<div style='background:#111;border:1px solid #333;
-                            border-left:4px solid #E41C38;border-radius:8px;
-                            padding:14px 16px;margin-bottom:10px;'>
-                            <div style='display:flex;align-items:baseline;gap:10px;margin-bottom:6px;'>
-                              <span style='color:#E41C38;font-size:0.75rem;font-weight:700;
-                                letter-spacing:0.1em;'>#{rank+1}</span>
-                              <span style='font-size:1.55rem;font-weight:800;color:white;
-                                line-height:1;'>{row['EV']:.1f}</span>
-                              <span style='color:#888;font-size:0.85rem;'>mph</span>
-                            </div>
-                            <div style='color:#e0e0e0;font-size:0.92rem;font-weight:600;
-                              margin-bottom:3px;'>{row['BatterKey']}</div>
-                            <div style='color:#666;font-size:0.78rem;'>
-                              {result} &nbsp;·&nbsp; {row['DateOnly']}</div>
-                            </div>""",
+                            leader_card_html(rank + 1, f"{row['EV']:.1f}", "mph", row["BatterKey"],
+                                             f"{result} · {format_date_long(row['DateOnly'])}"),
                             unsafe_allow_html=True,
                         )
 
             with mid_col:
-                st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#ccc;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;'>Top Hit Distances</div>", unsafe_allow_html=True)
+                st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:10px;'>Top Hit Distances</div>", unsafe_allow_html=True)
                 dist_df = neb_ser[
                     neb_ser["PitchCall"].astype(str).eq("InPlay") &
                     pd.to_numeric(neb_ser["Distance"], errors="coerce").notna()
@@ -3589,26 +3376,13 @@ elif view_mode == "Weekend Series":
                         if not result or result.lower() in ("", "nan", "undefined"):
                             result = "—"
                         st.markdown(
-                            f"""<div style='background:#111;border:1px solid #333;
-                            border-left:4px solid #d4a017;border-radius:8px;
-                            padding:14px 16px;margin-bottom:10px;'>
-                            <div style='display:flex;align-items:baseline;gap:10px;margin-bottom:6px;'>
-                              <span style='color:#d4a017;font-size:0.75rem;font-weight:700;
-                                letter-spacing:0.1em;'>#{rank+1}</span>
-                              <span style='font-size:1.55rem;font-weight:800;color:white;
-                                line-height:1;'>{row['Dist']:.0f}</span>
-                              <span style='color:#888;font-size:0.85rem;'>ft</span>
-                            </div>
-                            <div style='color:#e0e0e0;font-size:0.92rem;font-weight:600;
-                              margin-bottom:3px;'>{row['BatterKey']}</div>
-                            <div style='color:#666;font-size:0.78rem;'>
-                              {result} &nbsp;·&nbsp; {row['DateOnly']}</div>
-                            </div>""",
+                            leader_card_html(rank + 1, f"{row['Dist']:.0f}", "ft", row["BatterKey"],
+                                             f"{result} · {format_date_long(row['DateOnly'])}"),
                             unsafe_allow_html=True,
                         )
 
             with right_col:
-                st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#ccc;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;'>Nebraska Pitch Velocities</div>", unsafe_allow_html=True)
+                st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:10px;'>Nebraska Pitch Velocities</div>", unsafe_allow_html=True)
                 velo_src = all_ser.copy()
                 velo_src["RV"] = pd.to_numeric(velo_src.get("RelSpeed", pd.Series(dtype=float)), errors="coerce")
                 velo_src = velo_src[velo_src["RV"].notna()].copy()
@@ -3645,27 +3419,14 @@ elif view_mode == "Weekend Series":
                         p_rows = velo_neb[velo_neb["_PitcherDisp"] == row["_PitcherDisp"]].nlargest(3, "RV")
                         top3_str = "  ·  ".join(f"{v:.1f}" for v in p_rows["RV"].tolist())
                         st.markdown(
-                            f"""<div style='background:#111;border:1px solid #333;
-                            border-left:4px solid #4da6c8;border-radius:8px;
-                            padding:14px 16px;margin-bottom:10px;'>
-                            <div style='display:flex;align-items:baseline;gap:10px;margin-bottom:6px;'>
-                              <span style='color:#4da6c8;font-size:0.75rem;font-weight:700;
-                                letter-spacing:0.1em;'>#{rank+1}</span>
-                              <span style='font-size:1.55rem;font-weight:800;color:white;
-                                line-height:1;'>{row['RV']:.1f}</span>
-                              <span style='color:#888;font-size:0.85rem;'>mph</span>
-                            </div>
-                            <div style='color:#e0e0e0;font-size:0.92rem;font-weight:600;
-                              margin-bottom:4px;'>{row['_PitcherDisp']}</div>
-                            <div style='color:#555;font-size:0.78rem;'>
-                              Top 3: {top3_str}</div>
-                            </div>""",
+                            leader_card_html(rank + 1, f"{row['RV']:.1f}", "mph", row["_PitcherDisp"],
+                                             f"Top 3: {top3_str}"),
                             unsafe_allow_html=True,
                         )
 
-            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-            st.markdown("<div style='font-size:1.1rem;font-weight:600;color:#E41C38;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;border-bottom:2px solid #E41C38;padding-bottom:6px;'>Individual Batter Breakdown</div>", unsafe_allow_html=True)
+            section_title("Individual Batter Breakdown")
 
             def _batter_series_line(df: pd.DataFrame) -> pd.DataFrame:
                 pa_key = ["GameID","Inning","Top/Bottom","PAofInning"]
@@ -3749,8 +3510,8 @@ elif view_mode == "Weekend Series":
                     batter_breakdown.style
                     .hide(axis="index")
                     .format(fmt_map, na_rep="—")
-                    .background_gradient(subset=["OPS"], cmap="RdYlGn", vmin=0.5, vmax=1.2)
-                    .background_gradient(subset=["Max EV"], cmap="RdYlGn", vmin=75, vmax=105),
+                    .background_gradient(subset=["OPS"], cmap=SOFT_RYG, vmin=0.5, vmax=1.2)
+                    .background_gradient(subset=["Max EV"], cmap=SOFT_RYG, vmin=75, vmax=105),
                     use_container_width=True,
                 )
             else:
@@ -3765,113 +3526,80 @@ elif view_mode == "Regional Scouting":
     import requests as _requests
 
     # ── Color constants for this page (blue accent = hitter-side framing) ────
-    SC_BLU   = "#4a9eff"
-    SC_RED   = "#E41C38"
-    SC_GRN   = "#3adb76"
-    SC_AMB   = "#f5a623"
+    SC_BLU   = "#2563EB"
+    SC_RED   = "#DC2626"
+    SC_GRN   = "#16A34A"
+    SC_AMB   = "#D97706"
     SC_DARK  = "#0f0f0f"
     SC_D2    = "#161616"
     SC_D3    = "#1d1d1d"
     SC_D4    = "#252525"
 
-    # ── Shared CSS for dark-panel scouting UI ────────────────────────────────
+    # ── Scouting page CSS (light, matches the rest of the app) ───────────────
     st.markdown("""
     <style>
-    .sc-page { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     .sc-header-card {
-        background: linear-gradient(135deg, #0d1117 0%, #0f1e30 100%);
-        border: 0.5px solid rgba(74,158,255,0.25);
-        border-radius: 12px;
-        padding: 16px 20px;
-        margin-bottom: 14px;
+        background:#FFFFFF;border:1px solid #E5E7EB;border-left:4px solid #E41C38;
+        border-radius:8px;padding:16px 20px;margin-bottom:16px;
     }
-    .sc-tag-nb {
-        display:inline-block;font-size:11px;padding:2px 9px;border-radius:4px;
-        background:rgba(74,158,255,0.1);color:#7bb8ff;
-        border:0.5px solid rgba(74,158,255,0.25);margin-right:6px;
+    .sc-tag-nb, .sc-tag-opp {
+        display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;margin-right:6px;
     }
-    .sc-tag-opp {
-        display:inline-block;font-size:11px;padding:2px 9px;border-radius:4px;
-        background:rgba(255,255,255,0.04);color:#888;
-        border:0.5px solid rgba(255,255,255,0.1);
-    }
-    .sc-matchup-names {
-        font-size:20px;font-weight:500;color:#fff;line-height:1.3;margin:8px 0 4px 0;
-    }
-    .sc-matchup-sub { font-size:11px;color:#555;margin-bottom:12px; }
-    .sc-grade-segs { display:flex;gap:3px;height:5px;margin-bottom:5px; }
-    .sc-grade-seg { flex:1;border-radius:1px; }
+    .sc-tag-nb  { background:#FDECEF;color:#E41C38; }
+    .sc-tag-opp { background:#F3F4F6;color:#374151; }
+    .sc-matchup-names { font-size:1.35rem;font-weight:700;color:#111827;line-height:1.3;margin:8px 0 4px 0; }
+    .sc-matchup-sub { font-size:0.82rem;color:#6B7280;margin-bottom:12px; }
+    .sc-grade-segs { display:flex;gap:3px;height:6px;margin-bottom:6px; }
+    .sc-grade-seg { flex:1;border-radius:2px; }
     .sc-grade-labels { display:flex;justify-content:space-between;align-items:center; }
-    .sc-grade-verdict { font-size:12px;font-weight:500;text-align:center;flex:1; }
-    .sc-grade-lbl { font-size:10px;color:#444; }
+    .sc-grade-verdict { font-size:0.85rem;font-weight:600;text-align:center;flex:1; }
+    .sc-grade-lbl { font-size:0.72rem; }
     .sc-section-title {
-        font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:#555;
-        margin-bottom:12px;display:flex;align-items:center;gap:6px;
-    }
-    .sc-section-title::before {
-        content:'';width:2px;height:9px;background:#4a9eff;
-        border-radius:1px;flex-shrink:0;display:block;
+        font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#374151;
+        margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #E5E7EB;
     }
     .sc-pitch-card {
-        background:#1d1d1d;border:0.5px solid rgba(255,255,255,0.06);
-        border-radius:9px;padding:12px 14px;margin-bottom:9px;
+        background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px;margin-bottom:10px;
     }
     .sc-pitch-head { display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px; }
-    .sc-pitch-name { font-size:14px;font-weight:500;color:#d8d8d8; }
+    .sc-pitch-name { font-size:0.95rem;font-weight:600;color:#111827; }
     .sc-pitch-usage {
-        font-size:10px;color:#555;background:#252525;padding:2px 8px;
-        border-radius:4px;border:0.5px solid rgba(255,255,255,0.06);
+        font-size:0.72rem;color:#374151;background:#F3F4F6;padding:2px 8px;border-radius:999px;
         margin-left:8px;vertical-align:middle;
     }
-    .sc-pitch-det { font-size:11px;color:#666;margin-top:3px; }
-    .sc-mrow { display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin-bottom:8px; }
-    .sc-mbox {
-        background:#252525;border-radius:6px;padding:7px 8px;
-        border:0.5px solid rgba(255,255,255,0.06);
-    }
-    .sc-mlbl { font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px; }
-    .sc-mval { font-size:18px;font-weight:500;line-height:1; }
-    .sc-mbar { height:2px;border-radius:1px;margin-top:5px; }
-    .sc-chip {
-        font-size:9px;padding:1px 6px;border-radius:3px;
-        margin-top:5px;display:inline-block;font-weight:500;
-    }
-    .sc-chip-bad  { background:rgba(228,28,56,.12);color:#ff6b7a;border:0.5px solid rgba(228,28,56,.2); }
-    .sc-chip-ok   { background:rgba(245,166,35,.09);color:#f5a623;border:0.5px solid rgba(245,166,35,.2); }
-    .sc-chip-good { background:rgba(58,219,118,.09);color:#3adb76;border:0.5px solid rgba(58,219,118,.15); }
-    .sc-pnote { font-size:11px;color:#555;line-height:1.55; }
+    .sc-pitch-det { font-size:0.78rem;color:#6B7280;margin-top:3px; }
+    .sc-mrow { display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:8px; }
+    .sc-mbox { background:#F9FAFB;border:1px solid #F3F4F6;border-radius:6px;padding:7px 8px; }
+    .sc-mlbl { font-size:0.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px; }
+    .sc-mval { font-size:1.1rem;font-weight:700;line-height:1; }
+    .sc-mbar { height:3px;border-radius:2px;margin-top:6px; }
+    .sc-chip { font-size:0.65rem;padding:1px 6px;border-radius:4px;margin-top:6px;display:inline-block;font-weight:600; }
+    .sc-chip-bad  { background:#FEE2E2;color:#B91C1C; }
+    .sc-chip-ok   { background:#FEF3C7;color:#92400E; }
+    .sc-chip-good { background:#DCFCE7;color:#166534; }
+    .sc-pnote { font-size:0.8rem;color:#4B5563;line-height:1.5; }
     .sc-right-card {
-        background:#161616;border:0.5px solid rgba(255,255,255,0.06);
-        border-radius:12px;padding:14px 16px;margin-bottom:12px;
+        background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;margin-bottom:12px;
     }
     .sc-zone-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:3px;width:150px; }
     .sc-zone-cell {
-        aspect-ratio:1;border-radius:4px;display:flex;align-items:center;
-        justify-content:center;font-size:11px;font-weight:500;
-        border:0.5px solid rgba(255,255,255,0.03);
+        aspect-ratio:1;border-radius:4px;display:flex;align-items:center;justify-content:center;
+        font-size:0.78rem;font-weight:600;border:1px solid #F3F4F6;
     }
     .sc-plt-grid { display:grid;grid-template-columns:1fr 1fr;gap:8px; }
-    .sc-plt-card {
-        background:#1d1d1d;border:0.5px solid rgba(255,255,255,0.06);
-        border-radius:7px;padding:10px 12px;
-    }
-    .sc-plt-hdr { font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:7px; }
+    .sc-plt-card { background:#F9FAFB;border:1px solid #F3F4F6;border-radius:6px;padding:10px 12px; }
+    .sc-plt-hdr { font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#6B7280;margin-bottom:6px; }
     .sc-plt-row { display:flex;justify-content:space-between;margin-bottom:4px; }
-    .sc-plt-lbl { font-size:11px;color:#666; }
-    .sc-plt-val { font-size:12px;font-weight:500;color:#ccc; }
+    .sc-plt-lbl { font-size:0.8rem;color:#6B7280; }
+    .sc-plt-val { font-size:0.85rem;font-weight:600;color:#111827; }
     .sc-note-box {
-        background:#161616;border:0.5px solid rgba(255,255,255,0.06);
-        border-radius:12px;padding:15px 17px;margin-top:12px;
+        background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;margin-top:12px;
     }
     .sc-note-body {
-        background:rgba(74,158,255,0.06);border-left:2px solid #1a3a5e;
-        border-radius:0 7px 7px 0;padding:11px 13px;
-        font-size:12px;color:#999;line-height:1.75;
+        background:#F9FAFB;border-left:3px solid #E41C38;border-radius:0 6px 6px 0;
+        padding:11px 13px;font-size:0.88rem;color:#374151;line-height:1.65;
     }
-    .cr { color:#ff6b7a; }
-    .ca { color:#f5a623; }
-    .cg { color:#3adb76; }
-    .cb { color:#4a9eff; }
+    .cr { color:#DC2626; } .ca { color:#D97706; } .cg { color:#16A34A; } .cb { color:#2563EB; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -4243,13 +3971,13 @@ elif view_mode == "Regional Scouting":
         cy = round(72 - ((ivb + 14) / 34) * 64, 1)
         return (
             f'<svg viewBox="0 0 80 80" width="70" height="70" style="display:block;flex-shrink:0;">'
-            f'<rect width="80" height="80" fill="rgba(255,255,255,0.02)" rx="5"/>'
-            f'<line x1="40" y1="3" x2="40" y2="77" stroke="rgba(255,255,255,0.07)" stroke-width="0.5"/>'
-            f'<line x1="3" y1="40" x2="77" y2="40" stroke="rgba(255,255,255,0.07)" stroke-width="0.5"/>'
+            f'<rect width="80" height="80" fill="#F9FAFB" stroke="#E5E7EB" stroke-width="0.5" rx="5"/>'
+            f'<line x1="40" y1="3" x2="40" y2="77" stroke="#E5E7EB" stroke-width="0.5"/>'
+            f'<line x1="3" y1="40" x2="77" y2="40" stroke="#E5E7EB" stroke-width="0.5"/>'
             f'<circle cx="{cx}" cy="{cy}" r="5.5" fill="{color}" opacity="0.9"/>'
             f'<circle cx="{cx}" cy="{cy}" r="9.5" fill="{color}" opacity="0.14"/>'
-            f'<text x="40" y="79" text-anchor="middle" font-size="6.5" fill="rgba(255,255,255,0.2)" font-family="sans-serif">HB</text>'
-            f'<text x="3" y="44" text-anchor="middle" font-size="6.5" fill="rgba(255,255,255,0.2)" '
+            f'<text x="40" y="79" text-anchor="middle" font-size="6.5" fill="#9CA3AF" font-family="sans-serif">HB</text>'
+            f'<text x="3" y="44" text-anchor="middle" font-size="6.5" fill="#9CA3AF" '
             f'font-family="sans-serif" transform="rotate(-90,3,42)">IVB</text>'
             f'</svg>'
         )
@@ -4278,33 +4006,16 @@ elif view_mode == "Regional Scouting":
             return "12-6 break — look for it early and attack it in the zone. Don't chase below the knees."
         return "Secondary offering. Stay disciplined."
 
-    def _sc_grade_html(score: int) -> str:
-        col   = SC_GRN if score > 62 else (SC_AMB if score > 40 else SC_RED)
-        label = ("Favorable matchup" if score > 62
-                 else ("Neutral" if score > 40 else "High threat"))
-        segs  = "".join(
-            f'<div class="sc-grade-seg" style="background:{"' + col + '" if score >= (i+1)*10 else "rgba(255,255,255,0.05)"}"></div>'
-            for i in range(10)
-        )
-        return (
-            f'<div class="sc-grade-segs">{segs}</div>'
-            f'<div class="sc-grade-labels">'
-            f'  <span class="sc-grade-lbl" style="color:{"' + col + '" if score < 40 else "rgba(255,255,255,0.15)"}">High threat</span>'
-            f'  <span class="sc-grade-verdict" style="color:{col};">{label}</span>'
-            f'  <span class="sc-grade-lbl" style="color:{"' + col + '" if score > 62 else "rgba(255,255,255,0.15)"}">Favorable</span>'
-            f'</div>'
-        )
-
     def _sc_zone_html(zone_arr: list) -> str:
         mx = max(zone_arr) if any(zone_arr) else 1
         cells = []
         for v in zone_arr:
             if not v:
-                cells.append('<div class="sc-zone-cell" style="background:rgba(255,255,255,0.03);"></div>')
+                cells.append('<div class="sc-zone-cell" style="background:#F9FAFB;"></div>')
                 continue
             i = v / mx
-            bg = (f"rgba(228,28,56,{0.5 if i > 0.7 else (0.25 if i > 0.4 else 0.1)})")
-            tc = "#fff" if i > 0.7 else ("#ffaaaa" if i > 0.4 else "#cc8080")
+            bg = (f"rgba(228,28,56,{0.75 if i > 0.7 else (0.35 if i > 0.4 else 0.12)})")
+            tc = "#FFFFFF" if i > 0.7 else "#7F1D1D"
             cells.append(f'<div class="sc-zone-cell" style="background:{bg};color:{tc};">{v}</div>')
         return "".join(cells)
 
@@ -4316,7 +4027,10 @@ elif view_mode == "Regional Scouting":
         av = sum(p["v"] for p in pitcher["ar"]) / len(pitcher["ar"])
         ai = sum(abs(p["ivb"]) for p in pitcher["ar"]) / len(pitcher["ar"])
         ah = sum(abs(p["hb"]) for p in pitcher["ar"]) / len(pitcher["ar"])
-        er = float(pitcher["era"])
+        try:
+            er = float(pitcher["era"])
+        except (TypeError, ValueError):
+            er = 4.5  # ERA not in TrackMan data — use a neutral midpoint
         kb = float(pitcher["kbb"])
         values = [
             min((av - 73) / 25 * 100, 100),
@@ -4332,22 +4046,22 @@ elif view_mode == "Regional Scouting":
         values += values[:1]
 
         fig, ax = _plt.subplots(figsize=(3.8, 3.8), subplot_kw=dict(polar=True),
-                                facecolor="#161616")
-        ax.set_facecolor("#161616")
-        ax.spines["polar"].set_color((1, 1, 1, 0.07))
+                                facecolor="white")
+        ax.set_facecolor("white")
+        ax.spines["polar"].set_color("#E5E7EB")
         ax.set_thetagrids([a * 180 / _np.pi for a in angles[:-1]], labels,
-                          fontsize=8, color="#555")
+                          fontsize=8, color="#6B7280")
         ax.set_ylim(0, 100)
         ax.yaxis.set_visible(False)
         for gl in ax.yaxis.get_gridlines():
-            gl.set_color((1, 1, 1, 0.06))
+            gl.set_color("#E5E7EB")
         for gl in ax.xaxis.get_gridlines():
-            gl.set_color((1, 1, 1, 0.06))
+            gl.set_color("#E5E7EB")
         ax.set_xticks(angles[:-1])
-        ax.set_xticklabels(labels, fontsize=7.5, color="#585858")
+        ax.set_xticklabels(labels, fontsize=7.5, color="#4B5563")
 
         ax.plot(angles, values, color=SC_BLU, linewidth=1.5, linestyle="solid")
-        ax.fill(angles, values, color=SC_BLU, alpha=0.12)
+        ax.fill(angles, values, color=SC_BLU, alpha=0.10)
         ax.scatter(angles[:-1], values[:-1], color=SC_BLU, s=20, zorder=5)
 
         fig.tight_layout(pad=0.5)
@@ -4391,22 +4105,22 @@ elif view_mode == "Regional Scouting":
         col   = SC_GRN if score > 62 else (SC_AMB if score > 40 else SC_RED)
         label = "Favorable matchup" if score > 62 else ("Neutral" if score > 40 else "High threat")
         segs  = "".join(
-            f'<div class="sc-grade-seg" style="background:{col if score >= (i+1)*10 else "rgba(255,255,255,0.05)"}"></div>'
+            f'<div class="sc-grade-seg" style="background:{col if score >= (i+1)*10 else "#F3F4F6"}"></div>'
             for i in range(10)
         )
-        lbl_left_col  = col if score < 40   else "rgba(255,255,255,0.15)"
-        lbl_right_col = col if score > 62   else "rgba(255,255,255,0.15)"
+        lbl_left_col  = col if score < 40   else "#9CA3AF"
+        lbl_right_col = col if score > 62   else "#9CA3AF"
 
         st.markdown(f"""
         <div class="sc-header-card">
           <div>
             <span class="sc-tag-nb">Nebraska</span>
-            <span style="color:#444;font-size:11px;">vs</span>
+            <span style="color:#9CA3AF;font-size:11px;margin-right:6px;">vs</span>
             <span class="sc-tag-opp">{pitcher['tm_label']}</span>
           </div>
           <div class="sc-matchup-names">
             {hitter_name}
-            <span style="color:#444;font-weight:400;font-size:15px;"> vs </span>
+            <span style="color:#9CA3AF;font-weight:400;font-size:1rem;"> vs </span>
             {pitcher['name']}
           </div>
           <div class="sc-matchup-sub">
@@ -4441,7 +4155,7 @@ elif view_mode == "Regional Scouting":
                 vh   = _sc_verdict(m["hrd"], "hrd")
                 ve   = _sc_verdict(m["ev"],  "ev")
                 vc   = _sc_verdict(m["ch"],  "ch")
-                pcol = PITCH_COLORS.get(pitch["t"], "#4a9eff")
+                pcol = PITCH_COLORS.get(pitch["t"], SC_BLU)
                 note = _sc_pitch_note(pitch, hitter, pitcher["hand"])
                 fm   = lambda x: (f"+{x:.1f}" if x >= 0 else f"{x:.1f}")
                 svg  = _sc_movement_svg(pitch["ivb"], pitch["hb"], pcol)
@@ -4491,14 +4205,12 @@ elif view_mode == "Regional Scouting":
         with rcol:
             # Pitcher threat radar
             st.markdown(
-                '<div class="sc-right-card"><div class="sc-section-title" '
-                'style="--accent:#4a9eff"><span>Pitcher threat profile</span></div>',
+                '<div class="sc-section-title"><span>Pitcher threat profile</span></div>',
                 unsafe_allow_html=True,
             )
             fig_r = _sc_radar_pitcher(pitcher)
             st.pyplot(fig_r, use_container_width=True)
             plt.close(fig_r)
-            st.markdown("</div>", unsafe_allow_html=True)
 
             # Zone grid — pitcher location tendency (red)
             zone_cells_html = _sc_zone_html(pitcher["zone"])
@@ -4507,12 +4219,12 @@ elif view_mode == "Regional Scouting":
               <div class="sc-section-title"><span>Pitcher location tendency</span></div>
               <div class="sc-zone-grid">{zone_cells_html}</div>
               <div style="display:flex;gap:10px;margin-top:8px;">
-                <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#555;">
-                  <div style="width:8px;height:8px;border-radius:2px;background:rgba(228,28,56,0.5);"></div>
+                <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6B7280;">
+                  <div style="width:8px;height:8px;border-radius:2px;background:rgba(228,28,56,0.75);"></div>
                   Most frequent
                 </div>
-                <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#555;">
-                  <div style="width:8px;height:8px;border-radius:2px;background:rgba(228,28,56,0.1);"></div>
+                <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6B7280;">
+                  <div style="width:8px;height:8px;border-radius:2px;background:rgba(228,28,56,0.12);"></div>
                   Least frequent
                 </div>
               </div>
@@ -4545,10 +4257,6 @@ elif view_mode == "Regional Scouting":
             """, unsafe_allow_html=True)
 
         # ── AI Scout note ─────────────────────────────────────────────────────
-        st.markdown(
-            '<div class="sc-note-box"><div class="sc-section-title"><span>Scout note</span></div>',
-            unsafe_allow_html=True,
-        )
 
         @st.cache_data(show_spinner=False)
         def _sc_ai_note(hitter_name: str, hitter_dict: str, pitcher_name: str,
@@ -4565,9 +4273,21 @@ elif view_mode == "Regional Scouting":
                 f"Be specific and concrete like a hitting coach in a pregame meeting."
             )
             try:
+                _api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+                if not _api_key:
+                    try:
+                        _api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+                    except Exception:
+                        _api_key = ""
+                if not _api_key:
+                    return "Scout note unavailable — add ANTHROPIC_API_KEY to your Streamlit secrets to enable."
                 resp = _requests.post(
                     "https://api.anthropic.com/v1/messages",
-                    headers={"Content-Type": "application/json"},
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-api-key": _api_key,
+                        "anthropic-version": "2023-06-01",
+                    },
                     json={
                         "model": "claude-sonnet-4-20250514",
                         "max_tokens": 250,
@@ -4599,6 +4319,7 @@ elif view_mode == "Regional Scouting":
             pitcher["hand"], pitcher["tm_label"], pitcher["era"], ar_summary,
         )
         st.markdown(
+            f'<div class="sc-note-box"><div class="sc-section-title"><span>Scout note</span></div>'
             f'<div class="sc-note-body">{note_text}</div></div>',
             unsafe_allow_html=True,
         )
